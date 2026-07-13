@@ -1,4 +1,4 @@
-import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
+import { createRouter, createWebHistory, createWebHashHistory, type RouteRecordRaw } from 'vue-router'
 import Layout from '@/layout/index.vue'
 import Dashboard from '@/pages/dashboard/index.vue'
 import Users from '@/pages/users/index.vue'
@@ -28,12 +28,11 @@ const routes: RouteRecordRaw[] = [
 ]
 
 export function setupRouter() {
-  const base = (window as unknown as { __POWERED_BY_QIANKUN__?: boolean }).__POWERED_BY_QIANKUN__
-    ? '/cooperise'
-    : '/'
-  
+  const isPoweredByQiankun = (window as unknown as { __POWERED_BY_QIANKUN__?: boolean }).__POWERED_BY_QIANKUN__
+
   return createRouter({
-    history: createWebHistory(base),
+    history: isPoweredByQiankun ? createWebHashHistory() : createWebHistory('/'),
     routes,
   })
 }
+
