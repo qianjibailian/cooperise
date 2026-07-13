@@ -1,26 +1,9 @@
 <template>
   <a-layout class="layout-container">
-    <a-layout-sider v-model:collapsed="collapsed" :width="200" class="sider">
+    <a-layout-sider v-model:collapsed="collapsed" :width="220" class="sider">
       <div class="logo-wrapper">
         <div class="logo">
-          <div class="logo-icon">
-            <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <defs>
-                <linearGradient id="logoGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                  <stop offset="0%" stopColor="#3b82f6" />
-                  <stop offset="50%" stopColor="#6366f1" />
-                  <stop offset="100%" stopColor="#8b5cf6" />
-                </linearGradient>
-              </defs>
-              <circle cx="32" cy="32" r="28" fill="url(#logoGradient)" />
-              <path d="M22 44V20" stroke="white" stroke-width="6" stroke-linecap="round" opacity="0.95" />
-              <path d="M22 32H42" stroke="white" stroke-width="6" stroke-linecap="round" opacity="0.95" />
-              <path d="M42 44V20" stroke="white" stroke-width="6" stroke-linecap="round" opacity="0.7" />
-              <circle cx="42" cy="20" r="4" fill="white" opacity="0.9" />
-              <circle cx="22" cy="44" r="4" fill="white" opacity="0.9" />
-            </svg>
-          </div>
-          <span v-if="!collapsed" class="logo-text">Cooperise</span>
+          <span v-if="!collapsed" class="logo-text">需求管控平台</span>
         </div>
       </div>
       <a-menu
@@ -72,62 +55,39 @@
           <span>部门管理</span>
         </a-menu-item>
       </a-menu>
+      <div class="sidebar-footer">
+        <a-dropdown>
+          <div class="user-profile">
+            <a-avatar :size="32" class="user-avatar">
+              <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=admin" alt="avatar" />
+            </a-avatar>
+            <span v-if="!collapsed" class="user-name">管理员</span>
+            <component :is="DownOutlined" class="dropdown-icon" />
+          </div>
+          <template #overlay>
+            <a-menu>
+              <a-menu-item key="profile">
+                <component :is="UserOutlined" />
+                个人中心
+              </a-menu-item>
+              <a-menu-item key="settings">
+                <component :is="SettingOutlined" />
+                账户设置
+              </a-menu-item>
+              <a-menu-divider />
+              <a-menu-item key="logout">
+                <component :is="LogoutOutlined" />
+                退出登录
+              </a-menu-item>
+            </a-menu>
+          </template>
+        </a-dropdown>
+        <button class="collapse-btn" @click="collapsed = !collapsed">
+          <component :is="collapsed ? MenuUnfoldOutlined : MenuFoldOutlined" />
+        </button>
+      </div>
     </a-layout-sider>
     <a-layout class="main-layout">
-      <a-layout-header class="header">
-        <div class="header-left">
-          <button class="collapse-btn" @click="collapsed = !collapsed">
-            <component :is="collapsed ? MenuUnfoldOutlined : MenuFoldOutlined" />
-          </button>
-          <a-breadcrumb class="breadcrumb">
-            <a-breadcrumb-item>首页</a-breadcrumb-item>
-            <a-breadcrumb-item>{{ currentTitle }}</a-breadcrumb-item>
-          </a-breadcrumb>
-        </div>
-        <div class="header-right">
-          <a-input-search
-            v-model:value="searchValue"
-            placeholder="搜索..."
-            class="header-search"
-            allow-clear
-          >
-            <template #prefix>
-              <SearchOutlined />
-            </template>
-          </a-input-search>
-          <a-badge :count="3" :offset="[-4, 4]">
-            <button class="icon-btn">
-              <component :is="BellOutlined" />
-            </button>
-          </a-badge>
-          <a-dropdown>
-            <div class="user-profile">
-              <a-avatar :size="32" class="user-avatar">
-                <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=admin" alt="avatar" />
-              </a-avatar>
-              <span class="user-name">管理员</span>
-              <component :is="DownOutlined" class="dropdown-icon" />
-            </div>
-            <template #overlay>
-              <a-menu>
-                <a-menu-item key="profile">
-                  <component :is="UserOutlined" />
-                  个人中心
-                </a-menu-item>
-                <a-menu-item key="settings">
-                  <component :is="SettingOutlined" />
-                  账户设置
-                </a-menu-item>
-                <a-menu-divider />
-                <a-menu-item key="logout">
-                  <component :is="LogoutOutlined" />
-                  退出登录
-                </a-menu-item>
-              </a-menu>
-            </template>
-          </a-dropdown>
-        </div>
-      </a-layout-header>
       <a-layout-content class="content">
         <router-view />
       </a-layout-content>
@@ -145,8 +105,6 @@ import {
   BuildOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
-  SearchOutlined,
-  BellOutlined,
   DownOutlined,
   SettingOutlined,
   LogoutOutlined,
@@ -159,16 +117,11 @@ const router = useRouter()
 const route = useRoute()
 
 const collapsed = ref(false)
-const searchValue = ref('')
 
 const currentPath = computed(() => {
   if (route.path.startsWith('/requirements')) return '/requirements'
   if (route.path.startsWith('/tasks')) return '/tasks'
   return route.path
-})
-
-const currentTitle = computed(() => {
-  return (route.meta?.title as string) || '仪表盘'
 })
 
 function handleMenuClick(info: { key: string }) {
@@ -180,71 +133,103 @@ function handleMenuClick(info: { key: string }) {
 <style scoped>
 .layout-container {
   height: 100%;
-  background: #f9fafb;
+  background: #fafafa;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
 }
 
 .sider {
-  background: #fff !important;
-  border-right: 1px solid #f3f4f6;
+  background: #ffffff !important;
   height: 100vh;
   position: fixed;
   left: 0;
   top: 0;
   bottom: 0;
   z-index: 100;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 1px 0 3px rgba(0, 0, 0, 0.04);
+  transition: width 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .logo-wrapper {
-  padding: 12px 16px;
-  border-bottom: 1px solid #f3f4f6;
+  padding: 16px 16px 12px;
+  display: flex;
+  justify-content: center;
 }
 
 .logo {
   display: flex;
   align-items: center;
-  gap: 10px;
-}
-
-.logo-icon {
-  width: 32px;
-  height: 32px;
-  flex-shrink: 0;
-}
-
-.logo-icon svg {
-  width: 100%;
-  height: 100%;
+  justify-content: center;
 }
 
 .logo-text {
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 600;
-  color: #1f2937;
+  color: #1d1d1f;
+  letter-spacing: -0.3px;
+}
+
+.collapse-btn {
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #646464;
+  font-size: 16px;
+  transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.collapse-btn:hover {
+  background: rgba(0, 0, 0, 0.04);
+  color: #1d1d1f;
 }
 
 .sidebar-menu {
   border-right: none !important;
-  padding: 8px;
+  padding: 8px 6px;
+  flex: 1;
+  overflow-y: auto;
 }
 
 .sidebar-menu :deep(.ant-menu-item) {
-  margin: 2px 0;
-  border-radius: 6px;
-  height: 40px;
-  line-height: 40px;
-  color: #4b5563;
-  font-size: 14px;
+  margin: 3px 4px;
+  border-radius: 8px;
+  height: 38px;
+  line-height: 38px;
+  color: #646464;
+  font-size: 13.5px;
+  font-weight: 400;
+  position: relative;
+  transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .sidebar-menu :deep(.ant-menu-item:hover) {
-  background: #f3f4f6;
-  color: #1f2937;
+  background: rgba(0, 0, 0, 0.04) !important;
+  color: #1d1d1f;
 }
 
 .sidebar-menu :deep(.ant-menu-item-selected) {
-  background: #f3f4f6 !important;
-  color: #1f2937 !important;
+  background: rgba(59, 130, 246, 0.08) !important;
+  color: #3b82f6 !important;
   font-weight: 500;
+}
+
+.sidebar-menu :deep(.ant-menu-item-selected)::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 16px;
+  background: #3b82f6;
+  border-radius: 0 3px 3px 0;
 }
 
 .sidebar-menu :deep(.ant-menu-item-selected::after) {
@@ -252,123 +237,50 @@ function handleMenuClick(info: { key: string }) {
 }
 
 .sidebar-menu :deep(.ant-menu-submenu-title) {
-  margin: 2px 0;
-  border-radius: 6px;
-  height: 40px;
-  line-height: 40px;
-  color: #4b5563;
-  font-size: 14px;
+  margin: 3px 4px;
+  border-radius: 8px;
+  height: 38px;
+  line-height: 38px;
+  color: #646464;
+  font-size: 13.5px;
+  font-weight: 400;
+  position: relative;
+  transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .sidebar-menu :deep(.ant-menu-submenu-title:hover) {
-  background: #f3f4f6;
-  color: #1f2937;
+  background: rgba(0, 0, 0, 0.04) !important;
+  color: #1d1d1f;
+}
+
+.sidebar-menu :deep(.ant-menu-submenu-title.ant-menu-submenu-selected) {
+  background: rgba(59, 130, 246, 0.08) !important;
+  color: #3b82f6 !important;
+  font-weight: 500;
+}
+
+.sidebar-menu :deep(.ant-menu-submenu-title.ant-menu-submenu-selected)::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 16px;
+  background: #3b82f6;
+  border-radius: 0 3px 3px 0;
 }
 
 .sidebar-menu :deep(.ant-menu-divider) {
-  margin: 8px 4px;
+  margin: 8px 8px;
+  border-color: rgba(0, 0, 0, 0.04);
 }
 
-.main-layout {
-  margin-left: 200px;
-  transition: margin-left 0.2s ease;
-}
-
-.layout-container :deep(.ant-layout-sider-collapsed) + .main-layout {
-  margin-left: 80px;
-}
-
-.header {
+.sidebar-footer {
+  padding: 8px 12px;
   display: flex;
-  align-items: center;
   justify-content: space-between;
-  padding: 0 16px;
-  background: #fff;
-  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
-  height: 56px;
-  position: sticky;
-  top: 0;
-  z-index: 99;
-}
-
-.header-left {
-  display: flex;
   align-items: center;
-  gap: 12px;
-}
-
-.collapse-btn {
-  width: 36px;
-  height: 36px;
-  border: none;
-  background: transparent;
-  border-radius: 6px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #4b5563;
-  font-size: 18px;
-  transition: background 0.2s ease;
-}
-
-.collapse-btn:hover {
-  background: #f3f4f6;
-}
-
-.breadcrumb {
-  font-size: 14px;
-}
-
-.breadcrumb :deep(.ant-breadcrumb-link) {
-  color: #9ca3af;
-}
-
-.breadcrumb :deep(.ant-breadcrumb-link:last-child) {
-  color: #1f2937;
-}
-
-.header-right {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.header-search {
-  width: 240px;
-}
-
-.header-search :deep(.ant-input-affix-wrapper) {
-  background: #f9fafb;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  height: 36px;
-}
-
-.header-search :deep(.ant-input-affix-wrapper:hover),
-.header-search :deep(.ant-input-affix-wrapper-focused) {
-  background: #fff;
-  border-color: #9ca3af;
-  box-shadow: none;
-}
-
-.icon-btn {
-  width: 36px;
-  height: 36px;
-  border: none;
-  background: transparent;
-  border-radius: 8px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #4b5563;
-  font-size: 18px;
-  transition: background 0.2s ease;
-}
-
-.icon-btn:hover {
-  background: #f3f4f6;
 }
 
 .user-profile {
@@ -378,17 +290,17 @@ function handleMenuClick(info: { key: string }) {
   padding: 4px 8px 4px 4px;
   border-radius: 8px;
   cursor: pointer;
-  transition: background 0.2s ease;
+  transition: background 0.15s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .user-profile:hover {
-  background: #f3f4f6;
+  background: rgba(0, 0, 0, 0.04);
 }
 
 .user-name {
-  font-size: 14px;
+  font-size: 13.5px;
   font-weight: 500;
-  color: #1f2937;
+  color: #1d1d1f;
 }
 
 .dropdown-icon {
@@ -396,9 +308,23 @@ function handleMenuClick(info: { key: string }) {
   font-size: 12px;
 }
 
+.main-layout {
+  margin-left: 220px;
+  transition: margin-left 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.layout-container :deep(.ant-layout-sider-collapsed) + .main-layout {
+  margin-left: 80px;
+}
+
 .content {
   padding: 24px;
-  min-height: calc(100vh - 56px);
-  background: #f9fafb;
+  min-height: 100vh;
+  background: #fafafa;
+}
+
+.content > * {
+  max-width: 1200px;
+  margin: 0 auto;
 }
 </style>
