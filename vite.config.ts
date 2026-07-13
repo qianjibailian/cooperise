@@ -7,7 +7,7 @@ export default defineConfig({
   plugins: [
     vuePlugin(),
     qiankun('cooperise', {
-      useDevMode: true,
+      useDevMode: process.env.NODE_ENV === 'development',
     }),
   ],
   resolve: {
