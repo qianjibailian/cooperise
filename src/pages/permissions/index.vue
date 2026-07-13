@@ -73,7 +73,7 @@
         row-key="key"
         class="permissions-table"
       >
-        <template #bodyCell="{ column, record, index }">
+        <template #bodyCell="{ column, record }">
           <template v-if="column.key === 'title'">
             <div class="title-cell" :style="{ paddingLeft: record.level * 24 + 'px' }">
               <span v-if="record.hasChildren" class="expand-icon" @click="toggleExpand(record.key)">
