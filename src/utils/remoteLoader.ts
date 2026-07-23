@@ -11,8 +11,8 @@ let cssLoaded = false
 let sharedInitialized = false
 
 if (!(String.prototype as any).forEach) {
-  (String.prototype as any).forEach = function(callback: Function, thisArg: any) {
-    return [this].forEach(callback, thisArg)
+  (String.prototype as any).forEach = function(callback: (value: string, index: number, array: string[]) => void, thisArg?: any) {
+    return [this as string].forEach(callback, thisArg)
   }
 }
 
