@@ -22,6 +22,13 @@ export default defineConfig({
       'Access-Control-Allow-Methods': '*',
       'Access-Control-Allow-Headers': '*',
     },
+    proxy: {
+      '/qianjisan-assets': {
+        target: 'http://localhost:5173',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/qianjisan-assets/, '/assets'),
+      },
+    },
   },
   build: {
     target: 'esnext',
