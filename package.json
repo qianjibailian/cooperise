@@ -9,15 +9,28 @@
     "preview": "vite preview --port 8083"
   },
   "dependencies": {
+    "@ant-design/icons": "^5.3.0",
     "@ant-design/icons-vue": "7.0.1",
     "ant-design-vue": "^4.2.6",
+    "antd": "^5.12.0",
+    "axios": "^1.18.1",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-router-dom": "^6.18.0",
     "vue": "^3.5.13",
     "vue-router": "^4.6.4"
   },
   "devDependencies": {
+    "@originjs/vite-plugin-federation": "^1.4.1",
+    "@tailwindcss/postcss": "^4.3.3",
     "@types/node": "^26.1.0",
+    "@types/react": "^18.3.31",
+    "@types/react-dom": "^18.3.7",
     "@vitejs/plugin-vue": "^5.2.3",
     "@vue/tsconfig": "^0.7.0",
+    "autoprefixer": "^10.5.4",
+    "postcss": "^8.5.22",
+    "tailwindcss": "^4.3.3",
     "typescript": "~5.8.3",
     "vite": "^6.3.5",
     "vite-plugin-qiankun": "^1.0.11",

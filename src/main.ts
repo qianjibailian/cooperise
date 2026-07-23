@@ -1,6 +1,7 @@
 import { createApp } from 'vue'
 import Antd from 'ant-design-vue'
 import 'ant-design-vue/dist/reset.css'
+import './tailwind.css'
 import App from './App.vue'
 import { setupRouter } from './router'
 import type { Router } from 'vue-router'
