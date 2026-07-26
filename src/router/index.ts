@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory, createWebHashHistory, type RouteRecordRaw } from 'vue-router'
 import Layout from '@/layout/index.vue'
+import MyItems from '@/pages/my-items/index.vue'
 import Dashboard from '@/pages/dashboard/index.vue'
 import Users from '@/pages/users/index.vue'
 import Roles from '@/pages/roles/index.vue'
@@ -12,8 +13,9 @@ const routes: RouteRecordRaw[] = [
   {
     path: '/',
     component: Layout,
-    redirect: '/dashboard',
+    redirect: '/my-items',
     children: [
+      { path: 'my-items', component: MyItems, name: 'MyItems', meta: { title: '我的事项' } },
       { path: 'dashboard', component: Dashboard, name: 'Dashboard', meta: { title: '仪表盘' } },
       { path: 'requirements', component: Requirements, name: 'Requirements', meta: { title: '需求管理' } },
       { path: 'requirements/create', component: Requirements, name: 'CreateRequirement', meta: { title: '创建需求' } },

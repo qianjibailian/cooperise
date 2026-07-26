@@ -61,10 +61,10 @@
             class="dept-tree"
             blockNode
           >
-            <template #title="{ record }">
+            <template #title="nodeData">
               <span class="tree-node-title">
-                <component :is="record.children && record.children.length > 0 ? ApartmentOutlined : TeamOutlined" class="tree-icon" />
-                {{ record.title }}
+                <component :is="nodeData.children && nodeData.children.length > 0 ? ApartmentOutlined : TeamOutlined" class="tree-icon" />
+                {{ nodeData.title }}
               </span>
             </template>
           </a-tree>

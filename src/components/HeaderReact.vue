@@ -21,7 +21,7 @@ interface HeaderProps {
 
 const props = withDefaults(defineProps<HeaderProps>(), {
   mode: 'default',
-  searchPlaceholder: '搜索菜单...',
+  searchPlaceholder: '搜索事项单号或者概要',
 })
 
 const containerRef = ref<HTMLElement | null>(null)
