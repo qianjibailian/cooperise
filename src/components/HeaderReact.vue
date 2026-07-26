@@ -7,7 +7,8 @@ import { ref, onMounted, onBeforeUnmount, watch, shallowRef, nextTick } from 'vu
 import { createRoot, type Root } from 'react-dom/client'
 import { createElement, Component } from 'react'
 import * as antd from 'antd'
-import { loadRemoteModule, loadRemoteCss } from '@/utils/remoteLoader'
+import { Header } from 'qianjisan-global'
+import 'qianjisan-global/dist/qianjisan-global.css'
 
 interface HeaderProps {
   onMenuClick: () => void
@@ -18,7 +19,12 @@ const props = defineProps<HeaderProps>()
 
 const containerRef = ref<HTMLElement | null>(null)
 const root = shallowRef<Root | null>(null)
-const HeaderComp = shallowRef<any>(null)
+const onMenuClickRef = shallowRef(props.onMenuClick)
+
+// 保持回调引用稳定，避免每次渲染都触发 React 重渲染
+const stableOnMenuClick = () => {
+  onMenuClickRef.value()
+}
 
 class ErrorBoundary extends Component<{ children: any }, { hasError: boolean; error: any }> {
   constructor(props: any) {
@@ -34,11 +40,7 @@ class ErrorBoundary extends Component<{ children: any }, { hasError: boolean; er
   render() {
     if (this.state.hasError) {
       return createElement('div', {
-        style: {
-          padding: '20px',
-          color: 'red',
-          fontSize: '12px',
-        },
+        style: { padding: '20px', color: 'red', fontSize: '12px' },
       }, 'Header 渲染错误: ' + (this.state.error?.message || String(this.state.error)))
     }
     return this.props.children
@@ -46,7 +48,7 @@ class ErrorBoundary extends Component<{ children: any }, { hasError: boolean; er
 }
 
 const renderReact = () => {
-  if (!root.value || !HeaderComp.value) return
+  if (!root.value) return
   root.value.render(
     createElement(antd.ConfigProvider, {
       theme: {
@@ -54,34 +56,27 @@ const renderReact = () => {
           colorPrimary: '#1677ff',
         },
       },
-    }, createElement(ErrorBoundary, null, createElement(HeaderComp.value, {
-      onMenuClick: props.onMenuClick,
+    }, createElement(ErrorBoundary, null, createElement(Header, {
+      onMenuClick: stableOnMenuClick,
       drawerOpen: props.drawerOpen,
     })))
   )
 }
 
-const loadRemote = async () => {
-  loadRemoteCss()
+const init = () => {
   if (containerRef.value) {
     root.value = createRoot(containerRef.value)
-  }
-  try {
-    const comp = await loadRemoteModule('./Header')
-    HeaderComp.value = comp
     renderReact()
-  } catch (e) {
-    console.error('[HeaderReact] 加载失败:', e)
   }
 }
 
 watch(() => props.drawerOpen, renderReact)
-watch(() => props.onMenuClick, renderReact)
+watch(() => props.onMenuClick, (newVal) => {
+  onMenuClickRef.value = newVal
+})
 
 onMounted(() => {
-  nextTick(() => {
-    loadRemote()
-  })
+  nextTick(() => { init() })
 })
 
 onBeforeUnmount(() => {

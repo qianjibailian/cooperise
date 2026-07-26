@@ -8,7 +8,8 @@ import { createRoot, type Root } from 'react-dom/client'
 import { createElement } from 'react'
 import * as antd from 'antd'
 import { useRoute } from 'vue-router'
-import { loadRemoteModule, loadRemoteCss } from '@/utils/remoteLoader'
+import { SideDrawer } from 'qianjisan-global'
+import 'qianjisan-global/dist/qianjisan-global.css'
 
 interface SideDrawerProps {
   open: boolean
@@ -32,7 +33,6 @@ const emit = defineEmits<{
 
 const containerRef = ref<HTMLElement | null>(null)
 const root = shallowRef<Root | null>(null)
-const SideDrawerComp = shallowRef<any>(null)
 
 const route = useRoute()
 
@@ -46,7 +46,7 @@ const handleClose = () => {
 }
 
 const renderReact = () => {
-  if (!root.value || !SideDrawerComp.value) return
+  if (!root.value) return
   const selectedKey = route.path.split('/').slice(0, 2).join('/') || '/dashboard'
   root.value.render(
     createElement(antd.ConfigProvider, {
@@ -55,7 +55,7 @@ const renderReact = () => {
           colorPrimary: '#1677ff',
         },
       },
-    }, createElement(SideDrawerComp.value, {
+    }, createElement(SideDrawer, {
       open: props.open,
       onClose: handleClose,
       selectedKey,
@@ -68,17 +68,10 @@ const renderReact = () => {
   )
 }
 
-const loadRemote = async () => {
-  loadRemoteCss()
+const init = () => {
   if (containerRef.value) {
     root.value = createRoot(containerRef.value)
-  }
-  try {
-    const comp = await loadRemoteModule('./SideDrawer')
-    SideDrawerComp.value = comp
     renderReact()
-  } catch (e) {
-    console.error('[SideDrawerReact] 加载失败:', e)
   }
 }
 
@@ -91,7 +84,7 @@ watch(() => props.getContainer, renderReact)
 
 onMounted(() => {
   nextTick(() => {
-    loadRemote()
+    init()
   })
 })
 
