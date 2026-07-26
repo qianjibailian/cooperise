@@ -1,8 +1,11 @@
 <template>
   <a-layout class="layout-container">
     <HeaderReact
+      mode="cooperise"
       :drawer-open="drawerOpen"
       :on-menu-click="handleMenuClick"
+      :on-workspace-click="handleWorkspaceClick"
+      :on-search="handleHeaderSearch"
     />
 
     <SideDrawerReact
@@ -144,6 +147,14 @@ const currentPath = computed(() => {
 
 function handleMenuClick() {
   drawerOpen.value = !drawerOpen.value
+}
+
+function handleWorkspaceClick() {
+  router.push('/dashboard')
+}
+
+function handleHeaderSearch(value: string) {
+  if (value) router.push(value)
 }
 
 function handleLocalMenuClick(info: { key: string }) {

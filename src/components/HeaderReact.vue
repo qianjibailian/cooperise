@@ -7,23 +7,38 @@ import { ref, onMounted, onBeforeUnmount, watch, shallowRef, nextTick } from 'vu
 import { createRoot, type Root } from 'react-dom/client'
 import { createElement, Component } from 'react'
 import * as antd from 'antd'
-import { Header } from 'qianjisan-global'
+import { Header, HeaderMode } from 'qianjisan-global'
 import 'qianjisan-global/dist/qianjisan-global.css'
 
 interface HeaderProps {
   onMenuClick: () => void
   drawerOpen?: boolean
+  mode?: 'default' | 'cooperise'
+  onWorkspaceClick?: () => void
+  onSearch?: (value: string) => void
+  searchPlaceholder?: string
 }
 
-const props = defineProps<HeaderProps>()
+const props = withDefaults(defineProps<HeaderProps>(), {
+  mode: 'default',
+  searchPlaceholder: '搜索菜单...',
+})
 
 const containerRef = ref<HTMLElement | null>(null)
 const root = shallowRef<Root | null>(null)
 const onMenuClickRef = shallowRef(props.onMenuClick)
+const onWorkspaceClickRef = shallowRef(props.onWorkspaceClick)
+const onSearchRef = shallowRef(props.onSearch)
 
 // 保持回调引用稳定，避免每次渲染都触发 React 重渲染
 const stableOnMenuClick = () => {
   onMenuClickRef.value()
+}
+const stableOnWorkspaceClick = () => {
+  onWorkspaceClickRef.value?.()
+}
+const stableOnSearch = (value: string) => {
+  onSearchRef.value?.(value)
 }
 
 class ErrorBoundary extends Component<{ children: any }, { hasError: boolean; error: any }> {
@@ -59,6 +74,10 @@ const renderReact = () => {
     }, createElement(ErrorBoundary, null, createElement(Header, {
       onMenuClick: stableOnMenuClick,
       drawerOpen: props.drawerOpen,
+      mode: props.mode === 'cooperise' ? HeaderMode.Cooperise : HeaderMode.Default,
+      onWorkspaceClick: stableOnWorkspaceClick,
+      onSearch: stableOnSearch,
+      searchPlaceholder: props.searchPlaceholder,
     })))
   )
 }
@@ -73,6 +92,12 @@ const init = () => {
 watch(() => props.drawerOpen, renderReact)
 watch(() => props.onMenuClick, (newVal) => {
   onMenuClickRef.value = newVal
+})
+watch(() => props.onWorkspaceClick, (newVal) => {
+  onWorkspaceClickRef.value = newVal
+})
+watch(() => props.onSearch, (newVal) => {
+  onSearchRef.value = newVal
 })
 
 onMounted(() => {
