@@ -1,6 +1,10 @@
 import { createApp } from 'vue'
 import Antd from 'ant-design-vue'
 import 'ant-design-vue/dist/reset.css'
+import VxeUI from 'vxe-pc-ui'
+import 'vxe-pc-ui/lib/style.css'
+import VxeTable from 'vxe-table'
+import 'vxe-table/lib/style.css'
 import './tailwind.css'
 import App from './App.vue'
 import { setupRouter } from './router'
@@ -20,6 +24,8 @@ function render(props?: { container?: HTMLElement }) {
   appInstance = createApp(App)
   appInstance.use(routerInstance)
   appInstance.use(Antd)
+  appInstance.use(VxeUI)
+  appInstance.use(VxeTable)
   appInstance.mount(container as HTMLElement)
 }
 
