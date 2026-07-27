@@ -47,47 +47,57 @@
 
     <!-- 表格 -->
     <div class="table-wrapper">
-      <a-table
-        :columns="columns"
-        :data-source="allItems"
-        :pagination="false"
-        :scroll="{ x: 'max-content' }"
-        row-key="id"
-        :row-selection="{ selectedRowKeys, onChange: onSelectChange }"
+      <vxe-table
+        ref="tableRef"
+        :data="allItems"
+        :row-config="{ keyField: 'id' }"
+        :column-config="{ resizable: true }"
+        :scroll-x="{ enabled: true }"
+        :checkbox-config="{ range: false }"
+        :edit-config="{ trigger: 'click', mode: 'cell', showStatus: true }"
+        height="auto"
         class="items-table"
       >
-        <template #headerCell="{ column }">
-          <template v-if="column.key === 'action'">
+        <vxe-column type="checkbox" width="48" fixed="left" />
+        <vxe-column field="summary" title="概要" min-width="240" :edit-render="{ name: 'input' }">
+          <template #default="{ row }">
+            <span class="summary-text">{{ row.summary }}</span>
+          </template>
+        </vxe-column>
+        <vxe-column field="estimatedHours" title="预估工时" width="120" :edit-render="{ name: 'input', props: { type: 'number' } }">
+          <template #default="{ row }">
+            <span v-if="row.estimatedHours">{{ row.estimatedHours }}</span>
+          </template>
+        </vxe-column>
+        <vxe-column field="startDate" title="计划开始日期" width="140" :edit-render="{ name: 'input', props: { type: 'date' } }">
+          <template #default="{ row }">
+            <span v-if="row.startDate">{{ row.startDate }}</span>
+          </template>
+        </vxe-column>
+        <vxe-column field="endDate" title="计划完成日期" width="140" :edit-render="{ name: 'input', props: { type: 'date' } }">
+          <template #default="{ row }">
+            <span v-if="row.endDate">{{ row.endDate }}</span>
+          </template>
+        </vxe-column>
+        <vxe-column field="parentIssue" title="父级工单" width="120">
+          <template #default="{ row }">
+            <span v-if="row.parentIssue" class="parent-issue-link">{{ row.parentIssue }}</span>
+          </template>
+        </vxe-column>
+        <vxe-column title="操作" width="80" fixed="right">
+          <template #header>
             <span style="display: flex; align-items: center; gap: 4px;">
               操作
               <component :is="SettingOutlined" style="font-size: 13px; color: #9ca3af; cursor: pointer;" />
             </span>
           </template>
-          <template v-else>{{ column.title }}</template>
-        </template>
-        <template #bodyCell="{ column, record }">
-          <template v-if="column.key === 'summary'">
-            <span class="summary-text">{{ record.summary }}</span>
-          </template>
-          <template v-else-if="column.key === 'estimatedHours'">
-            <span v-if="record.estimatedHours">{{ record.estimatedHours }}</span>
-          </template>
-          <template v-else-if="column.key === 'startDate'">
-            <span v-if="record.startDate">{{ record.startDate }}</span>
-          </template>
-          <template v-else-if="column.key === 'endDate'">
-            <span v-if="record.endDate">{{ record.endDate }}</span>
-          </template>
-          <template v-else-if="column.key === 'parentIssue'">
-            <span v-if="record.parentIssue" class="parent-issue-link">{{ record.parentIssue }}</span>
-          </template>
-          <template v-else-if="column.key === 'action'">
+          <template #default>
             <a-button type="link" size="small" class="action-dots">
               <component :is="MoreOutlined" />
             </a-button>
           </template>
-        </template>
-      </a-table>
+        </vxe-column>
+      </vxe-table>
     </div>
 
     <!-- 底部提示 -->
@@ -97,6 +107,7 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
+import type { VxeTableInstance } from 'vxe-table'
 import {
   SettingOutlined,
   FilterOutlined,
@@ -119,24 +130,13 @@ interface MyItem {
   parentIssue?: string
 }
 
-const columns = [
-  { title: '概要', key: 'summary' },
-  { title: '预估工时', key: 'estimatedHours', width: 120 },
-  { title: '计划开始日期', key: 'startDate', width: 140 },
-  { title: '计划完成日期', key: 'endDate', width: 140 },
-  { title: '父级工单', key: 'parentIssue', width: 120 },
-  { title: '操作', key: 'action', width: 80, fixed: 'right' },
-]
-
 const filterCount = ref(2)
 const sortCount = ref(1)
-const selectedRowKeys = ref<string[]>([])
+const tableRef = ref<VxeTableInstance<MyItem>>()
 
-const onSelectChange = (keys: string[]) => {
-  selectedRowKeys.value = keys
+const handleReset = () => {
+  tableRef.value?.clearCheckboxRow()
 }
-
-const handleReset = () => {}
 const handleRefresh = () => {}
 
 const allItems = ref<MyItem[]>([
@@ -153,6 +153,8 @@ const allItems = ref<MyItem[]>([
   width: calc(100% + 48px);
   max-width: none;
   margin: -24px;
+  display: flex;
+  flex-direction: column;
 }
 
 /* 顶部标题栏 */
@@ -266,29 +268,32 @@ const allItems = ref<MyItem[]>([
 /* 表格 */
 .table-wrapper {
   background: transparent;
+  flex: 1;
+  min-height: 0;
 }
 
 .items-table {
-  padding: 0;
+  --vxe-ui-table-header-background-color: #f5f5f5;
 }
 
-.items-table :deep(.ant-table-thead > tr > th) {
-  background: #fafafa;
+.items-table :deep(.vxe-header--column) {
+  background: var(--vxe-ui-table-header-background-color);
   color: #262626;
   font-weight: 600;
   font-size: 13px;
-  border-bottom: 1px solid #e8e8e8;
-  padding: 12px 16px;
 }
 
-.items-table :deep(.ant-table-tbody > tr > td) {
+.items-table :deep(.vxe-body--column) {
   border-bottom: 1px solid #f0f0f0;
-  padding: 14px 16px;
   font-size: 14px;
   color: #262626;
 }
 
-.items-table :deep(.ant-table-tbody > tr:hover > td) {
+.items-table :deep(.vxe-cell--edit-icon) {
+  display: none;
+}
+
+.items-table :deep(.vxe-body--row:hover .vxe-body--column) {
   background: #fafafa;
 }
 
