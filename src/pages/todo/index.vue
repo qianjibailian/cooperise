@@ -64,7 +64,7 @@
             <span class="summary-text">{{ row.summary }}</span>
           </template>
         </vxe-column>
-        <vxe-column field="estimatedHours" title="预估工时" width="120" :edit-render="{ name: 'VxeInput', props: { type: 'number', placeholder: '请输入工时' } }">
+        <vxe-column field="estimatedHours" title="预估工时" width="120" :edit-render="{ name: 'VxeNumberInput', props: { placeholder: '请输入工时' } }">
           <template #default="{ row }">
             <span v-if="row.estimatedHours">{{ row.estimatedHours }}</span>
           </template>
