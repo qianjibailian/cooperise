@@ -1,5 +1,5 @@
 <template>
-  <div class="my-items-page">
+  <div class="todo-page">
     <!-- 顶部标题栏 -->
     <div class="top-bar">
       <div class="top-bar-left">
@@ -55,7 +55,7 @@
         :scroll-x="{ enabled: true }"
         :checkbox-config="{ range: false }"
         :edit-config="{ trigger: 'click', mode: 'cell', showStatus: true }"
-        height="auto"
+        :keep-source="true"
         class="items-table"
       >
         <vxe-column type="checkbox" width="48" fixed="left" />
@@ -64,17 +64,17 @@
             <span class="summary-text">{{ row.summary }}</span>
           </template>
         </vxe-column>
-        <vxe-column field="estimatedHours" title="预估工时" width="120" :edit-render="{ name: 'input', props: { type: 'number' } }">
+        <vxe-column field="estimatedHours" title="预估工时" width="120" :edit-render="{ name: 'VxeInput', props: { type: 'number', placeholder: '请输入工时' } }">
           <template #default="{ row }">
             <span v-if="row.estimatedHours">{{ row.estimatedHours }}</span>
           </template>
         </vxe-column>
-        <vxe-column field="startDate" title="计划开始日期" width="140" :edit-render="{ name: 'input', props: { type: 'date' } }">
+        <vxe-column field="startDate" title="计划开始日期" width="140" :edit-render="{ name: 'VxeDatePicker', props: { type: 'date', placeholder: '选择日期' } }">
           <template #default="{ row }">
             <span v-if="row.startDate">{{ row.startDate }}</span>
           </template>
         </vxe-column>
-        <vxe-column field="endDate" title="计划完成日期" width="140" :edit-render="{ name: 'input', props: { type: 'date' } }">
+        <vxe-column field="endDate" title="计划完成日期" width="140" :edit-render="{ name: 'VxeDatePicker', props: { type: 'date', placeholder: '选择日期' } }">
           <template #default="{ row }">
             <span v-if="row.endDate">{{ row.endDate }}</span>
           </template>
@@ -140,19 +140,22 @@ const handleReset = () => {
 const handleRefresh = () => {}
 
 const allItems = ref<MyItem[]>([
-  { id: '1', summary: '【频道页】CLUB新增开卡大额券', estimatedHours: 56, startDate: '2026-07-20', endDate: '2026-07-31', parentIssue: 'UG-872' },
-  { id: '2', summary: '开发在籍页动画 1）缺少本次新增大额券 2）由于新增大额券 导致最下面的...', parentIssue: 'UG-872' },
+  { id: '1', summary: '【需求】用户中心页面改版', estimatedHours: 24, startDate: '2026-07-28', endDate: '2026-08-05', parentIssue: 'UG-101' },
+  { id: '2', summary: '【Bug】订单列表加载缓慢问题修复', estimatedHours: 8, startDate: '2026-07-29', endDate: '2026-07-31', parentIssue: 'BUG-238' },
+  { id: '3', summary: '【优化】支付接口性能调优', estimatedHours: 16, startDate: '2026-08-01', endDate: '2026-08-03', parentIssue: 'OPT-56' },
+  { id: '4', summary: '【新增】数据导出功能开发', estimatedHours: 32, startDate: '2026-07-25', endDate: '2026-08-10', parentIssue: 'UG-203' },
+  { id: '5', summary: '【修复】登录页面验证码显示异常', estimatedHours: 4, startDate: '2026-07-28', endDate: '2026-07-29', parentIssue: 'BUG-301' },
 ])
 </script>
 
 <style scoped>
-.my-items-page {
-  padding: 0 24px 24px;
+.todo-page {
+  padding: 2vh 1vh 1vh;
   background: #ffffff;
-  min-height: 100%;
-  width: calc(100% + 48px);
+  height: calc(100vh - 75px);
+  width: calc(100% + 1vh);
   max-width: none;
-  margin: -24px;
+  margin: -2vh -0.5vh;
   display: flex;
   flex-direction: column;
 }
@@ -270,6 +273,7 @@ const allItems = ref<MyItem[]>([
   background: transparent;
   flex: 1;
   min-height: 0;
+  overflow-y: auto;
 }
 
 .items-table {
@@ -281,6 +285,15 @@ const allItems = ref<MyItem[]>([
   color: #262626;
   font-weight: 600;
   font-size: 13px;
+  border-right: none !important;
+}
+
+.items-table :deep(.vxe-header--column > .vxe-cell) {
+  border-right: none !important;
+}
+
+.items-table :deep(.vxe-header--column .vxe-cell) {
+  border-right: none !important;
 }
 
 .items-table :deep(.vxe-body--column) {
@@ -320,7 +333,7 @@ const allItems = ref<MyItem[]>([
 /* 底部提示 */
 .no-more-text {
   text-align: center;
-  padding: 24px 0;
+  padding: 4px 0;
   font-size: 13px;
   color: #bfbfbf;
 }

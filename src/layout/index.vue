@@ -37,41 +37,23 @@
         <!-- 右侧面板 -->
         <div class="side-panel">
           <template v-if="activeSection === 'workspace'">
-            <!-- 筛选器区域 -->
-            <div class="panel-section">
-              <div class="panel-section-header">
-                <component :is="FilterOutlined" class="section-icon" />
-                <span class="section-title">新筛选器</span>
-              </div>
-              <a-menu
-                theme="light"
-                mode="inline"
-                :selectedKeys="[currentPath]"
-                @click="handleLocalMenuClick"
-                class="sidebar-menu"
-              >
-                <a-menu-item key="/my-items">
-                  <component :is="CheckSquareOutlined" />
-                  <span>我的事项 (2)</span>
-                </a-menu-item>
-                <a-menu-item key="/my-done">
-                  <component :is="CheckCircleOutlined" />
-                  <span>我的已办</span>
-                </a-menu-item>
-                <a-menu-item key="/my-created">
-                  <component :is="UserOutlined" />
-                  <span>我的创建</span>
-                </a-menu-item>
-                <a-menu-item key="/recently-viewed">
-                  <component :is="EyeOutlined" />
-                  <span>最近查看</span>
-                </a-menu-item>
-                <a-menu-item key="/my-watched">
-                  <component :is="StarOutlined" />
-                  <span>我关注的</span>
-                </a-menu-item>
-              </a-menu>
-            </div>
+            <a-menu
+              theme="light"
+              mode="inline"
+              :selectedKeys="[currentPath]"
+              @click="handleLocalMenuClick"
+              class="sidebar-menu"
+            >
+              <a-menu-item key="/workbench/filters">
+                <component :is="FilterOutlined" />
+                <span>新筛选器</span>
+              </a-menu-item>
+              <a-menu-divider />
+              <a-menu-item key="/workbench/todo">
+                <component :is="CheckSquareOutlined" />
+                <span>我的事项 (2)</span>
+              </a-menu-item>
+            </a-menu>
 
             <a-divider class="panel-divider" />
 
@@ -87,83 +69,57 @@
               <a-menu
                 theme="light"
                 mode="inline"
-                :selectedKeys="['/view/folder1/item6']"
+                :selectedKeys="['/view/folder1/item3']"
                 :openKeys="['/view/folder1']"
                 @click="handleLocalMenuClick"
                 class="sidebar-menu"
               >
-                <!-- 高购需求看板 (可展开) -->
+                <!-- 产品需求 (可展开) -->
                 <a-sub-menu key="/view/folder1">
                   <template #title>
                     <span class="view-item-content">
                       <component :is="FolderOutlined" />
-                      <span>高购需求看板 (8)</span>
+                      <span>产品需求 (12)</span>
                       <a-tag class="view-tag external">外</a-tag>
                     </span>
                   </template>
                   <a-menu-item key="/view/folder1/item1">
                     <span class="child-item">
-                      <span>高购需求看板</span>
+                      <span>CLUB开卡需求</span>
                       <component :is="StarFilled" class="favorite-icon" />
                     </span>
                   </a-menu-item>
                   <a-menu-item key="/view/folder1/item2">
                     <span class="child-item">
-                      <span>养狗需求看板</span>
+                      <span>会员体系优化</span>
                     </span>
                   </a-menu-item>
                   <a-menu-item key="/view/folder1/item3">
                     <span class="child-item">
-                      <span class="child-text-truncate">高购营销工具需...</span>
+                      <span>积分商城改版</span>
+                      <component :is="MoreOutlined" class="child-more-icon" />
                     </span>
                   </a-menu-item>
                   <a-menu-item key="/view/folder1/item4">
                     <span class="child-item">
-                      <span>会员需求看板</span>
+                      <span>签到功能迭代</span>
                     </span>
                   </a-menu-item>
                   <a-menu-item key="/view/folder1/item5">
                     <span class="child-item">
-                      <span>超省卡需求看板</span>
-                    </span>
-                  </a-menu-item>
-                  <a-menu-item key="/view/folder1/item6">
-                    <span class="child-item">
-                      <span>积分需求看板</span>
-                      <component :is="MoreOutlined" class="child-more-icon" />
-                    </span>
-                  </a-menu-item>
-                  <a-menu-item key="/view/folder1/item7">
-                    <span class="child-item">
-                      <span>签到需求看板</span>
-                    </span>
-                  </a-menu-item>
-                  <a-menu-item key="/view/folder1/item8">
-                    <span class="child-item">
-                      <span>UOES需求看板</span>
+                      <span class="child-text-truncate">超省卡营销工具需...</span>
                     </span>
                   </a-menu-item>
                 </a-sub-menu>
 
                 <!-- 独立视图项 -->
-                <a-menu-item key="/view/my-tasks-board">
+                <a-menu-item key="/view/sprint-board">
                   <component :is="AppstoreOutlined" />
-                  <span>我的任务看板</span>
+                  <span>Sprint 看板</span>
                 </a-menu-item>
-                <a-menu-item key="/view/gantt">
-                  <component :is="AlignLeftOutlined" />
-                  <span>我的待办甘特图</span>
-                </a-menu-item>
-                <a-menu-item key="/view/bugs">
+                <a-menu-item key="/view/bug-list">
                   <component :is="UnorderedListOutlined" />
-                  <span>本周的bug</span>
-                </a-menu-item>
-                <a-menu-item key="/view/release">
-                  <component :is="CalendarOutlined" />
-                  <span class="view-item-content">
-                    <span>用户运营测试1...</span>
-                    <a-tag class="view-tag shared">享</a-tag>
-                  </span>
+                  <span>待修复 Bug (3)</span>
                 </a-menu-item>
               </a-menu>
             </div>
@@ -231,7 +187,7 @@
     </a-layout-sider>
     <a-layout class="main-layout">
       <a-layout-content class="content">
-        <router-view />
+        <WorkbenchPanel />
       </a-layout-content>
     </a-layout>
   </a-layout>
@@ -241,29 +197,24 @@
 import { ref, computed } from 'vue'
 import {
   HomeOutlined,
-  CalendarOutlined,
   SettingOutlined,
   FilterOutlined,
   CheckSquareOutlined,
-  CheckCircleOutlined,
-  UserOutlined,
-  EyeOutlined,
-  StarOutlined,
   SearchOutlined,
   PlusOutlined,
   FolderOutlined,
   StarFilled,
   AppstoreOutlined,
-  AlignLeftOutlined,
   UnorderedListOutlined,
   MoreOutlined,
   TeamOutlined,
   LockOutlined,
-  BuildOutlined,
+  BuildOutlined, UserOutlined,
 } from '@ant-design/icons-vue'
 import { useRouter, useRoute } from 'vue-router'
 import HeaderReact from '@/components/HeaderReact.vue'
 import SideDrawerReact from '@/components/SideDrawerReact.vue'
+import WorkbenchPanel from './WorkbenchPanel.vue'
 
 const iconBarItems = [
   { key: 'workspace', icon: HomeOutlined, label: '工作台' },
@@ -586,12 +537,13 @@ function handleRemoteMenuClick(key: string) {
 }
 
 .content {
-  padding: 24px;
-  background: #fafafa;
+  padding: 8px;
+  background: #f4f5f8;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .content > :deep(*) {
-  max-width: 1200px;
-  margin: 0 auto;
+  width: 100%;
 }
 </style>
