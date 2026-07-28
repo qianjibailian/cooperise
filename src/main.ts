@@ -5,6 +5,11 @@ import VxeUI from 'vxe-pc-ui'
 import 'vxe-pc-ui/lib/style.css'
 import VxeTable from 'vxe-table'
 import 'vxe-table/lib/style.css'
+import VxeDesign from 'vxe-design'
+import 'vxe-design/lib/style.css'
+import VxeUIPluginRenderAntd from '@vxe-ui/plugin-render-antd'
+import '@vxe-ui/plugin-render-antd/dist/style.css'
+import '@/plugins/vxe'
 import './tailwind.css'
 import App from './App.vue'
 import { setupRouter } from './router'
@@ -26,6 +31,7 @@ function render(props?: { container?: HTMLElement }) {
   appInstance.use(Antd)
   appInstance.use(VxeUI)
   appInstance.use(VxeTable)
+  appInstance.use(VxeDesign)
   appInstance.mount(container as HTMLElement)
 }
 

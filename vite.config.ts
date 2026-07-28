@@ -10,6 +10,11 @@ export default defineConfig({
       useDevMode: process.env.NODE_ENV === 'development',
     }),
   ],
+  optimizeDeps: {
+    include: [
+      '@wangeditor/editor',
+    ],
+  },
   resolve: {
     alias: {
       '@': resolve(__dirname, './src'),

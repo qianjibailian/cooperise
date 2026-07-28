@@ -171,6 +171,16 @@
                 @click="handleLocalMenuClick"
                 class="sidebar-menu"
               >
+                <a-sub-menu key="template-config">
+                  <template #title>
+                    <component :is="AppstoreOutlined" />
+                    <span>模板配置</span>
+                  </template>
+                  <a-menu-item key="/settings/form-design">
+                    <component :is="FormOutlined" />
+                    <span>表单设计</span>
+                  </a-menu-item>
+                </a-sub-menu>
                 <a-menu-item key="/settings/profile">
                   <component :is="UserOutlined" />
                   <span>个人中心</span>
@@ -209,7 +219,9 @@ import {
   MoreOutlined,
   TeamOutlined,
   LockOutlined,
-  BuildOutlined, UserOutlined,
+  BuildOutlined,
+  UserOutlined,
+  FormOutlined,
 } from '@ant-design/icons-vue'
 import { useRouter, useRoute } from 'vue-router'
 import HeaderReact from '@/components/HeaderReact.vue'
