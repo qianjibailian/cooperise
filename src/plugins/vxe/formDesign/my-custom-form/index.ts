@@ -16,7 +16,7 @@ VxeUI.renderer.add('MyDesignForm', {
     return formData
   },
   // 表单设计器 - 渲染控件右侧的表单属性设置
-  renderFormDesignSettingFormView (renderOpts, renderParams) {
+  renderFormDesignSettingFormView (renderOpts: any, renderParams: any) {
     return h(MyDesignSettingForm, { renderOpts, renderParams })
   }
 })
