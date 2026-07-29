@@ -200,11 +200,30 @@
         <WorkbenchPanel />
       </a-layout-content>
     </a-layout>
+
+    <!-- 登录态过期弹窗 -->
+    <a-modal
+      v-model:open="showLoginExpiredModal"
+      :closable="true"
+      :mask-closable="false"
+      :keyboard="false"
+      width="400px"
+      :style="{ top: '15%' }"
+      @cancel="handleRelogin"
+    >
+      <div class="login-expired-modal">
+        <InfoCircleOutlined class="login-expired-icon" />
+        <span class="login-expired-text">登录态已过期，请重新登录</span>
+      </div>
+      <template #footer>
+        <a-button type="primary" @click="handleRelogin">重新登录</a-button>
+      </template>
+    </a-modal>
   </a-layout>
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import {
   HomeOutlined,
   SettingOutlined,
@@ -222,11 +241,14 @@ import {
   BuildOutlined,
   UserOutlined,
   FormOutlined,
+  InfoCircleOutlined,
 } from '@ant-design/icons-vue'
 import { useRouter, useRoute } from 'vue-router'
+import { getAccountUrl } from 'qianjisan-global'
 import HeaderReact from '@/components/HeaderReact.vue'
 import SideDrawerReact from '@/components/SideDrawerReact.vue'
 import WorkbenchPanel from './WorkbenchPanel.vue'
+import { useAuth } from '@/utils/auth'
 
 const iconBarItems = [
   { key: 'workspace', icon: HomeOutlined, label: '工作台' },
@@ -235,9 +257,27 @@ const iconBarItems = [
 
 const router = useRouter()
 const route = useRoute()
+const { isLoggedIn, refresh: refreshAuth } = useAuth()
 
 const drawerOpen = ref(false)
 const activeSection = ref('workspace')
+
+// 登录态过期弹窗
+const showLoginExpiredModal = ref(false)
+
+watch(isLoggedIn, (loggedIn) => {
+  showLoginExpiredModal.value = !loggedIn
+}, { immediate: true })
+
+onMounted(() => {
+  refreshAuth()
+  showLoginExpiredModal.value = !isLoggedIn.value
+})
+
+function handleRelogin() {
+  const loginUrl = getAccountUrl() + '?oauth_callback=' + encodeURIComponent(window.location.href)
+  window.location.href = loginUrl
+}
 
 const currentPath = computed(() => {
   if (route.path.startsWith('/users') || route.path.startsWith('/roles') || route.path.startsWith('/permissions') || route.path.startsWith('/departments')) {
@@ -557,5 +597,25 @@ function handleRemoteMenuClick(key: string) {
 
 .content > :deep(*) {
   width: 100%;
+}
+
+/* 登录态过期弹窗 */
+.login-expired-modal {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0;
+}
+
+.login-expired-icon {
+  color: #faad14;
+  font-size: 20px;
+  flex-shrink: 0;
+}
+
+.login-expired-text {
+  font-size: 16px;
+  font-weight: 500;
+  color: rgba(0, 0, 0, 0.88);
 }
 </style>
