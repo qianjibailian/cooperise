@@ -5,6 +5,7 @@
       search-placeholder="搜索事项单号或者概要"
       @menu-click="handleMenuClick"
       @workspace-click="handleWorkspaceClick"
+      @create-click="handleNewFormOpen"
       @search="handleHeaderSearch"
     />
 
@@ -215,11 +216,36 @@
         <a-button type="primary" @click="handleRelogin">重新登录</a-button>
       </template>
     </a-modal>
+
+    <!-- 新建弹窗 -->
+    <a-modal
+      v-model:open="showNewFormModal"
+      title="新建"
+      width="60%"
+      centered
+      :mask-closable="false"
+      @ok="handleNewFormSubmit"
+      @cancel="handleNewFormCancel"
+      ok-text="提交"
+      cancel-text="取消"
+      destroy-on-close
+      class="new-form-modal"
+    >
+      <div class="new-form-scroll">
+        <vxe-form-view
+          v-if="showNewFormModal"
+          ref="newFormViewRef"
+          :config="formTemplateConfig"
+          v-model="newFormData"
+        />
+      </div>
+    </a-modal>
   </a-layout>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, reactive, computed, onMounted, watch } from 'vue'
+import { message } from 'ant-design-vue'
 import {
   HomeOutlined,
   SettingOutlined,
@@ -259,6 +285,98 @@ const activeSection = ref('workspace')
 
 // 登录态过期弹窗
 const showLoginExpiredModal = ref(false)
+
+// 新建表单弹窗
+const showNewFormModal = ref(false)
+const newFormViewRef = ref<any>()
+const newFormData = reactive<Record<string, any>>({})
+
+// 用户提供的 JSON 模板
+const formTemplate = {
+  templateName: '模板1',
+  formConfig: {
+    title: '模板1',
+    pcVisible: true,
+    pcVertical: true,
+    pcTitleBold: true,
+    pcTitleColon: false,
+    pcTitleAlign: '',
+    pcTitleWidth: '',
+    pcTitleAutoWidth: true,
+    pcTitleWidthUnit: '',
+    mobileVisible: false,
+    mobileVertical: true,
+    mobileTitleBold: true,
+    mobileTitleColon: false,
+    mobileTitleAlign: '',
+    mobileTitleWidth: '',
+    mobileTitleAutoWidth: true,
+    mobileTitleWidthUnit: '',
+    isLog: false,
+    isPC: true,
+    isMobile: false,
+    isApplet: false,
+  },
+  widgetData: [
+    { id: 100071, field: 'inputwidget100071', title: '概要', name: 'InputWidget', required: true, hidden: false, options: { placeholder: '请输入', maxLength: 100, showWordCount: true, clearable: true, align: '' }, children: [], model: { update: false, value: null } },
+    { id: 100065, field: 'row100065', title: '一行两列', name: 'row', required: false, hidden: false, options: { colSize: 2, colSpan: '12,12' }, children: [
+      { id: 100068, field: 'datedatepickerwidget100068', title: '计划开始时间', name: 'DateDatePickerWidget', required: false, hidden: false, options: { placeholder: '请选择', labelFormat: '', clearable: true }, children: [], model: { update: false, value: null } },
+      { id: 100069, field: 'datedatepickerwidget100069', title: '计划完成时间', name: 'DateDatePickerWidget', required: false, hidden: false, options: { placeholder: '请选择', labelFormat: '', clearable: true }, children: [], model: { update: false, value: null } },
+    ], model: { update: false, value: null } },
+    { id: 100070, field: 'wangeditorwidget100070', title: '描述', name: 'WangEditorWidget', required: false, hidden: false, options: { placeholder: '请输入' }, children: [], model: { update: false, value: null } },
+    { id: 100294, field: 'row100294', title: '一行两列', name: 'row', required: false, hidden: false, options: { colSize: 2, colSpan: '12,12' }, children: [
+      { id: 100298, field: 'selectwidget100298', title: '经办人', name: 'SelectWidget', required: false, hidden: false, options: { placeholder: '', multiple: false, clearable: true, filterable: true, options: [{ value: '示例1', label: '示例1', _X_OPTION_KEY: 'opt_789' }, { value: '示例2', label: '示例2', _X_OPTION_KEY: 'opt_790' }, { value: '示例3', label: '示例3', _X_OPTION_KEY: 'opt_791' }] }, children: [], model: { update: false, value: null } },
+    ], model: { update: false, value: null } },
+    { id: 100462, field: 'row100462', title: '一行两列', name: 'row', required: false, hidden: false, options: { colSize: 2, colSpan: '12,12' }, children: [
+      { id: 100463, field: 'createBy', title: '创建人', name: 'CreateByWidget', required: false, hidden: false, options: {}, children: [], model: { update: false, value: null } },
+      { id: 100466, field: 'createTime', title: '创建时间', name: 'CreateTimeWidget', required: false, hidden: false, options: { format: '' }, children: [], model: { update: false, value: null } },
+    ], model: { update: false, value: null } },
+    { id: 100470, field: 'row100470', title: '一行两列', name: 'row', required: false, hidden: false, options: { colSize: 2, colSpan: '12,12' }, children: [
+      { id: 100471, field: 'updateBy', title: '更新人', name: 'UpdateByWidget', required: false, hidden: false, options: {}, children: [], model: { update: false, value: null } },
+      { id: 100472, field: 'updateTime', title: '更新时间', name: 'UpdateTimeWidget', required: false, hidden: false, options: { format: '' }, children: [], model: { update: false, value: null } },
+    ], model: { update: false, value: null } },
+  ],
+}
+
+// VxeFormView 需要的 config 结构：formConfig + widgetData
+const formTemplateConfig = computed(() => ({
+  formConfig: formTemplate.formConfig,
+  widgetData: formTemplate.widgetData,
+}))
+
+function initFormData() {
+  Object.keys(newFormData).forEach(k => delete newFormData[k])
+  const walk = (widgets: any[]) => {
+    widgets.forEach((w: any) => {
+      if (w.children && w.children.length) walk(w.children)
+      else if (w.field) newFormData[w.field] = null
+    })
+  }
+  walk(formTemplate.widgetData)
+}
+
+function handleNewFormOpen() {
+  initFormData()
+  showNewFormModal.value = true
+}
+
+function handleNewFormCancel() {
+  showNewFormModal.value = false
+}
+
+async function handleNewFormSubmit() {
+  const $formView = newFormViewRef.value
+  if ($formView) {
+    const errMap = await $formView.validate()
+    if (Object.keys(errMap).length) {
+      message.warning('请完整填写必填项')
+      return
+    }
+  }
+  console.log('【新建】提交表单数据:', JSON.stringify({ ...newFormData }, null, 2))
+  message.success('提交成功')
+  showNewFormModal.value = false
+}
 
 watch(isLoggedIn, (loggedIn) => {
   showLoginExpiredModal.value = !loggedIn
@@ -612,5 +730,25 @@ function handleRemoteMenuClick(key: string) {
   font-size: 16px;
   font-weight: 500;
   color: rgba(0, 0, 0, 0.88);
+}
+
+.new-form-modal {
+  :deep(.ant-modal-content) {
+    max-height: 60vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  :deep(.ant-modal-body) {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+  }
+}
+
+.new-form-scroll {
+  height: calc(60vh - 110px);
+  overflow-y: auto;
+  padding-right: 4px;
 }
 </style>

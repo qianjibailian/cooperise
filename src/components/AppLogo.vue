@@ -1,7 +1,7 @@
 <template>
   <div class="app-logo" :class="{ clickable: clickable, 'enterprise-mode': isEnterprise }" @click="handleClick">
     <svg width="36" height="36" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg" aria-labelledby="logoTitle">
-      <title id="logoTitle">Cooperise</title>
+      <title id="logoTitle">千机伞</title>
       <!-- Redesigned rounded mark -->
       <defs>
         <linearGradient id="logo-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
@@ -41,7 +41,7 @@
         </filter>
       </defs>
       <text x="50%" y="20" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-weight="700" font-size="18" fill="url(#logoTextGrad)" filter="url(#logoTextShadow)">
-        Cooperise
+        千机伞
       </text>
     </svg>
   </div>

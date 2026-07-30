@@ -11,7 +11,7 @@
     <div class="header-center">
       <div class="workspace-btn" @click="$emit('workspace-click')">
         <AppstoreOutlined />
-        <span>工作台</span>
+        <span>控制台</span>
       </div>
     </div>
 
@@ -27,6 +27,11 @@
           <SearchOutlined style="color: #bbb" />
         </template>
       </a-input>
+
+      <button class="header-create-btn" @click="$emit('create-click')">
+        <PlusOutlined />
+        <span>新建</span>
+      </button>
 
       <a-popover
         trigger="click"
@@ -81,6 +86,7 @@ import {
   UserOutlined,
   DownOutlined,
   RightOutlined,
+  PlusOutlined,
 } from '@ant-design/icons-vue'
 import AppLogo from './AppLogo.vue'
 import { useAuth } from '@/utils/auth'
@@ -94,6 +100,7 @@ defineProps<{
 const emit = defineEmits<{
   (e: 'menu-click'): void
   (e: 'workspace-click'): void
+  (e: 'create-click'): void
   (e: 'search', value: string): void
 }>()
 
@@ -218,6 +225,31 @@ async function handleLogout() {
 
 .header-search {
   width: 280px;
+}
+
+.header-create-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 16px;
+  border: none;
+  background: linear-gradient(135deg, #0052D9 0%, #2F78E6 50%, #60A8FF 100%);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 500;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: box-shadow 0.15s, opacity 0.15s;
+}
+
+.header-create-btn:hover {
+  box-shadow: 0 2px 8px rgba(0, 82, 217, 0.3);
+  opacity: 0.92;
+}
+
+.header-create-btn:active {
+  opacity: 0.85;
 }
 
 .user-trigger {
