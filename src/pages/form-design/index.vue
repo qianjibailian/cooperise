@@ -63,7 +63,7 @@ const addVisible = ref(false)
 const previewFormConfig = ref<any>(null)
 const addFormData = reactive<Record<string, any>>({})
 
-const LAYOUT_WIDGETS = ['title', 'row', 'subtable']
+const LAYOUT_WIDGETS = ['title', 'row', 'subtable', 'TabWidget']
 const SYSTEM_WIDGETS = ['CreateByWidget', 'UpdateByWidget', 'CreateTimeWidget', 'UpdateTimeWidget']
 
 const collectWidgetFields = (widgets: any[], result: any[]) => {
@@ -97,7 +97,8 @@ const formDesignWidgets = ref<VxeFormDesignPropTypes.Widgets>([
     children: [
       'title',
       'row',
-      'subtable'
+      'subtable',
+      'TabWidget'
     ]
   },
   {
