@@ -1,19 +1,15 @@
 <template>
   <a-layout class="layout-container">
-    <HeaderReact
-      mode="cooperise"
+    <AppHeader
       :drawer-open="drawerOpen"
-      :on-menu-click="handleMenuClick"
-      :on-workspace-click="handleWorkspaceClick"
-      :on-search="handleHeaderSearch"
+      search-placeholder="搜索事项单号或者概要"
+      @menu-click="handleMenuClick"
+      @workspace-click="handleWorkspaceClick"
+      @search="handleHeaderSearch"
     />
 
-    <SideDrawerReact
+    <AppSideDrawer
       :open="drawerOpen"
-      menu-path="/cooperise"
-      menu-key="cooperise"
-      :force-open="true"
-      :get-container="false"
       @close="drawerOpen = false"
       @menu-click="handleRemoteMenuClick"
     />
@@ -244,9 +240,8 @@ import {
   InfoCircleOutlined,
 } from '@ant-design/icons-vue'
 import { useRouter, useRoute } from 'vue-router'
-import { getAccountUrl } from 'qianjisan-global'
-import HeaderReact from '@/components/HeaderReact.vue'
-import SideDrawerReact from '@/components/SideDrawerReact.vue'
+import AppHeader from '@/components/AppHeader.vue'
+import AppSideDrawer from '@/components/AppSideDrawer.vue'
 import WorkbenchPanel from './WorkbenchPanel.vue'
 import { useAuth } from '@/utils/auth'
 
@@ -275,7 +270,7 @@ onMounted(() => {
 })
 
 function handleRelogin() {
-  const loginUrl = getAccountUrl() + '?oauth_callback=' + encodeURIComponent(window.location.href)
+  const loginUrl = import.meta.env.VITE_ACCOUNT_URL + '?oauth_callback=' + encodeURIComponent(window.location.href)
   window.location.href = loginUrl
 }
 
@@ -328,10 +323,10 @@ function handleRemoteMenuClick(key: string) {
 
 .sider {
   background: #ffffff !important;
-  height: calc(100vh - 65px);
+  height: calc(100vh - 56px);
   position: fixed;
   left: 0;
-  top: 65px;
+  top: 56px;
   bottom: 0;
   z-index: 90;
   display: flex;
@@ -582,7 +577,7 @@ function handleRemoteMenuClick(key: string) {
 }
 
 .main-layout {
-  padding-top: 65px;
+  padding-top: 56px;
   margin-left: 280px;
   min-height: 100vh;
   transition: margin-left 0.2s cubic-bezier(0.4, 0, 0.2, 1);

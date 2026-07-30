@@ -12,10 +12,7 @@ import '@/plugins/vxe'
 import './tailwind.css'
 import App from './App.vue'
 import { setupRouter } from './router'
-import { setEnv } from 'qianjisan-global'
 import type { Router } from 'vue-router'
-
-setEnv(import.meta.env.DEV ? 'dev' : 'prod')
 
 let appInstance: ReturnType<typeof createApp> | null = null
 let routerInstance: Router | null = null
