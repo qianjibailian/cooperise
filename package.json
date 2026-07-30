@@ -9,13 +9,11 @@
     "preview": "vite preview --port 8083"
   },
   "dependencies": {
-    "@ant-design/icons": "^5.3.0",
     "@ant-design/icons-vue": "7.0.1",
     "@vxe-ui/plugin-render-antd": "4.4.0",
     "@vxe-ui/plugin-render-wangeditor": "^4.3.1",
     "@wangeditor/editor": "^5.1.23",
     "ant-design-vue": "^4.2.6",
-    "antd": "^5.12.0",
     "axios": "^1.18.1",
     "vue": "^3.5.13",
     "vue-router": "^4.6.4",
@@ -24,7 +22,6 @@
     "vxe-table": "4.20.9"
   },
   "devDependencies": {
-    "@originjs/vite-plugin-federation": "^1.4.1",
     "@tailwindcss/postcss": "^4.3.3",
     "@types/node": "^26.1.0",
     "@vitejs/plugin-vue": "^5.2.3",
