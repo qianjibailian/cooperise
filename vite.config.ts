@@ -2,6 +2,20 @@ import { defineConfig } from 'vite'
 import vuePlugin from '@vitejs/plugin-vue'
 import qiankun from 'vite-plugin-qiankun'
 import { resolve } from 'path'
+import { writeFileSync } from 'fs'
+
+// 生成 version.json 的 Vite 插件
+function versionFilePlugin() {
+  return {
+    name: 'version-file',
+    apply: 'build' as const,
+    closeBundle() {
+      const version = Date.now().toString()
+      const content = JSON.stringify({ version, buildTime: new Date().toISOString() }, null, 2)
+      writeFileSync(resolve(__dirname, './dist/version.json'), content)
+    },
+  }
+}
 
 export default defineConfig({
   plugins: [
@@ -9,6 +23,7 @@ export default defineConfig({
     qiankun('cooperise', {
       useDevMode: process.env.NODE_ENV === 'development',
     }),
+    versionFilePlugin(),
   ],
   optimizeDeps: {
     include: [

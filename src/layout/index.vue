@@ -225,6 +225,36 @@
       </template>
     </a-modal>
 
+    <!-- 新版本提示弹窗 -->
+    <a-modal
+      v-model:open="hasNewVersion"
+      :closable="false"
+      :mask-closable="false"
+      :keyboard="false"
+      width="420px"
+      centered
+      @cancel="dismissUpdate"
+    >
+      <div class="version-update-modal">
+        <div class="version-update-icon">
+          <ReloadOutlined />
+        </div>
+        <div class="version-update-content">
+          <div class="version-update-title">发现新版本</div>
+          <div class="version-update-desc">
+            系统已发布新代码，建议立即刷新页面以获取最新功能和修复。
+          </div>
+          <div v-if="newVersionInfo" class="version-update-meta">
+            <span>构建时间：{{ formatBuildTime(newVersionInfo.buildTime) }}</span>
+          </div>
+        </div>
+      </div>
+      <template #footer>
+        <a-button @click="dismissUpdate">稍后再说</a-button>
+        <a-button type="primary" @click="refreshPage">立即刷新</a-button>
+      </template>
+    </a-modal>
+
     <!-- 新建弹窗 -->
     <a-modal
       v-model:open="showNewFormModal"
@@ -292,12 +322,14 @@ import {
   FormOutlined,
   TableOutlined,
   InfoCircleOutlined,
+  ReloadOutlined,
 } from '@ant-design/icons-vue'
 import { useRouter, useRoute } from 'vue-router'
 import AppHeader from '@/components/AppHeader.vue'
 import AppSideDrawer from '@/components/AppSideDrawer.vue'
 import WorkbenchPanel from './WorkbenchPanel.vue'
 import { useAuth } from '@/utils/auth'
+import { useVersionCheck } from '@/utils/useVersionCheck'
 
 const iconBarItems = [
   { key: 'workspace', icon: HomeOutlined, label: '工作台' },
@@ -307,6 +339,24 @@ const iconBarItems = [
 const router = useRouter()
 const route = useRoute()
 const { isLoggedIn, refresh: refreshAuth } = useAuth()
+
+// 版本检测与刷新提示
+const {
+  hasNewVersion,
+  newVersionInfo,
+  refreshPage,
+  dismissUpdate,
+} = useVersionCheck()
+
+function formatBuildTime(isoTime: string): string {
+  try {
+    const d = new Date(isoTime)
+    const pad = (n: number) => n.toString().padStart(2, '0')
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
+  } catch {
+    return isoTime
+  }
+}
 
 const drawerOpen = ref(false)
 const activeSection = ref('workspace')
@@ -760,6 +810,52 @@ function handleRemoteMenuClick(key: string) {
   font-size: 16px;
   font-weight: 500;
   color: rgba(0, 0, 0, 0.88);
+}
+
+/* 新版本更新弹窗 */
+.version-update-modal {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 8px 0;
+}
+
+.version-update-icon {
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  border-radius: 50%;
+  background: #e6f7ff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #1890ff;
+  font-size: 22px;
+  flex-shrink: 0;
+}
+
+.version-update-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.version-update-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: rgba(0, 0, 0, 0.88);
+  margin-bottom: 6px;
+}
+
+.version-update-desc {
+  font-size: 14px;
+  color: rgba(0, 0, 0, 0.65);
+  line-height: 1.6;
+  margin-bottom: 10px;
+}
+
+.version-update-meta {
+  font-size: 12px;
+  color: rgba(0, 0, 0, 0.45);
 }
 
 .new-form-modal {
