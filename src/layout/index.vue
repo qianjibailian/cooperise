@@ -173,6 +173,14 @@
                     <component :is="AppstoreOutlined" />
                     <span>模板配置</span>
                   </template>
+                  <a-menu-item key="/settings/template-list">
+                    <component :is="UnorderedListOutlined" />
+                    <span>模板列表</span>
+                  </a-menu-item>
+                  <a-menu-item key="/settings/form-list">
+                    <component :is="TableOutlined" />
+                    <span>表单列表</span>
+                  </a-menu-item>
                   <a-menu-item key="/settings/form-design">
                     <component :is="FormOutlined" />
                     <span>表单设计</span>
@@ -232,12 +240,31 @@
       class="new-form-modal"
     >
       <div class="new-form-scroll">
-        <vxe-form-view
-          v-if="showNewFormModal"
-          ref="newFormViewRef"
-          :config="formTemplateConfig"
-          v-model="newFormData"
-        />
+        <div class="form-type-row">
+          <label class="form-type-label">事项类型</label>
+          <a-select
+            v-model:value="newFormIssueType"
+            placeholder="请选择事项类型"
+            size="large"
+            style="width: 100%"
+          >
+            <a-select-option value="requirement">需求</a-select-option>
+            <a-select-option value="task">任务</a-select-option>
+            <a-select-option value="bug">缺陷</a-select-option>
+            <a-select-option value="other">其他</a-select-option>
+          </a-select>
+        </div>
+        <a-tabs v-if="newFormTabs.length > 0" v-model:activeKey="newFormActiveTab" class="new-form-tabs">
+          <a-tab-pane v-for="(tab, idx) in newFormTabs" :key="tab.id" :tab="tab.name">
+            <vxe-form-view
+              v-if="showNewFormModal"
+              :key="`${formTemplateKey}_${idx}`"
+              :config="{ formConfig: tab.formConfig, widgetData: tab.widgetData }"
+              v-model="newFormData"
+            />
+          </a-tab-pane>
+        </a-tabs>
+        <a-empty v-else description="选择事项类型后加载表单" />
       </div>
     </a-modal>
   </a-layout>
@@ -263,6 +290,7 @@ import {
   BuildOutlined,
   UserOutlined,
   FormOutlined,
+  TableOutlined,
   InfoCircleOutlined,
 } from '@ant-design/icons-vue'
 import { useRouter, useRoute } from 'vue-router'
@@ -290,59 +318,22 @@ const showLoginExpiredModal = ref(false)
 const showNewFormModal = ref(false)
 const newFormViewRef = ref<any>()
 const newFormData = reactive<Record<string, any>>({})
+const newFormIssueType = ref('requirement')
 
-// 用户提供的 JSON 模板
-const formTemplate = {
-  templateName: '模板1',
-  formConfig: {
-    title: '模板1',
-    pcVisible: true,
-    pcVertical: true,
-    pcTitleBold: true,
-    pcTitleColon: false,
-    pcTitleAlign: '',
-    pcTitleWidth: '',
-    pcTitleAutoWidth: true,
-    pcTitleWidthUnit: '',
-    mobileVisible: false,
-    mobileVertical: true,
-    mobileTitleBold: true,
-    mobileTitleColon: false,
-    mobileTitleAlign: '',
-    mobileTitleWidth: '',
-    mobileTitleAutoWidth: true,
-    mobileTitleWidthUnit: '',
-    isLog: false,
-    isPC: true,
-    isMobile: false,
-    isApplet: false,
-  },
-  widgetData: [
-    { id: 100071, field: 'inputwidget100071', title: '概要', name: 'InputWidget', required: true, hidden: false, options: { placeholder: '请输入', maxLength: 100, showWordCount: true, clearable: true, align: '' }, children: [], model: { update: false, value: null } },
-    { id: 100065, field: 'row100065', title: '一行两列', name: 'row', required: false, hidden: false, options: { colSize: 2, colSpan: '12,12' }, children: [
-      { id: 100068, field: 'datedatepickerwidget100068', title: '计划开始时间', name: 'DateDatePickerWidget', required: false, hidden: false, options: { placeholder: '请选择', labelFormat: '', clearable: true }, children: [], model: { update: false, value: null } },
-      { id: 100069, field: 'datedatepickerwidget100069', title: '计划完成时间', name: 'DateDatePickerWidget', required: false, hidden: false, options: { placeholder: '请选择', labelFormat: '', clearable: true }, children: [], model: { update: false, value: null } },
-    ], model: { update: false, value: null } },
-    { id: 100070, field: 'wangeditorwidget100070', title: '描述', name: 'WangEditorWidget', required: false, hidden: false, options: { placeholder: '请输入' }, children: [], model: { update: false, value: null } },
-    { id: 100294, field: 'row100294', title: '一行两列', name: 'row', required: false, hidden: false, options: { colSize: 2, colSpan: '12,12' }, children: [
-      { id: 100298, field: 'selectwidget100298', title: '经办人', name: 'SelectWidget', required: false, hidden: false, options: { placeholder: '', multiple: false, clearable: true, filterable: true, options: [{ value: '示例1', label: '示例1', _X_OPTION_KEY: 'opt_789' }, { value: '示例2', label: '示例2', _X_OPTION_KEY: 'opt_790' }, { value: '示例3', label: '示例3', _X_OPTION_KEY: 'opt_791' }] }, children: [], model: { update: false, value: null } },
-    ], model: { update: false, value: null } },
-    { id: 100462, field: 'row100462', title: '一行两列', name: 'row', required: false, hidden: false, options: { colSize: 2, colSpan: '12,12' }, children: [
-      { id: 100463, field: 'createBy', title: '创建人', name: 'CreateByWidget', required: false, hidden: false, options: {}, children: [], model: { update: false, value: null } },
-      { id: 100466, field: 'createTime', title: '创建时间', name: 'CreateTimeWidget', required: false, hidden: false, options: { format: '' }, children: [], model: { update: false, value: null } },
-    ], model: { update: false, value: null } },
-    { id: 100470, field: 'row100470', title: '一行两列', name: 'row', required: false, hidden: false, options: { colSize: 2, colSpan: '12,12' }, children: [
-      { id: 100471, field: 'updateBy', title: '更新人', name: 'UpdateByWidget', required: false, hidden: false, options: {}, children: [], model: { update: false, value: null } },
-      { id: 100472, field: 'updateTime', title: '更新时间', name: 'UpdateTimeWidget', required: false, hidden: false, options: { format: '' }, children: [], model: { update: false, value: null } },
-    ], model: { update: false, value: null } },
-  ],
-}
+// 默认空模板（兜底）
+const emptyFormConfig = () => ({
+  pcVisible: true, pcVertical: true, pcTitleBold: true, pcTitleColon: false,
+  pcTitleAlign: '', pcTitleWidth: '', pcTitleAutoWidth: true, pcTitleWidthUnit: '',
+  mobileVisible: false, mobileVertical: true, mobileTitleBold: true, mobileTitleColon: false,
+  mobileTitleAlign: '', mobileTitleWidth: '', mobileTitleAutoWidth: true, mobileTitleWidthUnit: '',
+  isLog: false, isPC: true, isMobile: false, isApplet: false,
+})
 
-// VxeFormView 需要的 config 结构：formConfig + widgetData
-const formTemplateConfig = computed(() => ({
-  formConfig: formTemplate.formConfig,
-  widgetData: formTemplate.widgetData,
-}))
+
+
+const formTemplateKey = ref(0)
+const newFormTabs = ref<{ id: string; name: string; formConfig: any; widgetData: any[] }[]>([])
+const newFormActiveTab = ref('')
 
 function initFormData() {
   Object.keys(newFormData).forEach(k => delete newFormData[k])
@@ -352,11 +343,50 @@ function initFormData() {
       else if (w.field) newFormData[w.field] = null
     })
   }
-  walk(formTemplate.widgetData)
+  newFormTabs.value.forEach(tab => walk(tab.widgetData || []))
 }
 
-function handleNewFormOpen() {
+// 切换事项类型时，从模板列表加载对应的表单
+function loadTemplateByIssueType(issueType: string) {
+  try {
+    const raw = localStorage.getItem('TEMPLATE_LIST')
+    const templateList: any[] = raw ? JSON.parse(raw) : []
+    const tpl = templateList.find((t: any) => t.category === issueType && t.status)
+    if (tpl && tpl.tabs && tpl.tabs.length > 0) {
+      newFormTabs.value = tpl.tabs.map((tab: any) => ({
+        id: tab.id,
+        name: tab.name || '未命名表单',
+        formConfig: tab.formConfig || { title: tab.name, ...emptyFormConfig() },
+        widgetData: JSON.parse(JSON.stringify(tab.widgetData || [])),
+      }))
+      newFormActiveTab.value = newFormTabs.value[0]?.id || ''
+    } else {
+      newFormTabs.value = []
+    }
+  } catch {
+    newFormTabs.value = []
+  }
+  formTemplateKey.value++
   initFormData()
+}
+
+watch(showNewFormModal, (visible) => {
+  if (!visible) {
+    newFormIssueType.value = 'requirement'
+    newFormTabs.value = []
+    formTemplateKey.value++
+    initFormData()
+  }
+})
+
+watch(newFormIssueType, (val) => {
+  if (val) loadTemplateByIssueType(val)
+  else newFormTabs.value = []
+})
+
+function handleNewFormOpen() {
+  newFormIssueType.value = 'requirement'
+  loadTemplateByIssueType('requirement')
   showNewFormModal.value = true
 }
 
@@ -373,7 +403,7 @@ async function handleNewFormSubmit() {
       return
     }
   }
-  console.log('【新建】提交表单数据:', JSON.stringify({ ...newFormData }, null, 2))
+  console.log('【新建】提交表单数据:', JSON.stringify({ issueType: newFormIssueType.value, ...newFormData }, null, 2))
   message.success('提交成功')
   showNewFormModal.value = false
 }
@@ -733,8 +763,27 @@ function handleRemoteMenuClick(key: string) {
 }
 
 .new-form-modal {
+  :deep(.ant-modal-wrap) {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  :deep(.ant-modal) {
+    top: 0;
+    padding-bottom: 0;
+  }
+
+  :deep(.ant-modal-header) {
+    text-align: center;
+  }
+
+  :deep(.ant-modal-title) {
+    text-align: center;
+    width: 100%;
+  }
+
   :deep(.ant-modal-content) {
-    max-height: 60vh;
     display: flex;
     flex-direction: column;
   }
@@ -742,13 +791,32 @@ function handleRemoteMenuClick(key: string) {
   :deep(.ant-modal-body) {
     flex: 1;
     min-height: 0;
+    max-height: 60vh;
     overflow: hidden;
   }
 }
 
 .new-form-scroll {
-  height: calc(60vh - 110px);
+  max-height: calc(60vh - 110px);
   overflow-y: auto;
   padding-right: 4px;
+}
+
+.form-type-row {
+  margin-bottom: 20px;
+}
+
+.form-type-label {
+  display: block;
+  font-size: 14px;
+  font-weight: 600;
+  color: #1d1d1f;
+  margin-bottom: 6px;
+}
+
+.new-form-tabs {
+  :deep(.ant-tabs-nav) {
+    margin-bottom: 16px;
+  }
 }
 </style>

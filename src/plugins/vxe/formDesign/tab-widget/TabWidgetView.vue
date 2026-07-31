@@ -16,7 +16,7 @@
           <template v-for="child in getTabChildren(tab.key)" :key="child.id">
             <component
               :is="getChildRenderer(child)"
-              :render-opts="getRenderOpts()"
+              :render-opts="child"
               :render-params="getChildRenderParams(child)"
               class="tab-child-widget"
             />
@@ -62,29 +62,32 @@ function getTabChildren(tabKey: string) {
   return list.filter((c: any) => (c.options?._tabKey || currWidget.value.options.activeKey) === tabKey)
 }
 
-function getRenderOpts() {
-  return props.renderOpts
-}
-
-// 构造子控件的 renderParams，用 renderFormItemContent 渲染内容
+// 构造子控件的 renderParams
+// 预览模式下，数据通过 $xeFormView.getItemValue/setItemValue 绑定，
+// 内置控件（row/input/select 等）通过 renderParams.widget 读取控件对象，
+// 因此必须传 widget，并设置 isEditMode=false / isViewMode=true。
 function getChildRenderParams(child: any) {
+  const $formView = (props.renderParams as any).$formView
   return {
     ...(props.renderParams as any),
+    widget: child,
     currWidget: child,
     widgetModel: {
       get value() {
-        return (props.renderParams as any).formData?.[child.field] ?? null
+        return $formView ? $formView.getItemValue(child) : null
       },
       set value(v: any) {
-        if ((props.renderParams as any).formData && child.field) {
-          (props.renderParams as any).formData[child.field] = v
-        }
+        if ($formView) $formView.setItemValue(child, v)
       }
     },
     widgetField: child.field,
     formConfig: (props.renderParams as any).formConfig,
-    $formView: (props.renderParams as any).$formView,
-    $formDesign: (props.renderParams as any).$formDesign,
+    $formView: $formView,
+    $formDesign: null,
+    isEditMode: false,
+    isViewMode: true,
+    readonly: false,
+    disabled: false
   }
 }
 
@@ -171,5 +174,13 @@ function getChildRenderer(child: any): Component {
 
 .tab-child-widget {
   display: block;
+  width: 100%;
+}
+
+/* 布局控件（如 row 一行多列）在页签内全宽显示 */
+.tab-child-widget :deep(.vxe-row),
+.tab-child-widget :deep(.vxe-form--item-row),
+.tab-child-widget :deep(.vxe-form--group) {
+  width: 100%;
 }
 </style>

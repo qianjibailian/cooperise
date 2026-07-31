@@ -58,7 +58,7 @@
               >
                 <component
                   :is="getChildRenderer(child)"
-                  :render-opts="getRenderOpts()"
+                  :render-opts="child"
                   :render-params="getChildRenderParams(child)"
                   class="tab-child-widget"
                 />
@@ -315,14 +315,14 @@ function handleChildClick(evnt: Event, child: any) {
   }
 }
 
-function getRenderOpts() {
-  return props.renderOpts
-}
-
 // 构造子控件的 renderParams
+// 注意：内置控件（row/input/select 等）通过 renderParams.widget 读取控件对象，
+// 自定义控件通过 useWidgetView 的 currWidget（同样读取 renderParams.widget），
+// 因此必须同时传 widget 与 currWidget，并补全 isEditMode/isViewMode 等模式字段。
 function getChildRenderParams(child: any) {
   return {
     ...(props.renderParams as any),
+    widget: child,
     currWidget: child,
     widgetModel: {
       get value() {
@@ -336,6 +336,10 @@ function getChildRenderParams(child: any) {
     formConfig: (props.renderParams as any).formConfig,
     $formDesign: $xeFormDesign,
     $formView: (props.renderParams as any).$formView,
+    isEditMode: true,
+    isViewMode: false,
+    readonly: false,
+    disabled: false
   }
 }
 
@@ -520,10 +524,19 @@ function getChildRenderer(child: any): Component {
 
 .tab-child-widget {
   display: block;
+  width: 100%;
 }
 
 .tab-child-widget-inner {
   display: block;
+  width: 100%;
+}
+
+/* 布局控件（如 row 一行多列）在页签内全宽显示 */
+.tab-child-wrap :deep(.vxe-form-design--widget-row-view),
+.tab-child-wrap :deep(.vxe-form--group),
+.tab-child-wrap :deep(.vxe-form--item-row) {
+  width: 100%;
 }
 
 .tab-empty {

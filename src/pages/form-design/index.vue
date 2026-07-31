@@ -154,19 +154,81 @@ const clearEvent = () => {
   localStorage.removeItem('DATA_FormDesignEdit')
 }
 
+const countWidgets = (widgets: any[]): number => {
+  let count = 0
+  widgets.forEach((w: any) => {
+    count++
+    if (w.children && w.children.length > 0) {
+      count += countWidgets(w.children)
+    }
+  })
+  return count
+}
+
+const generateId = (): string => {
+  return 't_' + Date.now().toString(36) + '_' + Math.random().toString(36).substring(2, 6)
+}
+
+const formatNow = (): string => {
+  return new Date().toISOString().replace('T', ' ').substring(0, 19)
+}
+
 const saveEvent = () => {
   const $formDesign = formDesignRef.value
   if ($formDesign) {
     const config = $formDesign.getConfig()
-    // 模拟请求接口保存模板数据
-    const requestBody = {
-      templateName: config.formConfig?.title || '未命名模板',
-      formConfig: config.formConfig,
-      widgetData: config.widgetData
-    }
-    console.log('【保存模板】请求体:', JSON.stringify(requestBody, null, 2))
-    // 不真请求接口，仅模拟保存成功
+    console.log('【保存模板】请求体:', JSON.stringify(config, null, 2))
     localStorage.setItem('DATA_FormDesignEdit', JSON.stringify(config))
+
+    // 检查是否从模板编辑进入
+    try {
+      const STORAGE_KEY = 'TEMPLATE_LIST'
+      const flagData = localStorage.getItem('TEMPLATE_EDIT_FLAG')
+
+      if (flagData) {
+        // 回写模板 Tab
+        const flag = JSON.parse(flagData)
+        const existingData = localStorage.getItem(STORAGE_KEY)
+        const templateList = existingData ? JSON.parse(existingData) : []
+        const now = formatNow()
+        if (flag.templateId && flag.templateId !== 'NEW') {
+          const tpl = templateList.find((t: any) => t.id === flag.templateId)
+          if (tpl) {
+            const tab = tpl.tabs?.find((tb: any) => tb.id === flag.tabId)
+            if (tab) {
+              tab.formConfig = config.formConfig
+              tab.widgetData = config.widgetData
+              tab.name = tab.name || config.formConfig?.title || `表单 ${flag.tabIdx + 1}`
+              tpl.updatedAt = now
+            }
+          }
+        } else {
+          // NEW：暂不处理，等模板列表保存时处理
+        }
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(templateList))
+        localStorage.removeItem('TEMPLATE_EDIT_FLAG')
+      } else {
+        // 没有 flag，创建新模板
+        const existingData = localStorage.getItem(STORAGE_KEY)
+        const templateList = existingData ? JSON.parse(existingData) : []
+        const now = formatNow()
+        const tabId = generateId()
+        templateList.push({
+          id: generateId(),
+          templateName: config.formConfig?.title || '未命名模板',
+          description: '',
+          category: 'other',
+          status: true,
+          tabs: [{ id: tabId, name: config.formConfig?.title || '未命名表单', formConfig: config.formConfig, widgetData: config.widgetData }],
+          createdAt: now,
+          updatedAt: now,
+        })
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(templateList))
+      }
+    } catch (e) {
+      console.error('保存模板列表失败:', e)
+    }
+
     VxeUI.modal.message({
       content: '保存成功（模拟请求）',
       status: 'success'
