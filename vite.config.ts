@@ -2,20 +2,7 @@ import { defineConfig } from 'vite'
 import vuePlugin from '@vitejs/plugin-vue'
 import qiankun from 'vite-plugin-qiankun'
 import { resolve } from 'path'
-import { writeFileSync } from 'fs'
-
-// 生成 version.json 的 Vite 插件
-function versionFilePlugin() {
-  return {
-    name: 'version-file',
-    apply: 'build' as const,
-    closeBundle() {
-      const version = Date.now().toString()
-      const content = JSON.stringify({ version, buildTime: new Date().toISOString() }, null, 2)
-      writeFileSync(resolve(__dirname, './dist/version.json'), content)
-    },
-  }
-}
+import { webUpdateNotice } from '@plugin-web-update-notification/vite'
 
 export default defineConfig({
   plugins: [
@@ -23,7 +10,16 @@ export default defineConfig({
     qiankun('cooperise', {
       useDevMode: process.env.NODE_ENV === 'development',
     }),
-    versionFilePlugin(),
+    webUpdateNotice({
+      logVersion: true,
+      locale: 'zh_CN',
+      notificationProps: {
+        title: '发现新版本',
+        description: '系统已发布新代码，建议立即刷新页面以获取最新功能和修复',
+        buttonText: '立即刷新',
+        dismissButtonText: '稍后再说',
+      },
+    }),
   ],
   optimizeDeps: {
     include: [
