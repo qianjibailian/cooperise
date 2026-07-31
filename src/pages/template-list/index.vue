@@ -52,7 +52,7 @@
             <a-dropdown trigger="click" @click.stop>
               <button class="card-more" @click.stop><MoreOutlined /></button>
               <template #overlay>
-                <a-menu @click="({ key }) => handleMenuAction(key, tpl)">
+                <a-menu @click="handleMenuClick($event, tpl)">
                   <a-menu-item key="preview"><EyeOutlined /> 预览</a-menu-item>
                   <a-menu-item key="edit"><EditOutlined /> 编辑</a-menu-item>
                   <a-menu-item key="copy"><CopyOutlined /> 创建副本</a-menu-item>
@@ -298,10 +298,6 @@ function formatNow() { return new Date().toISOString().replace('T', ' ').substri
 
 function countWidgets(widgets: any[]): number {
   let c = 0; widgets.forEach(w => { c++; if (w.children?.length) c += countWidgets(w.children) }); return c
-}
-
-function totalWidgetCount(tpl: Template): number {
-  return (tpl.tabs || []).reduce((s, t) => s + countWidgets(t.widgetData || []), 0)
 }
 
 function relativeTime(dateStr: string): string {
@@ -834,6 +830,10 @@ function handleDelete(record: Template) {
       if (i > -1) { templates.value.splice(i, 1); saveTemplates(); message.success('已删除') }
     },
   })
+}
+
+function handleMenuClick({ key }: { key: string }, record: Template) {
+  handleMenuAction(key, record)
 }
 
 function handleMenuAction(key: string, record: Template) {

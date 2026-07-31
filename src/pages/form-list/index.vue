@@ -52,7 +52,7 @@
             <a-dropdown trigger="click" @click.stop>
               <button class="card-more" @click.stop><MoreOutlined /></button>
               <template #overlay>
-                <a-menu @click="({ key }) => handleMenuAction(key, form)">
+                <a-menu @click="handleMenuClick($event, form)">
                   <a-menu-item key="preview"><EyeOutlined /> 预览</a-menu-item>
                   <a-menu-item key="edit"><EditOutlined /> 编辑</a-menu-item>
                   <a-menu-item key="copy"><CopyOutlined /> 创建副本</a-menu-item>
@@ -117,7 +117,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, reactive, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { message, Modal } from 'ant-design-vue'
 import {
@@ -262,14 +262,6 @@ const templatesWithForms = computed(() => {
   return templates.value.filter(t => ids.has(t.id))
 })
 
-// ---- BaseFormConfig ----
-const baseFormConfig = () => ({
-  pcVisible: true, pcVertical: true, pcTitleBold: true, pcTitleColon: false,
-  pcTitleAlign: '', pcTitleWidth: '', pcTitleAutoWidth: true, pcTitleWidthUnit: '',
-  mobileVisible: false, mobileVertical: true, mobileTitleBold: true, mobileTitleColon: false,
-  mobileTitleAlign: '', mobileTitleWidth: '', mobileTitleAutoWidth: true, mobileTitleWidthUnit: '',
-  isLog: false, isPC: true, isMobile: false, isApplet: false,
-})
 
 // ---- CRUD ----
 function handleCreate() { router.push('/settings/form-design') }
@@ -325,6 +317,10 @@ function handleDelete(form: FormItem) {
       }
     },
   })
+}
+
+function handleMenuClick({ key }: { key: string }, form: FormItem) {
+  handleMenuAction(key, form)
 }
 
 function handleMenuAction(key: string, form: FormItem) {
