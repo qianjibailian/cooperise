@@ -70,7 +70,7 @@ const isEnterprise = computed(() => {
 
 const handleClick = () => {
   if (props.clickable) {
-    router.push(props.to)
+    window.open(import.meta.env.VITE_PORTAL_URL, '_blank')
   }
 }
 </script>
@@ -102,7 +102,7 @@ const handleClick = () => {
 .app-logo .logo-text-svg {
   display: inline-block;
   vertical-align: middle;
-  margin-left: -6px;
+  margin-left: -35px;
 }
 
 .app-logo.enterprise-mode {

@@ -10,7 +10,7 @@
 
     <div class="header-center">
       <div class="workspace-btn" @click="$emit('workspace-click')">
-        <AppstoreOutlined />
+        <HomeOutlined />
         <span>控制台</span>
       </div>
     </div>
@@ -81,7 +81,7 @@ import { message } from 'ant-design-vue'
 import {
   MenuOutlined,
   CloseOutlined,
-  AppstoreOutlined,
+  HomeOutlined,
   SearchOutlined,
   UserOutlined,
   DownOutlined,
@@ -196,7 +196,7 @@ async function handleLogout() {
 }
 
 .header-center {
-  margin-left: 24px;
+  margin-left: -8px;
 }
 
 .workspace-btn {
