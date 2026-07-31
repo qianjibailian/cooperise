@@ -52,7 +52,7 @@
             <a-dropdown trigger="click" @click.stop>
               <button class="card-more" @click.stop><MoreOutlined /></button>
               <template #overlay>
-                <a-menu @click="({ key }: { key: string }) => handleMenuAction(key, form)">
+                <a-menu @click="({ key }) => handleMenuAction(key, form)">
                   <a-menu-item key="preview"><EyeOutlined /> 预览</a-menu-item>
                   <a-menu-item key="edit"><EditOutlined /> 编辑</a-menu-item>
                   <a-menu-item key="copy"><CopyOutlined /> 创建副本</a-menu-item>
