@@ -16,17 +16,59 @@
     </div>
 
     <div class="header-right">
-      <a-input
-        v-model:value="searchValue"
-        :placeholder="searchPlaceholder"
-        class="header-search"
-        allow-clear
-        @press-enter="handleSearch"
+      <a-dropdown
+        v-model:open="dropdownOpen"
+        :trigger="[]"
+        placement="bottomLeft"
+        overlay-class-name="search-dropdown-popup"
       >
-        <template #prefix>
-          <SearchOutlined style="color: #bbb" />
+        <a-input
+          v-model:value="searchValue"
+          :placeholder="searchPlaceholder"
+          class="header-search"
+          allow-clear
+          @focus="dropdownOpen = true"
+          @blur="dropdownOpen = false"
+          @press-enter="handleEnter"
+          @keydown.esc="dropdownOpen = false"
+        >
+          <template #prefix>
+            <SearchOutlined style="color: #bbb" />
+          </template>
+        </a-input>
+        <template #overlay>
+          <div class="search-dropdown">
+            <div class="search-dropdown-section">
+              <div class="search-dropdown-title">最近搜索</div>
+              <div class="search-dropdown-tags">
+                <span
+                  v-for="item in recentSearches"
+                  :key="item"
+                  class="search-tag"
+                  @mousedown.prevent
+                  @click="handleSelect(item)"
+                >{{ item }}</span>
+              </div>
+            </div>
+            <div class="search-dropdown-divider" />
+            <div class="search-dropdown-section">
+              <div class="search-dropdown-title">最近访问</div>
+              <div class="search-dropdown-list">
+                <div
+                  v-for="item in recentVisits"
+                  :key="item"
+                  class="search-dropdown-item"
+                  @mousedown.prevent
+                  @click="handleSelect(item)"
+                >
+                  <DragOutlined style="color: #bbb; margin-right: 8px;" />
+                  <span>{{ item }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
         </template>
-      </a-input>
+      </a-dropdown>
 
       <button class="header-create-btn" @click="$emit('create-click')">
         <PlusOutlined />
@@ -87,6 +129,7 @@ import {
   DownOutlined,
   RightOutlined,
   PlusOutlined,
+  DragOutlined,
 } from '@ant-design/icons-vue'
 import AppLogo from './AppLogo.vue'
 import { useAuth } from '@/utils/auth'
@@ -105,14 +148,29 @@ const emit = defineEmits<{
 }>()
 
 const searchValue = ref('')
+const dropdownOpen = ref(false)
+
+const recentSearches = ref(['待办事项', '项目', '文档', '工作台', '设置'])
+const recentVisits = ref(['轻量应用服务器', '控制台首页', '云解析DNS', '费用与成本', '大模型服务平台百炼'])
+
+function handleEnter() {
+  dropdownOpen.value = false
+  handleSearch()
+}
+
+function handleSelect(item: string) {
+  searchValue.value = item
+  dropdownOpen.value = false
+  handleSearch(item)
+}
 const username = '用户'
 const userInitials = 'S1'
 const orgLogo = '喝'
 const orgName = '喝科技'
 
-function handleSearch() {
-  if (searchValue.value) {
-    emit('search', searchValue.value)
+function handleSearch(value?: string) {
+  if (value || searchValue.value) {
+    emit('search', value || searchValue.value)
   }
 }
 
@@ -224,7 +282,12 @@ async function handleLogout() {
 }
 
 .header-search {
-  width: 280px;
+  width: 220px;
+  transition: width 0.3s ease;
+}
+
+.header-search:focus-within {
+  width: 380px;
 }
 
 .header-create-btn {
@@ -294,6 +357,87 @@ async function handleLogout() {
   overflow: hidden;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12) !important;
   border: 1px solid #f0f0f0;
+}
+
+.search-dropdown {
+  width: 100%;
+  padding: 12px;
+  background: #fff;
+  border-radius: 8px;
+}
+
+.search-dropdown-section {
+  margin-bottom: 8px;
+}
+
+.search-dropdown-title {
+  font-size: 12px;
+  color: #8c8c8c;
+  margin-bottom: 8px;
+  padding-left: 2px;
+}
+
+.search-dropdown-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.search-tag {
+  display: inline-block;
+  padding: 3px 10px;
+  font-size: 12px;
+  color: #595959;
+  background: #f5f5f5;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.search-tag:hover {
+  background: #e6f4ff;
+  color: #1677ff;
+}
+
+.search-dropdown-divider {
+  height: 1px;
+  background: #f0f0f0;
+  margin: 10px 0;
+}
+
+.search-dropdown-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.search-dropdown-item {
+  display: flex;
+  align-items: center;
+  padding: 6px 8px;
+  font-size: 13px;
+  color: #262626;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.search-dropdown-item:hover {
+  background: #f5f5f5;
+  color: #1677ff;
+}
+
+.search-dropdown-item .anticon {
+  font-size: 14px;
+}
+
+.search-dropdown-popup {
+  width: 380px !important;
+}
+
+.search-dropdown-popup.ant-dropdown-placement-bottomLeft {
+  transform-origin: top left;
 }
 
 .user-dropdown-popover .ant-popover-inner-content {
