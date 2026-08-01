@@ -62,7 +62,6 @@ const props = defineProps({
   }
 })
 
-const router = useRouter()
 const route = useRoute()
 const isEnterprise = computed(() => {
   return route.path && route.path.startsWith('/self/enterprise')
