@@ -190,7 +190,7 @@ async function loadForms() {
         name: item.name || '未命名表单',
         widgetCount: item.widgetCount || 0,
         formConfig: parseJsonField(item.formConfig),
-        widgetData: parseJsonField(item.widgetData) || [],
+        widgetData: parseJsonField(item.widgetData, '[]') || [],
         templateId: String(item.templateId),
         templateName: item.templateName || '未命名模板',
         templateStatus: item.templateStatus,
@@ -203,9 +203,9 @@ async function loadForms() {
   }
 }
 
-function parseJsonField(val: any): any {
+function parseJsonField(val: any, fallbackStr = '{}'): any {
   if (val == null) return val
-  return typeof val === 'string' ? JSON.parse(val || '{}') : val
+  return typeof val === 'string' ? JSON.parse(val || fallbackStr) : val
 }
 
 // ---- 计算属性 ----
