@@ -64,3 +64,10 @@ export function getForms(keyword?: string, category?: string): Promise<Result<Fo
 export function getForm(id: number): Promise<Result<FormItem>> {
   return request.get(`${PREFIX}/form/${id}`)
 }
+
+// ==================== Issue API ====================
+
+/** 新建 Modal 表单提交 - 存储动态表单数据 */
+export function submitIssueForm(formData: Record<string, unknown>): Promise<Result<Record<string, unknown>>> {
+  return request.post(`${PREFIX}/form-submit`, formData)
+}

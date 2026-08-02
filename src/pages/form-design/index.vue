@@ -28,7 +28,9 @@
               <a-input-number v-else-if="item.name === 'NumberInputWidget'" v-model:value="addFormData[item.field]" :placeholder="item.options?.placeholder" :min="item.options?.min" :max="item.options?.max" :step="item.options?.step" style="width: 100%" />
               <a-input-number v-else-if="item.name === 'AmountInputWidget'" v-model:value="addFormData[item.field]" :placeholder="item.options?.placeholder" :min="item.options?.min" :max="item.options?.max" :step="item.options?.step" style="width: 100%" />
               <a-date-picker v-else-if="item.name === 'DateDatePickerWidget'" v-model:value="addFormData[item.field]" :placeholder="item.options?.placeholder" style="width: 100%" />
-              <a-select v-else-if="item.name === 'SelectWidget'" v-model:value="addFormData[item.field]" :placeholder="item.options?.placeholder" style="width: 100%" />
+              <a-select v-else-if="item.name === 'SelectWidget'" v-model:value="addFormData[item.field]" :placeholder="item.options?.placeholder" style="width: 100%">
+                <a-select-option v-for="opt in item.options?.options" :key="opt.value" :value="opt.value">{{ opt.label }}</a-select-option>
+              </a-select>
               <a-upload v-else-if="item.name === 'UploadFileWidget'" :file-list="addFormData[item.field]" :before-upload="() => false" :multiple="item.options?.multiple" :max-count="item.options?.limitCount">
                 <a-button>点击上传</a-button>
               </a-upload>

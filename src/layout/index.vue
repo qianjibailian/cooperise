@@ -255,7 +255,7 @@
             <vxe-form-view
               v-if="showNewFormModal"
               :key="`${formTemplateKey}_${idx}`"
-              :config="{ formConfig: tab.formConfig, widgetData: tab.widgetData }"
+              :config="tab.viewConfig"
               v-model="newFormData"
             />
           </a-tab-pane>
@@ -267,7 +267,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { message } from 'ant-design-vue'
 import {
   HomeOutlined,
@@ -293,7 +293,7 @@ import AppHeader from '@/components/AppHeader.vue'
 import AppSideDrawer from '@/components/AppSideDrawer.vue'
 import WorkbenchPanel from './WorkbenchPanel.vue'
 import { useAuth } from '@/utils/auth'
-import { getNewFormTemplate } from '@/api/faiz'
+import { getNewFormTemplate, submitIssueForm } from '@/api/faiz'
 
 const iconBarItems = [
   { key: 'workspace', icon: HomeOutlined, label: '工作台' },
@@ -313,7 +313,7 @@ const showLoginExpiredModal = ref(false)
 // 新建表单弹窗
 const showNewFormModal = ref(false)
 const newFormViewRef = ref<any>()
-const newFormData = reactive<Record<string, any>>({})
+const newFormData = ref<Record<string, any>>({})
 const newFormIssueType = ref('requirement')
 
 // 默认空模板（兜底）
@@ -332,11 +332,11 @@ const newFormTabs = ref<{ id: string; name: string; formConfig: any; widgetData:
 const newFormActiveTab = ref('')
 
 function initFormData() {
-  Object.keys(newFormData).forEach(k => delete newFormData[k])
+  Object.keys(newFormData.value).forEach(k => delete newFormData.value[k])
   const walk = (widgets: any[]) => {
     widgets.forEach((w: any) => {
       if (w.children && w.children.length) walk(w.children)
-      else if (w.field) newFormData[w.field] = null
+      else if (w.field) newFormData.value[w.field] = null
     })
   }
   newFormTabs.value.forEach(tab => walk(tab.widgetData || []))
@@ -358,6 +358,7 @@ async function loadTemplateByIssueType(issueType: string) {
           name: tab.name || '未命名表单',
           formConfig,
           widgetData,
+          viewConfig: { formConfig, widgetData },
         }
       })
       newFormActiveTab.value = newFormTabs.value[0]?.id || ''
@@ -379,6 +380,10 @@ watch(showNewFormModal, (visible) => {
     initFormData()
   }
 })
+
+watch(newFormData, (val) => {
+  console.log('[newFormData changed]', JSON.stringify(val, null, 2))
+}, { deep: true })
 
 watch(newFormIssueType, (val) => {
   if (val) loadTemplateByIssueType(val)
@@ -404,9 +409,19 @@ async function handleNewFormSubmit() {
       return
     }
   }
-  console.log('【新建】提交表单数据:', JSON.stringify({ issueType: newFormIssueType.value, ...newFormData }, null, 2))
-  message.success('提交成功')
-  showNewFormModal.value = false
+
+  const payload: Record<string, unknown> = {
+    issueType: newFormIssueType.value,
+    ...newFormData.value,
+  }
+
+  try {
+    await submitIssueForm(payload)
+    message.success('提交成功')
+    showNewFormModal.value = false
+  } catch (err: any) {
+    message.error(err?.response?.data?.message || '提交失败，请稍后重试')
+  }
 }
 
 watch(isLoggedIn, (loggedIn) => {
@@ -763,39 +778,7 @@ function handleRemoteMenuClick(key: string) {
   color: rgba(0, 0, 0, 0.88);
 }
 
-.new-form-modal {
-  :deep(.ant-modal-wrap) {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
 
-  :deep(.ant-modal) {
-    top: 0;
-    padding-bottom: 0;
-  }
-
-  :deep(.ant-modal-header) {
-    text-align: center;
-  }
-
-  :deep(.ant-modal-title) {
-    text-align: center;
-    width: 100%;
-  }
-
-  :deep(.ant-modal-content) {
-    display: flex;
-    flex-direction: column;
-  }
-
-  :deep(.ant-modal-body) {
-    flex: 1;
-    min-height: 0;
-    max-height: 60vh;
-    overflow: hidden;
-  }
-}
 
 .new-form-scroll {
   max-height: calc(60vh - 110px);
@@ -819,5 +802,40 @@ function handleRemoteMenuClick(key: string) {
   :deep(.ant-tabs-nav) {
     margin-bottom: 16px;
   }
+}
+</style>
+
+<style>
+/* Modal 样式需要写在非 scoped 块中，因为 Ant Design Modal 通过 Teleport 渲染到 body */
+.new-form-modal .ant-modal-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.new-form-modal .ant-modal {
+  top: 0;
+  padding-bottom: 0;
+}
+
+.new-form-modal .ant-modal-header {
+  justify-content: center;
+}
+
+.new-form-modal .ant-modal-title {
+  width: 100%;
+  text-align: center;
+}
+
+.new-form-modal .ant-modal-content {
+  display: flex;
+  flex-direction: column;
+}
+
+.new-form-modal .ant-modal-body {
+  flex: 1;
+  min-height: 0;
+  max-height: 60vh;
+  overflow: hidden;
 }
 </style>
