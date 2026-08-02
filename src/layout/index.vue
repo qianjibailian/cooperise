@@ -181,10 +181,6 @@
                     <component :is="TableOutlined" />
                     <span>表单列表</span>
                   </a-menu-item>
-                  <a-menu-item key="/settings/form-design">
-                    <component :is="FormOutlined" />
-                    <span>表单设计</span>
-                  </a-menu-item>
                 </a-sub-menu>
                 <a-menu-item key="/settings/profile">
                   <component :is="UserOutlined" />
@@ -289,7 +285,6 @@ import {
   LockOutlined,
   BuildOutlined,
   UserOutlined,
-  FormOutlined,
   TableOutlined,
   InfoCircleOutlined,
 } from '@ant-design/icons-vue'

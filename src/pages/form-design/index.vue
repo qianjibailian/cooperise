@@ -53,6 +53,7 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import { VxeUI } from 'vxe-pc-ui'
 import { PlusOutlined } from '@ant-design/icons-vue'
+import { getTemplate, updateTemplate } from '@/api/faiz'
 import type { VxeFormDesignInstance, VxeFormDesignPropTypes } from 'vxe-design'
 
 const formDesignRef = ref<VxeFormDesignInstance>()
@@ -173,66 +174,134 @@ const formatNow = (): string => {
   return new Date().toISOString().replace('T', ' ').substring(0, 19)
 }
 
-const saveEvent = () => {
-  const $formDesign = formDesignRef.value
-  if ($formDesign) {
-    const config = $formDesign.getConfig()
-    console.log('【保存模板】请求体:', JSON.stringify(config, null, 2))
-    localStorage.setItem('DATA_FormDesignEdit', JSON.stringify(config))
+// ---- 本地存储工具函数 ----
+const STORAGE_KEY = 'TEMPLATE_LIST'
 
-    // 检查是否从模板编辑进入
-    try {
-      const STORAGE_KEY = 'TEMPLATE_LIST'
-      const flagData = localStorage.getItem('TEMPLATE_EDIT_FLAG')
-
-      if (flagData) {
-        // 回写模板 Tab
-        const flag = JSON.parse(flagData)
-        const existingData = localStorage.getItem(STORAGE_KEY)
-        const templateList = existingData ? JSON.parse(existingData) : []
-        const now = formatNow()
-        if (flag.templateId && flag.templateId !== 'NEW') {
-          const tpl = templateList.find((t: any) => t.id === flag.templateId)
-          if (tpl) {
-            const tab = tpl.tabs?.find((tb: any) => tb.id === flag.tabId)
-            if (tab) {
-              tab.formConfig = config.formConfig
-              tab.widgetData = config.widgetData
-              tab.name = tab.name || config.formConfig?.title || `表单 ${flag.tabIdx + 1}`
-              tpl.updatedAt = now
-            }
-          }
-        } else {
-          // NEW：暂不处理，等模板列表保存时处理
+const syncLocalTemplateList = (flag: { templateId: string | number; tabId: string | number; tabIdx: number }, config: any) => {
+  try {
+    const existingData = localStorage.getItem(STORAGE_KEY)
+    const templateList = existingData ? JSON.parse(existingData) : []
+    const now = formatNow()
+    if (flag.templateId && flag.templateId !== 'NEW') {
+      const tpl = templateList.find((t: any) => t.id === flag.templateId)
+      if (tpl) {
+        const tab = tpl.tabs?.find((tb: any) => tb.id === flag.tabId)
+        if (tab) {
+          tab.formConfig = config.formConfig
+          tab.widgetData = config.widgetData
+          tab.name = tab.name || config.formConfig?.title || `表单 ${flag.tabIdx + 1}`
+          tpl.updatedAt = now
         }
         localStorage.setItem(STORAGE_KEY, JSON.stringify(templateList))
-        localStorage.removeItem('TEMPLATE_EDIT_FLAG')
-      } else {
-        // 没有 flag，创建新模板
-        const existingData = localStorage.getItem(STORAGE_KEY)
-        const templateList = existingData ? JSON.parse(existingData) : []
-        const now = formatNow()
-        const tabId = generateId()
-        templateList.push({
-          id: generateId(),
-          templateName: config.formConfig?.title || '未命名模板',
-          description: '',
-          category: 'other',
-          status: true,
-          tabs: [{ id: tabId, name: config.formConfig?.title || '未命名表单', formConfig: config.formConfig, widgetData: config.widgetData }],
-          createdAt: now,
-          updatedAt: now,
-        })
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(templateList))
       }
-    } catch (e) {
-      console.error('保存模板列表失败:', e)
+    }
+  } catch (e) {
+    console.error('同步 localStorage 失败:', e)
+  }
+}
+
+const syncNewTemplateToLocal = (config: any) => {
+  try {
+    const existingData = localStorage.getItem(STORAGE_KEY)
+    const templateList = existingData ? JSON.parse(existingData) : []
+    const now = formatNow()
+    const tabId = generateId()
+    templateList.push({
+      id: generateId(),
+      templateName: config.formConfig?.title || '未命名模板',
+      description: '',
+      category: 'other',
+      status: true,
+      tabs: [{ id: tabId, name: config.formConfig?.title || '未命名表单', formConfig: config.formConfig, widgetData: config.widgetData }],
+      createdAt: now,
+      updatedAt: now,
+    })
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(templateList))
+  } catch (e) {
+    console.error('创建本地模板失败:', e)
+  }
+}
+
+// ---- 保存 ----
+const saveEvent = async () => {
+  const $formDesign = formDesignRef.value
+  if (!$formDesign) return
+
+  const config = $formDesign.getConfig()
+  console.log('【保存模板】请求体:', JSON.stringify(config, null, 2))
+  localStorage.setItem('DATA_FormDesignEdit', JSON.stringify(config))
+
+  const flagData = localStorage.getItem('TEMPLATE_EDIT_FLAG')
+
+  if (flagData) {
+    const flag = JSON.parse(flagData)
+
+    if (flag.templateId && flag.templateId !== 'NEW') {
+      // 已有模板：调用后端接口更新
+      try {
+        const res = await getTemplate(flag.templateId)
+        if (!res.success || !res.data) {
+          VxeUI.modal.message({ content: res.message || '获取模板信息失败', status: 'error' })
+          return
+        }
+
+        const template = res.data
+        // 优先用 tabIdx 索引匹配，再用 tabId 兜底
+        const tab = template.tabs?.[flag.tabIdx] ?? template.tabs?.find((tb: any) => String(tb.id) === String(flag.tabId))
+        if (!tab) {
+          console.error('Tab not found:', { templateId: flag.templateId, tabId: flag.tabId, tabIdx: flag.tabIdx, tabs: template.tabs })
+          VxeUI.modal.message({ content: '未找到对应的表单 Tab', status: 'error' })
+          return
+        }
+
+        // 更新当前 Tab 的配置
+        tab.formConfig = JSON.stringify(config.formConfig)
+        tab.widgetData = JSON.stringify(config.widgetData)
+        if (config.formConfig?.title) {
+          tab.name = config.formConfig.title
+        }
+
+        // 构造更新数据（与 template-list serializeTemplatePayload 格式一致）
+        const data = {
+          templateName: template.templateName,
+          description: template.description,
+          category: template.category,
+          status: template.status,
+          tabs: template.tabs.map((t: any, idx: number) => ({
+            name: t.name,
+            tabOrder: t.tabOrder ?? idx + 1,
+            formConfig: typeof t.formConfig === 'string' ? t.formConfig : JSON.stringify(t.formConfig || {}),
+            widgetData: typeof t.widgetData === 'string' ? t.widgetData : JSON.stringify(t.widgetData || []),
+          })),
+        }
+
+        const updateRes = await updateTemplate(flag.templateId, data)
+        if (updateRes.success) {
+          VxeUI.modal.message({ content: '保存成功', status: 'success' })
+        } else {
+          VxeUI.modal.message({ content: updateRes.message || '保存失败', status: 'error' })
+          return
+        }
+      } catch (e: any) {
+        console.error('保存模板失败:', e)
+        VxeUI.modal.message({ content: e?.message || '保存失败，请重试', status: 'error' })
+        return
+      }
+
+      // 同步更新 localStorage
+      syncLocalTemplateList(flag, config)
+      localStorage.removeItem('TEMPLATE_EDIT_FLAG')
+      return
     }
 
-    VxeUI.modal.message({
-      content: '保存成功（模拟请求）',
-      status: 'success'
-    })
+    // NEW 模板：暂存到 localStorage，等模板列表保存时提交后端
+    syncLocalTemplateList(flag, config)
+    localStorage.removeItem('TEMPLATE_EDIT_FLAG')
+    VxeUI.modal.message({ content: '保存成功（请回到模板列表提交保存）', status: 'success' })
+  } else {
+    // 无 flag：新建模板到 localStorage
+    syncNewTemplateToLocal(config)
+    VxeUI.modal.message({ content: '保存成功（新建模板）', status: 'success' })
   }
 }
 

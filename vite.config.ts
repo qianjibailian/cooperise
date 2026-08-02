@@ -39,6 +39,10 @@ export default defineConfig({
       'Access-Control-Allow-Headers': '*',
     },
     proxy: {
+      '/queqiao': {
+        target: 'http://localhost:8080',
+        changeOrigin: true,
+      },
       '/qianjisan-assets': {
         target: 'http://localhost:5173',
         changeOrigin: true,

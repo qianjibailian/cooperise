@@ -4,11 +4,12 @@
     <div class="toolbar">
       <div class="search-box">
         <SearchOutlined class="search-icon" />
-        <input v-model="searchValue" class="search-input" placeholder="搜索模板…" />
+        <input v-model="searchValue" class="search-input" placeholder="搜索模板…" @keyup.enter="loadTemplates" />
         <div v-if="searchValue" class="search-clear" @click="searchValue = ''">
           <CloseCircleFilled />
         </div>
       </div>
+      <button class="search-btn" @click="loadTemplates"><SearchOutlined /> 查询</button>
       <div class="toolbar-actions">
         <div class="filter-group">
           <button
@@ -228,6 +229,7 @@ import {
   EyeOutlined, EditOutlined, DeleteOutlined, CopyOutlined,
   MoreOutlined, AppstoreOutlined, InboxOutlined,
 } from '@ant-design/icons-vue'
+import { getTemplates, createTemplate, updateTemplate, deleteTemplate, copyTemplate } from '@/api/faiz'
 
 const router = useRouter()
 
@@ -251,7 +253,6 @@ interface Template {
 }
 
 // ---- 常量 ----
-const STORAGE_KEY = 'TEMPLATE_LIST'
 
 const tabs = [
   { label: '全部', value: '' },
@@ -327,7 +328,7 @@ const filteredTemplates = computed(() =>
     return match && st && ct
   })
 )
-const enabledCount = computed(() => templates.value.filter(t => t.status).length)
+const enabledCount = ref(0)
 const totalTabs = computed(() => templates.value.reduce((s, t) => s + (t.tabs?.length || 0), 0))
 
 // ---- BaseFormConfig ----
@@ -339,23 +340,54 @@ const baseFormConfig = () => ({
   isLog: false, isPC: true, isMobile: false, isApplet: false,
 })
 
-// ---- 持久化 ----
-const TEMPLATE_VERSION = 2
-function loadTemplates() {
-  try {
-    const verRaw = localStorage.getItem('TEMPLATE_VERSION')
-    const storedVersion = verRaw ? Number(verRaw) : 0
-    const raw = localStorage.getItem(STORAGE_KEY)
-    if (raw && storedVersion >= TEMPLATE_VERSION) {
-      templates.value = JSON.parse(raw)
-    } else {
-      templates.value = getDefaultTemplates()
-      saveTemplates()
-      localStorage.setItem('TEMPLATE_VERSION', String(TEMPLATE_VERSION))
-    }
-  } catch { templates.value = getDefaultTemplates(); saveTemplates() }
+// ---- 数据适配 ----
+function adaptBackendTemplate(t: any): Template {
+  return {
+    ...t,
+    id: String(t.id),
+    status: t.status === 1,
+    tabs: (t.tabs || []).map((tab: any) => ({
+      ...tab,
+      id: String(tab.id),
+      templateId: String(tab.templateId ?? ''),
+      formConfig: typeof tab.formConfig === 'string' ? JSON.parse(tab.formConfig || '{}') : tab.formConfig,
+      widgetData: typeof tab.widgetData === 'string' ? JSON.parse(tab.widgetData || '[]') : tab.widgetData,
+    })),
+  }
 }
-function saveTemplates() { localStorage.setItem(STORAGE_KEY, JSON.stringify(templates.value)); localStorage.setItem('TEMPLATE_VERSION', String(TEMPLATE_VERSION)) }
+
+function serializeTemplatePayload(form: any) {
+  return {
+    templateName: form.templateName,
+    description: form.description,
+    category: form.category,
+    status: form.status ? 1 : 0,
+    tabs: (form.tabs || []).map((tab: any, idx: number) => ({
+      name: tab.name,
+      tabOrder: tab.tabOrder ?? idx + 1,
+      formConfig: typeof tab.formConfig === 'string' ? tab.formConfig : JSON.stringify(tab.formConfig || {}),
+      widgetData: typeof tab.widgetData === 'string' ? tab.widgetData : JSON.stringify(tab.widgetData || []),
+    })),
+  }
+}
+
+// ---- 持久化 ----
+const loading = ref(false)
+
+async function loadTemplates() {
+  loading.value = true
+  try {
+    const res = await getTemplates()
+    if (res.success) {
+      templates.value = (res.data.list || []).map(adaptBackendTemplate)
+      enabledCount.value = res.data.enabledCount || 0
+    }
+  } catch {
+    message.error('加载模板列表失败')
+  } finally {
+    loading.value = false
+  }
+}
 
 function getDefaultTemplates(): Template[] {
   const now = formatNow()
@@ -752,7 +784,9 @@ function onTabSwitch() { /* tab switched */ }
 
 function handleEditTabInDesigner(idx: number) {
   const tab = editForm.tabs[idx]
-  const payload = { formConfig: { ...tab.formConfig, title: tab.name || editForm.templateName }, widgetData: tab.widgetData || [] }
+  const formConfig = typeof tab.formConfig === 'string' ? JSON.parse(tab.formConfig) : tab.formConfig
+  const widgetData = typeof tab.widgetData === 'string' ? JSON.parse(tab.widgetData) : tab.widgetData
+  const payload = { formConfig: { ...formConfig, title: tab.name || editForm.templateName }, widgetData: widgetData || [] }
   localStorage.setItem('DATA_FormDesignEdit', JSON.stringify(payload))
   // 记住当前模板和 tab 的 id，表单设计器保存时回写
   localStorage.setItem('TEMPLATE_EDIT_FLAG', JSON.stringify({ templateId: editForm.id || 'NEW', tabId: tab.id, tabIdx: idx }))
@@ -790,34 +824,29 @@ function handleEditSubmit() {
   if (!editForm.templateName.trim()) return message.warning('请输入模板名称')
   // 自动补 tab name
   editForm.tabs.forEach((t, i) => { if (!t.name.trim()) t.name = `表单 ${i + 1}` })
-  const now = formatNow()
+  const payload = serializeTemplatePayload(editForm)
   if (isEdit.value) {
-    const tpl = templates.value.find(t => t.id === editForm.id)
-    if (tpl) {
-      tpl.templateName = editForm.templateName; tpl.description = editForm.description
-      tpl.category = editForm.category; tpl.status = editForm.status
-      tpl.tabs = JSON.parse(JSON.stringify(editForm.tabs)); tpl.updatedAt = now
-    }
-    message.success('更新成功')
+    const tplId = Number(editForm.id)
+    updateTemplate(tplId, payload).then(res => {
+      if (res.success) message.success('更新成功')
+      else message.error(res.message || '更新失败')
+      loadTemplates(); showEditModal.value = false
+    }).catch(() => { message.error('更新失败') })
   } else {
-    templates.value.push({
-      id: generateId(), templateName: editForm.templateName, description: editForm.description,
-      category: editForm.category, status: editForm.status,
-      tabs: JSON.parse(JSON.stringify(editForm.tabs)), createdAt: now, updatedAt: now,
-    })
-    message.success('创建成功')
+    createTemplate(payload).then(res => {
+      if (res.success) message.success('创建成功')
+      else message.error(res.message || '创建失败')
+      loadTemplates(); showEditModal.value = false
+    }).catch(() => { message.error('创建失败') })
   }
-  saveTemplates(); showEditModal.value = false
 }
 
 function handleCopy(record: Template) {
-  const id = generateId()
-  templates.value.push({
-    ...record, id, templateName: record.templateName + ' - 副本',
-    createdAt: formatNow(), updatedAt: formatNow(),
-    tabs: JSON.parse(JSON.stringify(record.tabs || [])),
-  })
-  saveTemplates(); message.success('已创建副本')
+  const tplId = Number(record.id)
+  copyTemplate(tplId).then(res => {
+    if (res.success) { message.success('已创建副本'); loadTemplates() }
+    else message.error(res.message || '复制失败')
+  }).catch(() => { message.error('复制失败') })
 }
 
 function handleDelete(record: Template) {
@@ -826,8 +855,11 @@ function handleDelete(record: Template) {
     content: `确定要删除「${record.templateName}」吗？删除后不可恢复。`,
     okText: '删除', cancelText: '取消', okType: 'danger',
     onOk: () => {
-      const i = templates.value.findIndex(t => t.id === record.id)
-      if (i > -1) { templates.value.splice(i, 1); saveTemplates(); message.success('已删除') }
+      const tplId = Number(record.id)
+      deleteTemplate(tplId).then(res => {
+        if (res.success) { message.success('已删除'); loadTemplates() }
+        else message.error(res.message || '删除失败')
+      }).catch(() => { message.error('删除失败') })
     },
   })
 }
@@ -848,10 +880,17 @@ function handleMenuAction(key: string, record: Template) {
 
 // ---- 预览 ----
 function handlePreview(record: Template) {
-  previewTemplate.value = record
+  // 深克隆并解析 JSON 字段（后端返回的 formConfig/widgetData 是字符串）
+  const parsed = JSON.parse(JSON.stringify(record))
+  parsed.tabs = parsed.tabs || []
+  parsed.tabs.forEach((tab: any) => {
+    tab.formConfig = typeof tab.formConfig === 'string' ? JSON.parse(tab.formConfig) : tab.formConfig
+    tab.widgetData = typeof tab.widgetData === 'string' ? JSON.parse(tab.widgetData) : tab.widgetData
+  })
+  previewTemplate.value = parsed
   previewTabData.value = {}
-  previewActiveTab.value = record.tabs?.[0]?.id || ''
-  record.tabs?.forEach(tab => {
+  previewActiveTab.value = String(parsed.tabs?.[0]?.id || '')
+  parsed.tabs?.forEach((tab: any) => {
     const data: Record<string, any> = {}
     const init = (ws: any[], o: Record<string, any>) =>
       ws.forEach((w: any) => { if (w.children?.length) init(w.children, o); else if (w.field) o[w.field] = null })
@@ -879,6 +918,8 @@ onMounted(loadTemplates)
 .search-input::placeholder { color: #aeaeb2; }
 .search-clear { padding: 0 12px; cursor: pointer; color: #aeaeb2; font-size: 16px; display: flex; align-items: center; }
 .search-clear:hover { color: #6e6e73; }
+.search-btn { display: inline-flex; align-items: center; gap: 6px; border: none; background: #3b82f6; color: #fff; padding: 9px 18px; border-radius: 10px; font-size: 14px; font-weight: 500; cursor: pointer; transition: background 0.2s; font-family: inherit; white-space: nowrap; }
+.search-btn:hover { background: #2563eb; }
 .toolbar-actions { display: flex; align-items: center; gap: 12px; }
 .filter-group { display: flex; background: #f5f5f7; border-radius: 10px; padding: 3px; gap: 2px; }
 .filter-chip { border: none; background: transparent; padding: 7px 16px; border-radius: 8px; font-size: 13px; font-weight: 500; color: #6e6e73; cursor: pointer; transition: all 0.2s; font-family: inherit; white-space: nowrap; }

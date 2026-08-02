@@ -4,19 +4,13 @@
     <div class="toolbar">
       <div class="search-box">
         <SearchOutlined class="search-icon" />
-        <input v-model="searchValue" class="search-input" placeholder="搜索表单…" />
+        <input v-model="searchValue" class="search-input" placeholder="搜索表单…" @keyup.enter="loadForms" />
         <div v-if="searchValue" class="search-clear" @click="searchValue = ''">
           <CloseCircleFilled />
         </div>
       </div>
+      <button class="search-btn" @click="loadForms"><SearchOutlined /> 查询</button>
       <div class="toolbar-actions">
-        <div class="filter-group">
-          <button
-            v-for="f in filters" :key="f.value"
-            :class="['filter-chip', { active: filterCategory === f.value }]"
-            @click="filterCategory = f.value"
-          >{{ f.label }}</button>
-        </div>
         <button class="create-btn" @click="handleCreate">
           <PlusOutlined /><span>新建表单</span>
         </button>
@@ -29,7 +23,7 @@
       <div class="stat-divider" />
       <div class="stat-item"><span class="stat-value stat-blue">{{ totalWidgets }}</span><span class="stat-label">控件字段</span></div>
       <div class="stat-divider" />
-      <div class="stat-item"><span class="stat-value stat-green">{{ templatesWithForms.length }}</span><span class="stat-label">所属模板</span></div>
+      <div class="stat-item"><span class="stat-value stat-green">{{ templatesWithForms }}</span><span class="stat-label">所属模板</span></div>
     </div>
 
     <!-- Tab 导航 -->
@@ -83,9 +77,9 @@
     <!-- 空状态 -->
     <div v-else class="empty-state">
       <div class="empty-icon-box"><InboxOutlined class="empty-icon" /></div>
-      <h3 class="empty-title">{{ searchValue || filterCategory ? '未找到匹配的表单' : '还没有表单' }}</h3>
-      <p class="empty-desc">{{ searchValue || filterCategory ? '尝试更换搜索条件或筛选' : '去模板列表为模板添加表单' }}</p>
-      <button v-if="!searchValue && !filterCategory" class="create-btn-empty" @click="handleCreate">
+      <h3 class="empty-title">{{ searchValue ? '未找到匹配的表单' : '还没有表单' }}</h3>
+      <p class="empty-desc">{{ searchValue ? '尝试更换搜索条件' : '去模板列表为模板添加表单' }}</p>
+      <button v-if="!searchValue" class="create-btn-empty" @click="handleCreate">
         <PlusOutlined /> 新建表单
       </button>
     </div>
@@ -125,26 +119,11 @@ import {
   EyeOutlined, EditOutlined, DeleteOutlined, CopyOutlined,
   MoreOutlined, AppstoreOutlined, InboxOutlined,
 } from '@ant-design/icons-vue'
+import { getForms, getTemplate, updateTemplate } from '@/api/faiz'
 
 const router = useRouter()
 
 // ---- 类型 ----
-interface TemplateTab {
-  id: string
-  name: string
-  formConfig: any
-  widgetData: any[]
-}
-interface Template {
-  id: string
-  templateName: string
-  description: string
-  category: string
-  status: boolean
-  tabs: TemplateTab[]
-  createdAt: string
-  updatedAt: string
-}
 interface FormItem {
   id: string
   name: string
@@ -159,15 +138,7 @@ interface FormItem {
 }
 
 // ---- 常量 ----
-const STORAGE_KEY = 'TEMPLATE_LIST'
 const tabs = [
-  { label: '全部', value: '' },
-  { label: '需求', value: 'requirement' },
-  { label: '任务', value: 'task' },
-  { label: '缺陷', value: 'bug' },
-  { label: '其他', value: 'other' },
-]
-const filters = [
   { label: '全部', value: '' },
   { label: '需求', value: 'requirement' },
   { label: '任务', value: 'task' },
@@ -184,24 +155,14 @@ const categoryColors: Record<string, { bg: string }> = {
 
 // ---- 状态 ----
 const searchValue = ref('')
-const filterCategory = ref('')
 const tabCategory = ref('')
 const showPreviewModal = ref(false)
 const previewForm = ref<FormItem | null>(null)
 const previewFormData = ref<Record<string, any>>({})
 const forms = ref<FormItem[]>([])
-const templates = ref<Template[]>([])
 
 // ---- 工具函数 ----
 function categoryClass(cat: string) { return categoryColors[cat]?.bg || 'icon-blue' }
-function generateId() { return 'f_' + Date.now().toString(36) + '_' + Math.random().toString(36).substring(2, 6) }
-function formatNow() { return new Date().toISOString().replace('T', ' ').substring(0, 19) }
-
-function countWidgets(widgets: any[]): number {
-  let c = 0
-  widgets.forEach(w => { c++; if (w.children?.length) c += countWidgets(w.children) })
-  return c
-}
 
 function relativeTime(dateStr: string): string {
   if (!dateStr) return '-'
@@ -219,30 +180,32 @@ function relativeTime(dateStr: string): string {
   return dateStr.substring(0, 10)
 }
 
-// ---- 从模板列表提取表单 ----
-function loadForms() {
+// ---- 从 API 加载表单列表 ----
+async function loadForms() {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY)
-    templates.value = raw ? JSON.parse(raw) : []
-    const result: FormItem[] = []
-    templates.value.forEach(tpl => {
-      (tpl.tabs || []).forEach(tab => {
-        result.push({
-          id: tab.id,
-          name: tab.name || '未命名表单',
-          widgetCount: tab.widgetData?.length ? countWidgets(tab.widgetData) : 0,
-          formConfig: tab.formConfig,
-          widgetData: tab.widgetData || [],
-          templateId: tpl.id,
-          templateName: tpl.templateName || '未命名模板',
-          templateStatus: tpl.status,
-          category: tpl.category,
-          updatedAt: tpl.updatedAt,
-        })
-      })
-    })
-    forms.value = result
-  } catch { forms.value = [] }
+    const res = await getForms()
+    if (res.success) {
+      forms.value = (res.data.list || []).map((item: any) => ({
+        id: String(item.id),
+        name: item.name || '未命名表单',
+        widgetCount: item.widgetCount || 0,
+        formConfig: parseJsonField(item.formConfig),
+        widgetData: parseJsonField(item.widgetData) || [],
+        templateId: String(item.templateId),
+        templateName: item.templateName || '未命名模板',
+        templateStatus: item.templateStatus,
+        category: item.category || '',
+        updatedAt: item.updatedAt || '',
+      }))
+    }
+  } catch {
+    message.error('加载表单列表失败')
+  }
+}
+
+function parseJsonField(val: any): any {
+  if (val == null) return val
+  return typeof val === 'string' ? JSON.parse(val || '{}') : val
 }
 
 // ---- 计算属性 ----
@@ -257,10 +220,7 @@ const filteredForms = computed(() =>
 )
 
 const totalWidgets = computed(() => forms.value.reduce((s, f) => s + f.widgetCount, 0))
-const templatesWithForms = computed(() => {
-  const ids = new Set(forms.value.map(f => f.templateId))
-  return templates.value.filter(t => ids.has(t.id))
-})
+const templatesWithForms = computed(() => forms.value.reduce((ids, f) => ids.add(f.templateId), new Set<string>()).size)
 
 
 // ---- CRUD ----
@@ -272,28 +232,28 @@ function handleEdit(form: FormItem) {
     widgetData: form.widgetData || [],
   }
   localStorage.setItem('DATA_FormDesignEdit', JSON.stringify(payload))
-  const tabIdx = templates.value.find(t => t.id === form.templateId)?.tabs?.findIndex(tb => tb.id === form.id) ?? 0
   localStorage.setItem('TEMPLATE_EDIT_FLAG', JSON.stringify({
-    templateId: form.templateId, tabId: form.id, tabIdx,
+    templateId: form.templateId, tabId: form.id,
   }))
   router.push('/settings/form-design')
 }
 
-function handleCopy(form: FormItem) {
-  const tpl = templates.value.find(t => t.id === form.templateId)
-  if (tpl) {
-    const newId = generateId()
-    tpl.tabs.push({
-      id: newId,
+async function handleCopy(form: FormItem) {
+  const tplId = Number(form.templateId)
+  try {
+    const tplRes = await getTemplate(tplId)
+    if (!tplRes.success || !tplRes.data) { message.error('获取模板信息失败'); return }
+    const tpl = tplRes.data
+    const tabs = [...(tpl.tabs || []), {
       name: form.name + ' - 副本',
-      formConfig: form.formConfig,
-      widgetData: JSON.parse(JSON.stringify(form.widgetData || [])),
-    })
-    tpl.updatedAt = formatNow()
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(templates.value))
-    loadForms()
-    message.success('已创建副本')
-  }
+      tabOrder: (tpl.tabs || []).length + 1,
+      formConfig: typeof form.formConfig === 'object' ? JSON.stringify(form.formConfig) : (form.formConfig || '{}'),
+      widgetData: typeof form.widgetData === 'object' ? JSON.stringify(form.widgetData) : (form.widgetData || '[]'),
+    }]
+    const upRes = await updateTemplate(tplId, { tabs })
+    if (upRes.success) { message.success('已创建副本'); loadForms() }
+    else message.error(upRes.message || '复制失败')
+  } catch { message.error('复制失败') }
 }
 
 function handleDelete(form: FormItem) {
@@ -301,20 +261,21 @@ function handleDelete(form: FormItem) {
     title: '删除表单',
     content: `确定要删除「${form.name}」吗？将同时从所属模板中移除。`,
     okText: '删除', cancelText: '取消', okType: 'danger',
-    onOk: () => {
-      const tpl = templates.value.find(t => t.id === form.templateId)
-      if (tpl) {
-        const idx = tpl.tabs.findIndex(tb => tb.id === form.id)
-        if (idx > -1 && tpl.tabs.length > 1) {
-          tpl.tabs.splice(idx, 1)
-          tpl.updatedAt = formatNow()
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(templates.value))
-          loadForms()
-          message.success('已删除')
-        } else {
-          message.warning('模板需要至少保留一个表单，无法删除')
-        }
-      }
+    onOk: async () => {
+      const tplId = Number(form.templateId)
+      try {
+        const tplRes = await getTemplate(tplId)
+        if (!tplRes.success || !tplRes.data) { message.error('获取模板信息失败'); return }
+        const tpl = tplRes.data
+        const idx = (tpl.tabs || []).findIndex((tb: any) => String(tb.id) === String(form.id))
+        if (idx === -1) { message.warning('未找到该表单'); return }
+        if ((tpl.tabs || []).length <= 1) { message.warning('模板需要至少保留一个表单，无法删除'); return }
+        const tabs = [...(tpl.tabs || [])]
+        tabs.splice(idx, 1)
+        const upRes = await updateTemplate(tplId, { tabs })
+        if (upRes.success) { message.success('已删除'); loadForms() }
+        else message.error(upRes.message || '删除失败')
+      } catch { message.error('删除失败') }
     },
   })
 }
@@ -363,11 +324,9 @@ onMounted(loadForms)
 .search-input::placeholder { color: #aeaeb2; }
 .search-clear { padding: 0 12px; cursor: pointer; color: #aeaeb2; font-size: 16px; display: flex; align-items: center; }
 .search-clear:hover { color: #6e6e73; }
+.search-btn { display: inline-flex; align-items: center; gap: 6px; border: none; background: #3b82f6; color: #fff; padding: 9px 18px; border-radius: 10px; font-size: 14px; font-weight: 500; cursor: pointer; transition: background 0.2s; font-family: inherit; white-space: nowrap; }
+.search-btn:hover { background: #2563eb; }
 .toolbar-actions { display: flex; align-items: center; gap: 12px; }
-.filter-group { display: flex; background: #f5f5f7; border-radius: 10px; padding: 3px; gap: 2px; }
-.filter-chip { border: none; background: transparent; padding: 7px 16px; border-radius: 8px; font-size: 13px; font-weight: 500; color: #6e6e73; cursor: pointer; transition: all 0.2s; font-family: inherit; white-space: nowrap; }
-.filter-chip.active { background: #fff; color: #1d1d1f; box-shadow: 0 1px 3px rgba(0,0,0,.06); }
-.filter-chip:hover:not(.active) { color: #1d1d1f; }
 .create-btn { display: flex; align-items: center; gap: 6px; padding: 10px 20px; border: none; background: #1d1d1f; color: #fff; border-radius: 12px; font-size: 14px; font-weight: 600; cursor: pointer; font-family: inherit; transition: all 0.2s; white-space: nowrap; }
 .create-btn:hover { background: #333; transform: scale(1.02); }
 .create-btn:active { transform: scale(0.98); }
