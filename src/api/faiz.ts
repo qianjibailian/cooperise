@@ -9,51 +9,53 @@ import type {
   TemplateStats,
 } from '@/types/faiz'
 
+const PREFIX = '/faiz-api'
+
 // ==================== Template API ====================
 
 /** 模板列表 */
 export function getTemplates(params?: TemplateQuery): Promise<Result<TemplateListData>> {
-  return request.get('/template', { params })
+  return request.get(`${PREFIX}/template`, { params })
 }
 
 /** 模板详情 */
 export function getTemplate(id: number): Promise<Result<Template>> {
-  return request.get(`/template/${id}`)
+  return request.get(`${PREFIX}/template/${id}`)
 }
 
 /** 创建模板 */
 export function createTemplate(data: Record<string, unknown>): Promise<Result<Template>> {
-  return request.post('/template', data)
+  return request.post(`${PREFIX}/template`, data)
 }
 
 /** 更新模板 */
 export function updateTemplate(id: number, data: Record<string, unknown>): Promise<Result<Template>> {
-  return request.put(`/template/${id}`, data)
+  return request.put(`${PREFIX}/template/${id}`, data)
 }
 
 /** 删除模板 */
 export function deleteTemplate(id: number): Promise<Result<void>> {
-  return request.delete(`/template/${id}`)
+  return request.delete(`${PREFIX}/template/${id}`)
 }
 
 /** 复制模板 */
 export function copyTemplate(id: number): Promise<Result<Template>> {
-  return request.post(`/template/${id}/copy`)
+  return request.post(`${PREFIX}/template/${id}/copy`)
 }
 
 /** 模板统计 */
 export function getTemplateStats(): Promise<Result<TemplateStats>> {
-  return request.get('/template/stats')
+  return request.get(`${PREFIX}/template/stats`)
 }
 
 // ==================== Form API ====================
 
 /** 表单列表 */
 export function getForms(keyword?: string, category?: string): Promise<Result<FormListData>> {
-  return request.get('/form', { params: { keyword, category } })
+  return request.get(`${PREFIX}/form`, { params: { keyword, category } })
 }
 
 /** 表单详情 */
 export function getForm(id: number): Promise<Result<FormItem>> {
-  return request.get(`/form/${id}`)
+  return request.get(`${PREFIX}/form/${id}`)
 }
