@@ -7,6 +7,8 @@ import type {
   FormListData,
   FormItem,
   TemplateStats,
+  IssueListData,
+  IssueQuery,
 } from '@/types/faiz'
 
 const PREFIX = '/faiz-api'
@@ -67,7 +69,12 @@ export function getForm(id: number): Promise<Result<FormItem>> {
 
 // ==================== Issue API ====================
 
+/** Issue 分页查询 */
+export function getIssues(params?: IssueQuery): Promise<Result<IssueListData>> {
+  return request.get(`${PREFIX}/issue`, { params })
+}
+
 /** 新建 Modal 表单提交 - 存储动态表单数据 */
 export function submitIssueForm(formData: Record<string, unknown>): Promise<Result<Record<string, unknown>>> {
-  return request.post(`${PREFIX}/form-submit`, formData)
+  return request.post(`${PREFIX}/issue/form-submit`, formData)
 }

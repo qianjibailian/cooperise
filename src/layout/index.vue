@@ -315,6 +315,7 @@ const showNewFormModal = ref(false)
 const newFormViewRef = ref<any>()
 const newFormData = ref<Record<string, any>>({})
 const newFormIssueType = ref('requirement')
+const newFormTemplateId = ref<number | null>(null)
 
 // 默认空模板（兜底）
 const emptyFormConfig = () => ({
@@ -347,6 +348,7 @@ async function loadTemplateByIssueType(issueType: string) {
   try {
     const res = await getNewFormTemplate(issueType)
     const tpl = res.data
+    newFormTemplateId.value = tpl?.id ?? null
     if (tpl && tpl.tabs && tpl.tabs.length > 0) {
       newFormTabs.value = tpl.tabs.map((tab: any) => {
         let formConfig = tab.formConfig || { title: tab.name, ...emptyFormConfig() }
@@ -410,10 +412,17 @@ async function handleNewFormSubmit() {
     }
   }
 
+  const activeTab = newFormTabs.value.find(t => t.id === newFormActiveTab.value)
   const payload: Record<string, unknown> = {
     issueType: newFormIssueType.value,
+    templateId: newFormTemplateId.value,
+    tabName: activeTab?.name || '',
+    formConfig: JSON.stringify(activeTab?.formConfig || {}),
+    widgetData: JSON.stringify(activeTab?.widgetData || []),
     ...newFormData.value,
   }
+
+  console.log('【新建】提交表单数据:', JSON.stringify(payload, null, 2))
 
   try {
     await submitIssueForm(payload)

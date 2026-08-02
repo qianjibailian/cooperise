@@ -68,3 +68,37 @@ export interface TemplateStats {
   enabledCount: number
   categoryCount: Record<string, number>
 }
+
+// ========== Issue ==========
+export interface Issue {
+  id: number
+  code: string
+  title: string
+  description: string
+  priority: number      // 1=高, 2=中, 3=低
+  status: number        // 1=待处理, 2=进行中, 3=已完成
+  assignee: string
+  progress: number
+  deadline: string
+  category: string      // requirement/task/bug/other
+  formData: string      // JSON 字符串
+  createdAt: string
+  updatedAt: string
+}
+
+export interface IssueListData {
+  list: Issue[]
+  total: number
+  page: number
+  pageSize: number
+}
+
+export interface IssueQuery {
+  keyword?: string
+  priority?: number
+  status?: number
+  assignee?: string
+  category?: string
+  page?: number
+  pageSize?: number
+}
