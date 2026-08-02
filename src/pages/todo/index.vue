@@ -8,36 +8,40 @@
       </div>
       <div class="top-bar-right">
         <span class="total-text">共{{ total }}条</span>
-        <a-input-search
-          v-model:value="keyword"
-          placeholder="搜索标题"
-          style="width: 220px"
-          allow-clear
-          @search="onSearch"
-        />
-        <a-select
-          v-model:value="filterCategory"
-          placeholder="分类"
-          style="width: 120px"
-          allow-clear
-          @change="onFilterChange"
-        >
-          <a-select-option value="requirement">需求</a-select-option>
-          <a-select-option value="task">任务</a-select-option>
-          <a-select-option value="bug">缺陷</a-select-option>
-          <a-select-option value="other">其他</a-select-option>
-        </a-select>
-        <a-select
-          v-model:value="filterStatus"
-          placeholder="状态"
-          style="width: 120px"
-          allow-clear
-          @change="onFilterChange"
-        >
-          <a-select-option :value="1">待处理</a-select-option>
-          <a-select-option :value="2">进行中</a-select-option>
-          <a-select-option :value="3">已完成</a-select-option>
-        </a-select>
+        <span class="edit-status">(已编辑 <a class="reset-link" @click="handleReset">重置</a>)</span>
+        <a class="save-link">另存为</a>
+        <a-button class="tool-btn" :class="{ active: filterCount > 0 }">
+          <component :is="FilterOutlined" />
+          筛选<span v-if="filterCount > 0">({{ filterCount }})</span>
+        </a-button>
+        <a-button class="tool-btn">
+          <component :is="AppstoreOutlined" />
+          分组
+        </a-button>
+        <a-button class="tool-btn" :class="{ active: sortCount > 0 }">
+          <component :is="SortAscendingOutlined" />
+          排序<span v-if="sortCount > 0">({{ sortCount }})</span>
+        </a-button>
+        <a-button class="tool-btn">
+          <component :is="MenuOutlined" />
+          分层
+        </a-button>
+        <a-button class="tool-btn">
+          <component :is="CheckSquareOutlined" />
+          批量操作
+        </a-button>
+        <a-button class="tool-btn">
+          <component :is="FullscreenOutlined" />
+          全屏
+        </a-button>
+        <a-button class="tool-btn more-btn">
+          <component :is="MoreOutlined" />
+        </a-button>
+        <a-divider type="vertical" class="toolbar-divider" />
+        <a-button class="tool-btn view-btn">
+          <component :is="UnorderedListOutlined" />
+          列表视图
+        </a-button>
       </div>
     </div>
 
@@ -106,16 +110,34 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import type { VxeTableInstance } from 'vxe-table'
-import { ReloadOutlined } from '@ant-design/icons-vue'
+import {
+  ReloadOutlined,
+  FilterOutlined,
+  AppstoreOutlined,
+  SortAscendingOutlined,
+  MenuOutlined,
+  CheckSquareOutlined,
+  FullscreenOutlined,
+  MoreOutlined,
+  UnorderedListOutlined,
+} from '@ant-design/icons-vue'
 import { getIssues } from '@/api/faiz'
 import type { Issue } from '@/types/faiz'
 
 const tableRef = ref<VxeTableInstance<Issue>>()
 
+// 工具栏状态
+const filterCount = ref(0)
+const sortCount = ref(0)
+
+function handleReset() {
+  filterCount.value = 0
+  sortCount.value = 0
+  currentPage.value = 1
+  fetchIssues()
+}
+
 // 查询 / 筛选
-const keyword = ref('')
-const filterCategory = ref<string>()
-const filterStatus = ref<number>()
 
 // 分页
 const currentPage = ref(1)
@@ -154,9 +176,6 @@ async function fetchIssues() {
   loading.value = true
   try {
     const res = await getIssues({
-      keyword: keyword.value || undefined,
-      category: filterCategory.value,
-      status: filterStatus.value,
       page: currentPage.value,
       pageSize: pageSize.value,
     })
@@ -173,16 +192,6 @@ async function fetchIssues() {
   } finally {
     loading.value = false
   }
-}
-
-function onSearch() {
-  currentPage.value = 1
-  fetchIssues()
-}
-
-function onFilterChange() {
-  currentPage.value = 1
-  fetchIssues()
 }
 
 function onPageChange(page: number) {
@@ -250,13 +259,77 @@ onMounted(() => {
 .top-bar-right {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 4px;
+  flex-wrap: wrap;
 }
 
 .total-text {
   font-size: 13px;
   color: #8c8c8c;
+  margin-right: 8px;
   white-space: nowrap;
+}
+
+/* 功能按钮 */
+.edit-status {
+  font-size: 13px;
+  color: #8c8c8c;
+}
+
+.reset-link {
+  color: #1890ff;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.reset-link:hover {
+  text-decoration: underline;
+}
+
+.save-link {
+  font-size: 13px;
+  color: #595959;
+  cursor: pointer;
+}
+
+.save-link:hover {
+  color: #1890ff;
+}
+
+.tool-btn {
+  border: none !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  height: 32px;
+  padding: 0 10px;
+  font-size: 13px;
+  color: #595959;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.tool-btn:hover {
+  background: #f0f0f0 !important;
+  color: #1890ff;
+}
+
+.tool-btn.active {
+  color: #1890ff;
+}
+
+.more-btn {
+  padding: 0 8px;
+}
+
+.toolbar-divider {
+  margin: 0 4px;
+  height: 16px;
+}
+
+.view-btn {
+  margin-left: 4px;
 }
 
 /* 表格 */
