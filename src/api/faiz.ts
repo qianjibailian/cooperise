@@ -38,6 +38,11 @@ export function deleteTemplate(id: number): Promise<Result<void>> {
   return request.delete(`${PREFIX}/template/${id}`)
 }
 
+/** 新建表单用：按分类获取启用的模板（含 tabs） */
+export function getNewFormTemplate(category: string): Promise<Result<Template>> {
+  return request.get(`${PREFIX}/template/new-form`, { params: { category } })
+}
+
 /** 复制模板 */
 export function copyTemplate(id: number): Promise<Result<Template>> {
   return request.post(`${PREFIX}/template/${id}/copy`)

@@ -293,6 +293,7 @@ import AppHeader from '@/components/AppHeader.vue'
 import AppSideDrawer from '@/components/AppSideDrawer.vue'
 import WorkbenchPanel from './WorkbenchPanel.vue'
 import { useAuth } from '@/utils/auth'
+import { getNewFormTemplate } from '@/api/faiz'
 
 const iconBarItems = [
   { key: 'workspace', icon: HomeOutlined, label: '工作台' },
@@ -341,12 +342,11 @@ function initFormData() {
   newFormTabs.value.forEach(tab => walk(tab.widgetData || []))
 }
 
-// 切换事项类型时，从模板列表加载对应的表单
-function loadTemplateByIssueType(issueType: string) {
+// 切换事项类型时，从后端加载对应的启用模板
+async function loadTemplateByIssueType(issueType: string) {
   try {
-    const raw = localStorage.getItem('TEMPLATE_LIST')
-    const templateList: any[] = raw ? JSON.parse(raw) : []
-    const tpl = templateList.find((t: any) => t.category === issueType && t.status)
+    const res = await getNewFormTemplate(issueType)
+    const tpl = res.data
     if (tpl && tpl.tabs && tpl.tabs.length > 0) {
       newFormTabs.value = tpl.tabs.map((tab: any) => ({
         id: tab.id,
@@ -379,9 +379,9 @@ watch(newFormIssueType, (val) => {
   else newFormTabs.value = []
 })
 
-function handleNewFormOpen() {
+async function handleNewFormOpen() {
   newFormIssueType.value = 'requirement'
-  loadTemplateByIssueType('requirement')
+  await loadTemplateByIssueType('requirement')
   showNewFormModal.value = true
 }
 
