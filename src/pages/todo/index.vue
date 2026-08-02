@@ -190,7 +190,7 @@ function onPageChange(page: number) {
   fetchIssues()
 }
 
-function onPageSizeChange(current: number, size: number) {
+function onPageSizeChange(_current: number, size: number) {
   currentPage.value = 1
   pageSize.value = size
   fetchIssues()
