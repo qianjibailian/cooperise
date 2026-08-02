@@ -348,12 +348,18 @@ async function loadTemplateByIssueType(issueType: string) {
     const res = await getNewFormTemplate(issueType)
     const tpl = res.data
     if (tpl && tpl.tabs && tpl.tabs.length > 0) {
-      newFormTabs.value = tpl.tabs.map((tab: any) => ({
-        id: tab.id,
-        name: tab.name || '未命名表单',
-        formConfig: tab.formConfig || { title: tab.name, ...emptyFormConfig() },
-        widgetData: JSON.parse(JSON.stringify(tab.widgetData || [])),
-      }))
+      newFormTabs.value = tpl.tabs.map((tab: any) => {
+        let formConfig = tab.formConfig || { title: tab.name, ...emptyFormConfig() }
+        if (typeof formConfig === 'string') formConfig = { ...emptyFormConfig(), ...JSON.parse(formConfig || '{}') }
+        let widgetData = tab.widgetData || []
+        if (typeof widgetData === 'string') widgetData = JSON.parse(widgetData || '[]')
+        return {
+          id: tab.id,
+          name: tab.name || '未命名表单',
+          formConfig,
+          widgetData,
+        }
+      })
       newFormActiveTab.value = newFormTabs.value[0]?.id || ''
     } else {
       newFormTabs.value = []
