@@ -328,7 +328,7 @@ const emptyFormConfig = () => ({
 
 
 const formTemplateKey = ref(0)
-const newFormTabs = ref<{ id: string; name: string; formConfig: any; widgetData: any[] }[]>([])
+const newFormTabs = ref<{ id: string; name: string; formConfig: any; widgetData: any[]; viewConfig: { formConfig: any; widgetData: any[] } }[]>([])
 const newFormActiveTab = ref('')
 
 function initFormData() {
