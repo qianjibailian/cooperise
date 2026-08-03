@@ -53,8 +53,10 @@
         :loading="loading"
         :row-config="{ keyField: 'id' }"
         :column-config="{ resizable: true }"
+        :checkbox-config="{ highlight: true, range: false }"
         class="items-table"
       >
+        <vxe-column type="checkbox" width="50" align="center" />
         <vxe-column field="code" title="编号" width="140" />
         <vxe-column field="title" title="概要" min-width="260">
           <template #default="{ row }">
