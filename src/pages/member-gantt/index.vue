@@ -124,6 +124,10 @@ const PHASE_COLOR: Record<GanttRow['phase'], string> = {
 
 // ---------- 构建 mock 数据（会员体系 V2.0 WBS） ----------
 function buildGanttData(): GanttRow[] {
+  // 所有行共享一个全局递增数字 id，彻底避免 vxe-gantt 内部 index 撞 key
+  let autoId = 1
+  const nextId = () => autoId++
+
   // 以今天为 anchor，向前推 7 天作为需求阶段起点
   const anchor = dayjs().subtract(10, 'day')
 
@@ -140,7 +144,7 @@ function buildGanttData(): GanttRow[] {
     const start: Dayjs = anchor.add(offsetStart, 'day')
     const end: Dayjs = start.add(Math.max(days - 1, 0), 'day')
     return {
-      id: 'row-' + code,
+      id: nextId(),
       taskCode: code,
       taskName: name,
       owner,
@@ -166,7 +170,7 @@ function buildGanttData(): GanttRow[] {
     mk(22, 5, '等级功能回归测试', 'L1-10', '测试', '钱 QA', 0),
   ]
   const levelMilestone: GanttRow = {
-    id: 'row-L1-MS',
+    id: nextId(),
     taskCode: 'L1-MS',
     taskName: '等级体系 V2.0 上线',
     owner: '张项目',
@@ -190,7 +194,7 @@ function buildGanttData(): GanttRow[] {
     mk(25, 5, '积分全量回归', 'P2-08', '测试', '钱 QA', 0),
   ]
   const pointMilestone: GanttRow = {
-    id: 'row-P2-MS',
+    id: nextId(),
     taskCode: 'P2-MS',
     taskName: '积分系统升级上线',
     owner: '张项目',
@@ -216,7 +220,7 @@ function buildGanttData(): GanttRow[] {
     mk(33, 2, '会员资产台账 & 导出', 'S3-11', '开发', '郑数据', 0),
   ]
   const paidMilestone: GanttRow = {
-    id: 'row-S3-MS',
+    id: nextId(),
     taskCode: 'S3-MS',
     taskName: '超级会员卡上线',
     owner: '张项目',
@@ -243,7 +247,7 @@ function buildGanttData(): GanttRow[] {
     mk(44, 3, '运营看板埋点 & 监控', 'M4-12', '测试', '钱 QA', 0),
   ]
   const mktMilestone: GanttRow = {
-    id: 'row-M4-MS',
+    id: nextId(),
     taskCode: 'M4-MS',
     taskName: '营销自动化 GA',
     owner: '张项目',
@@ -256,7 +260,7 @@ function buildGanttData(): GanttRow[] {
 
   return [
     {
-      id: 'row-PH-1', taskCode: 'PH-1', taskName: '会员等级体系重构',
+      id: nextId(), taskCode: 'PH-1', taskName: '会员等级体系重构',
       owner: '张项目', phase: '需求',
       startTime: levelTasks[0].startTime,
       endTime: levelMilestone.endTime,
@@ -265,7 +269,7 @@ function buildGanttData(): GanttRow[] {
       children: [...levelTasks, levelMilestone],
     },
     {
-      id: 'row-PH-2', taskCode: 'PH-2', taskName: '积分体系升级',
+      id: nextId(), taskCode: 'PH-2', taskName: '积分体系升级',
       owner: '张项目', phase: '开发',
       startTime: pointTasks[0].startTime,
       endTime: pointMilestone.endTime,
@@ -274,7 +278,7 @@ function buildGanttData(): GanttRow[] {
       children: [...pointTasks, pointMilestone],
     },
     {
-      id: 'row-PH-3', taskCode: 'PH-3', taskName: '付费会员 - 超级会员卡',
+      id: nextId(), taskCode: 'PH-3', taskName: '付费会员 - 超级会员卡',
       owner: '张项目', phase: '开发',
       startTime: paidTasks[0].startTime,
       endTime: paidMilestone.endTime,
@@ -283,7 +287,7 @@ function buildGanttData(): GanttRow[] {
       children: [...paidTasks, paidMilestone],
     },
     {
-      id: 'row-PH-4', taskCode: 'PH-4', taskName: '会员营销自动化',
+      id: nextId(), taskCode: 'PH-4', taskName: '会员营销自动化',
       owner: '张项目', phase: '需求',
       startTime: mktTasks[0].startTime,
       endTime: mktMilestone.endTime,
