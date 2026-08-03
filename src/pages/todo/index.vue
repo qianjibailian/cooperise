@@ -105,21 +105,6 @@
         </vxe-column>
       </vxe-table>
     </div>
-
-    <!-- 底部分页 -->
-    <div class="pagination-bar">
-      <a-pagination
-        v-model:current="currentPage"
-        v-model:page-size="pageSize"
-        :total="total"
-        :page-size-options="['10', '20', '50']"
-        show-size-changer
-        show-quick-jumper
-        :show-total="(t: number) => `共 ${t} 条`"
-        @change="onPageChange"
-        @show-size-change="onPageSizeChange"
-      />
-    </div>
   </div>
 </template>
 
@@ -226,17 +211,6 @@ function handleAction(key: string, row: Issue) {
       console.log('回滚:', row)
       break
   }
-}
-
-function onPageChange(page: number) {
-  currentPage.value = page
-  fetchIssues()
-}
-
-function onPageSizeChange(_current: number, size: number) {
-  currentPage.value = 1
-  pageSize.value = size
-  fetchIssues()
 }
 
 onMounted(() => {
@@ -399,14 +373,6 @@ onMounted(() => {
 .summary-text {
   font-size: 14px;
   color: #262626;
-}
-
-/* 底部分页 */
-.pagination-bar {
-  display: flex;
-  justify-content: flex-end;
-  padding: 12px 0 4px;
-  border-top: 1px solid #f0f0f0;
 }
 
 /* 操作列三点按钮 */
