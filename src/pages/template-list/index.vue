@@ -324,7 +324,7 @@ watch(previewMode, async (mode) => {
   if (mode === 'table' && previewTemplate.value) {
     try {
       const res = await getIssues({
-        category: previewTemplate.value.category,
+        issuetypeId: previewTemplate.value.category,
         pageSize: 999,
       })
       if (res.success && res.data.list) {
