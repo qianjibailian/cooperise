@@ -94,7 +94,7 @@
             <a-dropdown>
               <a-button type="text" class="action-dots">···</a-button>
               <template #overlay>
-                <a-menu @click="({ key }: { key: string }) => handleAction(key, row)">
+                <a-menu @click="handleMenuClick($event, row)">
                   <a-menu-item key="edit">编辑</a-menu-item>
                   <a-menu-item key="copy">复制</a-menu-item>
                   <a-menu-item key="rollback">回滚</a-menu-item>
@@ -208,6 +208,10 @@ async function fetchIssues() {
   } finally {
     loading.value = false
   }
+}
+
+function handleMenuClick(e: { key: string }, row: Issue) {
+  handleAction(e.key, row)
 }
 
 function handleAction(key: string, row: Issue) {
