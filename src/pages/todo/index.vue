@@ -57,36 +57,36 @@
         class="items-table"
       >
         <vxe-column type="checkbox" width="50" align="center" />
-        <vxe-column field="code" title="编号" width="140" />
-        <vxe-column field="title" title="概要" min-width="260">
+        <vxe-column field="issueKey" title="编号" width="140" />
+        <vxe-column field="summary" title="概要" min-width="260">
           <template #default="{ row }">
-            <span class="summary-text">{{ row.title }}</span>
+            <span class="summary-text">{{ row.summary }}</span>
           </template>
         </vxe-column>
-        <vxe-column field="priority" title="优先级" width="100">
+        <vxe-column field="priorityId" title="优先级" width="100">
           <template #default="{ row }">
-            <a-tag :color="priorityColor(row.priority)">{{ priorityLabel(row.priority) }}</a-tag>
+            <a-tag :color="priorityColor(row.priorityId)">{{ priorityLabel(row.priorityId) }}</a-tag>
           </template>
         </vxe-column>
-        <vxe-column field="status" title="状态" width="100">
+        <vxe-column field="statusId" title="状态" width="100">
           <template #default="{ row }">
-            <a-tag :color="statusColor(row.status)">{{ statusLabel(row.status) }}</a-tag>
+            <a-tag :color="statusColor(row.statusId)">{{ statusLabel(row.statusId) }}</a-tag>
           </template>
         </vxe-column>
-        <vxe-column field="category" title="分类" width="80">
+        <vxe-column field="issuetypeId" title="分类" width="80">
           <template #default="{ row }">
-            <a-tag>{{ categoryLabel(row.category) }}</a-tag>
+            <a-tag>{{ typeLabel(row.issuetypeId) }}</a-tag>
           </template>
         </vxe-column>
-        <vxe-column field="assignee" title="指派人" width="100" />
-        <vxe-column field="deadline" title="截止日期" width="120">
-          <template #default="{ row }">
-            <span v-if="row.deadline">{{ row.deadline?.split('T')[0] }}</span>
-          </template>
-        </vxe-column>
-        <vxe-column field="createdAt" title="创建时间" width="160">
+        <vxe-column field="assigneeId" title="经办人" width="100" />
+        <vxe-column field="createdAt" title="创建时间" width="120">
           <template #default="{ row }">
             <span>{{ row.createdAt?.split('T')[0] }}</span>
+          </template>
+        </vxe-column>
+        <vxe-column field="updatedAt" title="更新时间" width="120">
+          <template #default="{ row }">
+            <span>{{ row.updatedAt?.split('T')[0] }}</span>
           </template>
         </vxe-column>
         <vxe-column title="操作" width="60" fixed="right" align="center">
@@ -163,29 +163,29 @@ const total = ref(0)
 const loading = ref(false)
 const dataList = ref<Issue[]>([])
 
-function statusLabel(s: number) {
-  const map: Record<number, string> = { 1: '待处理', 2: '进行中', 3: '已完成' }
-  return map[s] ?? String(s)
+function statusLabel(s: string) {
+  const map: Record<string, string> = { '1': '待处理', '2': '进行中', '3': '已完成' }
+  return map[s] ?? s
 }
 
-function statusColor(s: number) {
-  const map: Record<number, string> = { 1: 'default', 2: 'processing', 3: 'success' }
+function statusColor(s: string) {
+  const map: Record<string, string> = { '1': 'default', '2': 'processing', '3': 'success' }
   return map[s] ?? 'default'
 }
 
-function priorityLabel(p: number) {
-  const map: Record<number, string> = { 1: '高', 2: '中', 3: '低' }
-  return map[p] ?? String(p)
+function priorityLabel(p: string) {
+  const map: Record<string, string> = { '1': '高', '2': '中', '3': '低' }
+  return map[p] ?? p
 }
 
-function priorityColor(p: number) {
-  const map: Record<number, string> = { 1: 'red', 2: 'orange', 3: 'default' }
+function priorityColor(p: string) {
+  const map: Record<string, string> = { '1': 'red', '2': 'orange', '3': 'default' }
   return map[p] ?? 'default'
 }
 
-function categoryLabel(c: string) {
-  const map: Record<string, string> = { requirement: '需求', task: '任务', bug: '缺陷', other: '其他' }
-  return map[c] ?? c
+function typeLabel(t: string) {
+  const map: Record<string, string> = { '10001': '需求', '10002': '任务', '10003': '缺陷', '10004': '其他' }
+  return map[t] ?? t
 }
 
 async function fetchIssues() {

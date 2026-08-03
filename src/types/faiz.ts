@@ -72,16 +72,16 @@ export interface TemplateStats {
 // ========== Issue ==========
 export interface Issue {
   id: number
-  code: string
-  title: string
+  issueKey: string
+  projectId: string
+  issuetypeId: string
+  summary: string
   description: string
-  priority: number      // 1=高, 2=中, 3=低
-  status: number        // 1=待处理, 2=进行中, 3=已完成
-  assignee: string
-  progress: number
-  deadline: string
-  category: string      // requirement/task/bug/other
-  formData: string      // JSON 字符串
+  statusId: string
+  priorityId: string
+  creatorId: string
+  assigneeId: string
+  parentIssueKey: string | null
   createdAt: string
   updatedAt: string
 }
@@ -95,10 +95,11 @@ export interface IssueListData {
 
 export interface IssueQuery {
   keyword?: string
-  priority?: number
-  status?: number
-  assignee?: string
-  category?: string
+  priorityId?: string
+  statusId?: string
+  assigneeId?: string
+  issuetypeId?: string
+  projectId?: string
   page?: number
   pageSize?: number
 }
