@@ -27,10 +27,10 @@
           :placeholder="searchPlaceholder"
           class="header-search"
           allow-clear
-          @focus="dropdownOpen = true"
-          @blur="dropdownOpen = false"
+          @focus="openSearchDropdown"
+          @blur="closeSearchDropdown"
           @press-enter="handleEnter"
-          @keydown.esc="dropdownOpen = false"
+          @keydown.esc="closeSearchDropdown"
         >
           <template #prefix>
             <SearchOutlined style="color: #bbb" />
@@ -76,11 +76,12 @@
       </button>
 
       <a-popover
-        trigger="click"
+        v-model:open="userPopoverOpen"
+        :trigger="[]"
         placement="bottomRight"
         overlay-class-name="user-dropdown-popover"
       >
-        <div class="user-trigger">
+        <div class="user-trigger" @click="toggleUserPopover">
           <a-avatar :size="32" class="user-avatar">
             <template #icon><UserOutlined /></template>
           </a-avatar>
@@ -118,7 +119,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, nextTick } from 'vue'
 import { message } from 'ant-design-vue'
 import {
   MenuOutlined,
@@ -149,18 +150,45 @@ const emit = defineEmits<{
 
 const searchValue = ref('')
 const dropdownOpen = ref(false)
+const userPopoverOpen = ref(false)
+// 更新门闩：防止同一 flush 中重复对同一个 open ref 赋值触发 checkRecursiveUpdates
+let _dropdownUpdating = false
+let _popoverUpdating = false
+
+function setDropdownOpen(next: boolean) {
+  if (_dropdownUpdating) return
+  if (dropdownOpen.value === next) return
+  _dropdownUpdating = true
+  nextTick(() => {
+    dropdownOpen.value = next
+    _dropdownUpdating = false
+  })
+}
+function openSearchDropdown() { setDropdownOpen(true) }
+function closeSearchDropdown() { setDropdownOpen(false) }
+
+function setUserPopoverOpen(next: boolean) {
+  if (_popoverUpdating) return
+  if (userPopoverOpen.value === next) return
+  _popoverUpdating = true
+  nextTick(() => {
+    userPopoverOpen.value = next
+    _popoverUpdating = false
+  })
+}
+function toggleUserPopover() { setUserPopoverOpen(!userPopoverOpen.value) }
 
 const recentSearches = ref(['待办事项', '项目', '文档', '工作台', '设置'])
 const recentVisits = ref(['轻量应用服务器', '控制台首页', '云解析DNS', '费用与成本', '大模型服务平台百炼'])
 
 function handleEnter() {
-  dropdownOpen.value = false
+  closeSearchDropdown()
   handleSearch()
 }
 
 function handleSelect(item: string) {
   searchValue.value = item
-  dropdownOpen.value = false
+  closeSearchDropdown()
   handleSearch(item)
 }
 const username = '用户'
@@ -177,9 +205,10 @@ function handleSearch(value?: string) {
 const auth = useAuth()
 
 function handleMenuSelect(key: string) {
+  setUserPopoverOpen(false)
   switch (key) {
     case 'logout':
-      handleLogout()
+      nextTick(handleLogout)
       break
     case 'settings':
       console.log('个人设置')

@@ -181,6 +181,10 @@
                     <component :is="TableOutlined" />
                     <span>表单列表</span>
                   </a-menu-item>
+                  <a-menu-item key="/settings/component-list">
+                    <component :is="AppstoreOutlined" />
+                    <span>组件列表</span>
+                  </a-menu-item>
                 </a-sub-menu>
                 <a-menu-item key="/settings/profile">
                   <component :is="UserOutlined" />

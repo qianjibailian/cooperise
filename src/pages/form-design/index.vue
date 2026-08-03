@@ -98,16 +98,13 @@ const formDesignWidgets = ref<VxeFormDesignPropTypes.Widgets>([
   {
     group: 'layout',
     children: [
-      'title',
       'row',
-      'subtable',
-      'TabWidget'
     ]
   },
   {
     group: 'base',
     children: [
-      'InputWidget', 'TextareaWidget', 'NumberInputWidget', 'AmountInputWidget',
+      'InputWidget', 'TextareaWidget', 'NumberInputWidget',
       'DateDatePickerWidget',
       'SelectWidget',
       'UploadFileWidget', 'UploadImageWidget'

@@ -194,26 +194,57 @@
       class="edit-modal"
     >
       <div class="preview-section" v-if="previewTemplate">
-        <a-tabs v-if="previewTemplate.tabs?.length > 1" v-model:activeKey="previewActiveTab" type="line">
-          <a-tab-pane v-for="tab in previewTemplate.tabs" :key="tab.id" :tab="tab.name">
-            <div v-if="tab.widgetData?.length" class="preview-wrap">
-              <vxe-form-view
-                :config="{ formConfig: tab.formConfig, widgetData: tab.widgetData }"
-                v-model="previewTabData[tab.id]"
-              />
-            </div>
-            <div v-else class="empty-preview">此表单暂无配置</div>
-          </a-tab-pane>
-        </a-tabs>
-        <div v-else-if="previewTemplate.tabs?.length === 1" class="preview-wrap">
-          <vxe-form-view
-            v-if="previewTemplate.tabs[0].widgetData?.length"
-            :config="{ formConfig: previewTemplate.tabs[0].formConfig, widgetData: previewTemplate.tabs[0].widgetData }"
-            v-model="previewTabData[previewTemplate.tabs[0].id]"
-          />
-          <div v-else class="empty-preview">此表单暂无配置</div>
+        <!-- 预览模式切换 -->
+        <div class="preview-mode-bar">
+          <a-radio-group v-model:value="previewMode" size="small" button-style="solid">
+            <a-radio-button value="form">表单</a-radio-button>
+            <a-radio-button value="table">表格</a-radio-button>
+          </a-radio-group>
         </div>
-        <div v-else class="empty-preview">模板无表单配置</div>
+
+        <!-- 表单预览 -->
+        <template v-if="previewMode === 'form'">
+          <a-tabs
+            v-if="previewTemplate.tabs?.length > 1"
+            :key="previewTemplate.id"
+            v-model:activeKey="previewActiveTab"
+            type="line"
+          >
+            <a-tab-pane v-for="tab in previewTemplate.tabs" :key="tab.id" :tab="tab.name">
+              <div v-if="tab.widgetData?.length" class="preview-wrap">
+                <vxe-form-view
+                  :config="{ formConfig: tab.formConfig, widgetData: tab.widgetData }"
+                  v-model="previewTabData[tab.id]"
+                />
+              </div>
+              <div v-else class="empty-preview">此表单暂无配置</div>
+            </a-tab-pane>
+          </a-tabs>
+          <div v-else-if="previewTemplate.tabs?.length === 1" class="preview-wrap">
+            <vxe-form-view
+              v-if="previewTemplate.tabs[0].widgetData?.length"
+              :config="{ formConfig: previewTemplate.tabs[0].formConfig, widgetData: previewTemplate.tabs[0].widgetData }"
+              v-model="previewTabData[previewTemplate.tabs[0].id]"
+            />
+            <div v-else class="empty-preview">此表单暂无配置</div>
+          </div>
+          <div v-else class="empty-preview">模板无表单配置</div>
+        </template>
+
+        <!-- 表格预览 -->
+        <template v-else>
+          <div v-if="previewTableColumns.length" class="preview-wrap">
+            <vxe-table
+              :data="tablePreviewData"
+              :columns="previewTableColumns"
+              :size="'small'"
+              border
+              show-overflow
+              :empty-text="'暂无数据'"
+            />
+          </div>
+          <div v-else class="empty-preview">此表单暂无配置</div>
+        </template>
       </div>
       <div v-else class="empty-preview">模板无表单配置</div>
     </a-modal>
@@ -221,7 +252,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, reactive, onMounted } from 'vue'
+import { ref, computed, reactive, onMounted, watch, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { message, Modal } from 'ant-design-vue'
 import {
@@ -229,7 +260,7 @@ import {
   EyeOutlined, EditOutlined, DeleteOutlined, CopyOutlined,
   MoreOutlined, AppstoreOutlined, InboxOutlined,
 } from '@ant-design/icons-vue'
-import { getTemplates, createTemplate, updateTemplate, deleteTemplate, copyTemplate } from '@/api/faiz'
+import { getTemplates, createTemplate, updateTemplate, deleteTemplate, copyTemplate, getIssues } from '@/api/faiz'
 
 const router = useRouter()
 
@@ -285,6 +316,31 @@ const activeEditTab = ref('')
 const previewActiveTab = ref('')
 const previewTabData = ref<Record<string, any>>({})
 const previewTemplate = ref<Template | null>(null)
+const previewMode = ref<'form' | 'table'>('form')
+const tablePreviewData = ref<any[]>([])
+
+// 切换到表格预览时加载事项表单数据
+watch(previewMode, async (mode) => {
+  if (mode === 'table' && previewTemplate.value) {
+    try {
+      const res = await getIssues({
+        category: previewTemplate.value.category,
+        pageSize: 999,
+      })
+      if (res.success && res.data.list) {
+        tablePreviewData.value = res.data.list.map((issue: any) => {
+          const formData = typeof issue.formData === 'string'
+            ? JSON.parse(issue.formData || '{}')
+            : (issue.formData || {})
+          return formData
+        })
+      }
+    } catch {
+      tablePreviewData.value = []
+    }
+  }
+})
+
 const templates = ref<Template[]>([])
 
 const editForm = reactive<{
@@ -505,6 +561,32 @@ function handleMenuAction(key: string, record: Template) {
 }
 
 // ---- 预览 ----
+function extractTableColumns(widgets: any[]): { field: string; title: string; width?: number }[] {
+  const columns: { field: string; title: string; width?: number }[] = []
+  const walk = (ws: any[]) => {
+    ws.forEach(w => {
+      if (w.children?.length) {
+        walk(w.children)
+      } else if (w.field) {
+        columns.push({ field: w.field, title: w.title || w.field, width: w.width || undefined })
+      }
+    })
+  }
+  walk(widgets)
+  return columns
+}
+
+const previewTableColumns = computed(() => {
+  if (!previewTemplate.value) return []
+  const allColumns: { field: string; title: string; width?: number }[] = []
+  for (const tab of previewTemplate.value.tabs || []) {
+    if (tab.widgetData?.length) {
+      allColumns.push(...extractTableColumns(tab.widgetData))
+    }
+  }
+  return allColumns
+})
+
 function handlePreview(record: Template) {
   // 深克隆并解析 JSON 字段（后端返回的 formConfig/widgetData 是字符串）
   const parsed = JSON.parse(JSON.stringify(record))
@@ -513,17 +595,26 @@ function handlePreview(record: Template) {
     tab.formConfig = typeof tab.formConfig === 'string' ? JSON.parse(tab.formConfig) : tab.formConfig
     tab.widgetData = typeof tab.widgetData === 'string' ? JSON.parse(tab.widgetData) : tab.widgetData
   })
-  previewTemplate.value = parsed
-  previewTabData.value = {}
-  previewActiveTab.value = String(parsed.tabs?.[0]?.id || '')
+  // 先在本地构建完整的 tabData，避免逐个属性赋值触发多次响应式更新
+  const tabData: Record<string, any> = {}
   parsed.tabs?.forEach((tab: any) => {
     const data: Record<string, any> = {}
     const init = (ws: any[], o: Record<string, any>) =>
       ws.forEach((w: any) => { if (w.children?.length) init(w.children, o); else if (w.field) o[w.field] = null })
     tab.widgetData?.length && init(tab.widgetData, data)
-    previewTabData.value[tab.id] = data
+    tabData[tab.id] = data
   })
-  showPreviewModal.value = true
+  // 按顺序一次性写入所有状态（先数据 → 再模板 → 最后模式）
+  previewTabData.value = tabData
+  tablePreviewData.value = []
+  previewActiveTab.value = String(parsed.tabs?.[0]?.id || '')
+  previewTemplate.value = parsed
+  previewMode.value = 'form'
+  // 使用 nextTick 延迟打开弹窗，确保所有同步状态写入完成后再挂载 Modal 内容
+  // 避免 vxe-form-view v-model 初始化回写与 previewTabData 赋值在同一 flush 中形成递归
+  nextTick(() => {
+    showPreviewModal.value = true
+  })
 }
 
 onMounted(loadTemplates)
@@ -648,4 +739,6 @@ onMounted(loadTemplates)
 .preview-section :deep(.ant-tabs-tab) { font-size: 15px; font-weight: 500; }
 .preview-wrap { max-height: 60vh; overflow-y: auto; }
 .empty-preview { text-align: center; color: #aeaeb2; padding: 40px 0; }
+.preview-mode-bar { display: flex; justify-content: flex-end; margin-bottom: 16px; }
+.preview-mode-bar :deep(.ant-radio-button-wrapper) { font-size: 13px; }
 </style>

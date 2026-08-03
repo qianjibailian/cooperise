@@ -87,6 +87,20 @@
             <span>{{ row.createdAt?.split('T')[0] }}</span>
           </template>
         </vxe-column>
+        <vxe-column title="操作" width="60" fixed="right" align="center">
+          <template #default="{ row }">
+            <a-dropdown>
+              <a-button type="text" class="action-dots">···</a-button>
+              <template #overlay>
+                <a-menu @click="({ key }: { key: string }) => handleAction(key, row)">
+                  <a-menu-item key="edit">编辑</a-menu-item>
+                  <a-menu-item key="copy">复制</a-menu-item>
+                  <a-menu-item key="rollback">回滚</a-menu-item>
+                </a-menu>
+              </template>
+            </a-dropdown>
+          </template>
+        </vxe-column>
       </vxe-table>
     </div>
 
@@ -191,6 +205,20 @@ async function fetchIssues() {
     dataList.value = []
   } finally {
     loading.value = false
+  }
+}
+
+function handleAction(key: string, row: Issue) {
+  switch (key) {
+    case 'edit':
+      console.log('编辑:', row)
+      break
+    case 'copy':
+      console.log('复制:', row)
+      break
+    case 'rollback':
+      console.log('回滚:', row)
+      break
   }
 }
 
@@ -373,5 +401,18 @@ onMounted(() => {
   justify-content: flex-end;
   padding: 12px 0 4px;
   border-top: 1px solid #f0f0f0;
+}
+
+/* 操作列三点按钮 */
+.action-dots {
+  font-size: 18px;
+  color: #8c8c8c;
+  letter-spacing: -1px;
+  padding: 0 4px;
+  line-height: 1;
+}
+
+.action-dots:hover {
+  color: #1890ff;
 }
 </style>

@@ -102,3 +102,20 @@ export interface IssueQuery {
   page?: number
   pageSize?: number
 }
+
+// ========== Component ==========
+export interface ComponentItem {
+  id: number
+  type: string
+  name: string
+  description: string
+  componentKey: string
+  status: number // 0=禁用, 1=启用
+  config: string
+  updatedAt?: string
+}
+
+export interface ComponentListData {
+  list: ComponentItem[]
+  total: number
+}

@@ -9,6 +9,9 @@ import type {
   TemplateStats,
   IssueListData,
   IssueQuery,
+  Issue,
+  ComponentItem,
+  ComponentListData,
 } from '@/types/faiz'
 
 const PREFIX = '/faiz-api'
@@ -58,8 +61,8 @@ export function getTemplateStats(): Promise<Result<TemplateStats>> {
 // ==================== Form API ====================
 
 /** 表单列表 */
-export function getForms(keyword?: string, category?: string): Promise<Result<FormListData>> {
-  return request.get(`${PREFIX}/form`, { params: { keyword, category } })
+export function getForms(keyword?: string, category?: string, templateId?: number): Promise<Result<FormListData>> {
+  return request.get(`${PREFIX}/form`, { params: { keyword, category, templateId } })
 }
 
 /** 表单详情 */
@@ -77,4 +80,36 @@ export function getIssues(params?: IssueQuery): Promise<Result<IssueListData>> {
 /** 新建 Modal 表单提交 - 存储动态表单数据 */
 export function submitIssueForm(formData: Record<string, unknown>): Promise<Result<Record<string, unknown>>> {
   return request.post(`${PREFIX}/issue/form-submit`, formData)
+}
+
+/** 单元格编辑 - 部分字段更新 Issue */
+export function patchIssue(id: number, fields: Record<string, unknown>): Promise<Result<Issue>> {
+  return request.patch(`${PREFIX}/issue/${id}`, fields)
+}
+
+// ==================== Component API ====================
+
+/** 组件列表 */
+export function getComponents(keyword?: string, category?: string): Promise<Result<ComponentListData>> {
+  return request.get(`${PREFIX}/component`, { params: { keyword, category } })
+}
+
+/** 组件详情 */
+export function getComponent(id: number): Promise<Result<ComponentItem>> {
+  return request.get(`${PREFIX}/component/${id}`)
+}
+
+/** 新增组件 */
+export function createComponent(data: Record<string, unknown>): Promise<Result<ComponentItem>> {
+  return request.post(`${PREFIX}/component`, data)
+}
+
+/** 更新组件 */
+export function updateComponent(id: number, data: Record<string, unknown>): Promise<Result<ComponentItem>> {
+  return request.put(`${PREFIX}/component/${id}`, data)
+}
+
+/** 删除组件 */
+export function deleteComponent(id: number): Promise<Result<void>> {
+  return request.delete(`${PREFIX}/component/${id}`)
 }
