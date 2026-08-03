@@ -13,6 +13,9 @@ import FormDesign from '@/pages/form-design/index.vue'
 import TemplateList from '@/pages/template-list/index.vue'
 import FormList from '@/pages/form-list/index.vue'
 import ComponentList from '@/pages/component-list/index.vue'
+import SprintBoard from '@/pages/sprint-board/index.vue'
+import TestingCalendar from '@/pages/testing-calendar/index.vue'
+import MemberGantt from '@/pages/member-gantt/index.vue'
 
 const routes: RouteRecordRaw[] = [
   {
@@ -22,6 +25,9 @@ const routes: RouteRecordRaw[] = [
     children: [
       { path: 'workbench', redirect: '/workbench/todo', name: 'Workbench' },
       { path: 'workbench/todo', component: Todo, name: 'Todo', meta: { title: '我的事项' } },
+      { path: 'view/sprint-board', component: SprintBoard, name: 'SprintBoard', meta: { title: 'Sprint 看板' } },
+      { path: 'view/testing-calendar', component: TestingCalendar, name: 'TestingCalendar', meta: { title: '测试平台需求日历' } },
+      { path: 'view/member-gantt', component: MemberGantt, name: 'MemberGantt', meta: { title: '会员体系优化 · 甘特图' } },
       { path: 'workbench/filters', component: EmptyContent, name: 'Filters', meta: { title: '新筛选器' } },
       { path: 'workbench/:pathMatch(.*)*', component: EmptyContent, name: 'WorkbenchDynamic' },
       { path: 'dashboard', component: Dashboard, name: 'Dashboard', meta: { title: '仪表盘' } },

@@ -80,13 +80,13 @@
                       <a-tag class="view-tag external">外</a-tag>
                     </span>
                   </template>
-                  <a-menu-item key="/view/folder1/item1">
+                  <a-menu-item key="/view/testing-calendar">
                     <span class="child-item">
-                      <span>CLUB开卡需求</span>
+                      <span>测试平台需求</span>
                       <component :is="StarFilled" class="favorite-icon" />
                     </span>
                   </a-menu-item>
-                  <a-menu-item key="/view/folder1/item2">
+                  <a-menu-item key="/view/member-gantt">
                     <span class="child-item">
                       <span>会员体系优化</span>
                     </span>

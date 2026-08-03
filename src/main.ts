@@ -5,6 +5,8 @@ import VxeUI from 'vxe-pc-ui'
 import 'vxe-pc-ui/lib/style.css'
 import VxeTable from 'vxe-table'
 import 'vxe-table/lib/style.css'
+import VxeGantt from 'vxe-gantt'
+import 'vxe-gantt/lib/style.css'
 import VxeDesign from 'vxe-design'
 import 'vxe-design/lib/style.css'
 import '@vxe-ui/plugin-render-antd/dist/style.css'
@@ -27,6 +29,7 @@ function render(props?: { container?: HTMLElement }) {
   appInstance.use(Antd)
   appInstance.use(VxeUI)
   appInstance.use(VxeTable)
+  appInstance.use(VxeGantt)
   appInstance.use(VxeDesign)
   appInstance.mount(container as HTMLElement)
 }

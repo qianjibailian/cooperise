@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite'
 import vuePlugin from '@vitejs/plugin-vue'
 import qiankun from 'vite-plugin-qiankun'
+import { webUpdateNotice } from '@plugin-web-update-notification/vite'
 import { resolve } from 'path'
 
 export default defineConfig({
@@ -8,6 +9,16 @@ export default defineConfig({
     vuePlugin(),
     qiankun('cooperise', {
       useDevMode: process.env.NODE_ENV === 'development',
+    }),
+    webUpdateNotice({
+      logVersion: true,
+      locale: 'zh_CN',
+      notificationProps: {
+        title: '系统更新通知',
+        description: '发现新版本，建议刷新页面获取最新体验',
+        buttonText: '立即刷新',
+        dismissButtonText: '稍后',
+      },
     }),
   ],
   optimizeDeps: {
