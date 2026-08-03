@@ -370,6 +370,9 @@ const taskViewConfig = reactive<VxeGanttPropTypes.TaskViewConfig<GanttRow>>({
   ],
   viewStyle: {
     cellWidth: 34,
+    // 启用 viewStyle.rowClassName 后，vxe-gantt 内部 tr 的 key 会走 rowid（keyField=id）分支
+    // 而不是扁平 $rowIndex，彻底消除 Duplicate keys 警告
+    rowClassName: 'vxe-gantt-row',
   },
 })
 
