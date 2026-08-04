@@ -93,18 +93,18 @@
                   </a-menu-item>
                   <a-menu-item key="/view/folder1/item3">
                     <span class="child-item">
-                      <span>积分商城改版</span>
+                      <span>商城改版</span>
                       <component :is="MoreOutlined" class="child-more-icon" />
                     </span>
                   </a-menu-item>
                   <a-menu-item key="/view/folder1/item4">
                     <span class="child-item">
-                      <span>签到功能迭代</span>
+                      <span>日常功能迭代</span>
                     </span>
                   </a-menu-item>
                   <a-menu-item key="/view/folder1/item5">
                     <span class="child-item">
-                      <span class="child-text-truncate">超省卡营销工具需...</span>
+                      <span class="child-text-truncate">88VIP会员工具需...</span>
                     </span>
                   </a-menu-item>
                 </a-sub-menu>
