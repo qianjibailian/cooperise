@@ -89,10 +89,25 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { FilterOutlined, TeamOutlined, PlusOutlined, LinkOutlined, InboxOutlined } from '@ant-design/icons-vue'
-import type { Issue } from '@/types/faiz'
+// sprint 看板本地 mock 事项
+interface SprintIssue {
+  id: number
+  issueKey: string
+  projectId: string
+  issuetypeId: string
+  summary: string
+  description: string
+  statusId: string
+  priorityId: string
+  creatorId: string
+  assigneeId: string
+  parentIssueKey: string | null
+  createdAt: string
+  updatedAt: string
+}
 
 // ---- mock 数据 ----
-const mockIssues: Issue[] = [
+const mockIssues: SprintIssue[] = [
   { id: 1,  issueKey: 'UG-900001', projectId: '18701', issuetypeId: '10001', summary: '首页推荐流懒加载优化', description: '', statusId: '2', priorityId: '1', creatorId: 'U001', assigneeId: 'U004', parentIssueKey: null,    createdAt: '2026-07-15T09:30:00', updatedAt: '2026-07-28T14:20:00' },
   { id: 2,  issueKey: 'UG-900002', projectId: '18701', issuetypeId: '10002', summary: '用户标签体系接口联调', description: '', statusId: '2', priorityId: '2', creatorId: 'U001', assigneeId: 'U005', parentIssueKey: null,    createdAt: '2026-07-16T10:15:00', updatedAt: '2026-07-30T16:45:00' },
   { id: 4,  issueKey: 'UG-900004', projectId: '18701', issuetypeId: '10001', summary: '新增自定义表单设计器', description: '', statusId: '2', priorityId: '2', creatorId: 'U001', assigneeId: 'U004', parentIssueKey: null,    createdAt: '2026-07-18T08:45:00', updatedAt: '2026-08-01T17:00:00' },

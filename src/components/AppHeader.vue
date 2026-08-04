@@ -86,7 +86,6 @@
             <template #icon><UserOutlined /></template>
           </a-avatar>
           <span class="user-name">{{ username }}</span>
-          <DownOutlined class="user-arrow" />
         </div>
         <template #content>
           <div class="user-panel">
@@ -127,7 +126,6 @@ import {
   HomeOutlined,
   SearchOutlined,
   UserOutlined,
-  DownOutlined,
   RightOutlined,
   PlusOutlined,
   DragOutlined,
@@ -365,17 +363,6 @@ async function handleLogout() {
   margin-left: 8px;
   font-size: 14px;
   color: #262626;
-}
-
-.user-arrow {
-  margin-left: 4px;
-  font-size: 10px;
-  color: #8c8c8c;
-  transition: transform 0.2s;
-}
-
-.user-trigger:hover .user-arrow {
-  color: #595959;
 }
 </style>
 

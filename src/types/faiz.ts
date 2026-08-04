@@ -70,27 +70,59 @@ export interface TemplateStats {
 }
 
 // ========== Issue ==========
-export interface Issue {
-  id: number
+/** 后端 issueField 单个字段项 */
+export interface IssueFieldItem {
+  id: string
+  name: string
+  type?: string
+  value: unknown
+  exportValue?: unknown
+  editable?: boolean
+  required?: boolean
+  [k: string]: unknown
+}
+
+/** 后端单条事项（issueField 数组形态） */
+export interface IssueRecord {
+  issueField: IssueFieldItem[]
+  searchAfter?: unknown
+  type?: string | null
+  [k: string]: unknown
+}
+
+/** POST /issue/query 的 info 层 */
+export interface IssueQueryInfo {
+  total: number
+  pageCount: number
+  currentPage: number
+  perPage: number
+  list: IssueRecord[]
+}
+
+/** POST /issue/query 的完整响应 */
+export interface IssueQueryResult {
+  code: string
+  msg: string
+  info: IssueQueryInfo
+}
+
+/** 拍平后供表格使用的事项行 */
+export interface IssueRow {
   issueKey: string
-  projectId: string
-  issuetypeId: string
   summary: string
   description: string
   statusId: string
+  statusName: string
   priorityId: string
-  creatorId: string
-  assigneeId: string
-  parentIssueKey: string | null
+  priorityName: string
+  issuetypeId: string
+  issuetypeName: string
+  assigneeName: string
+  creatorName: string
   createdAt: string
   updatedAt: string
-}
-
-export interface IssueListData {
-  list: Issue[]
-  total: number
-  page: number
-  pageSize: number
+  projectName: string
+  parentIssueKey: string | null
 }
 
 export interface IssueQuery {

@@ -51,42 +51,67 @@
         ref="tableRef"
         :data="dataList"
         :loading="loading"
-        :row-config="{ keyField: 'id' }"
+        :row-config="{ keyField: 'issueKey' }"
         :column-config="{ resizable: true }"
         :checkbox-config="{ highlight: true, range: false }"
+        :edit-config="{ trigger: 'click', mode: 'cell', showStatus: true, showIcon: false }"
+        @edit-actived="onEditActived"
+        @edit-closed="onEditClosed"
         class="items-table"
       >
         <vxe-column type="checkbox" width="50" align="center" />
         <vxe-column field="issueKey" title="编号" width="140" />
-        <vxe-column field="summary" title="概要" min-width="260">
+        <vxe-column field="summary" title="概要" min-width="260" :edit-render="{}">
           <template #default="{ row }">
             <span class="summary-text">{{ row.summary }}</span>
           </template>
-        </vxe-column>
-        <vxe-column field="priorityId" title="优先级" width="100">
-          <template #default="{ row }">
-            <a-tag :color="priorityColor(row.priorityId)">{{ priorityLabel(row.priorityId) }}</a-tag>
+          <template #edit="{ row }">
+            <a-input v-model:value="row.summary" size="small" />
           </template>
         </vxe-column>
-        <vxe-column field="statusId" title="状态" width="100">
+        <vxe-column field="priorityId" title="优先级" width="100" :edit-render="{}">
           <template #default="{ row }">
-            <a-tag :color="statusColor(row.statusId)">{{ statusLabel(row.statusId) }}</a-tag>
+            <a-tag :color="priorityColor(row.priorityId)">{{ row.priorityName || priorityLabel(row.priorityId) }}</a-tag>
+          </template>
+          <template #edit="{ row }">
+            <a-select v-model:value="row.priorityId" size="small" style="width:100%" @change="(v: string) => onSelectChange(row, 'priorityId', 'priorityName', v, priorityOptions)">
+              <a-select-option v-for="o in priorityOptions" :key="o.value" :value="o.value">{{ o.label }}</a-select-option>
+            </a-select>
           </template>
         </vxe-column>
-        <vxe-column field="issuetypeId" title="分类" width="80">
+        <vxe-column field="statusId" title="状态" width="100" :edit-render="{}">
           <template #default="{ row }">
-            <a-tag>{{ typeLabel(row.issuetypeId) }}</a-tag>
+            <a-tag :color="statusColor(row.statusId)">{{ row.statusName || statusLabel(row.statusId) }}</a-tag>
+          </template>
+          <template #edit="{ row }">
+            <a-select v-model:value="row.statusId" size="small" style="width:100%" @change="(v: string) => onSelectChange(row, 'statusId', 'statusName', v, statusOptions)">
+              <a-select-option v-for="o in statusOptions" :key="o.value" :value="o.value">{{ o.label }}</a-select-option>
+            </a-select>
           </template>
         </vxe-column>
-        <vxe-column field="assigneeId" title="经办人" width="100" />
+        <vxe-column field="issuetypeId" title="分类" width="80" :edit-render="{}">
+          <template #default="{ row }">
+            <a-tag>{{ row.issuetypeName || typeLabel(row.issuetypeId) }}</a-tag>
+          </template>
+          <template #edit="{ row }">
+            <a-select v-model:value="row.issuetypeId" size="small" style="width:100%" @change="(v: string) => onSelectChange(row, 'issuetypeId', 'issuetypeName', v, typeOptions)">
+              <a-select-option v-for="o in typeOptions" :key="o.value" :value="o.value">{{ o.label }}</a-select-option>
+            </a-select>
+          </template>
+        </vxe-column>
+        <vxe-column field="assigneeName" title="经办人" width="120" :edit-render="{}">
+          <template #edit="{ row }">
+            <a-input v-model:value="row.assigneeName" size="small" />
+          </template>
+        </vxe-column>
         <vxe-column field="createdAt" title="创建时间" width="120">
           <template #default="{ row }">
-            <span>{{ row.createdAt?.split('T')[0] }}</span>
+            <span>{{ row.createdAt?.split(' ')[0] }}</span>
           </template>
         </vxe-column>
         <vxe-column field="updatedAt" title="更新时间" width="120">
           <template #default="{ row }">
-            <span>{{ row.updatedAt?.split('T')[0] }}</span>
+            <span>{{ row.updatedAt?.split(' ')[0] }}</span>
           </template>
         </vxe-column>
         <vxe-column title="操作" width="60" fixed="right" align="center">
@@ -111,6 +136,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import type { VxeTableInstance } from 'vxe-table'
+import { message } from 'ant-design-vue'
 import {
   ReloadOutlined,
   FilterOutlined,
@@ -122,10 +148,10 @@ import {
   MoreOutlined,
   UnorderedListOutlined,
 } from '@ant-design/icons-vue'
-import { getIssues } from '@/api/faiz'
-import type { Issue } from '@/types/faiz'
+import { getIssues, patchIssue } from '@/api/faiz'
+import type { IssueRow, IssueRecord } from '@/types/faiz'
 
-const tableRef = ref<VxeTableInstance<Issue>>()
+const tableRef = ref<VxeTableInstance<IssueRow>>()
 
 // 工具栏状态
 const filterCount = ref(0)
@@ -142,11 +168,11 @@ function handleReset() {
 
 // 分页
 const currentPage = ref(1)
-const pageSize = ref(20)
+const pageSize = ref(50)
 const total = ref(0)
 
 const loading = ref(false)
-const dataList = ref<Issue[]>([])
+const dataList = ref<IssueRow[]>([])
 
 function statusLabel(s: string) {
   const map: Record<string, string> = { '1': '待处理', '2': '进行中', '3': '已完成' }
@@ -173,6 +199,86 @@ function typeLabel(t: string) {
   return map[t] ?? t
 }
 
+// ---------- 单元格编辑 ----------
+const priorityOptions = [
+  { value: '1', label: '高' },
+  { value: '2', label: '中' },
+  { value: '3', label: '低' },
+]
+const statusOptions = [
+  { value: '1', label: '待处理' },
+  { value: '2', label: '进行中' },
+  { value: '3', label: '已完成' },
+]
+const typeOptions = [
+  { value: '10001', label: '需求' },
+  { value: '10002', label: '任务' },
+  { value: '10003', label: '缺陷' },
+  { value: '10004', label: '其他' },
+]
+
+// 下拉选择变更时同步 name 字段
+function onSelectChange(row: IssueRow, idField: string, nameField: string, val: string, options: { value: string; label: string }[]) {
+  ;(row as unknown as Record<string, unknown>)[idField] = val
+  const o = options.find(i => i.value === val)
+  ;(row as unknown as Record<string, unknown>)[nameField] = o ? o.label : ''
+}
+
+// 编辑前的快照
+const editBackup = ref<{ issueKey: string; field: string; value: unknown } | null>(null)
+
+function onEditActived(params: { row: IssueRow; column: { field: string } }) {
+  const { row, column } = params
+  editBackup.value = {
+    issueKey: row.issueKey,
+    field: column.field,
+    value: (row as unknown as Record<string, unknown>)[column.field],
+  }
+}
+
+function onEditClosed(params: { row: IssueRow; column: { field: string } }) {
+  const { row, column } = params
+  const field = column.field
+  if (!editBackup.value || editBackup.value.issueKey !== row.issueKey || editBackup.value.field !== field) return
+  const oldVal = editBackup.value.value
+  const newVal = (row as unknown as Record<string, unknown>)[field]
+  editBackup.value = null
+  if (oldVal === newVal) return
+  // 调后端保存
+  patchIssue(row.issueKey, { [field]: newVal })
+    .then(() => message.success('已保存'))
+    .catch(() => message.error('保存失败'))
+}
+
+// 将后端 issueField 数组拍平为表格行对象
+function flattenIssue(rec: IssueRecord): IssueRow {
+  const m: Record<string, unknown> = {}
+  rec.issueField?.forEach((f) => { m[f.id] = f.value })
+  const status = (m.status || {}) as Record<string, unknown>
+  const priority = (m.priority || {}) as Record<string, unknown>
+  const issuetype = (m.issuetype || {}) as Record<string, unknown>
+  const assignee = (m.assignee || {}) as Record<string, unknown>
+  const creator = (m.creator || {}) as Record<string, unknown>
+  const project = (m.project || {}) as Record<string, unknown>
+  return {
+    issueKey: String(m.issuekey ?? ''),
+    summary: String(m.summary ?? ''),
+    description: String(m.description ?? ''),
+    statusId: String(status.id ?? ''),
+    statusName: String(status.name ?? ''),
+    priorityId: String(priority.id ?? ''),
+    priorityName: String(priority.pname ?? ''),
+    issuetypeId: String(issuetype.id ?? ''),
+    issuetypeName: String(issuetype.name ?? ''),
+    assigneeName: String(assignee.userEnName || assignee.userCoAccount || ''),
+    creatorName: String(creator.userEnName || creator.userCoAccount || ''),
+    createdAt: String(m.created ?? ''),
+    updatedAt: String(m.updated ?? ''),
+    projectName: String(project.name ?? ''),
+    parentIssueKey: (m.parentIssueKey as string | null) ?? null,
+  }
+}
+
 async function fetchIssues() {
   loading.value = true
   try {
@@ -180,10 +286,10 @@ async function fetchIssues() {
       page: currentPage.value,
       pageSize: pageSize.value,
     })
-    const body = res.data
-    if (body && body.list) {
-      dataList.value = body.list
-      total.value = body.total ?? 0
+    const info = res?.info
+    if (info && info.list) {
+      dataList.value = info.list.map(flattenIssue)
+      total.value = info.total ?? 0
     } else {
       dataList.value = []
       total.value = 0
@@ -195,11 +301,11 @@ async function fetchIssues() {
   }
 }
 
-function handleMenuClick(e: { key: string }, row: Issue) {
+function handleMenuClick(e: { key: string }, row: IssueRow) {
   handleAction(e.key, row)
 }
 
-function handleAction(key: string, row: Issue) {
+function handleAction(key: string, row: IssueRow) {
   switch (key) {
     case 'edit':
       console.log('编辑:', row)

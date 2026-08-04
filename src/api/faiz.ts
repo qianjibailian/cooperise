@@ -7,9 +7,9 @@ import type {
   FormListData,
   FormItem,
   TemplateStats,
-  IssueListData,
   IssueQuery,
-  Issue,
+  IssueQueryResult,
+  IssueRow,
   ComponentItem,
   ComponentListData,
 } from '@/types/faiz'
@@ -72,9 +72,9 @@ export function getForm(id: number): Promise<Result<FormItem>> {
 
 // ==================== Issue API ====================
 
-/** Issue 分页查询 */
-export function getIssues(params?: IssueQuery): Promise<Result<IssueListData>> {
-  return request.get(`${PREFIX}/issue`, { params })
+/** Issue 分页搜索（POST /issue/query） */
+export function getIssues(data?: IssueQuery): Promise<IssueQueryResult> {
+  return request.post(`${PREFIX}/issue/query`, data)
 }
 
 /** 新建 Modal 表单提交 - 存储动态表单数据 */
@@ -83,7 +83,7 @@ export function submitIssueForm(formData: Record<string, unknown>): Promise<Resu
 }
 
 /** 单元格编辑 - 部分字段更新 Issue */
-export function patchIssue(id: number, fields: Record<string, unknown>): Promise<Result<Issue>> {
+export function patchIssue(id: string | number, fields: Record<string, unknown>): Promise<Result<IssueRow>> {
   return request.patch(`${PREFIX}/issue/${id}`, fields)
 }
 
