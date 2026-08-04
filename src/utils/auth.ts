@@ -35,7 +35,16 @@ function setCookie(name: string, value: string, days = 7) {
 }
 
 function deleteCookie(name: string) {
-  document.cookie = name + '=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/'
+  const expired = '=; expires=Thu, 01 Jan 1970 00:00:00 GMT'
+  // 尝试多种 path / domain 组合，确保覆盖后端 Set-Cookie 可能使用的域
+  document.cookie = name + expired + '; path=/'
+  document.cookie = name + expired + '; path=/; domain=' + window.location.hostname
+  // 父域（如 .qianjisan.com）
+  const parts = window.location.hostname.split('.')
+  if (parts.length >= 2) {
+    const domain = '.' + parts.slice(-2).join('.')
+    document.cookie = name + expired + '; path=/; domain=' + domain
+  }
 }
 
 export function useAuth() {

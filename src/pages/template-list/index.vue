@@ -327,7 +327,7 @@ watch(previewMode, async (mode) => {
         issuetypeId: previewTemplate.value.category,
         pageSize: 999,
       })
-      const list = res?.info?.list
+      const list = res?.data?.list
       if (list) {
         tablePreviewData.value = list.map((issue: any) => {
           const formData = typeof issue.formData === 'string'

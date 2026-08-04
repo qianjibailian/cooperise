@@ -1,7 +1,7 @@
 {
-    "code": "0",
-    "msg": "OK",
-    "info": {
+    "message": "操作成功",
+    "success": true,
+    "data": {
         "total": 22,
         "pageCount": 1,
         "currentPage": 1,
@@ -538,7 +538,7 @@
                         "frontPage": null,
                         "description": null,
                         "defaultvalue": null,
-                        "exportValue": "用户��长研发任务",
+                        "exportValue": "用户增长研发任务",
                         "issueTemplateValue": null,
                         "linkageRole": null,
                         "valueLinkInfo": null,

@@ -286,7 +286,7 @@ async function fetchIssues() {
       page: currentPage.value,
       pageSize: pageSize.value,
     })
-    const info = res?.info
+    const info = res?.data
     if (info && info.list) {
       dataList.value = info.list.map(flattenIssue)
       total.value = info.total ?? 0

@@ -232,6 +232,7 @@
       width="60%"
       centered
       :mask-closable="false"
+      :confirm-loading="newFormSubmitting"
       @ok="handleNewFormSubmit"
       @cancel="handleNewFormCancel"
       ok-text="提交"
@@ -239,33 +240,82 @@
       destroy-on-close
       class="new-form-modal"
     >
-      <div class="new-form-scroll">
-        <div class="form-type-row">
-          <label class="form-type-label">事项类型</label>
-          <a-select
-            v-model:value="newFormIssueType"
-            placeholder="请选择事项类型"
-            size="large"
-            style="width: 100%"
-          >
-            <a-select-option value="requirement">需求</a-select-option>
-            <a-select-option value="task">任务</a-select-option>
-            <a-select-option value="bug">缺陷</a-select-option>
-            <a-select-option value="other">其他</a-select-option>
-          </a-select>
+      <a-spin :spinning="newFormLoading" class="new-form-spin">
+        <div class="new-form-inner">
+          <!-- 上部固定区：事项类型 + 分割线 -->
+          <div class="new-form-header">
+            <a-form layout="horizontal" :label-width="120">
+              <a-form-item label="事项类型">
+                <a-select
+                  v-model:value="newFormIssueTypeId"
+                  style="width: 100%"
+                  @change="loadCreateMeta"
+                >
+                  <a-select-option v-for="opt in issueTypeOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</a-select-option>
+                </a-select>
+              </a-form-item>
+            </a-form>
+            <a-divider style="margin: 0 0 8px" />
+          </div>
+          <!-- 下部固定容器：承载 Tabs + 内容区 -->
+          <div class="new-form-tabs-area">
+            <template v-if="newFormTabs.length > 0">
+              <a-tabs
+                v-model:activeKey="newFormActiveTab"
+                class="new-form-tabs"
+                :tab-bar-style="{ marginBottom: '16px' }"
+              >
+                <a-tab-pane v-for="tab in newFormTabs" :key="tab.title" :tab="tab.title">
+                  <!-- 每个 tab 内部包一层独立滚动容器 -->
+                  <div class="tab-pane-scroll">
+                    <a-form layout="horizontal" :label-width="120" :model="newFormData">
+                      <a-form-item
+                        v-for="field in tab.issueFields"
+                        :key="field.id"
+                      >
+                        <template #label>
+                          <span>{{ field.name }}</span>
+                          <span v-if="field.required" class="form-item-required-mark">*</span>
+                        </template>
+                        <template v-if="field.type === 'TEXT_BOX_SINGLE_LINE'">
+                          <a-input v-model:value="newFormData[field.id]" :placeholder="field.description || ''" :disabled="!field.editable" style="width: 100%" />
+                        </template>
+                        <template v-else-if="field.type === 'RICH_TEXT' || field.type === 'TEXT_BOX_MULTILINE'">
+                          <a-textarea v-model:value="newFormData[field.id]" :placeholder="field.description || ''" :rows="4" :disabled="!field.editable" style="width: 100%" />
+                        </template>
+                        <template v-else-if="field.type === 'NUMERIC_FIELD'">
+                          <a-input-number v-model:value="newFormData[field.id]" :placeholder="field.description || ''" :disabled="!field.editable" style="width: 100%" />
+                        </template>
+                        <template v-else-if="field.type === 'DATE_PICKER'">
+                          <a-date-picker v-model:value="newFormData[field.id]" :placeholder="field.description || ''" :disabled="!field.editable" style="width: 100%" />
+                        </template>
+                        <template v-else-if="field.type === 'SELECT_LIST_SINGLE' || field.type === 'SELECT_LIST_CASCADING' || field.type === 'SELECT_USER_SINGLE' || field.type === 'SPRINT_FIELD'">
+                          <a-select v-model:value="newFormData[field.id]" :placeholder="field.description || '请选择'" :disabled="!field.editable" allow-clear style="width: 100%" />
+                        </template>
+                        <template v-else-if="field.type === 'CHECKBOX'">
+                          <a-checkbox-group v-model:value="newFormData[field.id]" :disabled="!field.editable" />
+                        </template>
+                        <template v-else-if="field.type === 'ATTACHMENT_FIELD'">
+                          <a-upload :disabled="!field.editable">
+                            <a-button>点击上传</a-button>
+                          </a-upload>
+                        </template>
+                        <template v-else-if="field.type === 'LINKS_FIELD'">
+                          <a-input v-model:value="newFormData[field.id]" placeholder="输入关联事项编号" :disabled="!field.editable" style="width: 100%" />
+                        </template>
+                        <template v-else>
+                          <a-input v-model:value="newFormData[field.id]" :placeholder="field.description || ''" :disabled="!field.editable" style="width: 100%" />
+                        </template>
+                      </a-form-item>
+                    </a-form>
+                  </div>
+                </a-tab-pane>
+              </a-tabs>
+            </template>
+            <a-empty v-else description="暂无表单字段" />
+          </div>
         </div>
-        <a-tabs v-if="newFormTabs.length > 0" v-model:activeKey="newFormActiveTab" class="new-form-tabs">
-          <a-tab-pane v-for="(tab, idx) in newFormTabs" :key="tab.id" :tab="tab.name">
-            <vxe-form-view
-              v-if="showNewFormModal"
-              :key="`${formTemplateKey}_${idx}`"
-              :config="tab.viewConfig"
-              v-model="newFormData"
-            />
-          </a-tab-pane>
-        </a-tabs>
-        <a-empty v-else description="选择事项类型后加载表单" />
-      </div>
+      </a-spin>
     </a-modal>
   </a-layout>
 </template>
@@ -297,7 +347,7 @@ import AppHeader from '@/components/AppHeader.vue'
 import AppSideDrawer from '@/components/AppSideDrawer.vue'
 import WorkbenchPanel from './WorkbenchPanel.vue'
 import { useAuth } from '@/utils/auth'
-import { getNewFormTemplate, submitIssueForm } from '@/api/faiz'
+import { getIssueCreateMeta, submitIssueForm } from '@/api/faiz'
 
 const iconBarItems = [
   { key: 'workspace', icon: HomeOutlined, label: '工作台' },
@@ -316,90 +366,53 @@ const showLoginExpiredModal = ref(false)
 
 // 新建表单弹窗
 const showNewFormModal = ref(false)
-const newFormViewRef = ref<any>()
+const newFormLoading = ref(false)
+const newFormSubmitting = ref(false)
 const newFormData = ref<Record<string, any>>({})
-const newFormIssueType = ref('requirement')
-const newFormTemplateId = ref<number | null>(null)
-
-// 默认空模板（兜底）
-const emptyFormConfig = () => ({
-  pcVisible: true, pcVertical: true, pcTitleBold: true, pcTitleColon: false,
-  pcTitleAlign: '', pcTitleWidth: '', pcTitleAutoWidth: true, pcTitleWidthUnit: '',
-  mobileVisible: false, mobileVertical: true, mobileTitleBold: true, mobileTitleColon: false,
-  mobileTitleAlign: '', mobileTitleWidth: '', mobileTitleAutoWidth: true, mobileTitleWidthUnit: '',
-  isLog: false, isPC: true, isMobile: false, isApplet: false,
-})
-
-
-
-const formTemplateKey = ref(0)
-const newFormTabs = ref<{ id: string; name: string; formConfig: any; widgetData: any[]; viewConfig: { formConfig: any; widgetData: any[] } }[]>([])
+const newFormTabs = ref<{ title: string; sequence: number; issueFields: any[] }[]>([])
 const newFormActiveTab = ref('')
+const newFormIssueTypeId = ref('10002')
+const issueTypeOptions = [
+  { value: '10001', label: '需求' },
+  { value: '10002', label: '任务' },
+  { value: '10003', label: '缺陷' },
+  { value: '10004', label: '其他' },
+]
 
-function initFormData() {
-  Object.keys(newFormData.value).forEach(k => delete newFormData.value[k])
-  const walk = (widgets: any[]) => {
-    widgets.forEach((w: any) => {
-      if (w.children && w.children.length) walk(w.children)
-      else if (w.field) newFormData.value[w.field] = null
-    })
-  }
-  newFormTabs.value.forEach(tab => walk(tab.widgetData || []))
-}
-
-// 切换事项类型时，从后端加载对应的启用模板
-async function loadTemplateByIssueType(issueType: string) {
+// 加载创建表单元数据
+async function loadCreateMeta() {
+  newFormLoading.value = true
   try {
-    const res = await getNewFormTemplate(issueType)
-    const tpl = res.data
-    newFormTemplateId.value = tpl?.id ?? null
-    if (tpl && tpl.tabs && tpl.tabs.length > 0) {
-      newFormTabs.value = tpl.tabs.map((tab: any) => {
-        let formConfig = tab.formConfig || { title: tab.name, ...emptyFormConfig() }
-        if (typeof formConfig === 'string') formConfig = { ...emptyFormConfig(), ...JSON.parse(formConfig || '{}') }
-        let widgetData = tab.widgetData || []
-        if (typeof widgetData === 'string') widgetData = JSON.parse(widgetData || '[]')
-        return {
-          id: tab.id,
-          name: tab.name || '未命名表单',
-          formConfig,
-          widgetData,
-          viewConfig: { formConfig, widgetData },
-        }
-      })
-      newFormActiveTab.value = newFormTabs.value[0]?.id || ''
+    const res = await getIssueCreateMeta({ projectId: '18701', issueTypeId: newFormIssueTypeId.value })
+    const info = res?.data
+    if (info?.data?.tabItems?.length) {
+      newFormTabs.value = info.data.tabItems
+      newFormActiveTab.value = info.data.tabItems[0].title
+    } else if (info?.issueFields?.length) {
+      newFormTabs.value = [{ title: '表单', sequence: 0, issueFields: info.issueFields }]
+      newFormActiveTab.value = '表单'
     } else {
       newFormTabs.value = []
     }
+    // 初始化表单值
+    const form: Record<string, unknown> = {}
+    for (const tab of newFormTabs.value) {
+      for (const f of tab.issueFields) {
+        form[f.id] = f.value ?? null
+      }
+    }
+    newFormData.value = form
   } catch {
+    message.error('获取表单元数据失败')
     newFormTabs.value = []
+  } finally {
+    newFormLoading.value = false
   }
-  formTemplateKey.value++
-  initFormData()
 }
 
-watch(showNewFormModal, (visible) => {
-  if (!visible) {
-    newFormIssueType.value = 'requirement'
-    newFormTabs.value = []
-    formTemplateKey.value++
-    initFormData()
-  }
-})
-
-watch(newFormData, (val) => {
-  console.log('[newFormData changed]', JSON.stringify(val, null, 2))
-}, { deep: true })
-
-watch(newFormIssueType, (val) => {
-  if (val) loadTemplateByIssueType(val)
-  else newFormTabs.value = []
-})
-
 async function handleNewFormOpen() {
-  newFormIssueType.value = 'requirement'
-  await loadTemplateByIssueType('requirement')
   showNewFormModal.value = true
+  await loadCreateMeta()
 }
 
 function handleNewFormCancel() {
@@ -407,33 +420,28 @@ function handleNewFormCancel() {
 }
 
 async function handleNewFormSubmit() {
-  const $formView = newFormViewRef.value
-  if ($formView) {
-    const errMap = await $formView.validate()
-    if (Object.keys(errMap).length) {
-      message.warning('请完整填写必填项')
-      return
+  // 校验必填
+  for (const tab of newFormTabs.value) {
+    for (const f of tab.issueFields) {
+      if (f.required) {
+        const val = newFormData.value[f.id]
+        if (val === null || val === undefined || val === '') {
+          message.warning(`请填写${f.name}`)
+          newFormActiveTab.value = tab.title
+          return
+        }
+      }
     }
   }
-
-  const activeTab = newFormTabs.value.find(t => t.id === newFormActiveTab.value)
-  const payload: Record<string, unknown> = {
-    issueType: newFormIssueType.value,
-    templateId: newFormTemplateId.value,
-    tabName: activeTab?.name || '',
-    formConfig: JSON.stringify(activeTab?.formConfig || {}),
-    widgetData: JSON.stringify(activeTab?.widgetData || []),
-    ...newFormData.value,
-  }
-
-  console.log('【新建】提交表单数据:', JSON.stringify(payload, null, 2))
-
+  newFormSubmitting.value = true
   try {
-    await submitIssueForm(payload)
+    await submitIssueForm(newFormData.value)
     message.success('提交成功')
     showNewFormModal.value = false
   } catch (err: any) {
     message.error(err?.response?.data?.message || '提交失败，请稍后重试')
+  } finally {
+    newFormSubmitting.value = false
   }
 }
 
@@ -793,28 +801,8 @@ function handleRemoteMenuClick(key: string) {
 
 
 
-.new-form-scroll {
-  max-height: calc(60vh - 110px);
-  overflow-y: auto;
-  padding-right: 4px;
-}
-
-.form-type-row {
-  margin-bottom: 20px;
-}
-
-.form-type-label {
-  display: block;
-  font-size: 14px;
-  font-weight: 600;
-  color: #1d1d1f;
-  margin-bottom: 6px;
-}
-
 .new-form-tabs {
-  :deep(.ant-tabs-nav) {
-    margin-bottom: 16px;
-  }
+  /* scoped 样式保持空壳，Tabs 内部结构写在全局 <style> 里 */
 }
 </style>
 
@@ -833,6 +821,7 @@ function handleRemoteMenuClick(key: string) {
 
 .new-form-modal .ant-modal-header {
   justify-content: center;
+  flex-shrink: 0;
 }
 
 .new-form-modal .ant-modal-title {
@@ -840,15 +829,145 @@ function handleRemoteMenuClick(key: string) {
   text-align: center;
 }
 
+/* content 是最高层 flex 容器：自身拥有 60vh 上限高度，高度链路从这里开始确定 */
 .new-form-modal .ant-modal-content {
+  display: flex;
+  flex-direction: column;
+  max-height: 60vh;
+  min-height: 0;
+}
+
+.new-form-modal .ant-modal-footer {
+  flex-shrink: 0;
+}
+
+/* body 占满 content 剩余高度（= 60vh - header - footer），交给内部 flex 分区 */
+.new-form-modal .ant-modal-body {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  padding: 24px;
+  box-sizing: border-box;
+}
+
+/* 内部整体容器：纵向 flex 占满 body */
+.new-form-spin,
+.new-form-spin .ant-spin-container {
+  height: 100%;
+  min-height: 0;
+}
+
+.new-form-inner {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+/* ===== 第一段固定区：事项类型 + 分割线 ===== */
+.new-form-header {
+  flex-shrink: 0;
+}
+
+.new-form-header .ant-form-item {
+  margin-bottom: 16px;
+}
+
+/* ===== 第二段承载区：Tabs 外壳（不滚，传高度给 Tabs） ===== */
+.new-form-tabs-area {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
 }
 
-.new-form-modal .ant-modal-body {
+/* 无 Tabs 时 empty 居中占位 */
+.new-form-tabs-area .ant-empty {
+  margin: auto;
+}
+
+/* ===== Tabs 自身拆成 flex：导航栏固定 + 内容区传高度 ===== */
+.new-form-tabs-area .new-form-tabs,
+.new-form-tabs-area .new-form-tabs > .ant-tabs {
+  display: flex;
+  flex-direction: column;
   flex: 1;
   min-height: 0;
-  max-height: 60vh;
+  height: 100%;
+}
+
+/* Tab 导航栏固定（不参与滚动） */
+.new-form-tabs-area .new-form-tabs .ant-tabs-nav {
+  flex-shrink: 0;
+  margin-bottom: 16px;
+}
+
+/* Tabs 内容外壳：传高度给 tabpane */
+.new-form-tabs-area .new-form-tabs .ant-tabs-content-holder,
+.new-form-tabs-area .new-form-tabs .ant-tabs-content {
+  flex: 1;
+  min-height: 0;
   overflow: hidden;
+}
+
+/* 单个 tabpane 高度 100% 传高度给内部真正的滚动容器 */
+.new-form-tabs-area .new-form-tabs .ant-tabs-tabpane {
+  height: 100%;
+  min-height: 0;
+}
+
+/* ===== 真正的滚动区：Tab 内容（表单字段） ===== */
+.tab-pane-scroll {
+  height: 100%;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 4px;
+  /* 兜底：即便链路异常也确保能滚动 */
+  max-height: calc(60vh - 260px);
+}
+
+/* ====== 新建弹窗 - 水平表单布局样式 ====== */
+/* 必填星号（插槽独立渲染） */
+.form-item-required-mark {
+  color: #ff4d4f;
+  margin-left: 2px;
+  font-family: SimSun, serif;
+}
+
+/* label 与组件在同一行且垂直居中对齐，保留 Ant Design 原生两栏结构 */
+.new-form-modal .ant-form-item {
+  margin-bottom: 16px;
+}
+
+/* 固定 label 栏宽度，与 :label-width="120" 保持一致 */
+.new-form-modal .ant-form-item .ant-form-item-label {
+  width: 120px;
+  flex: 0 0 120px;
+  padding-right: 12px;
+  text-align: right;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.new-form-modal .ant-form-item .ant-form-item-label > label {
+  height: 32px;
+  align-items: center;
+  white-space: nowrap;
+  color: rgba(0, 0, 0, 0.88);
+  font-size: 14px;
+}
+
+/* 去掉 Ant Design 默认在 label 后追加的额外冒号 */
+.new-form-modal .ant-form-item-label > label::after {
+  display: none;
+}
+
+/* 控件栏占满剩余宽度 */
+.new-form-modal .ant-form-item .ant-form-item-control {
+  flex: 1;
+  min-width: 0;
 }
 </style>

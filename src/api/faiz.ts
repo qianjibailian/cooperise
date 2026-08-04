@@ -10,6 +10,7 @@ import type {
   IssueQuery,
   IssueQueryResult,
   IssueRow,
+  IssueCreateMetaResult,
   ComponentItem,
   ComponentListData,
 } from '@/types/faiz'
@@ -85,6 +86,11 @@ export function submitIssueForm(formData: Record<string, unknown>): Promise<Resu
 /** 单元格编辑 - 部分字段更新 Issue */
 export function patchIssue(id: string | number, fields: Record<string, unknown>): Promise<Result<IssueRow>> {
   return request.patch(`${PREFIX}/issue/${id}`, fields)
+}
+
+/** 新建事项表单元数据（POST /issue/queryCreateMeta） */
+export function getIssueCreateMeta(data: { projectId: string; issueTypeId: string }): Promise<IssueCreateMetaResult> {
+  return request.post(`${PREFIX}/issue/queryCreateMeta`, data)
 }
 
 // ==================== Component API ====================

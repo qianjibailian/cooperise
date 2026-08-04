@@ -101,9 +101,9 @@ export interface IssueQueryInfo {
 
 /** POST /issue/query 的完整响应 */
 export interface IssueQueryResult {
-  code: string
-  msg: string
-  info: IssueQueryInfo
+  message: string
+  success: boolean
+  data: IssueQueryInfo
 }
 
 /** 拍平后供表格使用的事项行 */
@@ -134,6 +134,56 @@ export interface IssueQuery {
   projectId?: string
   page?: number
   pageSize?: number
+}
+
+// ========== Issue Create Meta ==========
+
+/** 创建表单字段定义 */
+export interface CreateMetaField {
+  id: string
+  name: string
+  type: string
+  jiraType?: string | null
+  value: unknown
+  editable?: boolean
+  required?: boolean
+  standard?: boolean
+  sequence?: number | null
+  frontPage?: boolean | null
+  description?: string | null
+  defaultvalue?: unknown
+  exportValue?: unknown
+  issueTemplateValue?: unknown
+  linkageRole?: string | null
+  valueLinkInfo?: unknown
+  [k: string]: unknown
+}
+
+/** 创建表单 Tab 项 */
+export interface CreateMetaTabItem {
+  title: string
+  sequence: number
+  issueFields: CreateMetaField[]
+}
+
+/** 创建表单 info.data 层 */
+export interface CreateMetaData {
+  tabItems: CreateMetaTabItem[]
+}
+
+/** 创建表单 info 层 */
+export interface CreateMetaInfo {
+  type: string
+  data: CreateMetaData
+  issueFields: CreateMetaField[] | null
+  isUpdateToDefault: boolean
+}
+
+/** POST /issue/queryCreateMeta 完整响应 */
+export interface IssueCreateMetaResult {
+  message: string
+  success: boolean
+  data: CreateMetaInfo
 }
 
 // ========== Component ==========

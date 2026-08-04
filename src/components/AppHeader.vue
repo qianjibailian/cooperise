@@ -225,11 +225,14 @@ async function handleLogout() {
     await request.post('/tianguan-api/auth/logout')
   } catch (e) {
     console.warn('[Logout] 接口调用失败，继续执行登出流程:', e)
+    return
   }
 
+  // 接口成功后清除 cookie
   auth.logout()
   message.success('已退出登录')
 
+  // 跳转到登录页
   const loginUrl = import.meta.env.VITE_ACCOUNT_URL + '?oauth_callback=' + encodeURIComponent(window.location.href)
   window.location.href = loginUrl
 }
