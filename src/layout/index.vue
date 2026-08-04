@@ -228,7 +228,6 @@
     <!-- 新建弹窗 -->
     <a-modal
       v-model:open="showNewFormModal"
-      title="新建"
       width="60%"
       centered
       :mask-closable="false"
@@ -240,9 +239,32 @@
       destroy-on-close
       class="new-form-modal"
     >
+      <template #title>
+        <div class="new-form-title-bar">
+          <span class="new-form-title-side"></span>
+          <span class="new-form-title-text">新建</span>
+          <div class="new-form-title-side new-form-title-side-right">
+            <div class="new-form-template-selector">
+              <span class="new-form-template-label">选择模板</span>
+              <a-select
+                v-model:value="selectedTemplate"
+                class="new-form-template-select"
+                :popup-match-select-width="false"
+                @change="handleTemplateChange"
+              >
+                <a-select-option
+                  v-for="tpl in templateOptions"
+                  :key="tpl.value"
+                  :value="tpl.value"
+                >{{ tpl.label }}</a-select-option>
+              </a-select>
+            </div>
+          </div>
+        </div>
+      </template>
       <a-spin :spinning="newFormLoading" class="new-form-spin">
         <div class="new-form-inner">
-          <!-- 上部固定区：事项类型 + 分割线 -->
+          <!-- 上部固定区：事项类型（垂直居中于分割线上方） -->
           <div class="new-form-header">
             <a-form layout="horizontal" :label-width="120">
               <a-form-item label="事项类型">
@@ -255,8 +277,9 @@
                 </a-select>
               </a-form-item>
             </a-form>
-            <a-divider style="margin: 0 0 8px" />
           </div>
+          <!-- 分割线：放在 header 与 tabs 之间 -->
+          <a-divider class="new-form-divider" />
           <!-- 下部固定容器：承载 Tabs + 内容区 -->
           <div class="new-form-tabs-area">
             <template v-if="newFormTabs.length > 0">
@@ -379,6 +402,18 @@ const issueTypeOptions = [
   { value: '10004', label: '其他' },
 ]
 
+// 选择模板（标题栏右侧下拉）
+const DEFAULT_TEMPLATE = 'default'
+const selectedTemplate = ref<string>(DEFAULT_TEMPLATE)
+const templateOptions = [
+  { value: 'default', label: '默认模板' },
+]
+
+const handleTemplateChange = (_val: string) => {
+  // TODO: 根据不同模板预填表单/切换字段配置
+  // 目前仅记录选择，保持现有新建流程不变
+}
+
 // 加载创建表单元数据
 async function loadCreateMeta() {
   newFormLoading.value = true
@@ -411,11 +446,15 @@ async function loadCreateMeta() {
 }
 
 async function handleNewFormOpen() {
+  // 每次打开时重置为默认模板
+  selectedTemplate.value = DEFAULT_TEMPLATE
   showNewFormModal.value = true
   await loadCreateMeta()
 }
 
 function handleNewFormCancel() {
+  // 关闭时清理模板选择
+  selectedTemplate.value = DEFAULT_TEMPLATE
   showNewFormModal.value = false
 }
 
@@ -808,45 +847,249 @@ function handleRemoteMenuClick(key: string) {
 
 <style>
 /* Modal 样式需要写在非 scoped 块中，因为 Ant Design Modal 通过 Teleport 渲染到 body */
+
+/* ========== 苹果 × Google 融合主题色 ========== */
+/* 主色：苹果蓝 + Material 亮度；强调用 #0A84FF / Material #667CFF */
+/* 参考：Apple HIG 卡片式弹窗 + Material 3 大圆角 + 柔和阴影 */
+
 .new-form-modal .ant-modal-wrap {
   display: flex;
   align-items: center;
   justify-content: center;
+  /* 弹窗蒙层：Material 3 scrim 风格 */
+  background: rgba(15, 23, 42, 0.45);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
 }
 
 .new-form-modal .ant-modal {
   top: 0;
   padding-bottom: 0;
+  /* Apple 风多层柔和阴影 + Material elevation */
+  box-shadow:
+    0 1px 2px 0 rgba(15, 23, 42, 0.04),
+    0 8px 24px -4px rgba(15, 23, 42, 0.08),
+    0 24px 64px -12px rgba(15, 23, 42, 0.18);
 }
 
-.new-form-modal .ant-modal-header {
-  justify-content: center;
-  flex-shrink: 0;
+.new-form-modal .ant-modal-mask {
+  background: transparent;
 }
 
-.new-form-modal .ant-modal-title {
-  width: 100%;
-  text-align: center;
-}
-
-/* content 是最高层 flex 容器：自身拥有 60vh 上限高度，高度链路从这里开始确定 */
+/* ========== 弹窗整体容器：大圆角 + 背景 ========== */
 .new-form-modal .ant-modal-content {
   display: flex;
   flex-direction: column;
-  max-height: 60vh;
+  max-height: 75vh;
   min-height: 0;
+  /* Material 3：推荐圆角 28dp，取 20px 居中兼顾 Apple */
+  border-radius: 20px;
+  overflow: hidden;
+  background: #ffffff;
+  /* 顶部极淡高光，模拟 Apple sheet 质感 */
+  border: 1px solid rgba(15, 23, 42, 0.06);
 }
 
+/* ========== Header：居中标题 + 右侧「选择模板」下拉 ========== */
+.new-form-modal .ant-modal-header {
+  flex-shrink: 0;
+  padding: 14px 24px 10px;
+  border-bottom: none;
+  background: transparent;
+  border-radius: 0;
+  display: block;
+}
+
+/* 自定义 title 容器：三列对称，保证中间「新建」严格水平居中 */
+.new-form-modal .ant-modal-title {
+  width: 100%;
+  margin: 0;
+}
+
+.new-form-title-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 36px;
+  /* 三列等宽，左右两列宽度必须严格对称 */
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  column-gap: 0;
+}
+
+/* 左占位：宽度与右侧列严格相等，抵消关闭按钮占用的视觉空间 */
+.new-form-title-side {
+  min-width: 0;
+  width: 100%;
+  display: flex;
+  align-items: center;
+}
+
+.new-form-title-text {
+  grid-column: 2 / 3;
+  text-align: center;
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  color: #0f172a;
+  white-space: nowrap;
+  /* 避免挤压两侧列 */
+  min-width: 0;
+}
+
+/* 右侧列：选择模板靠右对齐 */
+.new-form-title-side-right {
+  justify-content: flex-end;
+  overflow: visible;
+}
+
+/* 选择模板：label + select 一行紧凑排列（整体向右内收，不贴边） */
+.new-form-template-selector {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  width: auto;
+  margin-right: 24px;
+}
+
+.new-form-template-label {
+  font-size: 13px;
+  color: #475569;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.new-form-template-select.ant-select {
+  width: 160px;
+  min-width: 0;
+}
+
+.new-form-template-select .ant-select-selector {
+  height: 32px !important;
+  line-height: 30px !important;
+  padding: 0 12px !important;
+  border-radius: 8px !important;
+  border: 1px solid #e2e8f0 !important;
+  background: #ffffff !important;
+  font-size: 13px;
+  color: #0f172a;
+  transition: all 0.15s ease;
+}
+
+.new-form-template-select:hover .ant-select-selector {
+  border-color: #cbd5e1 !important;
+}
+
+.new-form-template-select.ant-select-focused .ant-select-selector {
+  border-color: #3b82f6 !important;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12) !important;
+}
+
+.new-form-template-select.ant-select-single .ant-select-selector .ant-select-selection-item,
+.new-form-template-select.ant-select-single .ant-select-selector .ant-select-selection-placeholder,
+.new-form-template-select.ant-select-single .ant-select-selector .ant-select-selection-search-input {
+  height: 30px !important;
+  line-height: 30px;
+}
+
+/* 关闭按钮位置微调，避免和标题栏下拉框重叠 */
+.new-form-modal .ant-modal-close {
+  top: 20px;
+  right: 24px;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #94a3b8;
+  transition: all 0.15s ease;
+}
+
+.new-form-modal .ant-modal-close:hover {
+  background: #f1f5f9;
+  color: #0f172a;
+}
+
+.new-form-modal .ant-modal-close-x {
+  width: auto;
+  height: auto;
+  font-size: 16px;
+  line-height: 1;
+}
+
+/* ========== Footer：按钮区 + 细分隔线 ========== */
 .new-form-modal .ant-modal-footer {
   flex-shrink: 0;
+  padding: 12px 24px 16px;
+  border-top: 1px solid rgba(15, 23, 42, 0.06);
+  background: transparent;
+  text-align: right;
+  border-radius: 0;
 }
 
-/* body 占满 content 剩余高度（= 60vh - header - footer），交给内部 flex 分区 */
+/* Apple 风按钮：主按钮胶囊蓝底，次按钮白底轻边 */
+.new-form-modal .ant-modal-footer .ant-btn {
+  height: 34px;
+  padding: 0 20px;
+  border-radius: 9px;
+  font-size: 13px;
+  font-weight: 500;
+  transition: all 0.15s ease;
+}
+
+/* 取消按钮：Material Outlined + Apple 浅边 */
+.new-form-modal .ant-modal-footer .ant-btn-default {
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  color: #0f172a;
+}
+
+.new-form-modal .ant-modal-footer .ant-btn-default:hover {
+  background: #f8fafc;
+  border-color: #94a3b8;
+  color: #0f172a;
+}
+
+/* 确定按钮：Apple 蓝主色 + Material 轻微高光 + hover 阴影 */
+.new-form-modal .ant-modal-footer .ant-btn-primary {
+  background: linear-gradient(180deg, #3b82f6 0%, #2563eb 100%);
+  border: none;
+  color: #ffffff;
+  box-shadow:
+    0 1px 2px 0 rgba(37, 99, 235, 0.18),
+    0 4px 12px -2px rgba(37, 99, 235, 0.35);
+}
+
+.new-form-modal .ant-modal-footer .ant-btn-primary:hover {
+  background: linear-gradient(180deg, #2563eb 0%, #1d4ed8 100%);
+  box-shadow:
+    0 1px 2px 0 rgba(29, 78, 216, 0.20),
+    0 6px 16px -2px rgba(29, 78, 216, 0.40);
+  transform: translateY(-0.5px);
+}
+
+.new-form-modal .ant-modal-footer .ant-btn-primary:active {
+  transform: translateY(0);
+  box-shadow:
+    0 1px 2px 0 rgba(29, 78, 216, 0.25),
+    inset 0 1px 2px 0 rgba(0, 0, 0, 0.08);
+}
+
+/* loading 下保持原色不闪灰 */
+.new-form-modal .ant-modal-footer .ant-btn-primary.ant-btn-loading {
+  background: linear-gradient(180deg, #3b82f6 0%, #2563eb 100%);
+  border: none;
+  opacity: 0.85;
+}
+
+/* body 占满 content 剩余高度（= 75vh - header - footer），交给内部 flex 分区 */
 .new-form-modal .ant-modal-body {
   flex: 1;
   min-height: 0;
   overflow: hidden;
-  padding: 24px;
+  padding: 6px 24px 16px;
   box-sizing: border-box;
 }
 
@@ -864,13 +1107,27 @@ function handleRemoteMenuClick(key: string) {
   min-height: 0;
 }
 
-/* ===== 第一段固定区：事项类型 + 分割线 ===== */
+/* ===== 第一段固定区：事项类型容器（向上提，保持上下舒适留白） ===== */
 .new-form-header {
   flex-shrink: 0;
+  min-height: 64px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  align-items: stretch;
+  padding-top: 12px;
 }
 
+.new-form-header .ant-form,
 .new-form-header .ant-form-item {
-  margin-bottom: 16px;
+  margin-bottom: 0;
+}
+
+/* 分割线：紧贴 header 下方，上下呼吸感统一 */
+.new-form-divider.ant-divider {
+  flex-shrink: 0;
+  border-top: 1px solid rgba(15, 23, 42, 0.08);
+  margin: 0 0 12px;
 }
 
 /* ===== 第二段承载区：Tabs 外壳（不滚，传高度给 Tabs） ===== */
@@ -885,9 +1142,14 @@ function handleRemoteMenuClick(key: string) {
 /* 无 Tabs 时 empty 居中占位 */
 .new-form-tabs-area .ant-empty {
   margin: auto;
+  color: #64748b;
 }
 
-/* ===== Tabs 自身拆成 flex：导航栏固定 + 内容区传高度 ===== */
+.new-form-tabs-area .ant-empty-description {
+  color: #64748b;
+}
+
+/* ===== Tabs：Apple Segmented 胶囊风 ===== */
 .new-form-tabs-area .new-form-tabs,
 .new-form-tabs-area .new-form-tabs > .ant-tabs {
   display: flex;
@@ -897,10 +1159,57 @@ function handleRemoteMenuClick(key: string) {
   height: 100%;
 }
 
-/* Tab 导航栏固定（不参与滚动） */
+/* Tab 导航栏：白色背景，细分隔线区分选中项 */
 .new-form-tabs-area .new-form-tabs .ant-tabs-nav {
   flex-shrink: 0;
-  margin-bottom: 16px;
+  margin-bottom: 12px;
+  background: #ffffff;
+  padding: 0;
+  border-radius: 0;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+  box-shadow: none;
+}
+
+.new-form-tabs-area .new-form-tabs .ant-tabs-nav::before {
+  display: none;
+}
+
+/* 单个 Tab：白底风格，hover 浅灰，选中加深字重 + 字色 */
+.new-form-tabs-area .new-form-tabs .ant-tabs-tab {
+  padding: 8px 18px;
+  margin: 0 6px 0 0 !important;
+  border-radius: 0;
+  font-size: 13px;
+  font-weight: 500;
+  color: #64748b;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  transition: all 0.15s ease;
+  height: 34px;
+  line-height: 18px;
+}
+
+.new-form-tabs-area .new-form-tabs .ant-tabs-tab:last-child {
+  margin-right: 0 !important;
+}
+
+.new-form-tabs-area .new-form-tabs .ant-tabs-tab:hover {
+  color: #0f172a;
+  background: #f8fafc;
+}
+
+.new-form-tabs-area .new-form-tabs .ant-tabs-tab.ant-tabs-tab-active {
+  color: #2563eb;
+  background: #ffffff;
+  border-bottom-color: #2563eb;
+  font-weight: 600;
+  box-shadow: none;
+}
+
+/* 选中下划线：与 tab 下边框结合，隐藏 Ant 默认 ink-bar */
+.new-form-tabs-area .new-form-tabs .ant-tabs-ink-bar {
+  display: none !important;
 }
 
 /* Tabs 内容外壳：传高度给 tabpane */
@@ -923,22 +1232,54 @@ function handleRemoteMenuClick(key: string) {
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
-  padding-right: 4px;
+  padding-right: 8px;
   /* 兜底：即便链路异常也确保能滚动 */
-  max-height: calc(60vh - 260px);
+  max-height: calc(75vh - 260px);
+}
+
+/* ===== 滚动条：Apple 细条 + Material 圆角 ===== */
+.tab-pane-scroll::-webkit-scrollbar,
+.new-form-modal ::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.tab-pane-scroll::-webkit-scrollbar-thumb,
+.new-form-modal ::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+.tab-pane-scroll::-webkit-scrollbar-thumb:hover,
+.new-form-modal ::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+  background-clip: padding-box;
+  border: 2px solid transparent;
+}
+
+.tab-pane-scroll::-webkit-scrollbar-track,
+.new-form-modal ::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 /* ====== 新建弹窗 - 水平表单布局样式 ====== */
 /* 必填星号（插槽独立渲染） */
 .form-item-required-mark {
-  color: #ff4d4f;
+  color: #ef4444;
   margin-left: 2px;
-  font-family: SimSun, serif;
+  font-family: -apple-system, "SF Pro Text", "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-weight: 600;
 }
 
-/* label 与组件在同一行且垂直居中对齐，保留 Ant Design 原生两栏结构 */
+/* label 与组件在同一行且垂直居中对齐 */
 .new-form-modal .ant-form-item {
-  margin-bottom: 16px;
+  margin-bottom: 14px;
+}
+
+.new-form-modal .ant-form-item:last-child {
+  margin-bottom: 0;
 }
 
 /* 固定 label 栏宽度，与 :label-width="120" 保持一致 */
@@ -953,11 +1294,12 @@ function handleRemoteMenuClick(key: string) {
 }
 
 .new-form-modal .ant-form-item .ant-form-item-label > label {
-  height: 32px;
+  height: 34px;
   align-items: center;
   white-space: nowrap;
-  color: rgba(0, 0, 0, 0.88);
-  font-size: 14px;
+  color: #334155;
+  font-size: 13px;
+  font-weight: 500;
 }
 
 /* 去掉 Ant Design 默认在 label 后追加的额外冒号 */
@@ -965,9 +1307,132 @@ function handleRemoteMenuClick(key: string) {
   display: none;
 }
 
-/* 控件栏占满剩余宽度 */
+/* 控件栏占满剩余宽度，输入高度统一 34px（略缩小，更紧凑） */
 .new-form-modal .ant-form-item .ant-form-item-control {
   flex: 1;
   min-width: 0;
+  min-height: 34px;
+}
+
+/* ========== 输入控件：Material Filled × Apple Rounded（更紧凑尺寸） ========== */
+/* 所有输入框：统一圆角 8px、高度 34px、细边、focus 主色描边 + 柔光 */
+.new-form-modal .ant-input,
+.new-form-modal .ant-input-number,
+.new-form-modal .ant-picker,
+.new-form-modal .ant-select-selector {
+  height: 34px !important;
+  line-height: 32px;
+  border-radius: 8px !important;
+  border: 1px solid #e2e8f0 !important;
+  background: #ffffff !important;
+  font-size: 13px;
+  color: #0f172a;
+  padding: 0 12px;
+  transition: all 0.15s ease;
+}
+
+.new-form-modal .ant-input {
+  padding: 0 10px;
+}
+
+/* textarea 多行保持自然高度，但圆角与边一致 */
+.new-form-modal .ant-input-affix-wrapper,
+.new-form-modal textarea.ant-input {
+  border-radius: 8px !important;
+  border: 1px solid #e2e8f0 !important;
+  background: #ffffff !important;
+  transition: all 0.15s ease;
+}
+
+.new-form-modal textarea.ant-input {
+  padding: 8px 10px;
+  line-height: 1.5;
+  font-size: 13px;
+}
+
+/* hover 态：边框加深 */
+.new-form-modal .ant-input:hover,
+.new-form-modal .ant-input-number:hover,
+.new-form-modal .ant-picker:hover,
+.new-form-modal .ant-select:not(.ant-select-disabled):hover .ant-select-selector,
+.new-form-modal .ant-input-affix-wrapper:hover,
+.new-form-modal textarea.ant-input:hover {
+  border-color: #cbd5e1 !important;
+  background: #ffffff;
+}
+
+/* focus 态：Apple 蓝描边 + 柔光晕（Material focus ring） */
+.new-form-modal .ant-input:focus,
+.new-form-modal .ant-input-focused,
+.new-form-modal .ant-input-number:focus,
+.new-form-modal .ant-input-number-focused,
+.new-form-modal .ant-picker:focus,
+.new-form-modal .ant-picker-focused,
+.new-form-modal .ant-select-focused .ant-select-selector,
+.new-form-modal .ant-input-affix-wrapper:focus,
+.new-form-modal .ant-input-affix-wrapper-focused,
+.new-form-modal textarea.ant-input:focus {
+  border-color: #3b82f6 !important;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.10) !important;
+  outline: none;
+  background: #ffffff !important;
+}
+
+/* disabled/readonly 态：Material Filled disabled 灰底 */
+.new-form-modal .ant-input[disabled],
+.new-form-modal .ant-input-number.ant-input-number-disabled,
+.new-form-modal .ant-picker.ant-picker-disabled,
+.new-form-modal .ant-select-disabled .ant-select-selector {
+  background: #f8fafc !important;
+  border-color: #e2e8f0 !important;
+  color: #94a3b8 !important;
+  cursor: not-allowed;
+}
+
+/* Select 内边距适配 */
+.new-form-modal .ant-select .ant-select-selector {
+  padding: 0 10px !important;
+  height: 34px !important;
+}
+
+.new-form-modal .ant-select-single .ant-select-selector .ant-select-selection-search-input {
+  height: 32px !important;
+  line-height: 32px;
+}
+
+.new-form-modal .ant-select-single .ant-select-selector .ant-select-selection-item,
+.new-form-modal .ant-select-single .ant-select-selector .ant-select-selection-placeholder {
+  line-height: 32px;
+  font-size: 13px;
+}
+
+/* Input Number 按钮与高度对齐 */
+.new-form-modal .ant-input-number-input-wrap {
+  height: 32px;
+}
+
+.new-form-modal .ant-input-number-input {
+  height: 32px;
+  line-height: 32px;
+  padding: 0 10px !important;
+  font-size: 13px;
+}
+
+/* Date picker 内部布局修正 */
+.new-form-modal .ant-picker .ant-picker-input {
+  height: 32px;
+  line-height: 32px;
+}
+
+.new-form-modal .ant-picker .ant-picker-input > input {
+  height: 32px;
+  line-height: 32px;
+  font-size: 13px;
+}
+
+/* Divider：Apple 细分隔线 */
+.new-form-modal .ant-divider {
+  border-top: 1px solid rgba(15, 23, 42, 0.08);
+  margin: 0;
 }
 </style>
