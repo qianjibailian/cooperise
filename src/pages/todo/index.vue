@@ -4,23 +4,23 @@
     <div class="top-bar">
       <div class="top-bar-left">
         <h1 class="page-title">我的事项</h1>
+        <span class="edit-status">(已编辑 <a class="reset-link" @click="handleReset">重置</a>)</span>
+        <a class="save-link">另存为</a>
         <component :is="ReloadOutlined" class="refresh-icon" @click="fetchIssues" />
       </div>
       <div class="top-bar-right">
         <span class="total-text">共{{ total }}条</span>
-        <span class="edit-status">(已编辑 <a class="reset-link" @click="handleReset">重置</a>)</span>
-        <a class="save-link">另存为</a>
-        <a-button class="tool-btn" :class="{ active: filterCount > 0 }">
-          <component :is="FilterOutlined" />
-          筛选<span v-if="filterCount > 0">({{ filterCount }})</span>
+        <a-button class="tool-btn filter-btn" :class="{ active: filterCount > 0 }">
+          <component :is="AlignCenterOutlined" />
+          筛选(2)
         </a-button>
         <a-button class="tool-btn">
-          <component :is="AppstoreOutlined" />
+          <component :is="UnorderedListOutlined" />
           分组
         </a-button>
-        <a-button class="tool-btn" :class="{ active: sortCount > 0 }">
+        <a-button class="tool-btn sort-btn" :class="{ active: sortCount > 0 }">
           <component :is="SortAscendingOutlined" />
-          排序<span v-if="sortCount > 0">({{ sortCount }})</span>
+          排序(1)
         </a-button>
         <a-button class="tool-btn">
           <component :is="MenuOutlined" />
@@ -34,9 +34,17 @@
           <component :is="FullscreenOutlined" />
           全屏
         </a-button>
-        <a-button class="tool-btn more-btn">
-          <component :is="MoreOutlined" />
-        </a-button>
+        <a-dropdown>
+          <a-button class="tool-btn more-btn">
+            <component :is="EllipsisOutlined" />
+          </a-button>
+          <template #overlay>
+            <a-menu @click="handleImportExportClick">
+              <a-menu-item key="import">导入</a-menu-item>
+              <a-menu-item key="export">导出</a-menu-item>
+            </a-menu>
+          </template>
+        </a-dropdown>
         <a-divider type="vertical" class="toolbar-divider" />
         <a-button class="tool-btn view-btn">
           <component :is="UnorderedListOutlined" />
@@ -51,6 +59,8 @@
         ref="tableRef"
         :data="dataList"
         :loading="loading"
+        height="100%"
+        border="none"
         keep-source
         :row-config="{ keyField: 'issueKey' }"
         :column-config="{ resizable: true }"
@@ -60,18 +70,18 @@
         @edit-closed="onEditClosed"
         class="items-table"
       >
-        <vxe-column type="checkbox" width="50" align="center" />
-        <vxe-column field="issueKey" title="编号" width="140">
-          <template #default="{ row }">
-            <a class="issue-key-link" @click="openDetail(row.issueKey)">{{ row.issueKey }}</a>
-          </template>
-        </vxe-column>
-        <vxe-column field="summary" title="概要" min-width="260" :edit-render="{}">
+        <vxe-column type="checkbox" width="50" align="center" fixed="left" />
+        <vxe-column field="summary" title="概要" min-width="300" fixed="left" :edit-render="{}">
           <template #default="{ row }">
             <span class="summary-text">{{ row.summary }}</span>
           </template>
           <template #edit="{ row }">
             <a-input v-model:value="row.summary" size="small" />
+          </template>
+        </vxe-column>
+        <vxe-column field="issueKey" title="编号" width="140">
+          <template #default="{ row }">
+            <a class="issue-key-link" @click="openDetail(row.issueKey)">{{ row.issueKey }}</a>
           </template>
         </vxe-column>
         <vxe-column field="priorityId" title="优先级" width="100" :edit-render="{}">
@@ -119,7 +129,13 @@
             <span>{{ row.updatedAt?.split(' ')[0] }}</span>
           </template>
         </vxe-column>
-        <vxe-column title="操作" width="60" fixed="right" align="center">
+        <vxe-column title="操作" width="72" fixed="right" align="center">
+          <template #header>
+            <div style="display: flex; justify-content: space-between; align-items: center; width: 100%; padding: 0 2px;">
+              <span>操作</span>
+              <component :is="SettingOutlined" style="font-size: 14px; color: #0050b3; cursor: pointer;" @click.stop="openSettingDrawer" />
+            </div>
+          </template>
           <template #default="{ row }">
             <a-dropdown>
               <a-button type="text" class="action-dots">···</a-button>
@@ -141,6 +157,85 @@
       v-model:open="detailDrawerOpen"
       :issue-key="detailIssueKey"
     />
+
+    <!-- 列设置抽屉 -->
+    <a-drawer
+      v-model:open="settingDrawerOpen"
+      placement="right"
+      :width="340"
+      :closable="false"
+      :header-style="{ padding: 0 }"
+      :body-style="{ padding: '16px' }"
+    >
+      <template #title>
+        <div style="display: flex; justify-content: space-between; align-items: center; width: 100%; padding: 12px 16px; background: #f5f5f5;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="font-size: 14px;">表格列管理</span>
+            <component
+              :is="ReloadOutlined"
+              style="font-size: 14px; color: #8c8c8c; cursor: pointer;"
+            />
+          </div>
+          <component
+            :is="CloseOutlined"
+            style="font-size: 16px; color: #8c8c8c; cursor: pointer;"
+            @click="settingDrawerOpen = false"
+          />
+        </div>
+      </template>
+      <div class="setting-drawer-body">
+        <a-input-search
+          v-model:value="settingSearchKeyword"
+          placeholder="搜索表头"
+          allow-clear
+          style="margin-bottom: 8px;"
+        />
+        <a-collapse v-model:active-key="settingCollapseActive" :bordered="false" ghost>
+          <template #expandIcon="{ isActive }">
+            <component
+              :is="CaretRightFilled"
+              :style="{ transform: isActive ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform .2s ease' }"
+            />
+          </template>
+          <a-collapse-panel key="shown" header="已显示字段">
+            <div class="field-list">
+              <div
+                v-for="(item, index) in shownFields"
+                :key="item.key"
+                class="field-item"
+                :class="{ 'field-item-dragging': shownDragIndex === index }"
+                draggable="true"
+                @dragstart="onShownDragStart($event, index)"
+                @dragover.prevent="onShownDragOver($event, index)"
+                @drop="onShownDrop($event, index)"
+                @dragend="onShownDragEnd"
+              >
+                <component
+                  :is="HolderOutlined"
+                  class="field-drag-handle"
+                />
+                <a-checkbox v-model:checked="item.checked">
+                  {{ item.label }}
+                </a-checkbox>
+              </div>
+            </div>
+          </a-collapse-panel>
+          <a-collapse-panel key="hidden" header="未显示字段">
+            <div class="field-list">
+              <div
+                v-for="item in hiddenFields"
+                :key="item.key"
+                class="field-item"
+              >
+                <a-checkbox v-model:checked="item.checked">
+                  {{ item.label }}
+                </a-checkbox>
+              </div>
+            </div>
+          </a-collapse-panel>
+        </a-collapse>
+      </div>
+    </a-drawer>
   </div>
 </template>
 
@@ -150,14 +245,17 @@ import type { VxeTableInstance } from 'vxe-table'
 import { message } from 'ant-design-vue'
 import {
   ReloadOutlined,
-  FilterOutlined,
-  AppstoreOutlined,
+  AlignCenterOutlined,
   SortAscendingOutlined,
   MenuOutlined,
   CheckSquareOutlined,
   FullscreenOutlined,
-  MoreOutlined,
+  EllipsisOutlined,
   UnorderedListOutlined,
+  SettingOutlined,
+  CloseOutlined,
+  HolderOutlined,
+  CaretRightFilled,
 } from '@ant-design/icons-vue'
 import { getIssues, patchIssue } from '@/api/faiz'
 import type { IssueRow, IssueRecord } from '@/types/faiz'
@@ -174,6 +272,81 @@ function openDetail(issueKey: string) {
   detailDrawerOpen.value = true
 }
 
+// 列设置抽屉
+const settingDrawerOpen = ref(false)
+const settingSearchKeyword = ref('')
+const settingCollapseActive = ref<string[]>(['shown', 'hidden'])
+
+interface FieldOption {
+  key: string
+  label: string
+  checked: boolean
+}
+
+const shownFields = ref<FieldOption[]>([
+  { key: 'summary', label: '概要', checked: true },
+  { key: 'issueKey', label: '编号', checked: true },
+  { key: 'priorityId', label: '优先级', checked: true },
+  { key: 'statusId', label: '状态', checked: true },
+  { key: 'issuetypeId', label: '分类', checked: true },
+  { key: 'assigneeName', label: '经办人', checked: true },
+  { key: 'createdAt', label: '创建时间', checked: true },
+  { key: 'updatedAt', label: '更新时间', checked: true },
+])
+
+const hiddenFields = ref<FieldOption[]>([
+  { key: 'project', label: '项目', checked: false },
+  { key: 'issuetype', label: '问题类型', checked: false },
+  { key: 'fixVersion', label: '修复版本', checked: false },
+  { key: 'affectsVersion', label: '影响版本', checked: false },
+  { key: 'sprint', label: 'Sprint', checked: false },
+  { key: 'components', label: '组件', checked: false },
+  { key: 'labels', label: '标签', checked: false },
+  { key: 'environment', label: '环境', checked: false },
+  { key: 'estimate', label: '预估时间', checked: false },
+  { key: 'remaining', label: '剩余时间', checked: false },
+  { key: 'worklog', label: '已工作时间', checked: false },
+  { key: 'creatorName', label: '创建人', checked: false },
+  { key: 'reporterName', label: '报告人', checked: false },
+  { key: 'dueDate', label: '截止日期', checked: false },
+])
+
+function openSettingDrawer() {
+  settingCollapseActive.value = ['shown', 'hidden']
+  settingDrawerOpen.value = true
+}
+
+// 已显示字段拖拽排序
+const shownDragIndex = ref<number | null>(null)
+
+function onShownDragStart(e: DragEvent, index: number) {
+  shownDragIndex.value = index
+  if (e.dataTransfer) {
+    e.dataTransfer.effectAllowed = 'move'
+    // 兼容 Firefox，必须设置数据
+    e.dataTransfer.setData('text/plain', String(index))
+  }
+}
+
+function onShownDragOver(e: DragEvent, _index: number) {
+  if (e.dataTransfer) {
+    e.dataTransfer.dropEffect = 'move'
+  }
+}
+
+function onShownDrop(_e: DragEvent, targetIndex: number) {
+  const sourceIndex = shownDragIndex.value
+  if (sourceIndex === null || sourceIndex === targetIndex) return
+  const list = shownFields.value.slice()
+  const [moved] = list.splice(sourceIndex, 1)
+  list.splice(targetIndex, 0, moved)
+  shownFields.value = list
+}
+
+function onShownDragEnd() {
+  shownDragIndex.value = null
+}
+
 // 工具栏状态
 const filterCount = ref(0)
 const sortCount = ref(0)
@@ -183,6 +356,17 @@ function handleReset() {
   sortCount.value = 0
   currentPage.value = 1
   fetchIssues()
+}
+
+function handleImportExportClick(e: { key: string }) {
+  switch (e.key) {
+    case 'import':
+      message.info('导入功能')
+      break
+    case 'export':
+      message.info('导出功能')
+      break
+  }
 }
 
 // 查询 / 筛选
@@ -347,7 +531,7 @@ onMounted(() => {
 
 <style scoped>
 .todo-page {
-  padding: 2vh 1vh 1vh;
+  padding: 1vh 1vh 1vh;
   background: #ffffff;
   height: calc(100vh - 75px);
   width: calc(100% + 1vh);
@@ -362,7 +546,7 @@ onMounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 16px 0;
+  padding: 10px 0;
   border-bottom: 1px solid #e8e8e8;
   margin-bottom: 0;
 }
@@ -435,7 +619,7 @@ onMounted(() => {
   border: none !important;
   background: transparent !important;
   box-shadow: none !important;
-  height: 32px;
+  height: 28px;
   padding: 0 10px;
   font-size: 13px;
   color: #595959;
@@ -452,6 +636,30 @@ onMounted(() => {
 
 .tool-btn.active {
   color: #1890ff;
+}
+
+.filter-btn {
+  background: #e6f4ff !important;
+  color: #1890ff !important;
+  gap: 2px !important;
+  padding: 0 8px !important;
+  height: 28px;
+}
+
+.filter-btn:hover {
+  background: #bae0ff !important;
+}
+
+.sort-btn {
+  background: #e6f4ff !important;
+  color: #1890ff !important;
+  gap: 2px !important;
+  padding: 0 8px !important;
+  height: 28px;
+}
+
+.sort-btn:hover {
+  background: #bae0ff !important;
 }
 
 .more-btn {
@@ -472,23 +680,72 @@ onMounted(() => {
   background: transparent;
   flex: 1;
   min-height: 0;
-  overflow-y: auto;
+  overflow: hidden;
 }
 
 .items-table {
   --vxe-ui-table-header-background-color: #f5f5f5;
+  --vxe-ui-table-border-color: transparent;
+  --vxe-ui-table-border-width: 0;
+  --vxe-ui-table-header-column-border-right-color: transparent;
+  --vxe-ui-table-body-column-border-right-color: transparent;
+  --vxe-ui-table-column-resizable-color: transparent;
+  --vxe-table-resizable-color: transparent;
 }
 
-.items-table :deep(.vxe-header--column) {
+.items-table :deep(.vxe-table),
+.items-table :deep(.vxe-table--main-wrapper),
+.items-table :deep(.vxe-table--header-wrapper),
+.items-table :deep(.vxe-table--body-wrapper) {
+  --vxe-ui-table-border-color: transparent !important;
+  --vxe-ui-table-border-width: 0 !important;
+}
+
+.items-table :deep(.vxe-header--column),
+.items-table :deep(.vxe-table--header .vxe-cell),
+.items-table :deep(.vxe-table--header-wrapper .vxe-header--column),
+.items-table :deep(.vxe-table--header th),
+.items-table :deep(.vxe-table--header .col--ellipsis) {
   background: var(--vxe-ui-table-header-background-color);
   color: #262626;
   font-weight: 600;
   font-size: 13px;
-  border-right: none !important;
+  border-right: 0 !important;
+  border-left: 0 !important;
+  border-top: 0 !important;
+  box-shadow: none !important;
+  outline: none !important;
 }
 
-.items-table :deep(.vxe-body--column) {
+.items-table :deep(.vxe-table--header-wrapper),
+.items-table :deep(.vxe-table--border-line),
+.items-table :deep(.vxe-table--scroll-x-body),
+.items-table :deep(.vxe-table--header-inner-wrapper) {
+  --vxe-table-header-column-border-right-color: transparent !important;
+  --vxe-ui-table-header-column-border-right-color: transparent !important;
+}
+
+.items-table :deep(.vxe-table--border-line) {
+  border: 0 !important;
+  border-right: 0 !important;
+  border-left: 0 !important;
+  display: none !important;
+}
+
+.items-table :deep(.vxe-table--header .vxe-header--column:not(:last-child)::after),
+.items-table :deep(.vxe-table--header .vxe-header--column:not(:last-child)::before),
+.items-table :deep(.vxe-cell--col-resizable),
+.items-table :deep(.vxe-table--column-resizable) {
+  display: none !important;
+  border: 0 !important;
+  background: transparent !important;
+}
+
+.items-table :deep(.vxe-body--column),
+.items-table :deep(.vxe-table--body td) {
   border-bottom: 1px solid #f0f0f0;
+  border-right: 0 !important;
+  border-left: 0 !important;
   font-size: 14px;
   color: #262626;
 }
@@ -524,5 +781,153 @@ onMounted(() => {
 
 .action-dots:hover {
   color: #1890ff;
+}
+
+/* 列设置抽屉 */
+.setting-drawer-body {
+  padding: 0;
+}
+
+/* 去掉搜索输入框内部竖向分割线（同时保留外框） */
+.setting-drawer-body :deep(.ant-input-affix-wrapper) {
+  border-left: 1px solid #d9d9d9 !important;
+  border-right: 1px solid #d9d9d9 !important;
+  border-radius: 6px !important;
+}
+
+/* 去掉 搜索图标(prefix)和输入文字之间、清空按钮(suffix)左侧 的竖线 */
+.setting-drawer-body :deep(.ant-input-prefix),
+.setting-drawer-body :deep(.ant-input-suffix) {
+  border-right: 0 !important;
+  border-left: 0 !important;
+  box-shadow: none !important;
+}
+
+.setting-drawer-body :deep(.ant-input-prefix) {
+  margin-inline-end: 0 !important;
+}
+
+.setting-drawer-body :deep(.ant-input-suffix) {
+  margin-inline-start: 0 !important;
+}
+
+/* 清除 affix-wrapper 内部可能渲染的伪元素分割线 */
+.setting-drawer-body :deep(.ant-input-affix-wrapper::before),
+.setting-drawer-body :deep(.ant-input-affix-wrapper::after),
+.setting-drawer-body :deep(.ant-input::before),
+.setting-drawer-body :deep(.ant-input::after) {
+  display: none !important;
+  box-shadow: none !important;
+}
+
+/* 保证 affix-wrapper 内部前缀、后缀和输入框之间无 inset 阴影分割线 */
+.setting-drawer-body :deep(.ant-input),
+.setting-drawer-body :deep(.ant-input-affix-wrapper .ant-input) {
+  box-shadow: none !important;
+  border-inline-end: 0 !important;
+  border-inline-start: 0 !important;
+  padding-inline-start: 8px !important;
+  padding-inline-end: 8px !important;
+}
+
+.setting-drawer-body :deep(.ant-input-search) {
+  width: 100%;
+}
+
+/* 有 enter-button / group-addon 时，清除中间的竖线 */
+.setting-drawer-body :deep(.ant-input-search .ant-input-group-addon),
+.setting-drawer-body :deep(.ant-input-search .ant-input-search-button) {
+  border-left: 0 !important;
+  border-right: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+/* 清除 affix-wrapper 与后面 addon 之间的右边框（输入框与搜索图标之间的竖线） */
+.setting-drawer-body :deep(.ant-input-group > .ant-input-affix-wrapper:not(:last-child)) {
+  border-inline-end: 0 !important;
+  border-right: 0 !important;
+}
+
+/* 保证最外侧的左右边框完整（左：第一个子元素；右：最后一个子元素） */
+.setting-drawer-body
+  :deep(.ant-input-group > .ant-input-group-addon:first-child),
+.setting-drawer-body :deep(.ant-input-group > .ant-input:first-child),
+.setting-drawer-body
+  :deep(.ant-input-group > .ant-input-affix-wrapper:first-child) {
+  border-inline-start: 1px solid #d9d9d9 !important;
+}
+
+.setting-drawer-body
+  :deep(.ant-input-group > .ant-input-group-addon:last-child),
+.setting-drawer-body :deep(.ant-input-group > .ant-input:last-child),
+.setting-drawer-body
+  :deep(.ant-input-group > .ant-input-affix-wrapper:last-child) {
+  border-inline-end: 1px solid #d9d9d9 !important;
+}
+
+.setting-drawer-body :deep(.ant-collapse) {
+  background: transparent;
+}
+
+.setting-drawer-body :deep(.ant-collapse.ant-collapse-ghost),
+.setting-drawer-body :deep(.ant-collapse > .ant-collapse-item) {
+  padding: 0;
+  margin: 0;
+}
+
+.setting-drawer-body :deep(.ant-collapse > .ant-collapse-item) {
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.setting-drawer-body :deep(.ant-collapse > .ant-collapse-item > .ant-collapse-header) {
+  padding: 12px 16px;
+  margin: 0 -16px;
+  font-weight: 600;
+  font-size: 13px;
+  color: #262626;
+  background: #f5f5f5;
+  border-radius: 0;
+  margin-bottom: 0;
+}
+
+.setting-drawer-body :deep(.ant-collapse-content > .ant-collapse-content-box) {
+  padding: 8px 0 16px;
+}
+
+.field-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.field-item {
+  display: flex;
+  align-items: center;
+  padding: 6px 8px;
+  border-radius: 4px;
+  transition: background-color 0.15s, opacity 0.15s;
+}
+
+.field-item:hover {
+  background: #f5f5f5;
+}
+
+.field-item-dragging {
+  opacity: 0.4;
+}
+
+.field-drag-handle {
+  font-size: 16px;
+  color: #bfbfbf;
+  margin-right: 6px;
+  cursor: move;
+  flex-shrink: 0;
+  user-select: none;
+}
+
+.field-item :deep(.ant-checkbox-wrapper) {
+  flex: 1;
+  font-size: 13px;
+  color: #262626;
 }
 </style>

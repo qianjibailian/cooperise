@@ -10,16 +10,10 @@
     root-class-name="app-side-drawer-root"
     @close="$emit('close')"
   >
-    <div class="drawer-header">
-      <div class="drawer-title" @click="handleMenuClick('/dashboard')">
-        <span>控制台</span>
-      </div>
+    <div class="drawer-content">
       <button class="drawer-close-btn" @click="$emit('close')">
         <CloseOutlined />
       </button>
-    </div>
-
-    <div class="drawer-content">
       <div class="drawer-section">
         <div class="drawer-dashboard">
           <span @click="handleMenuClick('/dashboard')">控制台</span>
@@ -123,29 +117,18 @@ function handleMenuClick(path: string) {
   padding: 0;
 }
 
-.drawer-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 16px 20px;
-  border-bottom: 1px solid #f0f0f0;
-  background: #fff;
-}
-
-.drawer-title {
-  cursor: pointer;
-  font-size: 16px;
-  font-weight: 600;
-  color: #262626;
-}
-
-.drawer-title:hover {
-  color: #1677ff;
+.drawer-content {
+  position: relative;
+  padding: 12px;
 }
 
 .drawer-close-btn {
-  width: 32px;
-  height: 32px;
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 10;
+  width: 28px;
+  height: 28px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -153,7 +136,7 @@ function handleMenuClick(path: string) {
   background: transparent;
   cursor: pointer;
   border-radius: 6px;
-  font-size: 16px;
+  font-size: 14px;
   color: #8c8c8c;
   transition: all 0.15s;
 }
@@ -161,10 +144,6 @@ function handleMenuClick(path: string) {
 .drawer-close-btn:hover {
   background: #f5f5f5;
   color: #595959;
-}
-
-.drawer-content {
-  padding: 12px;
 }
 
 .drawer-section {

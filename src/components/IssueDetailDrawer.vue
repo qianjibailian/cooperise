@@ -18,14 +18,14 @@
           <span class="tb-project">{{ projectLabel || '未命名项目' }}</span>
           <span class="tb-divider">/</span>
           <span class="tb-key">{{ issueKey }}</span>
+          <div class="tb-inline-actions">
+            <div class="tb-icon-btn" title="复制单号"><component :is="CopyOutlined" /></div>
+            <div class="tb-icon-btn" title="收藏"><component :is="StarOutlined" /></div>
+            <div class="tb-icon-btn" title="复制链接"><component :is="LinkOutlined" /></div>
+          </div>
         </div>
         <div class="top-bar-right">
-          <div class="tb-icon-btn" title="查看"><component :is="FileOutlined" /></div>
-          <div class="tb-icon-btn" title="关注"><component :is="StarOutlined" /></div>
-          <div class="tb-icon-btn" title="复制链接"><component :is="LinkOutlined" /></div>
           <div class="tb-icon-btn" title="分享"><component :is="ShareAltOutlined" /></div>
-          <div class="tb-vdiv" />
-          <div class="tb-icon-btn" title="全屏"><component :is="FullscreenOutlined" /></div>
           <div class="tb-icon-btn tb-close" title="关闭" @click="handleClose">
             <component :is="CloseOutlined" />
           </div>
@@ -611,7 +611,6 @@ import { Editor, Toolbar } from '@wangeditor/editor-for-vue'
 import '@wangeditor/editor/dist/css/style.css'
 import {
   FolderOutlined,
-  FileOutlined,
   StarOutlined,
   LinkOutlined,
   ShareAltOutlined,
@@ -629,6 +628,7 @@ import {
   ExclamationCircleOutlined,
   ClockCircleOutlined,
   HistoryOutlined,
+  CopyOutlined,
 } from '@ant-design/icons-vue'
 import { queryDetail } from '@/api/faiz'
 import type { DetailData, DetailField } from '@/types/faiz'
@@ -1317,7 +1317,7 @@ function formatRichText(v: unknown): string {
   background: #f5f7fa;
 }
 
-/* ============ Top bar（玻璃质感） ============ */
+/* ============ Top bar（单号区域，白色） ============ */
 .top-bar {
   position: relative;
   display: flex;
@@ -1326,10 +1326,8 @@ function formatRichText(v: unknown): string {
   padding: 10px 18px;
   height: 48px;
   flex-shrink: 0;
-  background:
-    linear-gradient(135deg, #f0f5ff 0%, rgba(255, 255, 255, 0.95) 50%, #faf5ff 100%);
+  background: #ffffff;
   border-bottom: 1px solid #e6e8ec;
-  backdrop-filter: saturate(180%) blur(12px);
 }
 .top-bar::after {
   content: '';
@@ -1372,13 +1370,19 @@ function formatRichText(v: unknown): string {
 }
 .tb-divider { color: #bfbfbf; margin: 0 2px; font-weight: 300; }
 .tb-key {
-  color: #1677ff;
+  color: #1a1a1a;
   font-weight: 700;
   font-family: 'SF Mono', Menlo, Consolas, monospace;
   font-size: 12px;
   padding: 2px 8px;
-  background: rgba(22, 119, 255, 0.08);
+  background: #ffffff;
   border-radius: 10px;
+}
+.tb-inline-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: 6px;
 }
 
 .top-bar-right {
