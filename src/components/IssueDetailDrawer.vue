@@ -3,12 +3,35 @@
     :open="open"
     placement="right"
     :width="drawerWidth"
-    :body-style="{ padding: 0, height: '100vh' }"
+    :body-style="{ padding: 0, height: '100vh', overflow: 'hidden' }"
     :header-style="{ display: 'none' }"
     :mask-style="{ background: 'transparent' }"
     @close="handleClose"
   >
     <div class="drawer-inner">
+      <!-- ========== 顶部工具栏（单号区域，固定） ========== -->
+      <header v-if="!loading && detailData" class="top-bar">
+        <div class="top-bar-left">
+          <div class="tb-crumb-icon">
+            <component :is="FolderOutlined" />
+          </div>
+          <span class="tb-project">{{ projectLabel || '未命名项目' }}</span>
+          <span class="tb-divider">/</span>
+          <span class="tb-key">{{ issueKey }}</span>
+        </div>
+        <div class="top-bar-right">
+          <div class="tb-icon-btn" title="查看"><component :is="FileOutlined" /></div>
+          <div class="tb-icon-btn" title="关注"><component :is="StarOutlined" /></div>
+          <div class="tb-icon-btn" title="复制链接"><component :is="LinkOutlined" /></div>
+          <div class="tb-icon-btn" title="分享"><component :is="ShareAltOutlined" /></div>
+          <div class="tb-vdiv" />
+          <div class="tb-icon-btn" title="全屏"><component :is="FullscreenOutlined" /></div>
+          <div class="tb-icon-btn tb-close" title="关闭" @click="handleClose">
+            <component :is="CloseOutlined" />
+          </div>
+        </div>
+      </header>
+
       <!-- Loading -->
       <div v-if="loading" class="detail-loading">
         <a-spin size="large">
@@ -28,86 +51,65 @@
         <div class="empty-desc">请尝试刷新页面或重新打开</div>
       </div>
 
-      <!-- Content -->
+      <!-- Content（从单号区域下面开始滚动） -->
       <div v-else class="detail-body">
-        <!-- ========== 顶部工具栏（带玻璃质感渐变） ========== -->
-        <header class="top-bar">
-          <div class="top-bar-left">
-            <div class="tb-crumb-icon">
-              <component :is="FolderOutlined" />
-            </div>
-            <span class="tb-project">{{ projectLabel || '未命名项目' }}</span>
-            <span class="tb-divider">/</span>
-            <span class="tb-key">{{ issueKey }}</span>
-          </div>
-          <div class="top-bar-right">
-            <div class="tb-icon-btn" title="查看"><component :is="FileOutlined" /></div>
-            <div class="tb-icon-btn" title="关注"><component :is="StarOutlined" /></div>
-            <div class="tb-icon-btn" title="复制链接"><component :is="LinkOutlined" /></div>
-            <div class="tb-icon-btn" title="分享"><component :is="ShareAltOutlined" /></div>
-            <div class="tb-vdiv" />
-            <div class="tb-icon-btn" title="全屏"><component :is="FullscreenOutlined" /></div>
-            <div class="tb-icon-btn tb-close" title="关闭" @click="handleClose">
-              <component :is="CloseOutlined" />
-            </div>
-          </div>
-        </header>
-
         <!-- ========== 标题区 ========== -->
         <section class="title-section">
           <div class="title-accent" />
           <h1 class="issue-title">{{ heroSummary || '（未填写标题）' }}</h1>
         </section>
 
-        <!-- ========== 内联属性卡 ========== -->
+        <!-- ========== 内联属性卡（5 个属性在同一行） ========== -->
         <section class="attr-card">
-          <div class="attr-item attr-item-type">
-            <span class="attr-label">问题类型</span>
-            <span class="attr-value-block">
-              <component v-if="issueTypeLabel" :is="CheckSquareFilled" class="attr-check" />
-              <span class="attr-value">{{ issueTypeLabel || '—' }}</span>
-            </span>
-          </div>
-
-          <div class="attr-item">
-            <span class="attr-label">状态</span>
-            <span class="attr-value-block">
-              <a-tag
-                v-if="statusLabel"
-                :color="statusTagColor"
-                :bordered="false"
-                class="attr-tag"
-              >
-                <span class="attr-dot" :style="{ background: statusDotColor }" />
-                {{ statusLabel }}
-              </a-tag>
-              <span v-else class="attr-empty">—</span>
-              <a v-if="statusLabel" class="attr-workflow">查看工作流</a>
-            </span>
-          </div>
-
-          <div class="attr-item">
-            <span class="attr-label">优先级</span>
-            <span class="attr-value-block">
-              <span class="priority-chip" :class="'pc-' + (priorityStatusColor || 'default')">
-                <component :is="SwapOutlined" class="pc-icon" />
-                <span class="pc-text">{{ priorityLabel || '—' }}</span>
+          <div class="attr-row-line">
+            <div class="attr-item">
+              <span class="attr-label">问题类型</span>
+              <span class="attr-value-block">
+                <component v-if="issueTypeLabel" :is="CheckSquareFilled" class="attr-check" />
+                <span class="attr-value">{{ issueTypeLabel || '—' }}</span>
               </span>
-            </span>
-          </div>
+            </div>
 
-          <div class="attr-item">
-            <span class="attr-label">版本</span>
-            <span class="attr-value-block">
-              <span class="attr-empty">—</span>
-            </span>
-          </div>
+            <div class="attr-item">
+              <span class="attr-label">状态</span>
+              <span class="attr-value-block">
+                <a-tag
+                  v-if="statusLabel"
+                  :color="statusTagColor"
+                  :bordered="false"
+                  class="attr-tag"
+                >
+                  <span class="attr-dot" :style="{ background: statusDotColor }" />
+                  {{ statusLabel }}
+                </a-tag>
+                <span v-else class="attr-empty">—</span>
+                <a v-if="statusLabel" class="attr-workflow">查看工作流</a>
+              </span>
+            </div>
 
-          <div class="attr-item">
-            <span class="attr-label">Sprint</span>
-            <span class="attr-value-block">
-              <span class="attr-empty">—</span>
-            </span>
+            <div class="attr-item">
+              <span class="attr-label">优先级</span>
+              <span class="attr-value-block">
+                <span class="priority-chip" :class="'pc-' + (priorityStatusColor || 'default')">
+                  <component :is="SwapOutlined" class="pc-icon" />
+                  <span class="pc-text">{{ priorityLabel || '—' }}</span>
+                </span>
+              </span>
+            </div>
+
+            <div class="attr-item">
+              <span class="attr-label">版本</span>
+              <span class="attr-value-block">
+                <span class="attr-empty">—</span>
+              </span>
+            </div>
+
+            <div class="attr-item">
+              <span class="attr-label">Sprint</span>
+              <span class="attr-value-block">
+                <span class="attr-empty">—</span>
+              </span>
+            </div>
           </div>
         </section>
 
@@ -115,22 +117,24 @@
         <section class="action-bar">
           <div class="action-bar-left">
             <a-button size="small" class="action-btn">
-              <component :is="EditOutlined" />
               编辑
             </a-button>
             <a-button size="small" class="action-btn">
-              <component :is="UserOutlined" />
               分配
             </a-button>
             <a-dropdown>
               <a-button size="small" class="action-btn">
-                更多操作 <component :is="DownOutlined" />
+                更多操作
+                <component :is="DownOutlined" class="action-caret" />
               </a-button>
               <template #overlay>
-                <a-menu>
-                  <a-menu-item key="copy"><component :is="CopyOutlined" />复制</a-menu-item>
-                  <a-menu-item key="delete" danger><component :is="DeleteOutlined" />删除</a-menu-item>
-                  <a-menu-item key="convert"><component :is="SwapOutlined" />转换类型</a-menu-item>
+                <a-menu class="action-menu">
+                  <a-menu-item key="copy">
+                    <span>复制</span>
+                  </a-menu-item>
+                  <a-menu-item key="rollback">
+                    <span>回滚</span>
+                  </a-menu-item>
                 </a-menu>
               </template>
             </a-dropdown>
@@ -138,7 +142,6 @@
             <div class="action-divider" />
 
             <a-button type="primary" size="small" class="action-btn action-primary">
-              <component :is="PlayCircleOutlined" />
               开始处理
             </a-button>
             <a-button size="small" class="action-btn">取消</a-button>
@@ -154,10 +157,6 @@
                 </a-menu>
               </template>
             </a-dropdown>
-            <a-button size="small" type="primary" ghost class="action-btn action-groupchat">
-              <component :is="TeamOutlined" />
-              一键拉群
-            </a-button>
           </div>
           <div class="action-bar-right">
             <a-switch v-model:checked="onlyShowValued" size="small" />
@@ -165,192 +164,437 @@
           </div>
         </section>
 
-        <!-- ========== 主体内容，可滚动 ========== -->
+        <!-- ========== 主体内容 ========== -->
         <main class="detail-scroll">
           <div class="scroll-inner">
 
-            <!-- 概要信息卡片 -->
-            <section v-if="hasSummaryPanel" class="panel-card">
-              <div class="panel-card-header">
-                <div class="pch-left">
-                  <span class="pch-dot pch-dot-blue" />
-                  <span class="pch-title">概要信息</span>
-                </div>
-                <div class="pch-meta">
-                  <component :is="InfoCircleOutlined" />
-                </div>
-              </div>
-              <div class="panel-card-body">
-                <template
-                  v-if="customFieldTabGroup && customFieldTabGroup.structureType === 'TAB_CONTAINER' && customFieldTabGroup.tabItems.length > 0"
-                >
-                  <a-tabs
-                    v-model:active-key="activeTab"
-                    class="panel-tabs"
-                    size="small"
+            <!-- 团队管理字段（折叠面板） -->
+            <a-collapse
+              v-if="hasSummaryPanel"
+              v-model:activeKey="teamCollapseKeys"
+              ghost
+              :bordered="false"
+              class="panel-collapse team-collapse"
+            >
+              <a-collapse-panel key="team">
+                <template #header>
+                  <div class="collapse-header-inner">
+
+                    <span class="pch-title">团队管理字段</span>
+                  </div>
+                </template>
+                <div class="panel-card-body">
+                  <template
+                    v-if="customFieldTabGroup && customFieldTabGroup.structureType === 'TAB_CONTAINER' && customFieldTabGroup.tabItems.length > 0"
                   >
-                    <a-tab-pane
-                      v-for="tab in customFieldTabGroup.tabItems"
-                      :key="tab.title"
-                      :tab="tab.title"
+                    <a-tabs
+                      v-model:active-key="activeTab"
+                      class="panel-tabs"
+                      size="small"
                     >
-                      <div
-                        v-if="filteredFields(tab.issueFields).length > 0"
-                        class="kv-list"
+                      <a-tab-pane
+                        v-for="tab in customFieldTabGroup.tabItems"
+                        :key="tab.title"
+                        :tab="tab.title"
                       >
-                        <template v-for="(f, i) in filteredFields(tab.issueFields)" :key="f.id">
-                          <div class="kv-row" :class="{ 'kv-row-alt': i % 2 === 1 }">
-                            <div class="kv-label">
-                              <span class="kv-label-inner">{{ f.name }}</span>
+                        <div
+                          v-if="filteredFields(tab.issueFields).length > 0"
+                          class="kv-list"
+                        >
+                          <template v-for="(f, i) in filteredFields(tab.issueFields)" :key="f.id">
+                            <div class="kv-row" :class="{ 'kv-row-alt': i % 2 === 1 }">
+                              <div class="kv-label">
+                                <span class="kv-label-inner">{{ f.name }}</span>
+                              </div>
+                              <div class="kv-value">
+                                <UserAvatar v-if="isUserField(f)" :user="f.value" />
+                                <ValueWithBadge v-else :field="f" />
+                              </div>
                             </div>
-                            <div class="kv-value">
-                              <UserAvatar v-if="isUserField(f)" :user="f.value" />
-                              <ValueWithBadge v-else :field="f" />
-                            </div>
+                          </template>
+                        </div>
+                        <MiniEmpty v-else text="暂无该分类下数据" />
+                      </a-tab-pane>
+                    </a-tabs>
+                  </template>
+
+                  <template v-else>
+                    <div v-if="filteredSummaryGrid.length > 0" class="kv-list">
+                      <template v-for="(f, i) in filteredSummaryGrid" :key="f.id">
+                        <div class="kv-row" :class="{ 'kv-row-alt': i % 2 === 1 }">
+                          <div class="kv-label">
+                            <span class="kv-label-inner">{{ f.name }}</span>
                           </div>
-                        </template>
-                      </div>
-                      <MiniEmpty v-else text="暂无该分类下数据" />
-                    </a-tab-pane>
-                  </a-tabs>
-                </template>
-
-                <template v-else>
-                  <div v-if="filteredSummaryGrid.length > 0" class="kv-list">
-                    <template v-for="(f, i) in filteredSummaryGrid" :key="f.id">
-                      <div class="kv-row" :class="{ 'kv-row-alt': i % 2 === 1 }">
-                        <div class="kv-label">
-                          <span class="kv-label-inner">{{ f.name }}</span>
+                          <div class="kv-value">
+                            <UserAvatar v-if="isUserField(f)" :user="f.value" />
+                            <ValueWithBadge v-else :field="f" />
+                          </div>
                         </div>
-                        <div class="kv-value">
-                          <UserAvatar v-if="isUserField(f)" :user="f.value" />
-                          <ValueWithBadge v-else :field="f" />
-                        </div>
-                      </div>
-                    </template>
-                  </div>
-
-                  <div
-                    v-if="customFieldPlain && customFieldPlain.fields.length > 0 && filteredFields(customFieldPlain.fields).length > 0"
-                    class="kv-list kv-list-extra"
-                  >
-                    <div class="kv-subtitle">
-                      <component :is="AppstoreOutlined" /> 自定义字段
+                      </template>
                     </div>
-                    <template v-for="(f, i) in filteredFields(customFieldPlain.fields)" :key="f.id">
-                      <div class="kv-row" :class="{ 'kv-row-alt': i % 2 === 1 }">
-                        <div class="kv-label">
-                          <span class="kv-label-inner">{{ f.name }}</span>
-                        </div>
-                        <div class="kv-value">
-                          <UserAvatar v-if="isUserField(f)" :user="f.value" />
-                          <ValueWithBadge v-else :field="f" />
-                        </div>
-                      </div>
-                    </template>
-                  </div>
-                </template>
-              </div>
-            </section>
 
-            <!-- 描述卡片 -->
-            <section
-              v-if="!onlyShowValued ? true : descriptionFields.length > 0"
-              class="panel-card"
-            >
-              <div class="panel-card-header">
-                <div class="pch-left">
-                  <span class="pch-dot pch-dot-green" />
-                  <span class="pch-title">描述</span>
-                </div>
-                <div class="pch-actions">
-                  <div class="pch-action-btn" title="全屏查看">
-                    <component :is="FullscreenOutlined" />
-                  </div>
-                </div>
-              </div>
-              <div class="panel-card-body">
-                <div
-                  v-if="descriptionFields.length > 0"
-                  v-for="(f, i) in descriptionFields"
-                  :key="i"
-                  class="desc-content"
-                  v-html="formatRichText(f.value)"
-                />
-                <MiniEmpty v-else text="还没有填写描述" />
-              </div>
-            </section>
-
-            <!-- 人员信息卡片 -->
-            <section
-              v-if="!onlyShowValued ? true : filteredUserFields.length > 0"
-              class="panel-card"
-            >
-              <div class="panel-card-header">
-                <div class="pch-left">
-                  <span class="pch-dot pch-dot-purple" />
-                  <span class="pch-title">人员信息</span>
-                </div>
-                <div class="pch-meta">
-                  <component :is="UserOutlined" />
-                </div>
-              </div>
-              <div class="panel-card-body">
-                <div v-if="filteredUserFields.length > 0" class="kv-list">
-                  <template v-for="(f, i) in filteredUserFields" :key="f.id">
-                    <div class="kv-row user-row" :class="{ 'kv-row-alt': i % 2 === 1 }">
-                      <div class="kv-label">
-                        <span class="kv-label-inner">{{ f.name }}</span>
+                    <div
+                      v-if="customFieldPlain && customFieldPlain.fields.length > 0 && filteredFields(customFieldPlain.fields).length > 0"
+                      class="kv-list kv-list-extra"
+                    >
+                      <div class="kv-subtitle">
+                        <component :is="AppstoreOutlined" /> 自定义字段
                       </div>
-                      <div class="kv-value">
-                        <div class="user-cell-pretty">
-                          <UserAvatar :user="f.value" :size="26" />
-                          <div class="ucp-share" title="转派给其他人">
-                            <component :is="ShareAltOutlined" />
+                      <template v-for="(f, i) in filteredFields(customFieldPlain.fields)" :key="f.id">
+                        <div class="kv-row" :class="{ 'kv-row-alt': i % 2 === 1 }">
+                          <div class="kv-label">
+                            <span class="kv-label-inner">{{ f.name }}</span>
+                          </div>
+                          <div class="kv-value">
+                            <UserAvatar v-if="isUserField(f)" :user="f.value" />
+                            <ValueWithBadge v-else :field="f" />
                           </div>
                         </div>
-                      </div>
+                      </template>
                     </div>
                   </template>
                 </div>
-                <MiniEmpty v-else text="暂无人员信息" />
-              </div>
-            </section>
+              </a-collapse-panel>
+            </a-collapse>
 
-            <!-- 研发活动卡片 -->
-            <section class="panel-card panel-card-dim">
-              <div class="panel-card-header">
-                <div class="pch-left">
-                  <span class="pch-dot pch-dot-orange" />
-                  <span class="pch-title">研发活动</span>
-                </div>
-                <div class="pch-meta dim">
-                  <component :is="CodeOutlined" />
-                </div>
-              </div>
-              <div class="panel-card-body">
-                <MiniEmpty text="暂无提交记录 / 分支 / MR" />
-              </div>
-            </section>
+            <!-- 研发活动（折叠板） -->
+            <a-collapse
+              v-model:activeKey="rdCollapseKeys"
+              ghost
+              :bordered="false"
+              class="panel-collapse"
+            >
+              <a-collapse-panel key="rd">
+                <template #header>
+                  <div class="collapse-header-inner collapse-header-with-actions">
+                    <div class="collapse-header-left">
 
-            <!-- 关联 OKR -->
-            <section class="panel-card panel-card-dim">
-              <div class="panel-card-header">
-                <div class="pch-left">
-                  <span class="pch-dot pch-dot-cyan" />
-                  <span class="pch-title">关联的 OKR</span>
+                      <span class="pch-title">研发活动</span>
+                    </div>
+                    <div class="collapse-header-right">
+                      <div class="pch-meta dim">
+                        <component :is="CodeOutlined" />
+                      </div>
+                    </div>
+                  </div>
+                </template>
+                <div class="panel-card-body">
+                  <MiniEmpty text="暂无提交记录 / 分支 / MR" />
                 </div>
-                <div class="pch-actions">
-                  <a class="pch-add" @click.stop>
-                    <component :is="PlusOutlined" />
-                    <span>添加关联</span>
-                  </a>
+              </a-collapse-panel>
+            </a-collapse>
+
+            <!-- 关联 OKR（折叠板） -->
+            <a-collapse
+              v-model:activeKey="okrCollapseKeys"
+              ghost
+              :bordered="false"
+              class="panel-collapse"
+            >
+              <a-collapse-panel key="okr">
+                <template #header>
+                  <div class="collapse-header-inner collapse-header-with-actions">
+                    <div class="collapse-header-left">
+
+                      <span class="pch-title">关联的 OKR</span>
+                    </div>
+                    <div class="collapse-header-right">
+                      <a class="pch-add" @click.stop>
+                        <component :is="PlusOutlined" />
+                        <span>添加关联</span>
+                      </a>
+                    </div>
+                  </div>
+                </template>
+                <div class="panel-card-body">
+                  <MiniEmpty text="暂无关联 OKR，点击右上角添加" />
                 </div>
-              </div>
-              <div class="panel-card-body">
-                <MiniEmpty text="暂无关联 OKR，点击右上角添加" />
-              </div>
-            </section>
+              </a-collapse-panel>
+            </a-collapse>
+
+            <!-- 描述（折叠板，移至最后） -->
+            <a-collapse
+              v-if="!onlyShowValued ? true : descriptionFields.length > 0"
+              v-model:activeKey="descCollapseKeys"
+              ghost
+              :bordered="false"
+              class="panel-collapse panel-collapse-last"
+            >
+              <a-collapse-panel key="desc">
+                <template #header>
+                  <div class="collapse-header-inner collapse-header-with-actions">
+                    <div class="collapse-header-left">
+
+                      <span class="pch-title">描述</span>
+                    </div>
+                    <div class="collapse-header-right">
+                      <div class="pch-action-btn" title="全屏查看">
+                        <component :is="FullscreenOutlined" />
+                      </div>
+                    </div>
+                  </div>
+                </template>
+                <div class="panel-card-body">
+                  <template v-if="descriptionFields.length > 0">
+                    <div v-for="(f, i) in descriptionFields" :key="i" class="desc-rich-wrap">
+                      <Toolbar
+                        v-if="false"
+                        :editor="null"
+                        :default-config="{}"
+                        mode="default"
+                      />
+                      <Editor
+                        v-model="richTextModels[f.id]"
+                        :default-config="richTextReadOnlyConfig"
+                        mode="default"
+                        class="desc-rich-editor"
+                        @onCreated="(editor: IDomEditor) => handleRichEditorCreated(f.id, editor)"
+                      />
+                    </div>
+                  </template>
+                  <MiniEmpty v-else text="还没有填写描述" />
+                </div>
+              </a-collapse-panel>
+            </a-collapse>
+
+            <!-- 人员信息（折叠板） -->
+            <a-collapse
+              v-if="!onlyShowValued ? true : filteredUserFields.length > 0"
+              v-model:activeKey="userCollapseKeys"
+              ghost
+              :bordered="false"
+              class="panel-collapse"
+            >
+              <a-collapse-panel key="user">
+                <template #header>
+                  <div class="collapse-header-inner collapse-header-with-actions">
+                    <div class="collapse-header-left">
+
+                      <span class="pch-title">人员信息</span>
+                    </div>
+                    <div class="collapse-header-right">
+                      <div class="pch-meta dim">
+                        <component :is="UserOutlined" />
+                      </div>
+                    </div>
+                  </div>
+                </template>
+                <div class="panel-card-body">
+                  <div v-if="filteredUserFields.length > 0" class="kv-list">
+                    <template v-for="(f, i) in filteredUserFields" :key="f.id">
+                      <div class="kv-row user-row" :class="{ 'kv-row-alt': i % 2 === 1 }">
+                        <div class="kv-label">
+                          <span class="kv-label-inner">{{ f.name }}</span>
+                        </div>
+                        <div class="kv-value">
+                          <div class="user-cell-pretty">
+                            <UserAvatar :user="f.value" :size="26" />
+                            <div class="ucp-share" title="转派给其他人">
+                              <component :is="ShareAltOutlined" />
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </template>
+                  </div>
+                  <MiniEmpty v-else text="暂无人员信息" />
+                </div>
+              </a-collapse-panel>
+            </a-collapse>
+
+            <!-- 时间信息（折叠板） -->
+            <a-collapse
+              v-model:activeKey="timeCollapseKeys"
+              ghost
+              :bordered="false"
+              class="panel-collapse"
+            >
+              <a-collapse-panel key="time">
+                <template #header>
+                  <div class="collapse-header-inner collapse-header-with-actions">
+                    <div class="collapse-header-left">
+
+                      <span class="pch-title">时间信息</span>
+                    </div>
+                    <div class="collapse-header-right">
+                      <div class="pch-meta dim">
+                        <component :is="ClockCircleOutlined" />
+                      </div>
+                    </div>
+                  </div>
+                </template>
+                <div class="panel-card-body">
+                  <MiniEmpty text="暂无时间信息" />
+                </div>
+              </a-collapse-panel>
+            </a-collapse>
+
+            <!-- 附件（折叠板） -->
+            <a-collapse
+              v-model:activeKey="attachmentCollapseKeys"
+              ghost
+              :bordered="false"
+              class="panel-collapse"
+            >
+              <a-collapse-panel key="attachment">
+                <template #header>
+                  <div class="collapse-header-inner collapse-header-with-actions">
+                    <div class="collapse-header-left">
+
+                      <span class="pch-title">附件</span>
+                    </div>
+                    <div class="collapse-header-right">
+                      <a class="pch-add" @click.stop>
+                        <component :is="PlusOutlined" />
+                        <span>上传附件</span>
+                      </a>
+                    </div>
+                  </div>
+                </template>
+                <div class="panel-card-body">
+                  <MiniEmpty text="暂无附件" />
+                </div>
+              </a-collapse-panel>
+            </a-collapse>
+
+            <!-- 父级工单（折叠板） -->
+            <a-collapse
+              v-model:activeKey="parentCollapseKeys"
+              ghost
+              :bordered="false"
+              class="panel-collapse"
+            >
+              <a-collapse-panel key="parent">
+                <template #header>
+                  <div class="collapse-header-inner collapse-header-with-actions">
+                    <div class="collapse-header-left">
+
+                      <span class="pch-title">父级工单</span>
+                    </div>
+                    <div class="collapse-header-right">
+                      <a class="pch-add" @click.stop>
+                        <component :is="PlusOutlined" />
+                        <span>添加</span>
+                      </a>
+                    </div>
+                  </div>
+                </template>
+                <div class="panel-card-body">
+                  <MiniEmpty text="暂无父级工单" />
+                </div>
+              </a-collapse-panel>
+            </a-collapse>
+
+            <!-- 子级工单（折叠板） -->
+            <a-collapse
+              v-model:activeKey="childCollapseKeys"
+              ghost
+              :bordered="false"
+              class="panel-collapse"
+            >
+              <a-collapse-panel key="child">
+                <template #header>
+                  <div class="collapse-header-inner collapse-header-with-actions">
+                    <div class="collapse-header-left">
+
+                      <span class="pch-title">子级工单</span>
+                    </div>
+                    <div class="collapse-header-right">
+                      <a class="pch-add" @click.stop>
+                        <component :is="PlusOutlined" />
+                        <span>添加</span>
+                      </a>
+                    </div>
+                  </div>
+                </template>
+                <div class="panel-card-body">
+                  <MiniEmpty text="暂无子级工单" />
+                </div>
+              </a-collapse-panel>
+            </a-collapse>
+
+            <!-- 同级工单（折叠板） -->
+            <a-collapse
+              v-model:activeKey="siblingCollapseKeys"
+              ghost
+              :bordered="false"
+              class="panel-collapse"
+            >
+              <a-collapse-panel key="sibling">
+                <template #header>
+                  <div class="collapse-header-inner collapse-header-with-actions">
+                    <div class="collapse-header-left">
+
+                      <span class="pch-title">同级工单</span>
+                    </div>
+                    <div class="collapse-header-right">
+                      <a class="pch-add" @click.stop>
+                        <component :is="PlusOutlined" />
+                        <span>添加</span>
+                      </a>
+                    </div>
+                  </div>
+                </template>
+                <div class="panel-card-body">
+                  <MiniEmpty text="暂无同级工单" />
+                </div>
+              </a-collapse-panel>
+            </a-collapse>
+
+            <!-- 依赖关系（折叠板） -->
+            <a-collapse
+              v-model:activeKey="dependencyCollapseKeys"
+              ghost
+              :bordered="false"
+              class="panel-collapse"
+            >
+              <a-collapse-panel key="dependency">
+                <template #header>
+                  <div class="collapse-header-inner collapse-header-with-actions">
+                    <div class="collapse-header-left">
+
+                      <span class="pch-title">依赖关系</span>
+                    </div>
+                    <div class="collapse-header-right">
+                      <a class="pch-add" @click.stop>
+                        <component :is="PlusOutlined" />
+                        <span>添加</span>
+                      </a>
+                    </div>
+                  </div>
+                </template>
+                <div class="panel-card-body">
+                  <MiniEmpty text="暂无依赖关系" />
+                </div>
+              </a-collapse-panel>
+            </a-collapse>
+
+            <!-- 活动日志（折叠板） -->
+            <a-collapse
+              v-model:activeKey="activityCollapseKeys"
+              ghost
+              :bordered="false"
+              class="panel-collapse panel-collapse-last"
+            >
+              <a-collapse-panel key="activity">
+                <template #header>
+                  <div class="collapse-header-inner collapse-header-with-actions">
+                    <div class="collapse-header-left">
+
+                      <span class="pch-title">活动日志</span>
+                    </div>
+                    <div class="collapse-header-right">
+                      <div class="pch-meta dim">
+                        <component :is="HistoryOutlined" />
+                      </div>
+                    </div>
+                  </div>
+                </template>
+                <div class="panel-card-body">
+                  <MiniEmpty text="暂无活动日志" />
+                </div>
+              </a-collapse-panel>
+            </a-collapse>
 
             <div class="footer-spacer" />
           </div>
@@ -361,7 +605,10 @@
 </template>
 
 <script setup lang="ts">
-import { h, ref, computed, watch } from 'vue'
+import { h, ref, computed, watch, reactive, nextTick } from 'vue'
+import type { IDomEditor, IEditorConfig } from '@wangeditor/editor'
+import { Editor, Toolbar } from '@wangeditor/editor-for-vue'
+import '@wangeditor/editor/dist/css/style.css'
 import {
   FolderOutlined,
   FileOutlined,
@@ -372,20 +619,16 @@ import {
   CloseOutlined,
   CheckSquareFilled,
   SwapOutlined,
-  EditOutlined,
   UserOutlined,
-  TeamOutlined,
   PlusOutlined,
   FileUnknownOutlined,
   LoadingOutlined,
   DownOutlined,
-  CopyOutlined,
-  DeleteOutlined,
-  PlayCircleOutlined,
-  InfoCircleOutlined,
   AppstoreOutlined,
   CodeOutlined,
   ExclamationCircleOutlined,
+  ClockCircleOutlined,
+  HistoryOutlined,
 } from '@ant-design/icons-vue'
 import { queryDetail } from '@/api/faiz'
 import type { DetailData, DetailField } from '@/types/faiz'
@@ -603,10 +846,71 @@ const emit = defineEmits<{
 const loading = ref(false)
 const detailData = ref<DetailData | null>(null)
 const activeTab = ref<string>('')
+const teamCollapseKeys = ref<string[]>(['team'])
+const descCollapseKeys = ref<string[]>(['desc'])
+const userCollapseKeys = ref<string[]>(['user'])
+const rdCollapseKeys = ref<string[]>([])
+const okrCollapseKeys = ref<string[]>([])
+const timeCollapseKeys = ref<string[]>(['time'])
+const attachmentCollapseKeys = ref<string[]>(['attachment'])
+const parentCollapseKeys = ref<string[]>(['parent'])
+const childCollapseKeys = ref<string[]>([])
+const siblingCollapseKeys = ref<string[]>([])
+const dependencyCollapseKeys = ref<string[]>([])
+const activityCollapseKeys = ref<string[]>(['activity'])
 const onlyShowValued = ref(true)
 
-// 抽屉宽度 = 系统视口宽度的 50%
-const drawerWidth = ref(Math.floor(window.innerWidth * 0.5))
+// ======================= 描述区富文本组件（WangEditor 只读） =======================
+const richTextModels = reactive<Record<string, string>>({})
+const richEditorInstances = reactive<Record<string, IDomEditor | null>>({})
+
+const richTextReadOnlyConfig: Partial<IEditorConfig> = {
+  readOnly: true,
+  placeholder: '',
+  scroll: false,
+  MENU_CONF: {},
+}
+
+function handleRichEditorCreated(fieldId: string, editor: IDomEditor) {
+  richEditorInstances[fieldId] = editor
+}
+
+// 监听 detailData 变化：把 description 的富文本字符串塞进 richTextModels
+watch(
+  () => detailData.value,
+  async (d) => {
+    // 清理旧实例
+    Object.values(richEditorInstances).forEach((inst) => {
+      if (inst && typeof inst.destroy === 'function') {
+        try {
+          inst.destroy()
+        } catch {
+          // noop
+        }
+      }
+    })
+    for (const k of Object.keys(richEditorInstances)) {
+      richEditorInstances[k] = null
+    }
+    for (const k of Object.keys(richTextModels)) {
+      delete richTextModels[k]
+    }
+
+    if (!d) return
+    const g = d.layoutGroup.find((x) => x.type === 'DESCRIPTION')
+    if (!g) return
+    const data = g.fieldGroupStructure.data
+    const list = Array.isArray(data) ? (data as DetailField[]) : []
+    await nextTick()
+    list.forEach((f) => {
+      richTextModels[f.id] = formatRichText(f.value)
+    })
+  },
+  { immediate: true },
+)
+
+// 抽屉宽度 = 系统视口宽度的 60%
+const drawerWidth = ref(Math.floor(window.innerWidth * 0.6))
 
 // ======================= helpers to get specific known fields =======================
 
@@ -725,6 +1029,12 @@ interface CustomFieldGroup {
   fields: DetailField[]
 }
 
+function mapTabTitle(title: string): string {
+  if (title === '必填') return '团队自定义信息'
+  if (title === '选填') return '公司标准信息'
+  return title
+}
+
 const customFieldGroups = computed<CustomFieldGroup[]>(() => {
   if (!detailData.value) return []
   const groups: CustomFieldGroup[] = []
@@ -734,7 +1044,13 @@ const customFieldGroups = computed<CustomFieldGroup[]>(() => {
     if (s.type === 'TAB_CONTAINER') {
       const d = s.data as { tabItems: Array<{ title: string; sequence: number; issueFields: DetailField[] }> }
       if (d?.tabItems && d.tabItems.length > 0) {
-        groups.push({ structureType: 'TAB_CONTAINER', tabItems: d.tabItems, fields: [] })
+        groups.push({
+          structureType: 'TAB_CONTAINER',
+          tabItems: d.tabItems
+            .filter((t) => t.title !== 'C端专用字段')
+            .map((t) => ({ ...t, title: mapTabTitle(t.title) })),
+          fields: [],
+        })
       }
     } else if (s.type === 'COMMON_LIST') {
       groups.push({ structureType: 'COMMON_LIST', tabItems: [], fields: s.data as DetailField[] })
@@ -769,6 +1085,10 @@ const allUserFields = computed<DetailField[]>(() => {
   return [...fromSummary, ...fromCustom]
 })
 
+const filteredUserFields = computed(() => {
+  return onlyShowValued.value ? allUserFields.value.filter(hasValue) : allUserFields.value
+})
+
 // 仅展示有值字段过滤
 function hasValue(f: DetailField): boolean {
   const v = f.value
@@ -788,10 +1108,6 @@ function filteredFields(fields: DetailField[]): DetailField[] {
 }
 
 const filteredSummaryGrid = computed(() => filteredFields(rawSummaryGrid.value))
-
-const filteredUserFields = computed(() => {
-  return onlyShowValued.value ? allUserFields.value.filter(hasValue) : allUserFields.value
-})
 
 const hasSummaryPanel = computed(() => {
   if (customFieldTabGroup.value) return true
@@ -815,6 +1131,19 @@ async function fetchDetail() {
   loading.value = true
   detailData.value = null
   activeTab.value = ''
+  // 恢复折叠板默认展开状态
+  teamCollapseKeys.value = ['team']
+  descCollapseKeys.value = ['desc']
+  userCollapseKeys.value = ['user']
+  rdCollapseKeys.value = []
+  okrCollapseKeys.value = []
+  timeCollapseKeys.value = ['time']
+  attachmentCollapseKeys.value = ['attachment']
+  parentCollapseKeys.value = ['parent']
+  childCollapseKeys.value = []
+  siblingCollapseKeys.value = []
+  dependencyCollapseKeys.value = []
+  activityCollapseKeys.value = ['activity']
   try {
     const res = await queryDetail({ key: props.issueKey })
     if (res?.success && res.data) {
@@ -917,6 +1246,7 @@ function formatRichText(v: unknown): string {
   display: flex;
   flex-direction: column;
   height: 100vh;
+  overflow: hidden;
   background: #f5f7fa;
 }
 
@@ -979,10 +1309,11 @@ function formatRichText(v: unknown): string {
 
 /* ============ Body ============ */
 .detail-body {
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
-  height: 100%;
-  min-height: 0;
+  overflow-y: auto;
   background: #f5f7fa;
 }
 
@@ -1090,7 +1421,6 @@ function formatRichText(v: unknown): string {
   padding: 20px 26px 14px;
   flex-shrink: 0;
   background: #ffffff;
-  border-bottom: 1px solid #eef0f2;
   overflow: hidden;
 }
 .title-section::before {
@@ -1123,38 +1453,34 @@ function formatRichText(v: unknown): string {
   padding-right: 8px;
 }
 
-/* ============ 属性卡（横向，标签分组） ============ */
+/* ============ 属性卡（5 列一行） ============ */
 .attr-card {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px 16px;
-  padding: 14px 26px;
+  padding: 12px 26px 14px;
   flex-shrink: 0;
   background:
     linear-gradient(180deg, #ffffff 0%, #fbfcfe 100%);
-  border-bottom: 1px solid #eef0f2;
+}
+.attr-row-line {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 12px 14px;
+  align-items: stretch;
 }
 .attr-item {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-width: 0;
-}
-.attr-item-type {
-  grid-column: 1 / -1;
   flex-direction: row;
   align-items: center;
-  gap: 10px;
-}
-.attr-item-type .attr-label {
-  width: auto;
+  gap: 8px;
+  min-width: 0;
 }
 .attr-label {
-  font-size: 11px;
+  font-size: 13px;
   color: #8c8c8c;
-  text-transform: uppercase;
   letter-spacing: 0.3px;
   font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .attr-value-block {
   display: inline-flex;
@@ -1164,7 +1490,7 @@ function formatRichText(v: unknown): string {
   min-width: 0;
 }
 .attr-value {
-  font-size: 13px;
+  font-size: 15px;
   color: #1a1a1a;
   font-weight: 600;
 }
@@ -1257,7 +1583,6 @@ function formatRichText(v: unknown): string {
   justify-content: space-between;
   padding: 10px 26px 12px;
   background: #ffffff;
-  border-bottom: 1px solid #eef0f2;
   flex-shrink: 0;
   gap: 10px;
 }
@@ -1268,18 +1593,37 @@ function formatRichText(v: unknown): string {
   flex-wrap: wrap;
 }
 .action-btn {
-  height: 28px !important;
-  padding: 0 10px !important;
-  font-size: 12px !important;
+  height: 32px !important;
+  padding: 0 14px !important;
+  font-size: 14px !important;
   display: inline-flex !important;
   align-items: center;
   gap: 4px;
   border-radius: 6px !important;
+  border: none !important;
+  background: #f5f5f5 !important;
   font-weight: 500;
   transition: all 0.18s cubic-bezier(.4,0,.2,1) !important;
 }
 .action-btn:hover {
   transform: translateY(-1px);
+}
+.action-caret {
+  font-size: 10px;
+  margin-left: 2px;
+  opacity: 0.6;
+}
+.action-menu :deep(.ant-menu-item) {
+  display: flex !important;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  padding: 8px 16px !important;
+  min-width: 140px;
+}
+.action-menu :deep(.ant-menu-item .anticon) {
+  font-size: 14px;
+  color: #595959;
 }
 .action-divider {
   width: 1px;
@@ -1318,16 +1662,71 @@ function formatRichText(v: unknown): string {
   user-select: none;
 }
 
-/* ============ Scroll area ============ */
+/* ============ Scroll area（已并入 detail-body 滚动容器，这里只是内边距容器） ============ */
 .detail-scroll {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
   background: #f5f7fa;
 }
 .scroll-inner {
   padding: 16px 20px 8px;
   max-width: 100%;
+}
+
+/* ============ 通用折叠板（描述 / 人员 / 研发 / OKR / 团队管理） ============ */
+.panel-collapse {
+  background: #ffffff;
+  border-radius: 0;
+  border-left: none;
+  border-right: none;
+  border-top: none;
+  border-bottom: 1px solid #e9ecf0;
+  margin-left: -20px;
+  margin-right: -20px;
+  padding: 0;
+  width: calc(100% + 40px);
+  transition: all 0.2s cubic-bezier(.4,0,.2,1);
+}
+.panel-collapse:hover {
+  box-shadow: none;
+  transform: none;
+}
+.panel-collapse :deep(.ant-collapse-header) {
+  padding: 14px 20px !important;
+  align-items: center !important;
+}
+.panel-collapse :deep(.ant-collapse-content-box) {
+  padding: 0 20px 18px !important;
+}
+.panel-collapse-last {
+  border-bottom: none;
+}
+.panel-collapse.team-collapse {
+  margin-top: -16px;
+}
+
+.collapse-header-inner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  flex: 1;
+}
+.collapse-header-inner .pch-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1f2937;
+}
+.collapse-header-with-actions {
+  justify-content: space-between;
+}
+.collapse-header-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.collapse-header-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 /* ============ Panel card 面板卡片 ============ */
@@ -1388,6 +1787,12 @@ function formatRichText(v: unknown): string {
 .pch-dot-purple { background: linear-gradient(135deg, #722ed1, #9254de); box-shadow: 0 0 0 3px rgba(114, 46, 209, 0.12); }
 .pch-dot-orange { background: linear-gradient(135deg, #fa8c16, #ffa940); box-shadow: 0 0 0 3px rgba(250, 140, 22, 0.12); }
 .pch-dot-cyan   { background: linear-gradient(135deg, #13c2c2, #36cfc9); box-shadow: 0 0 0 3px rgba(19, 194, 194, 0.12); }
+.pch-dot-teal   { background: linear-gradient(135deg, #0d9488, #2dd4bf); box-shadow: 0 0 0 3px rgba(13, 148, 136, 0.12); }
+.pch-dot-indigo { background: linear-gradient(135deg, #4f46e5, #818cf8); box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.12); }
+.pch-dot-pink   { background: linear-gradient(135deg, #eb2f96, #f759ab); box-shadow: 0 0 0 3px rgba(235, 47, 150, 0.12); }
+.pch-dot-amber  { background: linear-gradient(135deg, #f59e0b, #fbbf24); box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.12); }
+.pch-dot-violet { background: linear-gradient(135deg, #8b5cf6, #a78bfa); box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.12); }
+.pch-dot-slate  { background: linear-gradient(135deg, #64748b, #94a3b8); box-shadow: 0 0 0 3px rgba(100, 116, 139, 0.12); }
 
 .pch-title {
   font-size: 14px;
@@ -1484,13 +1889,11 @@ function formatRichText(v: unknown): string {
   border-radius: 2px;
 }
 
-/* KV 列表（行式，斑马纹） */
+/* KV 列表（散列，无表格） */
 .kv-list {
   display: flex;
   flex-direction: column;
-  border-radius: 8px;
-  overflow: hidden;
-  border: 1px solid #f0f2f5;
+  gap: 10px 0;
 }
 .kv-list-extra {
   margin-top: 12px;
@@ -1499,30 +1902,23 @@ function formatRichText(v: unknown): string {
   font-size: 12px;
   font-weight: 600;
   color: #8c8c8c;
-  padding: 8px 12px 6px;
+  padding: 4px 0 8px;
+  margin-bottom: 4px;
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  background: #fafbfc;
-  border-bottom: 1px solid #f0f2f5;
+  border-bottom: 1px dashed #f0f0f0;
 }
 .kv-row {
   display: grid;
   grid-template-columns: 120px 1fr;
   gap: 14px;
   align-items: start;
-  padding: 10px 14px;
-  background: #ffffff;
-  transition: background 0.15s;
-}
-.kv-row + .kv-row {
-  border-top: 1px solid #f5f6f8;
+  padding: 0;
+  background: transparent;
 }
 .kv-row:hover {
-  background: #fafbfd;
-}
-.kv-row-alt {
-  background: #fcfcfd;
+  background: transparent;
 }
 .kv-label {
   display: flex;
@@ -1573,23 +1969,31 @@ function formatRichText(v: unknown): string {
   background: #e6f4ff;
 }
 
-/* Description content */
-.desc-content {
-  background:
-    linear-gradient(180deg, #fbfcfe 0%, #f7f9fc 100%);
-  border: 1px solid #eef2f7;
-  border-left: 3px solid #52c41a;
-  border-radius: 8px;
-  padding: 14px 18px;
-  font-size: 13.5px;
-  line-height: 1.75;
-  color: #262626;
-  word-break: break-word;
+/* Description rich text（WangEditor 只读） */
+.desc-rich-wrap + .desc-rich-wrap {
+  margin-top: 10px;
+}
+.desc-rich-wrap :deep(.w-e-text-container) {
+  background: linear-gradient(180deg, #fbfcfe 0%, #f7f9fc 100%) !important;
+  border: 1px solid #eef2f7 !important;
+  border-left: 3px solid #52c41a !important;
+  border-radius: 8px !important;
+  padding: 14px 18px !important;
+  font-size: 13.5px !important;
+  line-height: 1.75 !important;
+  color: #262626 !important;
+  word-break: break-word !important;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9);
 }
-.desc-content :deep(p) { margin: 0 0 10px; }
-.desc-content :deep(p:last-child) { margin-bottom: 0; }
-.desc-content :deep(a) {
+.desc-rich-wrap :deep(.w-e-scroll) {
+  overflow-y: hidden !important;
+}
+.desc-rich-wrap :deep(.w-e-text-placeholder) {
+  display: none !important;
+}
+.desc-rich-wrap :deep(p) { margin: 0 0 10px; }
+.desc-rich-wrap :deep(p:last-child) { margin-bottom: 0; }
+.desc-rich-wrap :deep(a) {
   color: #1677ff;
   text-decoration: none;
   padding: 1px 6px;
@@ -1597,25 +2001,25 @@ function formatRichText(v: unknown): string {
   background: rgba(22, 119, 255, 0.06);
   transition: background 0.15s;
 }
-.desc-content :deep(a:hover) {
+.desc-rich-wrap :deep(a:hover) {
   background: rgba(22, 119, 255, 0.12);
   text-decoration: underline;
 }
-.desc-content :deep(img) {
+.desc-rich-wrap :deep(img) {
   max-width: 100%;
   border-radius: 6px;
   border: 1px solid #e6e8eb;
 }
-.desc-content :deep(h1),
-.desc-content :deep(h2),
-.desc-content :deep(h3) {
+.desc-rich-wrap :deep(h1),
+.desc-rich-wrap :deep(h2),
+.desc-rich-wrap :deep(h3) {
   margin: 14px 0 8px;
   color: #1f1f1f;
 }
-.desc-content :deep(ul),
-.desc-content :deep(ol) { padding-left: 22px; margin: 0 0 10px; }
-.desc-content :deep(li) { margin: 3px 0; }
-.desc-content :deep(code) {
+.desc-rich-wrap :deep(ul),
+.desc-rich-wrap :deep(ol) { padding-left: 22px; margin: 0 0 10px; }
+.desc-rich-wrap :deep(li) { margin: 3px 0; }
+.desc-rich-wrap :deep(code) {
   background: #ffffff;
   border: 1px solid #e8e8e8;
   padding: 1px 6px;
@@ -1624,35 +2028,44 @@ function formatRichText(v: unknown): string {
   font-family: 'SF Mono', Menlo, Consolas, monospace;
   color: #cf1322;
 }
-.desc-content :deep(pre) {
+.desc-rich-wrap :deep(pre) {
   background: #0f172a;
   color: #e2e8f0;
   padding: 12px 14px;
   border-radius: 6px;
   overflow-x: auto;
 }
-.desc-content :deep(pre code) {
+.desc-rich-wrap :deep(pre code) {
   background: transparent;
   border: none;
   color: inherit;
   padding: 0;
 }
+.desc-rich-wrap :deep(.w-e-bar),
+.desc-rich-wrap :deep([data-slate-editor]) {
+  outline: none !important;
+  box-shadow: none !important;
+}
+.desc-rich-wrap :deep(.w-e-toolbar),
+.desc-rich-wrap :deep(.w-e-bar-item-menu) {
+  display: none !important;
+}
 
 .footer-spacer { height: 28px; }
 
-/* Scrollbar */
-.detail-scroll {
+/* Scrollbar（从单号区域顶部开始） */
+.detail-body {
   scrollbar-width: thin;
   scrollbar-color: #cfd3d8 transparent;
 }
-.detail-scroll::-webkit-scrollbar { width: 8px; }
-.detail-scroll::-webkit-scrollbar-thumb {
+.detail-body::-webkit-scrollbar { width: 8px; }
+.detail-body::-webkit-scrollbar-thumb {
   background: linear-gradient(180deg, #d9dde1, #cfd3d8);
   border-radius: 4px;
   border: 2px solid transparent;
   background-clip: content-box;
 }
-.detail-scroll::-webkit-scrollbar-thumb:hover {
+.detail-body::-webkit-scrollbar-thumb:hover {
   background: #a8b0b8;
   background-clip: content-box;
   border: 2px solid transparent;
