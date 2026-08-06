@@ -51,6 +51,7 @@
         ref="tableRef"
         :data="dataList"
         :loading="loading"
+        keep-source
         :row-config="{ keyField: 'issueKey' }"
         :column-config="{ resizable: true }"
         :checkbox-config="{ highlight: true, range: false }"
@@ -60,7 +61,11 @@
         class="items-table"
       >
         <vxe-column type="checkbox" width="50" align="center" />
-        <vxe-column field="issueKey" title="编号" width="140" />
+        <vxe-column field="issueKey" title="编号" width="140">
+          <template #default="{ row }">
+            <a class="issue-key-link" @click="openDetail(row.issueKey)">{{ row.issueKey }}</a>
+          </template>
+        </vxe-column>
         <vxe-column field="summary" title="概要" min-width="260" :edit-render="{}">
           <template #default="{ row }">
             <span class="summary-text">{{ row.summary }}</span>
@@ -130,6 +135,12 @@
         </vxe-column>
       </vxe-table>
     </div>
+
+    <!-- 事项详情抽屉 -->
+    <IssueDetailDrawer
+      v-model:open="detailDrawerOpen"
+      :issue-key="detailIssueKey"
+    />
   </div>
 </template>
 
@@ -150,8 +161,18 @@ import {
 } from '@ant-design/icons-vue'
 import { getIssues, patchIssue } from '@/api/faiz'
 import type { IssueRow, IssueRecord } from '@/types/faiz'
+import IssueDetailDrawer from '@/components/IssueDetailDrawer.vue'
 
 const tableRef = ref<VxeTableInstance<IssueRow>>()
+
+// 详情抽屉
+const detailDrawerOpen = ref(false)
+const detailIssueKey = ref('')
+
+function openDetail(issueKey: string) {
+  detailIssueKey.value = issueKey
+  detailDrawerOpen.value = true
+}
 
 // 工具栏状态
 const filterCount = ref(0)
@@ -479,6 +500,17 @@ onMounted(() => {
 .summary-text {
   font-size: 14px;
   color: #262626;
+}
+
+.issue-key-link {
+  font-size: 14px;
+  color: #1890ff;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.issue-key-link:hover {
+  text-decoration: underline;
 }
 
 /* 操作列三点按钮 */

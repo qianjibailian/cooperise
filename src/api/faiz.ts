@@ -13,6 +13,11 @@ import type {
   IssueCreateMetaResult,
   ComponentItem,
   ComponentListData,
+  CustomFieldOptionReq,
+  CustomFieldOptionResult,
+  CreateIssuePayload,
+  QueryDetailPayload,
+  QueryDetailResult,
 } from '@/types/faiz'
 
 const PREFIX = '/faiz-api'
@@ -78,9 +83,11 @@ export function getIssues(data?: IssueQuery): Promise<IssueQueryResult> {
   return request.post(`${PREFIX}/issue/query`, data)
 }
 
-/** 新建 Modal 表单提交 - 存储动态表单数据 */
-export function submitIssueForm(formData: Record<string, unknown>): Promise<Result<Record<string, unknown>>> {
-  return request.post(`${PREFIX}/issue/form-submit`, formData)
+/** 新建事项（POST /issue/create），入参使用 inputFields 数组格式 */
+export function createIssue(
+  payload: CreateIssuePayload,
+): Promise<Result<Record<string, unknown>>> {
+  return request.post(`${PREFIX}/issue/create`, payload)
 }
 
 /** 单元格编辑 - 部分字段更新 Issue */
@@ -91,6 +98,11 @@ export function patchIssue(id: string | number, fields: Record<string, unknown>)
 /** 新建事项表单元数据（POST /issue/queryCreateMeta） */
 export function getIssueCreateMeta(data: { projectId: string; issueTypeId: string }): Promise<IssueCreateMetaResult> {
   return request.post(`${PREFIX}/issue/queryCreateMeta`, data)
+}
+
+/** 查询事项详情（POST /issue/queryDetail） */
+export function queryDetail(payload: QueryDetailPayload): Promise<QueryDetailResult> {
+  return request.post(`${PREFIX}/issue/queryDetail`, payload)
 }
 
 // ==================== Component API ====================
@@ -118,4 +130,13 @@ export function updateComponent(id: number, data: Record<string, unknown>): Prom
 /** 删除组件 */
 export function deleteComponent(id: number): Promise<Result<void>> {
   return request.delete(`${PREFIX}/component/${id}`)
+}
+
+// ==================== Custom Field Option API ====================
+
+/** 批量查询自定义字段选项（POST /custom_field/option/customOptions） */
+export function getCustomFieldOptions(
+  fieldReqs: CustomFieldOptionReq[],
+): Promise<CustomFieldOptionResult> {
+  return request.post(`${PREFIX}/custom_field/option/customOptions`, { fieldReqs })
 }
