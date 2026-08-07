@@ -10,10 +10,28 @@
       </div>
       <div class="top-bar-right">
         <span class="total-text">共{{ total }}条</span>
-        <a-button class="tool-btn filter-btn" :class="{ active: filterCount > 0 }">
-          <component :is="AlignCenterOutlined" />
-          筛选(2)
-        </a-button>
+        <a-popover
+          v-model:open="filterPanelVisible"
+          trigger="click"
+          placement="bottomRight"
+          :overlayInnerStyle="{ padding: 0 }"
+          overlayClassName="filter-popover"
+          :overlayStyle="{ width: '760px', maxWidth: 'calc(100vw - 32px)' }"
+        >
+          <template #content>
+            <FilterPanel
+              v-model:visible="filterPanelVisible"
+              v-model="filterConditions"
+            />
+          </template>
+          <a-button
+            class="tool-btn filter-btn"
+            :class="{ active: filterDisplayCount > 0 }"
+          >
+            <component :is="AlignCenterOutlined" />
+            筛选({{ filterDisplayCount }})
+          </a-button>
+        </a-popover>
         <a-button class="tool-btn">
           <component :is="UnorderedListOutlined" />
           分组
@@ -137,7 +155,7 @@
             </div>
           </template>
           <template #default="{ row }">
-            <a-dropdown>
+            <a-dropdown :trigger="['click']">
               <a-button type="text" class="action-dots">···</a-button>
               <template #overlay>
                 <a-menu @click="handleMenuClick($event, row)">
@@ -243,7 +261,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import type { VxeTableInstance } from 'vxe-table'
 import { message } from 'ant-design-vue'
 import {
@@ -263,6 +281,7 @@ import {
 import { getIssues, patchIssue, queryAvailableFields } from '@/api/faiz'
 import type { IssueRow, IssueRecord } from '@/types/faiz'
 import IssueDetailDrawer from '@/components/IssueDetailDrawer.vue'
+import FilterPanel from '@/components/FilterPanel.vue'
 
 const tableRef = ref<VxeTableInstance<IssueRow>>()
 
@@ -397,6 +416,15 @@ function onShownDragEnd() {
 // 工具栏状态
 const filterCount = ref(0)
 const sortCount = ref(0)
+
+// 筛选面板
+const filterPanelVisible = ref(false)
+const filterConditions = ref<Array<{ logic: string; field: string; operator: string; value: string }>>([
+  { logic: '且', field: 'assignee', operator: '属于', value: '当前用户' },
+  { logic: '且', field: 'status', operator: '属于', value: '所有未结束状态' },
+])
+
+const filterDisplayCount = computed(() => filterConditions.value.length)
 
 function handleReset() {
   filterCount.value = 0
@@ -988,5 +1016,21 @@ onMounted(() => {
   flex: 1;
   font-size: 13px;
   color: #262626;
+}
+</style>
+
+<style>
+.filter-popover .ant-popover-inner {
+  padding: 0;
+  border-radius: 6px;
+  box-shadow: 0 6px 16px 0 rgba(0, 0, 0, 0.08), 0 3px 6px -4px rgba(0, 0, 0, 0.12), 0 9px 28px 8px rgba(0, 0, 0, 0.05);
+}
+
+.filter-popover .ant-popover-inner-content {
+  padding: 0;
+}
+
+.filter-popover .ant-popover-arrow {
+  display: none;
 }
 </style>
