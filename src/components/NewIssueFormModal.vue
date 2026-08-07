@@ -37,10 +37,10 @@
     </template>
     <a-spin :spinning="newFormLoading" class="new-form-spin">
       <div class="new-form-inner">
-        <!-- 上部固定区：事项类型（垂直居中于分割线上方） -->
+        <!-- 上部固定区：问题类型（垂直居中于分割线上方） -->
         <div class="new-form-header">
           <a-form layout="horizontal" :label-width="120">
-            <a-form-item label="事项类型">
+            <a-form-item label="问题类型">
               <a-select
                 v-model:value="newFormIssueTypeId"
                 style="width: 100%"
@@ -379,7 +379,7 @@ function collectAllFields(): CreateMetaField[] {
 }
 
 /**
- * 项目/事项类型的标准字段 type 约定（与后端 POST /issue/create 示例一致）
+ * 项目/问题类型的标准字段 type 约定（与后端 POST /issue/create 示例一致）
  */
 const PROJECT_FIELD_TYPE = 'SELECT_LIST_SINGLE_PROJECT'
 const ISSUETYPE_FIELD_TYPE = 'SELECT_LIST_SINGLE_ISSUETYPE'
@@ -476,7 +476,7 @@ function buildCreateIssuePayload(): CreateIssuePayload {
     type: PROJECT_FIELD_TYPE,
     value: NEW_FORM_DEFAULT_PROJECT_ID,
   })
-  // 2) 事项类型
+  // 2) 问题类型
   inputFields.push({
     id: 'issuetype',
     type: ISSUETYPE_FIELD_TYPE,
@@ -773,7 +773,7 @@ async function handleNewFormSubmit() {
   min-height: 0;
 }
 
-/* ===== 第一段固定区：事项类型容器 ===== */
+/* ===== 第一段固定区：问题类型容器 ===== */
 .new-form-header {
   flex-shrink: 0;
   min-height: 64px;

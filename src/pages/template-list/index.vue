@@ -109,7 +109,7 @@
                 </a-form-item>
               </a-col>
               <a-col :span="6">
-                <a-form-item label="事项类型">
+                <a-form-item label="问题类型">
                   <a-select v-model:value="editForm.category" placeholder="选择" size="large">
                     <a-select-option value="requirement">需求</a-select-option>
                     <a-select-option value="task">任务</a-select-option>
