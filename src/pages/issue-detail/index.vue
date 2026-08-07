@@ -20,17 +20,107 @@
       </div>
     </header>
 
-    <!-- Loading -->
-    <div v-if="loading" class="detail-loading">
-      <a-spin size="large">
-        <template #indicator>
-          <component :is="LoadingOutlined" spin style="font-size: 36px; color: #1677ff" />
-        </template>
-      </a-spin>
-      <div class="loading-text">正在加载事项详情…</div>
+    <!-- Skeleton Loading -->
+    <div v-if="loading" class="detail-skeleton">
+      <!-- Header skeleton -->
+      <div class="sk-header">
+        <div class="sk-icon sk-shimmer"></div>
+        <div class="sk-header-content">
+          <div class="sk-breadcrumb sk-shimmer"></div>
+          <div class="sk-title sk-shimmer"></div>
+        </div>
+      </div>
+
+      <!-- Attribute card skeleton -->
+      <div class="sk-attr-card">
+        <div class="sk-attr-item">
+          <div class="sk-attr-label sk-shimmer"></div>
+          <div class="sk-attr-value sk-shimmer"></div>
+        </div>
+        <div class="sk-attr-item">
+          <div class="sk-attr-label sk-shimmer"></div>
+          <div class="sk-attr-value sk-shimmer"></div>
+        </div>
+        <div class="sk-attr-item">
+          <div class="sk-attr-label sk-shimmer"></div>
+          <div class="sk-attr-value sk-shimmer"></div>
+        </div>
+        <div class="sk-attr-item">
+          <div class="sk-attr-label sk-shimmer"></div>
+          <div class="sk-attr-value sk-shimmer"></div>
+        </div>
+        <div class="sk-attr-item">
+          <div class="sk-attr-label sk-shimmer"></div>
+          <div class="sk-attr-value sk-shimmer"></div>
+        </div>
+      </div>
+
+      <!-- Action bar skeleton -->
+      <div class="sk-action-bar">
+        <div class="sk-btn sk-shimmer"></div>
+        <div class="sk-btn sk-shimmer"></div>
+        <div class="sk-btn sk-shimmer"></div>
+        <div class="sk-btn sk-btn-primary sk-shimmer"></div>
+        <div class="sk-btn sk-shimmer"></div>
+      </div>
+
+      <!-- Body skeleton -->
+      <div class="sk-body">
+        <div class="sk-col sk-col-left">
+          <div class="sk-panel">
+            <div class="sk-panel-header sk-shimmer"></div>
+            <div class="sk-panel-body">
+              <div class="sk-kv-row"><div class="sk-kv-label sk-shimmer"></div><div class="sk-kv-value sk-shimmer"></div></div>
+              <div class="sk-kv-row"><div class="sk-kv-label sk-shimmer"></div><div class="sk-kv-value sk-shimmer"></div></div>
+              <div class="sk-kv-row"><div class="sk-kv-label sk-shimmer"></div><div class="sk-kv-value sk-shimmer"></div></div>
+              <div class="sk-kv-row"><div class="sk-kv-label sk-shimmer"></div><div class="sk-kv-value sk-shimmer"></div></div>
+            </div>
+          </div>
+          <div class="sk-panel">
+            <div class="sk-panel-header sk-shimmer"></div>
+            <div class="sk-panel-body">
+              <div class="sk-kv-row"><div class="sk-kv-label sk-shimmer"></div><div class="sk-kv-value sk-shimmer"></div></div>
+              <div class="sk-kv-row"><div class="sk-kv-label sk-shimmer"></div><div class="sk-kv-value sk-shimmer"></div></div>
+              <div class="sk-kv-row"><div class="sk-kv-label sk-shimmer"></div><div class="sk-kv-value sk-shimmer"></div></div>
+            </div>
+          </div>
+        </div>
+        <div class="sk-col sk-col-right">
+          <div class="sk-panel">
+            <div class="sk-panel-header sk-shimmer"></div>
+            <div class="sk-panel-body">
+              <div class="sk-kv-row"><div class="sk-kv-label sk-shimmer"></div><div class="sk-kv-value sk-shimmer"></div></div>
+              <div class="sk-kv-row"><div class="sk-kv-label sk-shimmer"></div><div class="sk-kv-value sk-shimmer"></div></div>
+              <div class="sk-kv-row"><div class="sk-kv-label sk-shimmer"></div><div class="sk-kv-value sk-shimmer"></div></div>
+            </div>
+          </div>
+          <div class="sk-panel">
+            <div class="sk-panel-header sk-shimmer"></div>
+            <div class="sk-panel-body">
+              <div class="sk-kv-row"><div class="sk-kv-label sk-shimmer"></div><div class="sk-kv-value sk-shimmer"></div></div>
+              <div class="sk-kv-row"><div class="sk-kv-label sk-shimmer"></div><div class="sk-kv-value sk-shimmer"></div></div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
 
-    <!-- Empty -->
+    <!-- Empty: ticket not found -->
+    <div v-else-if="notFound" class="detail-not-found">
+      <a-empty>
+        <template #image>
+          <component :is="FileUnknownOutlined" class="nf-icon" />
+        </template>
+        <template #description>
+          <div class="nf-desc">
+            <div class="nf-title">该工单已被删除或不存在</div>
+            <div class="nf-key">Key：{{ issueKey }}</div>
+          </div>
+        </template>
+      </a-empty>
+    </div>
+
+    <!-- Empty: generic -->
     <div v-else-if="!detailData" class="detail-empty">
       <div class="empty-illustration">
         <component :is="FileUnknownOutlined" />
@@ -509,7 +599,6 @@ import {
   CheckSquareFilled,
   SwapOutlined,
   FileUnknownOutlined,
-  LoadingOutlined,
   DownOutlined,
   AppstoreOutlined,
   ExclamationCircleOutlined,
@@ -725,6 +814,7 @@ const route = useRoute()
 const issueKey = computed(() => route.params.issueKey as string)
 
 const loading = ref(false)
+const notFound = ref(false)
 const detailData = ref<DetailData | null>(null)
 const activeTab = ref<string>('')
 const teamCollapseKeys = ref<string[]>(['team'])
@@ -998,6 +1088,7 @@ const hasSummaryPanel = computed(() => {
 
 async function fetchDetail() {
   loading.value = true
+  notFound.value = false
   detailData.value = null
   activeTab.value = ''
   // 恢复折叠板默认展开状态
@@ -1017,11 +1108,15 @@ async function fetchDetail() {
     const res = await queryDetail({ key: issueKey.value })
     if (res?.success && res.data) {
       detailData.value = res.data
+      notFound.value = false
       if (customFieldTabGroup.value && customFieldTabGroup.value.tabItems.length > 0) {
         activeTab.value = customFieldTabGroup.value.tabItems[0].title
       }
+    } else {
+      notFound.value = true
     }
   } catch {
+    notFound.value = true
     detailData.value = null
   } finally {
     loading.value = false
@@ -1122,23 +1217,223 @@ function formatRichText(v: unknown): string {
   border-radius: 4px;
 }
 
-/* ============ Loading ============ */
-.detail-loading {
+/* ============ Skeleton Loading ============ */
+.detail-skeleton {
   display: flex;
   flex-direction: column;
-  justify-content: center;
-  align-items: center;
-  gap: 18px;
-  flex: 1;
-  background:
-    radial-gradient(circle at 20% 10%, #e8f3ff 0%, transparent 55%),
-    radial-gradient(circle at 80% 20%, #f5f0ff 0%, transparent 55%),
-    #ffffff;
+  height: 100%;
+  padding: 20px 24px;
+  gap: 16px;
+  background: #fff;
+  overflow: auto;
 }
-.loading-text {
-  font-size: 13px;
-  color: #8c8c8c;
-  letter-spacing: 0.3px;
+
+.sk-shimmer {
+  position: relative;
+  overflow: hidden;
+  background: #f0f0f0;
+  border-radius: 4px;
+}
+
+.sk-shimmer::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(
+    90deg,
+    #f0f0f0 0%,
+    #e8e8e8 40%,
+    #f5f5f5 60%,
+    #f0f0f0 100%
+  );
+  animation: sk-shimmer 1.5s ease-in-out infinite;
+}
+
+@keyframes sk-shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+/* Header skeleton */
+.sk-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.sk-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 6px;
+  flex-shrink: 0;
+}
+
+.sk-header-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 4px;
+}
+
+.sk-breadcrumb {
+  width: 220px;
+  height: 14px;
+}
+
+.sk-title {
+  width: 70%;
+  max-width: 520px;
+  height: 24px;
+}
+
+/* Attribute card skeleton */
+.sk-attr-card {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  padding: 12px 16px;
+  background: #fafafa;
+  border: 1px solid #f0f0f0;
+  border-radius: 8px;
+}
+
+.sk-attr-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 0 16px;
+  border-right: 1px solid #f0f0f0;
+}
+
+.sk-attr-item:first-child {
+  padding-left: 0;
+}
+
+.sk-attr-item:last-child {
+  border-right: none;
+  padding-right: 0;
+}
+
+.sk-attr-label {
+  width: 60px;
+  height: 12px;
+}
+
+.sk-attr-value {
+  width: 80%;
+  max-width: 120px;
+  height: 20px;
+}
+
+/* Action bar skeleton */
+.sk-action-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.sk-btn {
+  width: 64px;
+  height: 28px;
+  border-radius: 4px;
+}
+
+.sk-btn-primary {
+  width: 80px;
+  background: #e6f4ff !important;
+}
+
+.sk-btn-primary::after {
+  background: linear-gradient(
+    90deg,
+    #e6f4ff 0%,
+    #bae0ff 40%,
+    #e6f4ff 60%,
+    #e6f4ff 100%
+  );
+}
+
+/* Body skeleton */
+.sk-body {
+  flex: 1;
+  display: flex;
+  gap: 16px;
+  min-height: 0;
+}
+
+.sk-col {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.sk-col-left {
+  flex: 3;
+  min-width: 0;
+}
+
+.sk-col-right {
+  flex: 2;
+  min-width: 0;
+}
+
+.sk-panel {
+  background: #fff;
+  border: 1px solid #f0f0f0;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.sk-panel-header {
+  height: 40px;
+  margin: 0 -16px;
+  margin-bottom: 0;
+  border-radius: 0;
+  background: #fafafa;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.sk-panel-header::after {
+  background: linear-gradient(
+    90deg,
+    #fafafa 0%,
+    #f0f0f0 40%,
+    #fafafa 60%,
+    #fafafa 100%
+  );
+}
+
+.sk-panel-body {
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.sk-kv-row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  min-height: 24px;
+}
+
+.sk-kv-label {
+  width: 80px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
+.sk-kv-value {
+  flex: 1;
+  max-width: 200px;
+  height: 18px;
 }
 
 /* ============ Empty ============ */
@@ -1177,6 +1472,39 @@ function formatRichText(v: unknown): string {
 .empty-desc {
   font-size: 12px;
   color: #8c8c8c;
+}
+
+/* ============ Not Found ============ */
+.detail-not-found {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  flex: 1;
+  padding: 40px;
+  background: #fff;
+}
+
+.nf-icon {
+  font-size: 64px !important;
+  color: #d9d9d9;
+}
+
+.nf-desc {
+  text-align: center;
+}
+
+.nf-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #262626;
+  margin-bottom: 6px;
+}
+
+.nf-key {
+  font-size: 13px;
+  color: #8c8c8c;
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
 }
 
 /* ============ Body ============ */
