@@ -18,6 +18,8 @@ import type {
   CreateIssuePayload,
   QueryDetailPayload,
   QueryDetailResult,
+  AvailableFieldQuery,
+  AvailableFieldResult,
 } from '@/types/faiz'
 
 const PREFIX = '/faiz-api'
@@ -138,5 +140,12 @@ export function deleteComponent(id: number): Promise<Result<void>> {
 export function getCustomFieldOptions(
   fieldReqs: CustomFieldOptionReq[],
 ): Promise<CustomFieldOptionResult> {
-  return request.post(`${PREFIX}/custom_field/option/customOptions`, { fieldReqs })
+  return request.post(`${PREFIX}/custom_field/customOptions`, { fieldReqs })
+}
+
+/** 查询可用字段列表（POST /custom_field/queryAvailableFields） */
+export function queryAvailableFields(
+  params?: AvailableFieldQuery,
+): Promise<AvailableFieldResult> {
+  return request.post(`${PREFIX}/custom_field/queryAvailableFields`, params)
 }

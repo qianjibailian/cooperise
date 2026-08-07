@@ -305,6 +305,49 @@ export interface CustomFieldOptionResult {
   data: CustomFieldOptionResponseItem[]
 }
 
+// ========== Available Fields (POST /custom_field/queryAvailableFields) ==========
+
+/** 可用字段查询参数 */
+export interface AvailableFieldQuery {
+  page?: number
+  perPage?: number
+  searchKey?: string
+}
+
+/** 可用字段单项 */
+export interface AvailableFieldItem {
+  fieldId: string
+  id: string
+  dcpFieldId: string | null
+  fieldName: string
+  filedType: string
+  type: string
+  typeName: string | null
+  orderAble: boolean
+  supportOperator: string[]
+  isSystem: boolean
+  frontPage: boolean
+  esFieldType: string | null
+  referencedFieldId: string | null
+  enumSettingType: string | null
+  obsolete: boolean
+  fieldTag: string | null
+  fieldSource: string | null
+}
+
+/** 可用字段查询结果（分页） */
+export interface AvailableFieldResult {
+  message: string
+  success: boolean
+  data: {
+    total: number
+    pageCount: number
+    currentPage: number
+    perPage: number
+    list: AvailableFieldItem[]
+  }
+}
+
 // ========== Issue Detail (POST /issue/queryDetail) ==========
 
 /** queryDetail 请求参数 */

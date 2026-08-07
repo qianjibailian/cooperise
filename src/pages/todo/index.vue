@@ -188,7 +188,9 @@
           v-model:value="settingSearchKeyword"
           placeholder="搜索表头"
           allow-clear
+          :loading="settingLoading"
           style="margin-bottom: 8px;"
+          @search="handleSettingSearch"
         />
         <a-collapse v-model:active-key="settingCollapseActive" :bordered="false" ghost>
           <template #expandIcon="{ isActive }">
@@ -221,7 +223,7 @@
             </div>
           </a-collapse-panel>
           <a-collapse-panel key="hidden" header="未显示字段">
-            <div class="field-list">
+            <div class="field-list field-list-scroll" @scroll="onHiddenListScroll">
               <div
                 v-for="item in hiddenFields"
                 :key="item.key"
@@ -231,6 +233,7 @@
                   {{ item.label }}
                 </a-checkbox>
               </div>
+              <div v-if="hiddenLoadingMore" class="field-loading-more">加载中...</div>
             </div>
           </a-collapse-panel>
         </a-collapse>
@@ -257,7 +260,7 @@ import {
   HolderOutlined,
   CaretRightFilled,
 } from '@ant-design/icons-vue'
-import { getIssues, patchIssue } from '@/api/faiz'
+import { getIssues, patchIssue, queryAvailableFields } from '@/api/faiz'
 import type { IssueRow, IssueRecord } from '@/types/faiz'
 import IssueDetailDrawer from '@/components/IssueDetailDrawer.vue'
 
@@ -276,6 +279,10 @@ function openDetail(issueKey: string) {
 const settingDrawerOpen = ref(false)
 const settingSearchKeyword = ref('')
 const settingCollapseActive = ref<string[]>(['shown', 'hidden'])
+const settingLoading = ref(false)
+const hiddenCurrentPage = ref(1)
+const hiddenPageCount = ref(1)
+const hiddenLoadingMore = ref(false)
 
 interface FieldOption {
   key: string
@@ -283,37 +290,77 @@ interface FieldOption {
   checked: boolean
 }
 
-const shownFields = ref<FieldOption[]>([
-  { key: 'summary', label: '概要', checked: true },
-  { key: 'issueKey', label: '编号', checked: true },
-  { key: 'priorityId', label: '优先级', checked: true },
-  { key: 'statusId', label: '状态', checked: true },
-  { key: 'issuetypeId', label: '分类', checked: true },
-  { key: 'assigneeName', label: '经办人', checked: true },
-  { key: 'createdAt', label: '创建时间', checked: true },
-  { key: 'updatedAt', label: '更新时间', checked: true },
-])
+const shownFields = ref<FieldOption[]>([])
+const hiddenFields = ref<FieldOption[]>([])
 
-const hiddenFields = ref<FieldOption[]>([
-  { key: 'project', label: '项目', checked: false },
-  { key: 'issuetype', label: '问题类型', checked: false },
-  { key: 'fixVersion', label: '修复版本', checked: false },
-  { key: 'affectsVersion', label: '影响版本', checked: false },
-  { key: 'sprint', label: 'Sprint', checked: false },
-  { key: 'components', label: '组件', checked: false },
-  { key: 'labels', label: '标签', checked: false },
-  { key: 'environment', label: '环境', checked: false },
-  { key: 'estimate', label: '预估时间', checked: false },
-  { key: 'remaining', label: '剩余时间', checked: false },
-  { key: 'worklog', label: '已工作时间', checked: false },
-  { key: 'creatorName', label: '创建人', checked: false },
-  { key: 'reporterName', label: '报告人', checked: false },
-  { key: 'dueDate', label: '截止日期', checked: false },
-])
+async function fetchAvailableFields(keyword?: string) {
+  settingLoading.value = true
+  hiddenCurrentPage.value = 1
+  try {
+    const res = await queryAvailableFields({
+      page: 1,
+      perPage: 20,
+      searchKey: keyword || '',
+    })
+    if (res.success && res.data?.list) {
+      const list = res.data.list
+      shownFields.value = list
+        .filter((f) => f.frontPage)
+        .map((f) => ({ key: f.fieldId, label: f.fieldName, checked: true }))
+      hiddenFields.value = list
+        .filter((f) => !f.frontPage)
+        .map((f) => ({ key: f.fieldId, label: f.fieldName, checked: false }))
+      hiddenCurrentPage.value = res.data.currentPage
+      hiddenPageCount.value = res.data.pageCount
+    }
+  } catch {
+    // 接口异常时保持空列表
+  } finally {
+    settingLoading.value = false
+  }
+}
+
+async function loadMoreHiddenFields() {
+  if (hiddenLoadingMore.value || hiddenCurrentPage.value >= hiddenPageCount.value) return
+  hiddenLoadingMore.value = true
+  const nextPage = hiddenCurrentPage.value + 1
+  try {
+    const res = await queryAvailableFields({
+      page: nextPage,
+      perPage: 20,
+      searchKey: settingSearchKeyword.value || '',
+    })
+    if (res.success && res.data?.list) {
+      const moreHidden = res.data.list
+        .filter((f) => !f.frontPage)
+        .map((f) => ({ key: f.fieldId, label: f.fieldName, checked: false }))
+      hiddenFields.value.push(...moreHidden)
+      hiddenCurrentPage.value = res.data.currentPage
+      hiddenPageCount.value = res.data.pageCount
+    }
+  } catch {
+    // 忽略加载更多异常
+  } finally {
+    hiddenLoadingMore.value = false
+  }
+}
+
+function onHiddenListScroll(e: Event) {
+  const el = e.target as HTMLElement
+  if (el.scrollHeight - el.scrollTop - el.clientHeight < 30) {
+    loadMoreHiddenFields()
+  }
+}
 
 function openSettingDrawer() {
   settingCollapseActive.value = ['shown', 'hidden']
+  settingSearchKeyword.value = ''
   settingDrawerOpen.value = true
+  fetchAvailableFields()
+}
+
+function handleSettingSearch(value: string) {
+  fetchAvailableFields(value || undefined)
 }
 
 // 已显示字段拖拽排序
@@ -898,6 +945,18 @@ onMounted(() => {
 .field-list {
   display: flex;
   flex-direction: column;
+}
+
+.field-list-scroll {
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.field-loading-more {
+  text-align: center;
+  padding: 8px 0;
+  font-size: 12px;
+  color: #8c8c8c;
 }
 
 .field-item {
