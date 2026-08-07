@@ -654,7 +654,21 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 4px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  flex-shrink: 1;
+  min-width: 0;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.top-bar-right::-webkit-scrollbar {
+  display: none;
+}
+
+/* 所有直接子元素（含 a-popover/a-dropdown 包裹 span）均不收缩，保证按钮不变形 */
+.top-bar-right > :deep(*) {
+  flex-shrink: 0;
 }
 
 .total-text {
@@ -662,6 +676,7 @@ onMounted(() => {
   color: #8c8c8c;
   margin-right: 8px;
   white-space: nowrap;
+  flex-shrink: 0;
 }
 
 /* 功能按钮 */
@@ -702,6 +717,8 @@ onMounted(() => {
   display: inline-flex;
   align-items: center;
   gap: 4px;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .tool-btn:hover {
@@ -744,6 +761,7 @@ onMounted(() => {
 .toolbar-divider {
   margin: 0 4px;
   height: 16px;
+  flex-shrink: 0;
 }
 
 .view-btn {
