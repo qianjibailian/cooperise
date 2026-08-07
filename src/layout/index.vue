@@ -2,11 +2,13 @@
   <a-layout class="layout-container">
     <AppHeader
       :drawer-open="drawerOpen"
+      :sidebar-collapsed="sidebarCollapsed"
       search-placeholder="搜索事项单号或者概要"
       @menu-click="handleMenuClick"
       @workspace-click="handleWorkspaceClick"
       @create-click="handleNewFormOpen"
       @search="handleHeaderSearch"
+      @toggle-sidebar="toggleSidebar"
     />
 
     <AppSideDrawer
@@ -15,7 +17,7 @@
       @menu-click="handleRemoteMenuClick"
     />
 
-    <a-layout-sider :width="isIssueDetailRoute ? 64 : 280" class="sider" :collapsed="false">
+    <a-layout-sider :width="sidebarCollapsed ? 112 : 280" class="sider" :trigger="null">
       <div class="sider-inner">
         <!-- 左侧图标栏 -->
         <div class="icon-bar">
@@ -32,12 +34,13 @@
         </div>
 
         <!-- 右侧面板 -->
-        <div v-if="!isIssueDetailRoute" class="side-panel">
+        <div v-if="!isIssueDetailRoute" class="side-panel" :class="{ 'side-panel-collapsed': sidebarCollapsed }">
           <template v-if="activeSection === 'workspace'">
             <a-menu
               theme="light"
               mode="inline"
               :selectedKeys="[currentPath]"
+
               @click="handleLocalMenuClick"
               class="sidebar-menu"
             >
@@ -45,18 +48,17 @@
                 <component :is="FilterOutlined" />
                 <span>新筛选器</span>
               </a-menu-item>
-              <a-menu-divider />
               <a-menu-item key="/workbench/todo">
                 <component :is="CheckSquareOutlined" />
                 <span>我的事项 (2)</span>
               </a-menu-item>
             </a-menu>
 
-            <a-divider class="panel-divider" />
+            <a-divider v-if="!sidebarCollapsed" class="panel-divider" />
 
             <!-- 视图区域 -->
-            <div class="panel-section scrollable">
-              <div class="panel-section-header">
+            <div class="panel-section scrollable" :class="{ 'panel-section-collapsed': sidebarCollapsed }">
+              <div v-if="!sidebarCollapsed" class="panel-section-header">
                 <span class="section-title">我的视图</span>
                 <div class="section-header-actions">
                   <component :is="SearchOutlined" class="action-icon" />
@@ -67,7 +69,7 @@
                 theme="light"
                 mode="inline"
                 :selectedKeys="['/view/folder1/item3']"
-                :openKeys="['/view/folder1']"
+                :openKeys="sidebarCollapsed ? [] : ['/view/folder1']"
                 @click="handleLocalMenuClick"
                 class="sidebar-menu"
               >
@@ -82,28 +84,33 @@
                   </template>
                   <a-menu-item key="/view/testing-calendar">
                     <span class="child-item">
+                      <component :is="ExperimentOutlined" class="child-primary-icon" />
                       <span>测试平台需求</span>
                       <component :is="StarFilled" class="favorite-icon" />
                     </span>
                   </a-menu-item>
                   <a-menu-item key="/view/member-gantt">
                     <span class="child-item">
+                      <component :is="CrownOutlined" class="child-primary-icon" />
                       <span>会员体系优化</span>
                     </span>
                   </a-menu-item>
                   <a-menu-item key="/view/folder1/item3">
                     <span class="child-item">
+                      <component :is="ShopOutlined" class="child-primary-icon" />
                       <span>商城改版</span>
                       <component :is="MoreOutlined" class="child-more-icon" />
                     </span>
                   </a-menu-item>
                   <a-menu-item key="/view/folder1/item4">
                     <span class="child-item">
+                      <component :is="RocketOutlined" class="child-primary-icon" />
                       <span>日常功能迭代</span>
                     </span>
                   </a-menu-item>
                   <a-menu-item key="/view/folder1/item5">
                     <span class="child-item">
+                      <component :is="GiftOutlined" class="child-primary-icon" />
                       <span class="child-text-truncate">88VIP会员工具需...</span>
                     </span>
                   </a-menu-item>
@@ -123,84 +130,82 @@
           </template>
 
           <template v-else-if="activeSection === 'system'">
-            <div class="panel-section">
-              <div class="panel-section-header">
-                <component :is="SettingOutlined" class="section-icon" />
-                <span class="section-title">系统管理</span>
-              </div>
-              <a-menu
-                theme="light"
-                mode="inline"
-                :selectedKeys="[currentPath]"
-                @click="handleLocalMenuClick"
-                class="sidebar-menu"
-              >
-                <a-menu-item key="/users">
-                  <component :is="UserOutlined" />
-                  <span>用户管理</span>
-                </a-menu-item>
-                <a-menu-item key="/roles">
-                  <component :is="TeamOutlined" />
-                  <span>角色管理</span>
-                </a-menu-item>
-                <a-menu-item key="/permissions">
-                  <component :is="LockOutlined" />
-                  <span>权限管理</span>
-                </a-menu-item>
-                <a-menu-item key="/departments">
-                  <component :is="BuildOutlined" />
-                  <span>部门管理</span>
-                </a-menu-item>
-              </a-menu>
+            <div v-if="!sidebarCollapsed" class="panel-section-header">
+              <component :is="SettingOutlined" class="section-icon" />
+              <span class="section-title">系统管理</span>
             </div>
+            <a-menu
+              theme="light"
+              mode="inline"
+              :selectedKeys="[currentPath]"
+
+              @click="handleLocalMenuClick"
+              class="sidebar-menu"
+            >
+              <a-menu-item key="/users">
+                <component :is="UserOutlined" />
+                <span>用户管理</span>
+              </a-menu-item>
+              <a-menu-item key="/roles">
+                <component :is="TeamOutlined" />
+                <span>角色管理</span>
+              </a-menu-item>
+              <a-menu-item key="/permissions">
+                <component :is="LockOutlined" />
+                <span>权限管理</span>
+              </a-menu-item>
+              <a-menu-item key="/departments">
+                <component :is="BuildOutlined" />
+                <span>部门管理</span>
+              </a-menu-item>
+            </a-menu>
           </template>
 
           <template v-else-if="activeSection === 'settings'">
-            <div class="panel-section">
-              <div class="panel-section-header">
-                <component :is="SettingOutlined" class="section-icon" />
-                <span class="section-title">设置</span>
-              </div>
-              <a-menu
-                theme="light"
-                mode="inline"
-                :selectedKeys="[currentPath]"
-                @click="handleLocalMenuClick"
-                class="sidebar-menu"
-              >
-                <a-sub-menu key="template-config">
-                  <template #title>
-                    <component :is="AppstoreOutlined" />
-                    <span>模板配置</span>
-                  </template>
-                  <a-menu-item key="/settings/template-list">
-                    <component :is="UnorderedListOutlined" />
-                    <span>模板列表</span>
-                  </a-menu-item>
-                  <a-menu-item key="/settings/form-list">
-                    <component :is="TableOutlined" />
-                    <span>表单列表</span>
-                  </a-menu-item>
-                  <a-menu-item key="/settings/component-list">
-                    <component :is="AppstoreOutlined" />
-                    <span>组件列表</span>
-                  </a-menu-item>
-                </a-sub-menu>
-                <a-menu-item key="/settings/profile">
-                  <component :is="UserOutlined" />
-                  <span>个人中心</span>
-                </a-menu-item>
-                <a-menu-item key="/settings/account">
-                  <component :is="LockOutlined" />
-                  <span>账户设置</span>
-                </a-menu-item>
-              </a-menu>
+            <div v-if="!sidebarCollapsed" class="panel-section-header">
+              <component :is="SettingOutlined" class="section-icon" />
+              <span class="section-title">设置</span>
             </div>
+            <a-menu
+              theme="light"
+              mode="inline"
+              :selectedKeys="[currentPath]"
+
+              @click="handleLocalMenuClick"
+              class="sidebar-menu"
+            >
+              <a-sub-menu key="template-config">
+                <template #title>
+                  <component :is="AppstoreOutlined" />
+                  <span>模板配置</span>
+                </template>
+                <a-menu-item key="/settings/template-list">
+                  <component :is="UnorderedListOutlined" />
+                  <span>模板列表</span>
+                </a-menu-item>
+                <a-menu-item key="/settings/form-list">
+                  <component :is="TableOutlined" />
+                  <span>表单列表</span>
+                </a-menu-item>
+                <a-menu-item key="/settings/component-list">
+                  <component :is="AppstoreOutlined" />
+                  <span>组件列表</span>
+                </a-menu-item>
+              </a-sub-menu>
+              <a-menu-item key="/settings/profile">
+                <component :is="UserOutlined" />
+                <span>个人中心</span>
+              </a-menu-item>
+              <a-menu-item key="/settings/account">
+                <component :is="LockOutlined" />
+                <span>账户设置</span>
+              </a-menu-item>
+            </a-menu>
           </template>
         </div>
       </div>
     </a-layout-sider>
-    <a-layout class="main-layout" :class="{ 'main-layout-full': isIssueDetailRoute }">
+    <a-layout class="main-layout" :class="{ 'main-layout-collapsed': sidebarCollapsed && !isIssueDetailRoute, 'main-layout-full': isIssueDetailRoute }">
       <a-layout-content class="content">
         <WorkbenchPanel />
       </a-layout-content>
@@ -250,6 +255,11 @@ import {
   UserOutlined,
   TableOutlined,
   InfoCircleOutlined,
+  ExperimentOutlined,
+  CrownOutlined,
+  ShopOutlined,
+  RocketOutlined,
+  GiftOutlined,
 } from '@ant-design/icons-vue'
 import { useRouter, useRoute } from 'vue-router'
 import AppHeader from '@/components/AppHeader.vue'
@@ -268,6 +278,7 @@ const route = useRoute()
 const { isLoggedIn, refresh: refreshAuth } = useAuth()
 
 const drawerOpen = ref(false)
+const sidebarCollapsed = ref(false)
 const activeSection = ref('workspace')
 const isIssueDetailRoute = computed(() => route.path.startsWith('/jira/browse/'))
 
@@ -316,6 +327,10 @@ function handleSectionClick(key: string) {
 
 function handleMenuClick() {
   drawerOpen.value = !drawerOpen.value
+}
+
+function toggleSidebar() {
+  sidebarCollapsed.value = !sidebarCollapsed.value
 }
 
 function handleWorkspaceClick() {
@@ -427,6 +442,144 @@ function handleRemoteMenuClick(key: string) {
   flex-direction: column;
   overflow: hidden;
   background: #ffffff;
+}
+
+.side-panel-collapsed {
+  min-width: 48px;
+  max-width: 48px;
+  overflow: hidden;
+}
+
+.side-panel-collapsed :deep(.sidebar-menu) {
+  padding: 4px 0 !important;
+  width: 48px !important;
+  min-width: 48px !important;
+  border-right: none !important;
+}
+
+.side-panel-collapsed :deep(.ant-menu-item),
+.side-panel-collapsed :deep(.ant-menu-submenu-title) {
+  width: 48px !important;
+  min-width: 48px !important;
+  height: 40px !important;
+  line-height: 40px !important;
+  padding: 0 !important;
+  margin: 2px 0 !important;
+  border-radius: 6px;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  overflow: hidden !important;
+  white-space: nowrap !important;
+}
+
+/* 实际 DOM：ant-design-vue 4.2.6 把 icon 与文字都放在 .ant-menu-title-content 内（无 .ant-menu-item-icon 包装层） */
+/* 1. .ant-menu-title-content 容器：保留并居中 */
+.side-panel-collapsed :deep(.ant-menu-title-content) {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  flex: 1 !important;
+  max-width: 100% !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  gap: 0 !important;
+}
+
+/* 2. 普通 menu-item：保留直接 .anticon，隐藏其他直接子元素（文字 span 等） */
+.side-panel-collapsed :deep(.ant-menu-title-content > .anticon) {
+  font-size: 16px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  flex-shrink: 0 !important;
+  color: inherit !important;
+}
+
+.side-panel-collapsed :deep(.ant-menu-title-content > .anticon svg) {
+  display: inline-block !important;
+  width: 1em !important;
+  height: 1em !important;
+  font-size: 16px !important;
+}
+
+.side-panel-collapsed :deep(.ant-menu-title-content > *:not(.anticon):not(.view-item-content):not(.child-item)) {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+  overflow: hidden !important;
+  opacity: 0 !important;
+}
+
+/* 3. 嵌套容器 view-item-content / child-item：居中，只保留第一个 .anticon */
+.side-panel-collapsed :deep(.ant-menu-title-content .view-item-content),
+.side-panel-collapsed :deep(.ant-menu-title-content .child-item) {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  gap: 0 !important;
+  flex-shrink: 0 !important;
+  width: auto !important;
+  height: auto !important;
+}
+
+.side-panel-collapsed :deep(.view-item-content > .anticon:first-child),
+.side-panel-collapsed :deep(.child-item > .anticon:first-child) {
+  font-size: 16px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  flex-shrink: 0 !important;
+  color: inherit !important;
+}
+
+.side-panel-collapsed :deep(.view-item-content > .anticon:first-child svg),
+.side-panel-collapsed :deep(.child-item > .anticon:first-child svg) {
+  display: inline-block !important;
+  width: 1em !important;
+  height: 1em !important;
+  font-size: 16px !important;
+}
+
+/* 4. 嵌套容器内：隐藏第一个 .anticon 之外的所有元素（文字 span、tag、装饰 icon） */
+.side-panel-collapsed :deep(.view-item-content > *:not(.anticon)),
+.side-panel-collapsed :deep(.child-item > *:not(:first-child)) {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+  overflow: hidden !important;
+  opacity: 0 !important;
+}
+
+.side-panel-collapsed :deep(.ant-menu-item::after) {
+  display: none !important;
+}
+
+.side-panel-collapsed :deep(.ant-menu-submenu-arrow) {
+  display: none !important;
+}
+
+.side-panel-collapsed :deep(.ant-menu-submenu-title::after) {
+  display: none !important;
+}
+
+.side-panel-collapsed .panel-divider {
+  display: none !important;
+}
+
+.side-panel-collapsed .panel-section-header {
+  display: none !important;
+}
+
+/* 折叠状态下隐藏子菜单展开内容，只显示标题 icon */
+.side-panel-collapsed :deep(.ant-menu-sub) {
+  display: none !important;
 }
 
 .panel-section {
@@ -564,6 +717,12 @@ function handleRemoteMenuClick(key: string) {
   width: 100%;
 }
 
+.child-primary-icon {
+  font-size: 14px;
+  color: #8c8c8c;
+  flex-shrink: 0;
+}
+
 .favorite-icon {
   color: #faad14 !important;
   font-size: 13px !important;
@@ -605,6 +764,10 @@ function handleRemoteMenuClick(key: string) {
   margin-left: 280px;
   min-height: 100vh;
   transition: margin-left 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.main-layout-collapsed {
+  margin-left: 112px;
 }
 
 .main-layout-full {

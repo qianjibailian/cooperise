@@ -1,7 +1,7 @@
 <template>
   <div class="app-logo" :class="{ clickable: clickable, 'enterprise-mode': isEnterprise }" @click="handleClick">
     <svg width="36" height="36" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg" aria-labelledby="logoTitle">
-      <title id="logoTitle">千机伞</title>
+      <title id="logoTitle">千机伞需求管控平台</title>
       <!-- Redesigned rounded mark -->
       <defs>
         <linearGradient id="logo-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
@@ -29,19 +29,9 @@
       </g>
     </svg>
     <!-- Artistic text logo -->
-    <svg class="logo-text-svg" width="140" height="28" viewBox="0 0 140 28" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
-      <defs>
-        <linearGradient id="logoTextGrad" x1="0" x2="1">
-          <stop offset="0%" stop-color="#0052D9"/>
-          <stop offset="60%" stop-color="#2F78E6"/>
-          <stop offset="100%" stop-color="#60A8FF"/>
-        </linearGradient>
-        <filter id="logoTextShadow" x="-50%" y="-50%" width="200%" height="200%">
-          <feDropShadow dx="0" dy="2" stdDeviation="2" flood-color="#1f2d4a" flood-opacity="0.12"/>
-        </filter>
-      </defs>
-      <text x="50%" y="20" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-weight="700" font-size="18" fill="url(#logoTextGrad)" filter="url(#logoTextShadow)">
-        千机伞
+    <svg class="logo-text-svg" width="200" height="28" viewBox="0 0 200 28" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
+      <text x="50%" y="20" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-weight="700" font-size="18" fill="#1a1a1a">
+        千机伞需求管控平台
       </text>
     </svg>
   </div>
@@ -101,7 +91,7 @@ const handleClick = () => {
 .app-logo .logo-text-svg {
   display: inline-block;
   vertical-align: middle;
-  margin-left: -35px;
+  margin-left: -15px;
 }
 
 .app-logo.enterprise-mode {

@@ -1,14 +1,14 @@
 <template>
   <header class="app-header">
-    <div class="header-left">
-      <div class="menu-btn" @click="$emit('menu-click')">
-        <component :is="drawerOpen ? CloseOutlined : MenuOutlined" />
-      </div>
-      <div class="header-divider" />
+    <div class="header-left" :class="{ collapsed: sidebarCollapsed }">
       <AppLogo clickable to="/dashboard" />
+      <div class="header-left-right">
+        <a-divider type="vertical" class="header-divider" />
+        <component :is="sidebarCollapsed ? MenuUnfoldOutlined : MenuFoldOutlined" class="header-fold-icon" @click="$emit('toggle-sidebar')" />
+      </div>
     </div>
 
-    <div class="header-center">
+    <div class="header-center" v-if="false">
       <div class="workspace-btn" @click="$emit('workspace-click')">
         <HomeOutlined />
         <span>控制台</span>
@@ -121,14 +121,14 @@
 import { ref, nextTick } from 'vue'
 import { message } from 'ant-design-vue'
 import {
-  MenuOutlined,
-  CloseOutlined,
   HomeOutlined,
   SearchOutlined,
   UserOutlined,
   RightOutlined,
   PlusOutlined,
   DragOutlined,
+  MenuFoldOutlined,
+  MenuUnfoldOutlined,
 } from '@ant-design/icons-vue'
 import AppLogo from './AppLogo.vue'
 import { useAuth } from '@/utils/auth'
@@ -137,6 +137,7 @@ import request from '@/utils/request'
 defineProps<{
   drawerOpen?: boolean
   searchPlaceholder?: string
+  sidebarCollapsed?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -144,6 +145,7 @@ const emit = defineEmits<{
   (e: 'workspace-click'): void
   (e: 'create-click'): void
   (e: 'search', value: string): void
+  (e: 'toggle-sidebar'): void
 }>()
 
 const searchValue = ref('')
@@ -256,7 +258,33 @@ async function handleLogout() {
 .header-left {
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  min-width: calc(280px + 40px);
+  padding-right: 8px;
+}
+
+.header-left.collapsed {
+  min-width: calc(112px + 40px);
+}
+
+.header-left-right {
+  display: flex;
+  align-items: center;
   gap: 8px;
+}
+
+.header-fold-icon {
+  font-size: 18px;
+  color: #595959;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  transition: all 0.15s;
+}
+
+.header-fold-icon:hover {
+  color: #1677ff;
+  background: #f5f5f5;
 }
 
 .menu-btn {
@@ -277,10 +305,8 @@ async function handleLogout() {
 }
 
 .header-divider {
-  width: 1px;
   height: 24px;
-  background: #e8e8e8;
-  margin: 0 4px;
+  margin: 0 8px;
 }
 
 .header-center {
