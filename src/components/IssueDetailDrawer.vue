@@ -359,7 +359,6 @@
 
             <!-- 人员信息（折叠板） -->
             <a-collapse
-              v-if="!onlyShowValued ? true : filteredUserFields.length > 0"
               v-model:activeKey="userCollapseKeys"
               ghost
               :bordered="false"

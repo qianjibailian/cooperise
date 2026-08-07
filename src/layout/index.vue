@@ -15,7 +15,7 @@
       @menu-click="handleRemoteMenuClick"
     />
 
-    <a-layout-sider :width="280" class="sider" :collapsed="false">
+    <a-layout-sider :width="isIssueDetailRoute ? 64 : 280" class="sider" :collapsed="false">
       <div class="sider-inner">
         <!-- 左侧图标栏 -->
         <div class="icon-bar">
@@ -32,7 +32,7 @@
         </div>
 
         <!-- 右侧面板 -->
-        <div class="side-panel">
+        <div v-if="!isIssueDetailRoute" class="side-panel">
           <template v-if="activeSection === 'workspace'">
             <a-menu
               theme="light"
@@ -200,7 +200,7 @@
         </div>
       </div>
     </a-layout-sider>
-    <a-layout class="main-layout">
+    <a-layout class="main-layout" :class="{ 'main-layout-full': isIssueDetailRoute }">
       <a-layout-content class="content">
         <WorkbenchPanel />
       </a-layout-content>
@@ -269,6 +269,7 @@ const { isLoggedIn, refresh: refreshAuth } = useAuth()
 
 const drawerOpen = ref(false)
 const activeSection = ref('workspace')
+const isIssueDetailRoute = computed(() => route.path.startsWith('/jira/browse/'))
 
 // 登录态过期弹窗
 const showLoginExpiredModal = ref(false)
@@ -308,6 +309,9 @@ const currentPath = computed(() => {
 
 function handleSectionClick(key: string) {
   activeSection.value = key
+  if (key === 'workspace') {
+    router.push('/workbench/todo')
+  }
 }
 
 function handleMenuClick() {
@@ -601,6 +605,10 @@ function handleRemoteMenuClick(key: string) {
   margin-left: 280px;
   min-height: 100vh;
   transition: margin-left 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.main-layout-full {
+  margin-left: 64px;
 }
 
 .content {

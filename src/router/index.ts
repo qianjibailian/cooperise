@@ -16,6 +16,7 @@ import ComponentList from '@/pages/component-list/index.vue'
 import SprintBoard from '@/pages/sprint-board/index.vue'
 import TestingCalendar from '@/pages/testing-calendar/index.vue'
 import MemberGantt from '@/pages/member-gantt/index.vue'
+import IssueDetail from '@/pages/issue-detail/index.vue'
 
 const routes: RouteRecordRaw[] = [
   {
@@ -28,6 +29,7 @@ const routes: RouteRecordRaw[] = [
       { path: 'view/sprint-board', component: SprintBoard, name: 'SprintBoard', meta: { title: 'Sprint 看板' } },
       { path: 'view/testing-calendar', component: TestingCalendar, name: 'TestingCalendar', meta: { title: '测试平台需求日历' } },
       { path: 'view/member-gantt', component: MemberGantt, name: 'MemberGantt', meta: { title: '会员体系优化 · 甘特图' } },
+      { path: 'jira/browse/:issueKey', component: IssueDetail, name: 'IssueDetail', meta: { title: '事项详情' } },
       { path: 'workbench/filters', component: EmptyContent, name: 'Filters', meta: { title: '新筛选器' } },
       { path: 'workbench/:pathMatch(.*)*', component: EmptyContent, name: 'WorkbenchDynamic' },
       { path: 'dashboard', component: Dashboard, name: 'Dashboard', meta: { title: '仪表盘' } },
