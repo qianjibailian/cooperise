@@ -8,6 +8,7 @@ import type {
   FormItem,
   TemplateStats,
   IssueQuery,
+  IssueQueryPayload,
   IssueQueryResult,
   IssueRow,
   IssueCreateMetaResult,
@@ -20,6 +21,7 @@ import type {
   QueryDetailResult,
   AvailableFieldQuery,
   AvailableFieldResult,
+  ViewListResult,
 } from '@/types/faiz'
 
 const PREFIX = '/faiz-api'
@@ -81,7 +83,7 @@ export function getForm(id: number): Promise<Result<FormItem>> {
 // ==================== Issue API ====================
 
 /** Issue 分页搜索（POST /issue/query） */
-export function getIssues(data?: IssueQuery): Promise<IssueQueryResult> {
+export function getIssues(data?: IssueQuery | IssueQueryPayload): Promise<IssueQueryResult> {
   return request.post(`${PREFIX}/issue/query`, data)
 }
 
@@ -105,6 +107,13 @@ export function getIssueCreateMeta(data: { projectId: string; issueTypeId: strin
 /** 查询事项详情（POST /issue/queryDetail） */
 export function queryDetail(payload: QueryDetailPayload): Promise<QueryDetailResult> {
   return request.post(`${PREFIX}/issue/queryDetail`, payload)
+}
+
+// ==================== View API ====================
+
+/** 我的视图列表（POST /view/list，走全局 queqiao 前缀下发） */
+export function getViewList(): Promise<ViewListResult> {
+  return request.post(`${PREFIX}/view/list`)
 }
 
 // ==================== Component API ====================

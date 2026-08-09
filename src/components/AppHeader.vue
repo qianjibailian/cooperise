@@ -3,8 +3,8 @@
     <div class="header-left" :class="{ collapsed: sidebarCollapsed }">
       <AppLogo clickable to="/dashboard" />
       <div class="header-left-right">
-        <a-divider type="vertical" class="header-divider" />
-        <component :is="sidebarCollapsed ? MenuUnfoldOutlined : MenuFoldOutlined" class="header-fold-icon" @click="$emit('toggle-sidebar')" />
+        <a-divider v-if="!hideSidebarToggle" type="vertical" class="header-divider" />
+        <component :is="sidebarCollapsed ? MenuUnfoldOutlined : MenuFoldOutlined" v-if="!hideSidebarToggle" class="header-fold-icon" @click="$emit('toggle-sidebar')" />
       </div>
     </div>
 
@@ -138,6 +138,7 @@ defineProps<{
   drawerOpen?: boolean
   searchPlaceholder?: string
   sidebarCollapsed?: boolean
+  hideSidebarToggle?: boolean
 }>()
 
 const emit = defineEmits<{

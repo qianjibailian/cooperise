@@ -23,85 +23,67 @@
     <!-- Skeleton Loading -->
     <div v-if="loading" class="detail-skeleton">
       <!-- Header skeleton -->
-      <div class="sk-header">
-        <div class="sk-icon sk-shimmer"></div>
-        <div class="sk-header-content">
-          <div class="sk-breadcrumb sk-shimmer"></div>
-          <div class="sk-title sk-shimmer"></div>
+      <header class="detail-header detail-header-skeleton">
+        <div class="dh-icon">
+          <a-skeleton-button shape="circle" size="small" />
         </div>
-      </div>
+        <div class="dh-content">
+          <div class="dh-row">
+            <a-skeleton-input size="small" style="width: 160px" />
+          </div>
+          <a-skeleton-paragraph :rows="1" :title="false" style="width: 92%; margin-top: 14px" />
+        </div>
+      </header>
 
-      <!-- Attribute card skeleton -->
-      <div class="sk-attr-card">
-        <div class="sk-attr-item">
-          <div class="sk-attr-label sk-shimmer"></div>
-          <div class="sk-attr-value sk-shimmer"></div>
-        </div>
-        <div class="sk-attr-item">
-          <div class="sk-attr-label sk-shimmer"></div>
-          <div class="sk-attr-value sk-shimmer"></div>
-        </div>
-        <div class="sk-attr-item">
-          <div class="sk-attr-label sk-shimmer"></div>
-          <div class="sk-attr-value sk-shimmer"></div>
-        </div>
-        <div class="sk-attr-item">
-          <div class="sk-attr-label sk-shimmer"></div>
-          <div class="sk-attr-value sk-shimmer"></div>
-        </div>
-        <div class="sk-attr-item">
-          <div class="sk-attr-label sk-shimmer"></div>
-          <div class="sk-attr-value sk-shimmer"></div>
-        </div>
-      </div>
+      <div class="detail-body">
+        <!-- Attribute card skeleton -->
+        <section class="attr-card">
+          <div class="attr-row-line">
+            <div v-for="n in 5" :key="n" class="attr-item">
+              <a-skeleton :paragraph="{ rows: 1, width: ['48px', '100%'] }" :avatar="false" :title="false" />
+            </div>
+          </div>
+        </section>
 
-      <!-- Action bar skeleton -->
-      <div class="sk-action-bar">
-        <div class="sk-btn sk-shimmer"></div>
-        <div class="sk-btn sk-shimmer"></div>
-        <div class="sk-btn sk-shimmer"></div>
-        <div class="sk-btn sk-btn-primary sk-shimmer"></div>
-        <div class="sk-btn sk-shimmer"></div>
-      </div>
+        <!-- Action bar skeleton -->
+        <section class="action-bar">
+          <a-skeleton-button size="small" style="width: 72px; margin-right: 8px" />
+          <a-skeleton-button size="small" style="width: 72px; margin-right: 8px" />
+          <a-skeleton-button size="small" style="width: 96px; margin-right: 8px" />
+          <a-skeleton-button size="small" type="primary" style="width: 96px; margin-right: 8px" />
+          <a-skeleton-button size="small" style="width: 120px" />
+        </section>
 
-      <!-- Body skeleton -->
-      <div class="sk-body">
-        <div class="sk-col sk-col-left">
-          <div class="sk-panel">
-            <div class="sk-panel-header sk-shimmer"></div>
-            <div class="sk-panel-body">
-              <div class="sk-kv-row"><div class="sk-kv-label sk-shimmer"></div><div class="sk-kv-value sk-shimmer"></div></div>
-              <div class="sk-kv-row"><div class="sk-kv-label sk-shimmer"></div><div class="sk-kv-value sk-shimmer"></div></div>
-              <div class="sk-kv-row"><div class="sk-kv-label sk-shimmer"></div><div class="sk-kv-value sk-shimmer"></div></div>
-              <div class="sk-kv-row"><div class="sk-kv-label sk-shimmer"></div><div class="sk-kv-value sk-shimmer"></div></div>
+        <!-- Body skeleton（左右两栏） -->
+        <section class="scroll-wrap">
+          <div class="scroll-inner">
+            <div class="scroll-left">
+              <section class="panel-collapse-skel">
+                <a-skeleton :paragraph="{ rows: 3, width: ['100%', '70%', '85%'] }" :title="true" :avatar="false" />
+              </section>
+              <section class="panel-collapse-skel">
+                <a-skeleton :paragraph="{ rows: 2, width: ['100%', '65%'] }" :title="true" :avatar="false" />
+              </section>
+              <section class="panel-collapse-skel">
+                <a-skeleton :paragraph="{ rows: 4, width: ['100%', '80%', '60%', '90%'] }" :title="true" :avatar="false" />
+              </section>
+              <section class="panel-collapse-skel">
+                <a-skeleton :paragraph="{ rows: 2, width: ['100%', '80%'] }" :title="true" :avatar="false" />
+              </section>
+            </div>
+            <div class="scroll-right">
+              <section class="panel-collapse-skel">
+                <a-skeleton :paragraph="{ rows: 3, width: ['100%', '75%', '60%'] }" :title="true" :avatar="true" />
+              </section>
+              <section class="panel-collapse-skel">
+                <a-skeleton :paragraph="{ rows: 3, width: ['100%', '75%', '60%'] }" :title="true" :avatar="true" />
+              </section>
+              <section class="panel-collapse-skel">
+                <a-skeleton :paragraph="{ rows: 2, width: ['100%', '80%'] }" :title="true" :avatar="false" />
+              </section>
             </div>
           </div>
-          <div class="sk-panel">
-            <div class="sk-panel-header sk-shimmer"></div>
-            <div class="sk-panel-body">
-              <div class="sk-kv-row"><div class="sk-kv-label sk-shimmer"></div><div class="sk-kv-value sk-shimmer"></div></div>
-              <div class="sk-kv-row"><div class="sk-kv-label sk-shimmer"></div><div class="sk-kv-value sk-shimmer"></div></div>
-              <div class="sk-kv-row"><div class="sk-kv-label sk-shimmer"></div><div class="sk-kv-value sk-shimmer"></div></div>
-            </div>
-          </div>
-        </div>
-        <div class="sk-col sk-col-right">
-          <div class="sk-panel">
-            <div class="sk-panel-header sk-shimmer"></div>
-            <div class="sk-panel-body">
-              <div class="sk-kv-row"><div class="sk-kv-label sk-shimmer"></div><div class="sk-kv-value sk-shimmer"></div></div>
-              <div class="sk-kv-row"><div class="sk-kv-label sk-shimmer"></div><div class="sk-kv-value sk-shimmer"></div></div>
-              <div class="sk-kv-row"><div class="sk-kv-label sk-shimmer"></div><div class="sk-kv-value sk-shimmer"></div></div>
-            </div>
-          </div>
-          <div class="sk-panel">
-            <div class="sk-panel-header sk-shimmer"></div>
-            <div class="sk-panel-body">
-              <div class="sk-kv-row"><div class="sk-kv-label sk-shimmer"></div><div class="sk-kv-value sk-shimmer"></div></div>
-              <div class="sk-kv-row"><div class="sk-kv-label sk-shimmer"></div><div class="sk-kv-value sk-shimmer"></div></div>
-            </div>
-          </div>
-        </div>
+        </section>
       </div>
     </div>
 
@@ -1222,218 +1204,25 @@ function formatRichText(v: unknown): string {
   display: flex;
   flex-direction: column;
   height: 100%;
-  padding: 20px 24px;
-  gap: 16px;
-  background: #fff;
+  background: #ffffff;
   overflow: auto;
 }
-
-.sk-shimmer {
-  position: relative;
-  overflow: hidden;
-  background: #f0f0f0;
-  border-radius: 4px;
-}
-
-.sk-shimmer::after {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: linear-gradient(
-    90deg,
-    #f0f0f0 0%,
-    #e8e8e8 40%,
-    #f5f5f5 60%,
-    #f0f0f0 100%
-  );
-  animation: sk-shimmer 1.5s ease-in-out infinite;
-}
-
-@keyframes sk-shimmer {
-  0% { transform: translateX(-100%); }
-  100% { transform: translateX(100%); }
-}
-
-/* Header skeleton */
-.sk-header {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-}
-
-.sk-icon {
-  width: 40px;
-  height: 40px;
-  border-radius: 6px;
-  flex-shrink: 0;
-}
-
-.sk-header-content {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding-top: 4px;
-}
-
-.sk-breadcrumb {
-  width: 220px;
-  height: 14px;
-}
-
-.sk-title {
-  width: 70%;
-  max-width: 520px;
-  height: 24px;
-}
-
-/* Attribute card skeleton */
-.sk-attr-card {
-  display: flex;
-  align-items: stretch;
-  gap: 0;
-  padding: 12px 16px;
-  background: #fafafa;
-  border: 1px solid #f0f0f0;
-  border-radius: 8px;
-}
-
-.sk-attr-item {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 0 16px;
-  border-right: 1px solid #f0f0f0;
-}
-
-.sk-attr-item:first-child {
-  padding-left: 0;
-}
-
-.sk-attr-item:last-child {
-  border-right: none;
-  padding-right: 0;
-}
-
-.sk-attr-label {
-  width: 60px;
-  height: 12px;
-}
-
-.sk-attr-value {
-  width: 80%;
-  max-width: 120px;
-  height: 20px;
-}
-
-/* Action bar skeleton */
-.sk-action-bar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 0;
+.detail-header-skeleton {
   border-bottom: 1px solid #f0f0f0;
 }
-
-.sk-btn {
-  width: 64px;
-  height: 28px;
-  border-radius: 4px;
+.detail-skeleton .action-bar {
+  padding: 10px 24px;
+  border-bottom: 1px solid #f0f0f0;
 }
-
-.sk-btn-primary {
-  width: 80px;
-  background: #e6f4ff !important;
-}
-
-.sk-btn-primary::after {
-  background: linear-gradient(
-    90deg,
-    #e6f4ff 0%,
-    #bae0ff 40%,
-    #e6f4ff 60%,
-    #e6f4ff 100%
-  );
-}
-
-/* Body skeleton */
-.sk-body {
+.scroll-wrap {
   flex: 1;
-  display: flex;
-  gap: 16px;
   min-height: 0;
+  background: #ffffff;
+  padding: 0;
 }
-
-.sk-col {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.sk-col-left {
-  flex: 3;
-  min-width: 0;
-}
-
-.sk-col-right {
-  flex: 2;
-  min-width: 0;
-}
-
-.sk-panel {
-  background: #fff;
-  border: 1px solid #f0f0f0;
-  border-radius: 6px;
-  overflow: hidden;
-}
-
-.sk-panel-header {
-  height: 40px;
-  margin: 0 -16px;
-  margin-bottom: 0;
-  border-radius: 0;
-  background: #fafafa;
+.panel-collapse-skel {
+  padding: 12px 24px 20px;
   border-bottom: 1px solid #f0f0f0;
-}
-
-.sk-panel-header::after {
-  background: linear-gradient(
-    90deg,
-    #fafafa 0%,
-    #f0f0f0 40%,
-    #fafafa 60%,
-    #fafafa 100%
-  );
-}
-
-.sk-panel-body {
-  padding: 12px 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.sk-kv-row {
-  display: flex;
-  gap: 12px;
-  align-items: center;
-  min-height: 24px;
-}
-
-.sk-kv-label {
-  width: 80px;
-  height: 14px;
-  flex-shrink: 0;
-}
-
-.sk-kv-value {
-  flex: 1;
-  max-width: 200px;
-  height: 18px;
 }
 
 /* ============ Empty ============ */
@@ -1667,13 +1456,15 @@ function formatRichText(v: unknown): string {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  flex-shrink: 0;
 }
 .attr-value-block {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   min-width: 0;
+  overflow: hidden;
 }
 .attr-value {
   font-size: 15px;
@@ -1716,6 +1507,8 @@ function formatRichText(v: unknown): string {
   cursor: pointer;
   padding-left: 2px;
   transition: opacity 0.15s;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 .attr-workflow:hover { opacity: 0.75; }
 
@@ -2091,6 +1884,7 @@ function formatRichText(v: unknown): string {
   color: #262626 !important;
   word-break: break-word !important;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  min-height: 300px !important;
 }
 .desc-rich-wrap :deep(.w-e-scroll) {
   overflow-y: hidden !important;

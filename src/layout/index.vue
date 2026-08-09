@@ -3,6 +3,7 @@
     <AppHeader
       :drawer-open="drawerOpen"
       :sidebar-collapsed="sidebarCollapsed"
+      :hide-sidebar-toggle="isNonWorkbenchRoute"
       search-placeholder="搜索事项单号或者概要"
       @menu-click="handleMenuClick"
       @workspace-click="handleWorkspaceClick"
@@ -17,7 +18,7 @@
       @menu-click="handleRemoteMenuClick"
     />
 
-    <a-layout-sider :width="sidebarCollapsed ? 112 : 280" class="sider" :trigger="null">
+    <a-layout-sider :width="isNonWorkbenchRoute ? 64 : (sidebarCollapsed ? 112 : 280)" class="sider" :trigger="null">
       <div class="sider-inner">
         <!-- 左侧图标栏 -->
         <div class="icon-bar">
@@ -34,7 +35,7 @@
         </div>
 
         <!-- 右侧面板 -->
-        <div v-if="!isIssueDetailRoute" class="side-panel" :class="{ 'side-panel-collapsed': sidebarCollapsed }">
+        <div v-if="!isNonWorkbenchRoute" class="side-panel" :class="{ 'side-panel-collapsed': sidebarCollapsed }">
           <template v-if="activeSection === 'workspace'">
             <a-menu
               theme="light"
@@ -68,63 +69,53 @@
               <a-menu
                 theme="light"
                 mode="inline"
-                :selectedKeys="['/view/folder1/item3']"
-                :openKeys="sidebarCollapsed ? [] : ['/view/folder1']"
+                :selectedKeys="selectedViewKeys"
+                :openKeys="sidebarCollapsed ? [] : viewSubmenuOpenKeys"
                 @click="handleLocalMenuClick"
                 class="sidebar-menu"
               >
-                <!-- 产品需求 (可展开) -->
-                <a-sub-menu key="/view/folder1">
-                  <template #title>
-                    <span class="view-item-content">
-                      <component :is="FolderOutlined" />
-                      <span>产品需求 (12)</span>
-                      <a-tag class="view-tag external">外</a-tag>
-                    </span>
-                  </template>
-                  <a-menu-item key="/view/testing-calendar">
-                    <span class="child-item">
-                      <component :is="ExperimentOutlined" class="child-primary-icon" />
-                      <span>测试平台需求</span>
-                      <component :is="StarFilled" class="favorite-icon" />
-                    </span>
-                  </a-menu-item>
-                  <a-menu-item key="/view/member-gantt">
-                    <span class="child-item">
-                      <component :is="CrownOutlined" class="child-primary-icon" />
-                      <span>会员体系优化</span>
-                    </span>
-                  </a-menu-item>
-                  <a-menu-item key="/view/folder1/item3">
-                    <span class="child-item">
-                      <component :is="ShopOutlined" class="child-primary-icon" />
-                      <span>商城改版</span>
-                      <component :is="MoreOutlined" class="child-more-icon" />
-                    </span>
-                  </a-menu-item>
-                  <a-menu-item key="/view/folder1/item4">
-                    <span class="child-item">
-                      <component :is="RocketOutlined" class="child-primary-icon" />
-                      <span>日常功能迭代</span>
-                    </span>
-                  </a-menu-item>
-                  <a-menu-item key="/view/folder1/item5">
-                    <span class="child-item">
-                      <component :is="GiftOutlined" class="child-primary-icon" />
-                      <span class="child-text-truncate">88VIP会员工具需...</span>
-                    </span>
-                  </a-menu-item>
-                </a-sub-menu>
+                <template v-for="(group, gIdx) in viewGroups" :key="`g-${gIdx}`">
+                  <!-- 有 groupName → 可展开 sub-menu -->
+                  <a-sub-menu v-if="group.groupName && group.myViewList.length > 0" :key="viewGroupKey(group)">
+                    <template #title>
+                      <span class="view-item-content">
+                        <component :is="FolderOutlined" />
+                        <span>
+                          {{ group.groupName }}
+                          <template v-if="typeof group.count === 'number'">({{ group.count }})</template>
+                        </span>
+                        <a-tag v-if="group.share" class="view-tag external">外</a-tag>
+                      </span>
+                    </template>
+                    <a-menu-item
+                      v-for="v in group.myViewList"
+                      :key="viewItemKey(v)"
+                      :data-menu-id="viewItemKey(v)"
+                    >
+                      <span class="child-item">
+                        <component :is="viewItemIcon(v)" class="child-primary-icon" />
+                        <span class="child-text-truncate">{{ truncateViewName(v.filterName, 18) }}</span>
+                        <component v-if="v.isCollect" :is="StarFilled" class="favorite-icon" />
+                        <component v-if="v.isShare && v.sortId <= 1" :is="MoreOutlined" class="child-more-icon" />
+                      </span>
+                    </a-menu-item>
+                  </a-sub-menu>
 
-                <!-- 独立视图项 -->
-                <a-menu-item key="/view/sprint-board">
-                  <component :is="AppstoreOutlined" />
-                  <span>Sprint 看板</span>
-                </a-menu-item>
-                <a-menu-item key="/view/bug-list">
-                  <component :is="UnorderedListOutlined" />
-                  <span>待修复 Bug (3)</span>
-                </a-menu-item>
+                  <!-- 无 groupName → 顶层 menu-item 列表 -->
+                  <template v-else>
+                    <a-menu-item
+                      v-for="v in group.myViewList"
+                      :key="viewItemKey(v)"
+                      :data-menu-id="viewItemKey(v)"
+                    >
+                    <component :is="viewItemIcon(v)" />
+                    <span>
+                      {{ truncateViewName(v.filterName, 14) }}
+                      <template v-if="typeof v.myTodoTotalCount === 'number'">({{ v.myTodoTotalCount }})</template>
+                    </span>
+                    </a-menu-item>
+                  </template>
+                </template>
               </a-menu>
             </div>
           </template>
@@ -205,7 +196,7 @@
         </div>
       </div>
     </a-layout-sider>
-    <a-layout class="main-layout" :class="{ 'main-layout-collapsed': sidebarCollapsed && !isIssueDetailRoute, 'main-layout-full': isIssueDetailRoute }">
+    <a-layout class="main-layout" :class="{ 'main-layout-collapsed': sidebarCollapsed && !isNonWorkbenchRoute, 'main-layout-full': isNonWorkbenchRoute }">
       <a-layout-content class="content">
         <WorkbenchPanel />
       </a-layout-content>
@@ -256,10 +247,7 @@ import {
   TableOutlined,
   InfoCircleOutlined,
   ExperimentOutlined,
-  CrownOutlined,
-  ShopOutlined,
   RocketOutlined,
-  GiftOutlined,
 } from '@ant-design/icons-vue'
 import { useRouter, useRoute } from 'vue-router'
 import AppHeader from '@/components/AppHeader.vue'
@@ -267,6 +255,8 @@ import AppSideDrawer from '@/components/AppSideDrawer.vue'
 import NewIssueFormModal from '@/components/NewIssueFormModal.vue'
 import WorkbenchPanel from './WorkbenchPanel.vue'
 import { useAuth } from '@/utils/auth'
+import { useViewStore } from '@/utils/view-store'
+import type { ViewGroup, ViewItem } from '@/types/faiz'
 
 const iconBarItems = [
   { key: 'workspace', icon: HomeOutlined, label: '工作台' },
@@ -280,7 +270,56 @@ const { isLoggedIn, refresh: refreshAuth } = useAuth()
 const drawerOpen = ref(false)
 const sidebarCollapsed = ref(false)
 const activeSection = ref('workspace')
-const isIssueDetailRoute = computed(() => route.path.startsWith('/jira/browse/'))
+const isNonWorkbenchRoute = computed(() => !route.path.startsWith('/workbench'))
+
+// ========== 我的视图（/view/list 异步，单例共享自 @/utils/view-store） ==========
+const {
+  viewGroups,
+  viewListLoading,
+  ensureLoaded: fetchViewList,
+  viewGroupKey,
+  viewItemKey,
+  buildViewRoute,
+  findViewItem: __findViewItem,
+} = useViewStore()
+const viewSubmenuOpenKeys = ref<string[]>([])
+
+/** viewType → 路由路径映射（list 仍走 /workbench/todo；其余统一走 /workbench/view/<code>） */
+const VIEW_TYPE_ROUTE_MAP: Record<string, string> = {
+  list: '/workbench/todo',
+  KAN_BAN: '/workbench/view',
+  gantt: '/workbench/view',
+  CALENDAR_VIEW: '/workbench/view',
+}
+/** viewType → 默认图标组件（找不到更特殊映射时使用） */
+const VIEW_TYPE_ICON_MAP: Record<string, unknown> = {
+  list: UnorderedListOutlined,
+  KAN_BAN: AppstoreOutlined,
+  gantt: RocketOutlined,
+  CALENDAR_VIEW: ExperimentOutlined,
+}
+
+/** 取单个视图项的图标（按 viewType 统一映射） */
+function viewItemIcon(v: ViewItem) {
+  return VIEW_TYPE_ICON_MAP[v.viewType] ?? AppstoreOutlined
+}
+
+/** 视图项名称截断：折叠态场景下保留的处理 */
+function truncateViewName(name: string, max = 16) {
+  return name.length > max ? name.slice(0, max - 3) + '...' : name
+}
+
+// 加载完后计算 sub-menu 默认展开的分组
+function syncSubmenuOpenKeys() {
+  viewSubmenuOpenKeys.value = viewGroups.value
+    .filter((g) => g.groupName && g.myViewList.length > 0)
+    .map((g) => viewGroupKey(g))
+}
+watch(
+  viewGroups,
+  () => syncSubmenuOpenKeys(),
+  { deep: true, immediate: true }
+)
 
 // 登录态过期弹窗
 const showLoginExpiredModal = ref(false)
@@ -299,6 +338,7 @@ watch(isLoggedIn, (loggedIn) => {
 onMounted(() => {
   refreshAuth()
   showLoginExpiredModal.value = !isLoggedIn.value
+  fetchViewList()
 })
 
 function handleRelogin() {
@@ -341,9 +381,40 @@ function handleHeaderSearch(value: string) {
   if (value) router.push(value)
 }
 
-function handleLocalMenuClick(info: { key: string }) {
-  router.push(info.key)
+/** 从 menu key 找到 ViewItem（key 形如 /workbench/view/CUSTOMxx?groupCode=...） */
+function findViewItemByKey(key: string): ViewItem | null {
+  const match = key.match(/\/workbench\/view\/([^/?#]+)/)
+  if (!match) return null
+  const code = decodeURIComponent(match[1])
+  // 跳过内部占位路径（如 /workbench/view/group/__ungrouped__）
+  if (code === 'group') return null
+  return __findViewItem(code)
 }
+
+function handleLocalMenuClick(info: { key: string }) {
+  const v = findViewItemByKey(info.key)
+  if (v) {
+    router.push(buildViewRoute(v))
+  } else {
+    router.push(info.key)
+  }
+}
+
+/** 匹配当前选中视图项：路由 params.filterCode 或 query.filterCode 对应生成的菜单 key */
+const selectedViewKeys = computed<string[]>(() => {
+  const fromParams = route.params.filterCode as string | undefined
+  const fromQuery = route.query.filterCode as string | undefined
+  const code = fromParams || fromQuery
+  const keys: string[] = [route.fullPath, route.path]
+  if (code) {
+    for (const g of viewGroups.value) {
+      const v = g.myViewList.find((x) => x.filterCode === code)
+      if (v) keys.push(viewItemKey(v))
+    }
+  }
+  return keys
+})
+
 function handleRemoteMenuClick(key: string) {
   let path = key
   if (path.startsWith('/cooperise')) {
@@ -648,7 +719,7 @@ function handleRemoteMenuClick(key: string) {
   font-weight: 400;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 0px;
   position: relative;
   transition: all 0.15s ease;
 }
@@ -676,7 +747,7 @@ function handleRemoteMenuClick(key: string) {
 .view-item-content {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 0px;
   flex: 1;
   min-width: 0;
 }
@@ -713,7 +784,7 @@ function handleRemoteMenuClick(key: string) {
 .child-item {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 0px;
   width: 100%;
 }
 
@@ -726,7 +797,7 @@ function handleRemoteMenuClick(key: string) {
 .favorite-icon {
   color: #faad14 !important;
   font-size: 13px !important;
-  margin-left: -4px;
+  margin-left: 2px;
 }
 
 .child-text-truncate {

@@ -36,9 +36,9 @@
           <component :is="UnorderedListOutlined" />
           分组
         </a-button>
-        <a-button class="tool-btn sort-btn" :class="{ active: sortCount > 0 }">
-          <component :is="SortAscendingOutlined" />
-          排序(1)
+        <a-button class="tool-btn sort-btn" :class="{ active: sortCountComputed > 0 }" @click="toggleSortDirection">
+          <component :is="isSortDesc ? SortDescendingOutlined : SortAscendingOutlined" />
+          排序({{ sortCountComputed }})
         </a-button>
         <a-button class="tool-btn">
           <component :is="MenuOutlined" />
@@ -89,7 +89,7 @@
         class="items-table"
       >
         <vxe-column type="checkbox" width="50" align="center" fixed="left" />
-        <vxe-column field="summary" title="概要" min-width="300" fixed="left" :edit-render="{}">
+        <vxe-column field="summary" :title="fieldLabel('summary', '概要')" min-width="300" fixed="left" :edit-render="{}">
           <template #default="{ row }">
             <span class="summary-text">{{ row.summary }}</span>
           </template>
@@ -97,12 +97,12 @@
             <a-input v-model:value="row.summary" size="small" />
           </template>
         </vxe-column>
-        <vxe-column field="issueKey" title="编号" width="140">
+        <vxe-column field="issueKey" :title="fieldLabel('issuekey', '编号')" width="140">
           <template #default="{ row }">
             <a class="issue-key-link" @click="openDetail(row.issueKey)">{{ row.issueKey }}</a>
           </template>
         </vxe-column>
-        <vxe-column field="priorityId" title="优先级" width="100" :edit-render="{}">
+        <vxe-column field="priorityId" :title="fieldLabel('priority', '优先级')" width="100" :edit-render="{}">
           <template #default="{ row }">
             <a-tag :color="priorityColor(row.priorityId)">{{ row.priorityName || priorityLabel(row.priorityId) }}</a-tag>
           </template>
@@ -112,7 +112,7 @@
             </a-select>
           </template>
         </vxe-column>
-        <vxe-column field="statusId" title="状态" width="100" :edit-render="{}">
+        <vxe-column field="statusId" :title="fieldLabel('status', '状态')" width="100" :edit-render="{}">
           <template #default="{ row }">
             <a-tag :color="statusColor(row.statusId)">{{ row.statusName || statusLabel(row.statusId) }}</a-tag>
           </template>
@@ -122,7 +122,7 @@
             </a-select>
           </template>
         </vxe-column>
-        <vxe-column field="issuetypeId" title="分类" width="80" :edit-render="{}">
+        <vxe-column field="issuetypeId" :title="fieldLabel('issuetype', '分类')" width="80" :edit-render="{}">
           <template #default="{ row }">
             <a-tag>{{ row.issuetypeName || typeLabel(row.issuetypeId) }}</a-tag>
           </template>
@@ -132,17 +132,17 @@
             </a-select>
           </template>
         </vxe-column>
-        <vxe-column field="assigneeName" title="经办人" width="120" :edit-render="{}">
+        <vxe-column field="assigneeName" :title="fieldLabel('assignee', '经办人')" width="120" :edit-render="{}">
           <template #edit="{ row }">
             <a-input v-model:value="row.assigneeName" size="small" />
           </template>
         </vxe-column>
-        <vxe-column field="createdAt" title="创建时间" width="120">
+        <vxe-column field="createdAt" :title="fieldLabel('created', '创建时间')" width="120">
           <template #default="{ row }">
             <span>{{ row.createdAt?.split(' ')[0] }}</span>
           </template>
         </vxe-column>
-        <vxe-column field="updatedAt" title="更新时间" width="120">
+        <vxe-column field="updatedAt" :title="fieldLabel('updated', '更新时间')" width="120">
           <template #default="{ row }">
             <span>{{ row.updatedAt?.split(' ')[0] }}</span>
           </template>
@@ -261,13 +261,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, watch } from 'vue'
 import type { VxeTableInstance } from 'vxe-table'
 import { message } from 'ant-design-vue'
 import {
   ReloadOutlined,
   AlignCenterOutlined,
   SortAscendingOutlined,
+  SortDescendingOutlined,
   MenuOutlined,
   CheckSquareOutlined,
   FullscreenOutlined,
@@ -279,7 +280,13 @@ import {
   CaretRightFilled,
 } from '@ant-design/icons-vue'
 import { getIssues, patchIssue, queryAvailableFields } from '@/api/faiz'
-import type { IssueRow, IssueRecord } from '@/types/faiz'
+import type {
+  IssueRow,
+  IssueRecord,
+  IssueQueryPayload,
+  ChildConditionGroup,
+  SortItem,
+} from '@/types/faiz'
 import IssueDetailDrawer from '@/components/IssueDetailDrawer.vue'
 import FilterPanel from '@/components/FilterPanel.vue'
 
@@ -426,6 +433,111 @@ const filterConditions = ref<Array<{ logic: string; field: string; operator: str
 
 const filterDisplayCount = computed(() => filterConditions.value.length)
 
+// 排序 / 分组 / 分层 / 视图状态
+const sortItemList = ref<SortItem[]>([
+  { field: { id: 'customfield_46508' }, sortTypeCode: 'DESC' },
+])
+const sortCountComputed = computed(() => sortItemList.value.length)
+const isSortDesc = computed(() => sortItemList.value[0]?.sortTypeCode === 'DESC')
+
+function toggleSortDirection() {
+  if (sortItemList.value.length === 0) return
+  const first = sortItemList.value[0]
+  first.sortTypeCode = first.sortTypeCode === 'DESC' ? 'ASC' : 'DESC'
+}
+
+// 视图编码（与后端约定，标识"我的事项"视图）
+const viewCode = ref('MY_TODO219415')
+
+// 值映射：页面文案 → 后端枚举
+const VALUE_MAP: Record<string, string> = {
+  '当前用户': 'CURRENT_USER',
+  '所有未结束状态': 'ALL_NOT_DONE',
+  '已完成': 'DONE',
+  '高': 'HIGH',
+  '中': 'MEDIUM',
+  '低': 'LOW',
+}
+// 操作符映射：中文 → 后端枚举
+const OPERATOR_MAP: Record<string, string> = {
+  '属于': 'BELONG',
+  '等于': 'EQUAL',
+  '不等于': 'NOT_EQUAL',
+  '包含': 'CONTAIN',
+  '不包含': 'NOT_CONTAIN',
+  '大于': 'GREATER_THAN',
+  '小于': 'LESS_THAN',
+}
+// 逻辑映射：中文 → 后端枚举
+const LOGIC_MAP: Record<string, string> = { '且': 'AND', '或': 'OR' }
+
+/** 把 filterConditions 转换为后端 globalFilter.childConditionGroupList */
+function buildChildConditionGroups(): ChildConditionGroup[] {
+  return filterConditions.value.map((c) => {
+    const mappedValue = VALUE_MAP[c.value] ?? c.value
+    const isCurrentUser = c.field === 'assignee' && c.value === '当前用户'
+    return {
+      isGroupModule: false,
+      condition: {
+        conditionValueList: [
+          {
+            value: mappedValue,
+            userSpecialIdentifier: isCurrentUser ? 'CURRENT_USER' : '',
+            timeOperationDirectionTypeCode: null,
+            timeFormatTypeCode: null,
+            comparedField: null,
+          },
+        ],
+        field: { id: c.field, datasourceId: 0 },
+        operationType: OPERATOR_MAP[c.operator] ?? c.operator,
+        conditionGroup: null,
+        dateScopeType: null,
+        comparedTypeCode: null,
+        disable: null,
+        includeObsolete: null,
+      },
+    }
+  })
+}
+
+/** 构建完整查询入参 */
+function buildQueryPayload(): IssueQueryPayload {
+  const logicType = LOGIC_MAP[filterConditions.value[0]?.logic] ?? 'AND'
+  return {
+    globalFilter: {
+      filter: {
+        logicType,
+        isGroupModule: false,
+        condition: null,
+        disable: null,
+        includeObsolete: null,
+        isPass: null,
+        associatedConditions: [],
+        matchAllLinks: false,
+        isDevActivity: null,
+        isSprintBlock: null,
+        isVersionBlock: null,
+        isCustomColumnBlock: null,
+        childConditionGroupList: buildChildConditionGroups(),
+      },
+      isOnlyShowAssociation: false,
+    },
+    group: { groupItemList: [], isFollowPreviousGroup: true },
+    layered: { layeredItemList: [], layerType: 'FLAT' },
+    page: currentPage.value,
+    pageSize: pageSize.value,
+    showField: {
+      showFieldItemList: shownFields.value
+        .filter((f) => f.checked)
+        .map((f) => ({ field: { id: f.key } })),
+    },
+    sort: { sortItemList: sortItemList.value },
+    viewCode: viewCode.value,
+    needShowGroupValues: [],
+    referencedFilter: { filter: null },
+  }
+}
+
 function handleReset() {
   filterCount.value = 0
   sortCount.value = 0
@@ -453,6 +565,22 @@ const total = ref(0)
 
 const loading = ref(false)
 const dataList = ref<IssueRow[]>([])
+const rawIssueRecords = ref<IssueRecord[]>([])
+
+const fieldNameMap = computed<Record<string, string>>(() => {
+  const m: Record<string, string> = {}
+  for (const rec of rawIssueRecords.value) {
+    if (!rec.issueField) continue
+    for (const f of rec.issueField) {
+      if (f.id && f.name != null && !(f.id in m)) m[f.id] = String(f.name)
+    }
+  }
+  return m
+})
+function fieldLabel(fieldId: string, fallback: string): string {
+  const v = fieldNameMap.value[fieldId]
+  return (v && v.trim()) || fallback
+}
 
 function statusLabel(s: string) {
   const map: Record<string, string> = { '1': '待处理', '2': '进行中', '3': '已完成' }
@@ -562,19 +690,19 @@ function flattenIssue(rec: IssueRecord): IssueRow {
 async function fetchIssues() {
   loading.value = true
   try {
-    const res = await getIssues({
-      page: currentPage.value,
-      pageSize: pageSize.value,
-    })
+    const res = await getIssues(buildQueryPayload())
     const info = res?.data
     if (info && info.list) {
+      rawIssueRecords.value = info.list
       dataList.value = info.list.map(flattenIssue)
       total.value = info.total ?? 0
     } else {
+      rawIssueRecords.value = []
       dataList.value = []
       total.value = 0
     }
   } catch {
+    rawIssueRecords.value = []
     dataList.value = []
   } finally {
     loading.value = false
@@ -599,7 +727,47 @@ function handleAction(key: string, row: IssueRow) {
   }
 }
 
-onMounted(() => {
+// 筛选面板关闭时，若条件有变化则重新查询
+let filterSnapshot = JSON.stringify(filterConditions.value)
+watch(filterPanelVisible, (open) => {
+  if (!open) {
+    const current = JSON.stringify(filterConditions.value)
+    if (current !== filterSnapshot) {
+      filterSnapshot = current
+      currentPage.value = 1
+      fetchIssues()
+    }
+  }
+})
+
+// 字段配置抽屉关闭时，若显示字段有变化则重新查询
+let shownFieldsSnapshot = JSON.stringify(shownFields.value)
+watch(settingDrawerOpen, (open) => {
+  if (!open) {
+    const current = JSON.stringify(shownFields.value)
+    if (current !== shownFieldsSnapshot) {
+      shownFieldsSnapshot = current
+      fetchIssues()
+    }
+  }
+})
+
+// 排序变化时重新查询
+watch(sortItemList, () => {
+  currentPage.value = 1
+  fetchIssues()
+}, { deep: true })
+
+// 分页变化时重新查询
+watch([currentPage, pageSize], () => {
+  fetchIssues()
+})
+
+onMounted(async () => {
+  // 先加载字段配置（shownFields），再查询事项，确保 showField 入参正确
+  await fetchAvailableFields()
+  shownFieldsSnapshot = JSON.stringify(shownFields.value)
+  filterSnapshot = JSON.stringify(filterConditions.value)
   fetchIssues()
 })
 </script>

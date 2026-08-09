@@ -32,14 +32,53 @@
         </div>
       </header>
 
-      <!-- Loading -->
-      <div v-if="loading" class="detail-loading">
-        <a-spin size="large">
-          <template #indicator>
-            <component :is="LoadingOutlined" spin style="font-size: 36px; color: #1677ff" />
-          </template>
-        </a-spin>
-        <div class="loading-text">正在加载事项详情…</div>
+      <!-- Loading（Skeleton 骨架屏） -->
+      <div v-if="loading" class="detail-skeleton">
+        <header class="top-bar top-bar-skeleton">
+          <div class="top-bar-left">
+            <a-skeleton-input :size="'small'" style="width: 120px" />
+          </div>
+          <div class="top-bar-right">
+            <a-skeleton-button :size="'small'" shape="circle" />
+            <a-skeleton-button :size="'small'" shape="circle" />
+          </div>
+        </header>
+        <div class="detail-body">
+          <section class="title-section">
+            <div class="title-accent" />
+            <a-skeleton-paragraph :rows="1" :title="false" style="width: 85%" />
+          </section>
+
+          <section class="attr-card">
+            <div class="attr-row-line">
+              <div v-for="n in 5" :key="n" class="attr-item">
+                <a-skeleton :paragraph="{ rows: 1, width: ['48px', '100%'] }" :avatar="false" :title="false" />
+              </div>
+            </div>
+          </section>
+
+          <section class="action-bar">
+            <a-skeleton-button size="small" style="width: 72px; margin-right: 8px" />
+            <a-skeleton-button size="small" style="width: 72px; margin-right: 8px" />
+            <a-skeleton-button size="small" style="width: 96px" />
+          </section>
+
+          <section class="panel-collapse">
+            <a-skeleton :paragraph="{ rows: 3, width: ['100%', '70%', '85%'] }" :title="true" :avatar="false" />
+          </section>
+          <section class="panel-collapse">
+            <a-skeleton :paragraph="{ rows: 2, width: ['100%', '65%'] }" :title="true" :avatar="false" />
+          </section>
+          <section class="panel-collapse">
+            <a-skeleton :paragraph="{ rows: 4, width: ['100%', '80%', '60%', '90%'] }" :title="true" :avatar="true" />
+          </section>
+          <section class="panel-collapse">
+            <a-skeleton :paragraph="{ rows: 3, width: ['100%', '75%', '60%'] }" :title="true" :avatar="true" />
+          </section>
+          <section class="panel-collapse">
+            <a-skeleton :paragraph="{ rows: 2, width: ['100%', '80%'] }" :title="true" :avatar="false" />
+          </section>
+        </div>
       </div>
 
       <!-- Empty -->
@@ -1249,23 +1288,26 @@ function formatRichText(v: unknown): string {
   background: #f5f7fa;
 }
 
-/* ============ Loading ============ */
-.detail-loading {
+/* ============ Loading Skeleton ============ */
+.detail-skeleton {
   display: flex;
   flex-direction: column;
-  justify-content: center;
-  align-items: center;
-  gap: 18px;
   flex: 1;
-  background:
-    radial-gradient(circle at 20% 10%, #e8f3ff 0%, transparent 55%),
-    radial-gradient(circle at 80% 20%, #f5f0ff 0%, transparent 55%),
-    #ffffff;
+  overflow: hidden;
+  background: #ffffff;
 }
-.loading-text {
-  font-size: 13px;
-  color: #8c8c8c;
-  letter-spacing: 0.3px;
+.top-bar-skeleton {
+  padding: 16px 26px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #ffffff;
+  border-bottom: 1px solid #f0f0f0;
+}
+.top-bar-skeleton .top-bar-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 
 /* ============ Empty ============ */
@@ -1480,17 +1522,18 @@ function formatRichText(v: unknown): string {
   font-size: 13px;
   color: #8c8c8c;
   letter-spacing: 0.3px;
-  font-weight: 500;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  flex-shrink: 0;
 }
 .attr-value-block {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   min-width: 0;
+  overflow: hidden;
 }
 .attr-value {
   font-size: 15px;
@@ -1533,6 +1576,8 @@ function formatRichText(v: unknown): string {
   cursor: pointer;
   padding-left: 2px;
   transition: opacity 0.15s;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 .attr-workflow:hover { opacity: 0.75; }
 
@@ -1987,6 +2032,7 @@ function formatRichText(v: unknown): string {
   color: #262626 !important;
   word-break: break-word !important;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  min-height: 300px !important;
 }
 .desc-rich-wrap :deep(.w-e-scroll) {
   overflow-y: hidden !important;

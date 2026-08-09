@@ -1,4 +1,5 @@
-import { createRouter, createWebHistory, createWebHashHistory, type RouteRecordRaw } from 'vue-router'
+import { defineComponent, h, markRaw, onMounted, ref, watch } from 'vue'
+import { createRouter, createWebHistory, createWebHashHistory, useRoute, type RouteRecordRaw } from 'vue-router'
 import Layout from '@/layout/index.vue'
 import Todo from '@/pages/todo/index.vue'
 import Dashboard from '@/pages/dashboard/index.vue'
@@ -17,6 +18,46 @@ import SprintBoard from '@/pages/sprint-board/index.vue'
 import TestingCalendar from '@/pages/testing-calendar/index.vue'
 import MemberGantt from '@/pages/member-gantt/index.vue'
 import IssueDetail from '@/pages/issue-detail/index.vue'
+import { useViewStore } from '@/utils/view-store'
+
+/** viewType → 渲染组件 & 标题映射 */
+const VIEW_TYPE_PAGE: Record<string, { component: unknown; title: string }> = {
+  list: { component: Todo, title: '我的事项' },
+  KAN_BAN: { component: SprintBoard, title: 'Sprint 看板' },
+  gantt: { component: MemberGantt, title: '甘特图' },
+  CALENDAR_VIEW: { component: TestingCalendar, title: '测试平台需求日历' },
+}
+
+/** /workbench/view/:filterCode 分发组件：按 viewType 动态渲染对应页面（同步 setup，避免 Suspense 告警） */
+const ViewEntry = defineComponent({
+  name: 'ViewEntry',
+  setup() {
+    const route = useRoute()
+    const { ensureLoaded, findViewItem, viewGroups } = useViewStore()
+
+    function resolveComp() {
+      const code = (route.params.filterCode as string) || ''
+      const item = findViewItem(code)
+      const page = item ? VIEW_TYPE_PAGE[item.viewType] : undefined
+      return markRaw((page?.component || SprintBoard) as any)
+    }
+    const Comp = ref(resolveComp())
+
+    onMounted(async () => {
+      try { await ensureLoaded() } finally {
+        Comp.value = resolveComp()
+      }
+    })
+    // 视图切换或数据就绪时重新解析
+    watch(
+      () => route.params.filterCode,
+      () => { Comp.value = resolveComp() }
+    )
+    watch(viewGroups, () => { Comp.value = resolveComp() }, { deep: true })
+
+    return () => h(Comp.value)
+  },
+})
 
 const routes: RouteRecordRaw[] = [
   {
@@ -26,9 +67,7 @@ const routes: RouteRecordRaw[] = [
     children: [
       { path: 'workbench', redirect: '/workbench/todo', name: 'Workbench' },
       { path: 'workbench/todo', component: Todo, name: 'Todo', meta: { title: '我的事项' } },
-      { path: 'view/sprint-board', component: SprintBoard, name: 'SprintBoard', meta: { title: 'Sprint 看板' } },
-      { path: 'view/testing-calendar', component: TestingCalendar, name: 'TestingCalendar', meta: { title: '测试平台需求日历' } },
-      { path: 'view/member-gantt', component: MemberGantt, name: 'MemberGantt', meta: { title: '会员体系优化 · 甘特图' } },
+      { path: 'workbench/view/:filterCode', component: ViewEntry, name: 'ViewEntry', meta: { title: '视图' } },
       { path: 'jira/browse/:issueKey', component: IssueDetail, name: 'IssueDetail', meta: { title: '事项详情' } },
       { path: 'workbench/filters', component: EmptyContent, name: 'Filters', meta: { title: '新筛选器' } },
       { path: 'workbench/:pathMatch(.*)*', component: EmptyContent, name: 'WorkbenchDynamic' },

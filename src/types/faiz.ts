@@ -136,6 +136,176 @@ export interface IssueQuery {
   pageSize?: number
 }
 
+// ========== Issue Query 完整入参（视图查询） ==========
+
+/** 筛选条件值 */
+export interface ConditionValue {
+  userSpecialIdentifier?: string
+  timeOperationDirectionTypeCode?: string | null
+  timeFormatTypeCode?: string | null
+  value: string
+  comparedField?: string | null
+}
+
+/** 筛选字段引用 */
+export interface FilterFieldRef {
+  id: string
+  datasourceId?: number
+}
+
+/** 单个筛选条件 */
+export interface FilterConditionItem {
+  conditionGroup?: unknown
+  conditionValueList: ConditionValue[]
+  dateScopeType?: string | null
+  field: FilterFieldRef
+  operationType: string
+  comparedTypeCode?: string | null
+  disable?: boolean | null
+  includeObsolete?: boolean | null
+}
+
+/** 子条件组 */
+export interface ChildConditionGroup {
+  isGroupModule: boolean
+  isDevActivity?: boolean | null
+  condition: FilterConditionItem
+}
+
+/** 筛选器主体 */
+export interface FilterBody {
+  logicType: string
+  isGroupModule: boolean
+  condition?: unknown
+  disable?: boolean | null
+  includeObsolete?: boolean | null
+  isPass?: boolean | null
+  associatedConditions?: unknown[]
+  matchAllLinks?: boolean
+  isDevActivity?: boolean | null
+  isSprintBlock?: boolean | null
+  isVersionBlock?: boolean | null
+  isCustomColumnBlock?: boolean | null
+  childConditionGroupList: ChildConditionGroup[]
+}
+
+/** 全局筛选 */
+export interface GlobalFilter {
+  filter: FilterBody | null
+  filterId?: number | null
+  isOnlyShowAssociation?: boolean
+}
+
+/** 引用筛选 */
+export interface ReferencedFilter {
+  filter: FilterBody | null
+}
+
+/** 显示字段项 */
+export interface ShowFieldItem {
+  field: FilterFieldRef
+}
+
+/** 显示字段 */
+export interface ShowField {
+  showFieldItemList: ShowFieldItem[]
+}
+
+/** 排序项 */
+export interface SortItem {
+  field: FilterFieldRef
+  sortTypeCode: string
+}
+
+/** 排序 */
+export interface SortConfig {
+  sortItemList: SortItem[]
+}
+
+/** 分组 */
+export interface GroupConfig {
+  groupItemList: unknown[]
+  isFollowPreviousGroup: boolean
+}
+
+/** 分层 */
+export interface LayeredConfig {
+  layeredItemList: unknown[]
+  layerType: string
+}
+
+/** POST /issue/query 完整入参 */
+export interface IssueQueryPayload {
+  globalFilter: GlobalFilter
+  group: GroupConfig
+  layered: LayeredConfig
+  page: number
+  pageSize: number
+  showField: ShowField
+  sort: SortConfig
+  viewCode?: string
+  needShowGroupValues?: unknown[]
+  referencedFilter: ReferencedFilter
+}
+
+// ========== View 列表（POST /view/list） ==========
+
+/** 视图归属人 */
+export interface ViewOwner {
+  userNo: string
+  userCoAccount: string
+  userAvatar: string
+  isActive: boolean
+  userEnName: string
+  deptId: string
+  userDeptInfo: string
+  from: string
+  jiraUserKey: string | null
+  userActualBelongDep: string | null
+}
+
+/** 单条视图项 */
+export interface ViewItem {
+  filterName: string
+  filterCode: string
+  isDefault: boolean
+  isMyCreate: boolean
+  isCollect: boolean
+  isShare: boolean
+  sortId: number
+  filterOwner: ViewOwner | null
+  isCollectByShare: boolean
+  isDeleted: boolean
+  myTodoTotalCount: number | null
+  viewType: string
+  groupCode: string | null
+}
+
+/** 视图分组 */
+export interface ViewGroup {
+  groupCode: string | null
+  groupName: string | null
+  myCreate: boolean | null
+  share: boolean | null
+  count: number | null
+  sorted: number | null
+  cancelShare: boolean | null
+  myViewList: ViewItem[]
+  groupOwner: ViewOwner | null
+}
+
+/** POST /view/list 返回体（真实后端结构；兼容历史 info 字段） */
+export interface ViewListResult {
+  code?: string
+  msg?: string
+  message?: string
+  success?: boolean
+  /** 后端真实返回用 data，历史遗留兼容字段 info 同时保留 */
+  data?: ViewGroup[]
+  info?: ViewGroup[]
+  bbl?: unknown
+}
+
 // ========== Issue Create Meta ==========
 
 /** 创建表单字段定义 */
