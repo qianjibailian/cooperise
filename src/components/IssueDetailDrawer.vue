@@ -46,7 +46,7 @@
         <div class="detail-body">
           <section class="title-section">
             <div class="title-accent" />
-            <a-skeleton-paragraph :rows="1" :title="false" style="width: 85%" />
+            <a-skeleton :paragraph="{ rows: 1 }" :title="false" style="width: 85%" />
           </section>
 
           <section class="attr-card">

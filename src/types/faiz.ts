@@ -248,6 +248,33 @@ export interface IssueQueryPayload {
   referencedFilter: ReferencedFilter
 }
 
+// ========== User 分页搜索（POST /user/query） ==========
+
+export interface UserQueryPayload {
+  keyword: string
+  isActive: number
+  page: number
+  pageSize: number
+}
+
+export interface UserItem {
+  userNo: string
+  userCoAccount: string
+  userAvatar: string
+  isActive: boolean
+  userEnName: string
+  deptId: string
+  userDeptInfo: string
+  from: string
+  jiraUserKey: string | null
+  userActualBelongDep: string | null
+}
+
+export interface UserListData {
+  list: UserItem[]
+  total: number
+}
+
 // ========== View 列表（POST /view/list） ==========
 
 /** 视图归属人 */
@@ -388,13 +415,28 @@ export interface CreateIssuePayload {
 // ========== Component ==========
 export interface ComponentItem {
   id: number
-  type: string
   name: string
+  componentKey: string // 组件类型：input_text/textarea/select_single...
+  icon: string
   description: string
-  componentKey: string
+  configSchema: string | null
+  required: number // 0=非必填, 1=必填
   status: number // 0=禁用, 1=启用
-  config: string
+  createdAt?: string
   updatedAt?: string
+}
+
+export interface ComponentQueryPayload {
+  keyword: string
+  status: number | undefined
+  page: number
+  pageSize: number
+}
+
+// 表单设计页专用：不分页的组件列表查询入参
+export interface ComponentListPayload {
+  keyword: string
+  status: number | undefined
 }
 
 export interface ComponentListData {

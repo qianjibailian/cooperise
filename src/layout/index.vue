@@ -161,7 +161,7 @@
               theme="light"
               mode="inline"
               :selectedKeys="[currentPath]"
-
+              v-model:openKeys="settingsOpenKeys"
               @click="handleLocalMenuClick"
               class="sidebar-menu"
             >
@@ -270,7 +270,12 @@ const { isLoggedIn, refresh: refreshAuth } = useAuth()
 const drawerOpen = ref(false)
 const sidebarCollapsed = ref(false)
 const activeSection = ref('workspace')
-const isNonWorkbenchRoute = computed(() => !route.path.startsWith('/workbench'))
+// 设置路由与工作台路由同样展示侧边栏（含二级菜单），仅其余路由（如事项详情）隐藏侧边面板
+const isNonWorkbenchRoute = computed(() => {
+  const path = route.path
+  if (path.startsWith('/settings')) return false
+  return !path.startsWith('/workbench')
+})
 
 // ========== 我的视图（/view/list 异步，单例共享自 @/utils/view-store） ==========
 const {
@@ -283,6 +288,24 @@ const {
   findViewItem: __findViewItem,
 } = useViewStore()
 const viewSubmenuOpenKeys = ref<string[]>([])
+
+// 设置面板「模板配置」二级菜单展开控制：进入子路由时自动展开
+const settingsOpenKeys = ref<string[]>([])
+watch(
+  () => route.path,
+  (path) => {
+    if (
+      path.startsWith('/settings/template-list') ||
+      path.startsWith('/settings/form-list') ||
+      path.startsWith('/settings/component-list')
+    ) {
+      if (!settingsOpenKeys.value.includes('template-config')) {
+        settingsOpenKeys.value = [...settingsOpenKeys.value, 'template-config']
+      }
+    }
+  },
+  { immediate: true }
+)
 
 /** viewType → 路由路径映射（list 仍走 /workbench/todo；其余统一走 /workbench/view/<code>） */
 const VIEW_TYPE_ROUTE_MAP: Record<string, string> = {
@@ -338,7 +361,10 @@ watch(isLoggedIn, (loggedIn) => {
 onMounted(() => {
   refreshAuth()
   showLoginExpiredModal.value = !isLoggedIn.value
-  fetchViewList()
+  // 只有工作台路由才主动请求 /view/list；其它路由由 view-store 内部兜底 mock，不触发真实接口
+  if (route.path.startsWith('/workbench')) {
+    fetchViewList()
+  }
 })
 
 function handleRelogin() {
@@ -362,6 +388,8 @@ function handleSectionClick(key: string) {
   activeSection.value = key
   if (key === 'workspace') {
     router.push('/workbench/todo')
+  } else if (key === 'settings') {
+    router.push('/settings/template-list')
   }
 }
 

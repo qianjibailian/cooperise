@@ -10,6 +10,8 @@ import './number-input-widget'
 import './amount-Input-widget'
 import './upload-file-widget'
 import './upload-image-widget'
+import './member-widget'
+import './cascader-widget'
 
 //  表单设计器 - 系统
 import './create-time-widget'

@@ -31,7 +31,7 @@
           <div class="dh-row">
             <a-skeleton-input size="small" style="width: 160px" />
           </div>
-          <a-skeleton-paragraph :rows="1" :title="false" style="width: 92%; margin-top: 14px" />
+          <a-skeleton :paragraph="{ rows: 1 }" :title="false" style="width: 92%; margin-top: 14px" />
         </div>
       </header>
 

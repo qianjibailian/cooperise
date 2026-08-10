@@ -65,23 +65,41 @@ const viewListLoading = ref(false)
 const loadedOnce = ref(false)
 const loadingPromise = shallowRef<Promise<ViewGroup[]> | null>(null)
 
+/** 判断当前路由是否属于工作台域（只有 /workbench* 才真正调用 /view/list 接口） */
+function isWorkbenchRoute(): boolean {
+  try {
+    const path = (typeof window !== 'undefined' && window.location && window.location.pathname) || ''
+    if (!path) return false
+    // 匹配 /workbench、/workbench/todo、/workbench/view/xxx 等
+    return path.startsWith('/workbench')
+  } catch {
+    return false
+  }
+}
+
 export function useViewStore() {
   async function ensureLoaded(force = false): Promise<ViewGroup[]> {
     if (!force && loadedOnce.value && viewGroups.value.length > 0) {
       return viewGroups.value
     }
     if (loadingPromise.value) return loadingPromise.value
+
+    // 只有 /workbench 开头的路由才调用真实接口；其它路由直接用 mock 兜底，不发请求
+    const shouldCallApi = isWorkbenchRoute()
+
     viewListLoading.value = true
     const work = (async () => {
-      try {
-        const res = await getViewList()
-        const list = dedupeGroups(normalizeViewInfo(res))
-        if (list.length > 0) {
-          viewGroups.value = list
-          return list
+      if (shouldCallApi) {
+        try {
+          const res = await getViewList()
+          const list = dedupeGroups(normalizeViewInfo(res))
+          if (list.length > 0) {
+            viewGroups.value = list
+            return list
+          }
+        } catch {
+          // ignore
         }
-      } catch {
-        // ignore
       }
       const fallback = dedupeGroups(normalizeViewInfo(mockViewJson))
       viewGroups.value = fallback

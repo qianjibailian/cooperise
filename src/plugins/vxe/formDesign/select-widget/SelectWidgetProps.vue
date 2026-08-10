@@ -5,7 +5,7 @@
       title-bold
       title-overflow
       span="24"
-      :data="currWidget.options">
+      :data="safeOptions">
       <vxe-form-item title="控件字段名" :title-prefix="{icon: 'vxe-icon-question-circle-fill', content: '唯一字段名，默认自动生成'}">
         <vxe-input v-model="currWidget.field" placeholder="唯一，默认自动生成"></vxe-input>
       </vxe-form-item>
@@ -16,16 +16,16 @@
         <vxe-switch v-model="currWidget.required"></vxe-switch>
       </vxe-form-item>
       <vxe-form-item title="空值占位提示">
-        <vxe-input v-model="currWidget.options.placeholder"></vxe-input>
+        <vxe-input v-model="safeOptions.placeholder"></vxe-input>
       </vxe-form-item>
       <vxe-form-item title="显示清除按钮">
-        <vxe-switch v-model="currWidget.options.clearable"></vxe-switch>
+        <vxe-switch v-model="safeOptions.clearable"></vxe-switch>
       </vxe-form-item>
       <vxe-form-item title="允许多选">
-        <vxe-switch v-model="currWidget.options.multiple"></vxe-switch>
+        <vxe-switch v-model="safeOptions.multiple"></vxe-switch>
       </vxe-form-item>
       <vxe-form-item title="允许搜索">
-        <vxe-switch v-model="currWidget.options.filterable"></vxe-switch>
+        <vxe-switch v-model="safeOptions.filterable"></vxe-switch>
       </vxe-form-item>
       <vxe-form-item title="数据源">
         <vxe-button mode="text" status="primary" icon="vxe-icon-edit" @click="editEvent">编辑数据</vxe-button>
@@ -69,6 +69,24 @@ const currWidget = computed(() => {
   return renderParams.widget
 })
 
+function ensureOptions(): Required<FormDesignWidgetSelectProps> & { options: { value: any; label: any }[] } {
+  if (!currWidget.value) {
+    return { placeholder: '请选择', multiple: false, clearable: true, filterable: true, options: [] }
+  }
+  if (!currWidget.value.options || typeof currWidget.value.options !== 'object') {
+    currWidget.value.options = { placeholder: '请选择', multiple: false, clearable: true, filterable: true, options: [] }
+  }
+  const o = currWidget.value.options as Partial<FormDesignWidgetSelectProps>
+  if (typeof o.placeholder !== 'string') o.placeholder = '请选择'
+  if (typeof o.multiple !== 'boolean') o.multiple = false
+  if (typeof o.clearable !== 'boolean') o.clearable = true
+  if (typeof o.filterable !== 'boolean') o.filterable = true
+  if (!Array.isArray(o.options)) o.options = []
+  return o as Required<FormDesignWidgetSelectProps> & { options: { value: any; label: any }[] }
+}
+
+const safeOptions = computed(() => ensureOptions())
+
 const gridRef = ref<VxeGridInstance>()
 
 const showEditOptions = ref(false)
@@ -92,7 +110,8 @@ const gridOptions = reactive<VxeGridProps & { data: any[] }>({
   },
   columns: [
     { type: 'seq', width: 70 },
-    { field: 'value', title: '值', editRender: { name: 'input' } },
+    { field: 'label', title: '显示名', editRender: { name: 'input' } },
+    { field: 'value', title: '存储值', editRender: { name: 'input' } },
     { field: 'action', title: '操作', width: 80, slots: { default: 'action' } }
   ],
   data: []
@@ -100,7 +119,7 @@ const gridOptions = reactive<VxeGridProps & { data: any[] }>({
 
 const modalOptions = reactive<VxeModalProps>({
   title: '数据源',
-  width: 500,
+  width: 600,
   height: 600,
   showFooter: true,
   showConfirmButton: true,
@@ -118,12 +137,16 @@ const modalOptions = reactive<VxeModalProps>({
 })
 
 const addEvent = () => {
-  gridOptions.data.unshift({ value: `值${gridOptions.data.length}` })
+  gridOptions.data.unshift({ label: `显示名${gridOptions.data.length + 1}`, value: `值${gridOptions.data.length + 1}` })
 }
 
 const editEvent = () => {
   showEditOptions.value = true
-  gridOptions.data = currWidget.value.options.options
+  // 兼容只有 value 或 只有 label 的数据
+  gridOptions.data = safeOptions.value.options.map(o => ({
+    label: typeof o.label === 'string' || typeof o.label === 'number' ? o.label : (o.value ?? ''),
+    value: typeof o.value === 'string' || typeof o.value === 'number' ? o.value : (o.label ?? ''),
+  }))
 }
 
 const clearEvent = () => {
@@ -135,8 +158,11 @@ const removeRow = (row: any) => {
 }
 
 const confirmEvent = () => {
-  currWidget.value.options.options = gridOptions.data.map(item => {
-    return { value: item.value, label: item.value }
-  })
+  safeOptions.value.options = gridOptions.data
+    .filter(item => item.label || item.value)
+    .map(item => ({
+      value: String(item.value ?? item.label ?? ''),
+      label: String(item.label ?? item.value ?? ''),
+    }))
 }
 </script>

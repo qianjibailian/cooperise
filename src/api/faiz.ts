@@ -6,7 +6,6 @@ import type {
   TemplateQuery,
   FormListData,
   FormItem,
-  TemplateStats,
   IssueQuery,
   IssueQueryPayload,
   IssueQueryResult,
@@ -14,6 +13,10 @@ import type {
   IssueCreateMetaResult,
   ComponentItem,
   ComponentListData,
+  ComponentQueryPayload,
+  ComponentListPayload,
+  UserQueryPayload,
+  UserListData,
   CustomFieldOptionReq,
   CustomFieldOptionResult,
   CreateIssuePayload,
@@ -53,20 +56,12 @@ export function deleteTemplate(id: number): Promise<Result<void>> {
   return request.delete(`${PREFIX}/template/${id}`)
 }
 
-/** 新建表单用：按分类获取启用的模板（含 tabs） */
-export function getNewFormTemplate(category: string): Promise<Result<Template>> {
-  return request.get(`${PREFIX}/template/new-form`, { params: { category } })
-}
 
 /** 复制模板 */
 export function copyTemplate(id: number): Promise<Result<Template>> {
   return request.post(`${PREFIX}/template/${id}/copy`)
 }
 
-/** 模板统计 */
-export function getTemplateStats(): Promise<Result<TemplateStats>> {
-  return request.get(`${PREFIX}/template/stats`)
-}
 
 // ==================== Form API ====================
 
@@ -118,10 +113,16 @@ export function getViewList(): Promise<ViewListResult> {
 
 // ==================== Component API ====================
 
-/** 组件列表 */
-export function getComponents(keyword?: string, category?: string): Promise<Result<ComponentListData>> {
-  return request.get(`${PREFIX}/component`, { params: { keyword, category } })
+/** 组件分页查询（POST） */
+export function queryComponents(payload: ComponentQueryPayload): Promise<Result<ComponentListData>> {
+  return request.post(`${PREFIX}/component/query`, payload)
 }
+
+/** 组件列表查询（不分页，表单设计页专用） */
+export function listComponents(payload: ComponentListPayload): Promise<Result<ComponentItem[]>> {
+  return request.post(`${PREFIX}/component/list`, payload)
+}
+
 
 /** 组件详情 */
 export function getComponent(id: number): Promise<Result<ComponentItem>> {
@@ -141,6 +142,13 @@ export function updateComponent(id: number, data: Record<string, unknown>): Prom
 /** 删除组件 */
 export function deleteComponent(id: number): Promise<Result<void>> {
   return request.delete(`${PREFIX}/component/${id}`)
+}
+
+// ==================== User API ====================
+
+/** 用户分页搜索（POST /user/query） */
+export function queryUsers(payload: UserQueryPayload): Promise<Result<UserListData>> {
+  return request.post(`${PREFIX}/user/query`, payload)
 }
 
 // ==================== Custom Field Option API ====================
