@@ -560,6 +560,25 @@ export interface AvailableFieldResult {
   }
 }
 
+/** 新增/更新可选自定义字段请求（对应后端 AvailableFieldSaveRequest） */
+export interface AvailableFieldSavePayload {
+  fieldNumId?: string
+  fieldName?: string
+  filedType?: string
+  type?: string
+  typeName?: string
+  orderAble?: boolean
+  supportOperator?: string[]
+  isSystem?: boolean
+  frontPage?: boolean
+  esFieldType?: string
+  referencedFieldId?: string
+  enumSettingType?: string
+  obsolete?: boolean
+  fieldTag?: string
+  fieldSource?: string
+}
+
 // ========== Issue Detail (POST /issue/queryDetail) ==========
 
 /** queryDetail 请求参数 */

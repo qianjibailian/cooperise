@@ -1,7 +1,7 @@
 <template>
   <div class="app-logo" :class="{ clickable: clickable, 'enterprise-mode': isEnterprise }" @click="handleClick">
     <svg width="36" height="36" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg" aria-labelledby="logoTitle">
-      <title id="logoTitle">千机伞需求管控平台</title>
+      <title id="logoTitle">需求管控平台</title>
       <!-- Redesigned rounded mark -->
       <defs>
         <linearGradient id="logo-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
@@ -31,7 +31,7 @@
     <!-- Artistic text logo -->
     <svg class="logo-text-svg" width="200" height="28" viewBox="0 0 200 28" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
       <text x="50%" y="20" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-weight="700" font-size="18" fill="#1a1a1a">
-        千机伞需求管控平台
+        需求管控平台
       </text>
     </svg>
   </div>

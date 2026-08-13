@@ -24,6 +24,8 @@ import type {
   QueryDetailResult,
   AvailableFieldQuery,
   AvailableFieldResult,
+  AvailableFieldItem,
+  AvailableFieldSavePayload,
   ViewListResult,
 } from '@/types/faiz'
 
@@ -165,4 +167,24 @@ export function queryAvailableFields(
   params?: AvailableFieldQuery,
 ): Promise<AvailableFieldResult> {
   return request.post(`${PREFIX}/custom_field/queryAvailableFields`, params)
+}
+
+/** 新增可选自定义字段（POST /custom_field/availableField） */
+export function createAvailableField(
+  data: AvailableFieldSavePayload,
+): Promise<Result<AvailableFieldItem>> {
+  return request.post(`${PREFIX}/custom_field/availableField`, data)
+}
+
+/** 更新可选自定义字段（PUT /custom_field/availableField/{id}） */
+export function updateAvailableField(
+  id: string,
+  data: AvailableFieldSavePayload,
+): Promise<Result<AvailableFieldItem>> {
+  return request.put(`${PREFIX}/custom_field/availableField/${id}`, data)
+}
+
+/** 删除可选自定义字段（DELETE /custom_field/availableField/{id}） */
+export function deleteAvailableField(id: string): Promise<Result<void>> {
+  return request.delete(`${PREFIX}/custom_field/availableField/${id}`)
 }
