@@ -2,7 +2,7 @@ FROM swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/node:22-alpine AS build
 
 WORKDIR /app
 
-RUN npm install -g pnpm --registry=https://registry.npmmirror.com
+RUN npm install -g pnpm@9 --registry=https://registry.npmmirror.com
 
 COPY package.json pnpm-lock.yaml ./
 RUN pnpm install --frozen-lockfile --registry=https://registry.npmmirror.com
