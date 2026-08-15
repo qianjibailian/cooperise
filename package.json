@@ -38,5 +38,13 @@
     "vite": "^6.3.5",
     "vite-plugin-qiankun": "^1.0.11",
     "vue-tsc": "^2.2.8"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@parcel/watcher",
+      "core-js",
+      "es5-ext",
+      "esbuild"
+    ]
   }
 }
