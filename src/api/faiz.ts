@@ -2,19 +2,13 @@ import request from '@/utils/request'
 import type {
   Result,
   Template,
-  TemplateListData,
-  TemplateQuery,
-  FormListData,
-  FormItem,
+  TemplateQueryRequest,
+  TemplatePageData,
   IssueQuery,
   IssueQueryPayload,
   IssueQueryResult,
   IssueRow,
   IssueCreateMetaResult,
-  ComponentItem,
-  ComponentListData,
-  ComponentQueryPayload,
-  ComponentListPayload,
   UserQueryPayload,
   UserListData,
   CustomFieldOptionReq,
@@ -33,9 +27,9 @@ const PREFIX = '/faiz-api'
 
 // ==================== Template API ====================
 
-/** 模板列表 */
-export function getTemplates(params?: TemplateQuery): Promise<Result<TemplateListData>> {
-  return request.get(`${PREFIX}/template`, { params })
+/** 模板列表（分页查询 POST /template/query） */
+export function queryTemplates(data?: TemplateQueryRequest): Promise<Result<TemplatePageData>> {
+  return request.post(`${PREFIX}/template/query`, data)
 }
 
 /** 模板详情 */
@@ -62,19 +56,6 @@ export function deleteTemplate(id: number): Promise<Result<void>> {
 /** 复制模板 */
 export function copyTemplate(id: number): Promise<Result<Template>> {
   return request.post(`${PREFIX}/template/${id}/copy`)
-}
-
-
-// ==================== Form API ====================
-
-/** 表单列表 */
-export function getForms(keyword?: string, category?: string, templateId?: number): Promise<Result<FormListData>> {
-  return request.get(`${PREFIX}/form`, { params: { keyword, category, templateId } })
-}
-
-/** 表单详情 */
-export function getForm(id: number): Promise<Result<FormItem>> {
-  return request.get(`${PREFIX}/form/${id}`)
 }
 
 // ==================== Issue API ====================
@@ -113,39 +94,6 @@ export function getViewList(): Promise<ViewListResult> {
   return request.post(`${PREFIX}/view/list`)
 }
 
-// ==================== Component API ====================
-
-/** 组件分页查询（POST） */
-export function queryComponents(payload: ComponentQueryPayload): Promise<Result<ComponentListData>> {
-  return request.post(`${PREFIX}/component/query`, payload)
-}
-
-/** 组件列表查询（不分页，表单设计页专用） */
-export function listComponents(payload: ComponentListPayload): Promise<Result<ComponentItem[]>> {
-  return request.post(`${PREFIX}/component/list`, payload)
-}
-
-
-/** 组件详情 */
-export function getComponent(id: number): Promise<Result<ComponentItem>> {
-  return request.get(`${PREFIX}/component/${id}`)
-}
-
-/** 新增组件 */
-export function createComponent(data: Record<string, unknown>): Promise<Result<ComponentItem>> {
-  return request.post(`${PREFIX}/component`, data)
-}
-
-/** 更新组件 */
-export function updateComponent(id: number, data: Record<string, unknown>): Promise<Result<ComponentItem>> {
-  return request.put(`${PREFIX}/component/${id}`, data)
-}
-
-/** 删除组件 */
-export function deleteComponent(id: number): Promise<Result<void>> {
-  return request.delete(`${PREFIX}/component/${id}`)
-}
-
 // ==================== User API ====================
 
 /** 用户分页搜索（POST /user/query） */
@@ -159,21 +107,28 @@ export function queryUsers(payload: UserQueryPayload): Promise<Result<UserListDa
 export function getCustomFieldOptions(
   fieldReqs: CustomFieldOptionReq[],
 ): Promise<CustomFieldOptionResult> {
-  return request.post(`${PREFIX}/custom_field/customOptions`, { fieldReqs })
+  return request.post(`${PREFIX}/availableField/customOptions`, { fieldReqs })
 }
 
 /** 查询可用字段列表（POST /custom_field/queryAvailableFields） */
 export function queryAvailableFields(
   params?: AvailableFieldQuery,
 ): Promise<AvailableFieldResult> {
-  return request.post(`${PREFIX}/custom_field/queryAvailableFields`, params)
+  return request.post(`${PREFIX}/availableField/list`, params)
 }
 
 /** 新增可选自定义字段（POST /custom_field/availableField） */
 export function createAvailableField(
   data: AvailableFieldSavePayload,
 ): Promise<Result<AvailableFieldItem>> {
-  return request.post(`${PREFIX}/custom_field/availableField`, data)
+  return request.post(`${PREFIX}/availableField`, data)
+}
+
+/** 查询可用字段详情（GET /availableField/{id}） */
+export function getAvailableFieldDetail(
+  id: string | number,
+): Promise<Result<AvailableFieldItem>> {
+  return request.get(`${PREFIX}/availableField/${id}`)
 }
 
 /** 更新可选自定义字段（PUT /custom_field/availableField/{id}） */
@@ -181,10 +136,15 @@ export function updateAvailableField(
   id: string,
   data: AvailableFieldSavePayload,
 ): Promise<Result<AvailableFieldItem>> {
-  return request.put(`${PREFIX}/custom_field/availableField/${id}`, data)
+  return request.put(`${PREFIX}/availableField/${id}`, data)
 }
 
 /** 删除可选自定义字段（DELETE /custom_field/availableField/{id}） */
 export function deleteAvailableField(id: string): Promise<Result<void>> {
-  return request.delete(`${PREFIX}/custom_field/availableField/${id}`)
+  return request.delete(`${PREFIX}/availableField/${id}`)
+}
+
+/** 批量删除可选自定义字段（DELETE /custom_field/availableField/batch） */
+export function batchDeleteAvailableFields(ids: Array<number | string>): Promise<Result<void>> {
+  return request.delete(`${PREFIX}/availableField/batch`, { data: ids })
 }

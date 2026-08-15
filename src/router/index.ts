@@ -10,10 +10,8 @@ import Departments from '@/pages/departments/index.vue'
 import Requirements from '@/pages/requirements/index.vue'
 import Tasks from '@/pages/tasks/index.vue'
 import EmptyContent from '@/pages/empty/index.vue'
-import FormDesign from '@/pages/form-design/index.vue'
 import TemplateList from '@/pages/template-list/index.vue'
-import FormList from '@/pages/form-list/index.vue'
-import ComponentList from '@/pages/component-list/index.vue'
+import AvailableField from '../pages/available-field/index.vue'
 import SprintBoard from '@/pages/sprint-board/index.vue'
 import TestingCalendar from '@/pages/testing-calendar/index.vue'
 import MemberGantt from '@/pages/member-gantt/index.vue'
@@ -81,9 +79,7 @@ const routes: RouteRecordRaw[] = [
       { path: 'permissions', component: Permissions, name: 'Permissions', meta: { title: '权限管理' } },
       { path: 'departments', component: Departments, name: 'Departments', meta: { title: '部门管理' } },
       { path: 'settings/template-list', component: TemplateList, name: 'TemplateList', meta: { title: '模板列表' } },
-      { path: 'settings/form-list', component: FormList, name: 'FormList', meta: { title: '表单列表' } },
-      { path: 'settings/component-list', component: ComponentList, name: 'ComponentList', meta: { title: '可选自定义字段表' } },
-      { path: 'settings/form-design', component: FormDesign, name: 'FormDesign', meta: { title: '表单设计' } },
+      { path: 'settings/available-field', component: AvailableField, name: 'AvailableField', meta: { title: '可选字段' } },
       { path: 'settings/:pathMatch(.*)*', component: EmptyContent, name: 'SettingsDynamic' },
       { path: ':pathMatch(.*)*', component: EmptyContent, name: 'NotFound' },
     ],

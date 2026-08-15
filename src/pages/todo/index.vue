@@ -680,8 +680,8 @@ function flattenIssue(rec: IssueRecord): IssueRow {
     issuetypeName: String(issuetype.name ?? ''),
     assigneeName: String(assignee.userEnName || assignee.userCoAccount || ''),
     creatorName: String(creator.userEnName || creator.userCoAccount || ''),
-    createdAt: String(m.created ?? ''),
-    updatedAt: String(m.updated ?? ''),
+    createdAt: String(m.createtime ?? m.created ?? m.createTime ?? ''),
+    updatedAt: String(m.updatetime ?? m.updated ?? m.updateTime ?? ''),
     projectName: String(project.name ?? ''),
     parentIssueKey: (m.parentIssueKey as string | null) ?? null,
   }

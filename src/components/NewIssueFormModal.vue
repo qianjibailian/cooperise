@@ -44,7 +44,7 @@
               <a-select
                 v-model:value="newFormIssueTypeId"
                 style="width: 100%"
-                @change="loadCreateMeta"
+                @change="onIssueTypeChanged"
               >
                 <a-select-option v-for="opt in issueTypeOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</a-select-option>
               </a-select>
@@ -79,9 +79,24 @@
                         <a-textarea v-if="field.type === 'RICH_TEXT' || field.type === 'TEXT_BOX_MULTILINE'" v-model:value="newFormData[field.id]" :placeholder="field.description || ''" :rows="4" :disabled="!field.editable" style="width: 100%" />
                         <a-input-number v-if="field.type === 'NUMERIC_FIELD'" v-model:value="newFormData[field.id]" :placeholder="field.description || ''" :disabled="!field.editable" style="width: 100%" />
                         <a-date-picker v-if="field.type === 'DATE_PICKER'" v-model:value="newFormData[field.id]" :placeholder="field.description || ''" :disabled="!field.editable" style="width: 100%" />
-                        <a-select v-if="field.type === 'SELECT_LIST_SINGLE' || field.type === 'SELECT_USER_SINGLE' || field.type === 'SPRINT_FIELD'" v-model:value="newFormData[field.id]" :placeholder="field.description || '请选择'" :disabled="!field.editable" allow-clear style="width: 100%">
+                        <a-date-picker v-if="field.type === 'DATE_TIME_PICKER'" v-model:value="newFormData[field.id]" show-time :placeholder="field.description || ''" :disabled="!field.editable" style="width: 100%" />
+                        <a-select v-if="field.type === 'SELECT_LIST_SINGLE' || field.type === 'SPRINT_FIELD'" v-model:value="newFormData[field.id]" :placeholder="field.description || '请选择'" :disabled="!field.editable" allow-clear style="width: 100%">
                           <a-select-option v-for="opt in getFieldOptions(field)" :key="opt.value" :value="opt.value" :disabled="opt.disabled">{{ opt.name }}</a-select-option>
                         </a-select>
+                        <a-select
+                          v-if="field.type === 'SELECT_USER_SINGLE'"
+                          v-model:value="newFormData[field.id]"
+                          show-search
+                          :filter="false"
+                          :placeholder="field.description || '搜索姓名/拼音/账号'"
+                          :disabled="!field.editable"
+                          allow-clear
+                          style="width: 100%"
+                          :options="memberOptionsMap[field.id] || []"
+                          :field-names="{ label: 'userEnName', value: 'userNo' }"
+                          :loading="memberLoadingMap[field.id] || false"
+                          @search="(kw: string) => handleMemberSearch(field.id, kw)"
+                        />
                         <a-cascader v-if="field.type === 'SELECT_LIST_CASCADING'" v-model:value="newFormData[field.id]" :options="getFieldOptions(field)" :placeholder="field.description || '请选择'" :disabled="!field.editable" :field-names="{ label: 'name', value: 'value', children: 'children' }" allow-clear style="width: 100%" />
                         <a-checkbox-group v-if="field.type === 'CHECKBOX'" v-model:value="newFormData[field.id]" :disabled="!field.editable">
                           <a-checkbox v-for="opt in getFieldOptions(field)" :key="opt.value" :value="opt.value" :disabled="opt.disabled" style="margin-right: 16px; margin-bottom: 8px">{{ opt.name }}</a-checkbox>
@@ -172,13 +187,14 @@
 import { watch } from 'vue'
 import { message } from 'ant-design-vue'
 import { ref, reactive } from 'vue'
+import dayjs from 'dayjs'
 import {
   PlusOutlined, UploadOutlined, EnvironmentOutlined, LinkOutlined,
 } from '@ant-design/icons-vue'
 import { Editor, Toolbar } from '@wangeditor/editor-for-vue'
 import type { IDomEditor, IEditorConfig } from '@wangeditor/editor'
 import '@wangeditor/editor/dist/css/style.css'
-import { getIssueCreateMeta, createIssue, getCustomFieldOptions, queryUsers } from '@/api/faiz'
+import { createIssue, getCustomFieldOptions, queryUsers, queryTemplates, getTemplate } from '@/api/faiz'
 import type {
   CustomFieldOptionReq,
   CustomFieldOptionItem,
@@ -205,14 +221,22 @@ const emit = defineEmits<{
 const visible = ref(props.open)
 watch(
   () => props.open,
-  (val) => {
+  async (val) => {
     visible.value = val
     if (val) {
-      // 每次打开清空上一次残留
+      // 每次打开：清空残留 + 拉取最新启用模板列表
       selectedTemplate.value = DEFAULT_TEMPLATE
       customFieldOptionsMap.value = {}
       // eslint-disable-next-line @typescript-eslint/no-floating-promises
-      loadCreateMeta()
+      await loadTemplateOptions()
+      // 有启用模板则默认选第一个，按该模板 widgetData 渲染
+      if (templateOptions.value.length > 1) {
+        selectedTemplate.value = templateOptions.value[1].value
+        handleTemplateChange(selectedTemplate.value)
+      } else {
+        newFormTabs.value = []
+        newFormData.value = {}
+      }
     }
   },
   { immediate: true },
@@ -239,6 +263,78 @@ const issueTypeOptions = [
   { value: '10003', label: '缺陷' },
   { value: '10004', label: '其他' },
 ]
+
+/** 模板下拉：本地缓存已启用模板详情（含解析后的 widgetData），供选中后直接使用 */
+const templateCache = reactive<Record<string, { issue_type_id?: number; tabs: { name: string; sequence: number; widgetData: any[] }[] }>>({})
+
+/** 将后端 Tab.widgetData 的每个 widget 映射为 NewIssueFormModal 需要的 issueField（CreateMetaField 风格） */
+function widgetToIssueField(w: any, sequence: number): CreateMetaField & { configSchema?: unknown } {
+  const fieldId = String(w.field ?? w.fieldId ?? w.id)
+  const componentKey = (w.componentKey ?? w.type ?? 'input_text').toString()
+  const title = String(w.title ?? fieldId)
+  const required = !!w.required
+  const rawOpts = Array.isArray(w.options?.options) ? w.options.options : []
+  // 选项：按 CreateMetaField 的 exportValue 约定存放，也放在 configSchema 里供 parseFieldOptions 使用
+  const configSchema = rawOpts
+  return {
+    id: fieldId,
+    name: title,
+    type: componentKey,
+    jiraType: null,
+    value: null,
+    editable: true,
+    required,
+    standard: false,
+    sequence,
+    frontPage: true,
+    description: w.options?.placeholder ?? '',
+    defaultvalue: null,
+    exportValue: rawOpts,
+    issueTemplateValue: null,
+    configSchema,
+  }
+}
+
+/** 把单个 Tab 的 widgetData 扁平展开为 issueFields（递归容器 children） */
+function flattenWidgets(widgets: any[]): any[] {
+  const out: any[] = []
+  const walk = (arr: any[]) => {
+    arr.forEach(w => {
+      if (!w) return
+      if (Array.isArray(w.children) && w.children.length) walk(w.children)
+      else if (w.field || w.fieldId) out.push(w)
+    })
+  }
+  walk(widgets)
+  return out
+}
+
+/** 根据模板详情构建 newFormTabs + newFormData */
+function applyTemplateToForm(tplId: string | number) {
+  const tpl = templateCache[String(tplId)]
+  if (!tpl) return
+  if (tpl.issue_type_id) newFormIssueTypeId.value = String(tpl.issue_type_id)
+  const tabs: { title: string; sequence: number; issueFields: any[] }[] = []
+  const form: Record<string, unknown> = {}
+  tpl.tabs.forEach((t, idx) => {
+    const flat = flattenWidgets(t.widgetData)
+    const issueFields = flat.map((w, i) => widgetToIssueField(w, i))
+    tabs.push({ title: t.name || `表单${idx + 1}`, sequence: t.sequence ?? idx, issueFields })
+    issueFields.forEach(f => {
+      const isDateLike = /DATE_PICKER|DATE_TIME_PICKER|date_picker|datetime_picker/i.test(f.type)
+      if (f.type === 'rich_text' || f.type === 'RICH_TEXT') {
+        form[f.id] = ''
+      } else if (isDateLike && f.value && typeof f.value === 'string') {
+        form[f.id] = dayjs(f.value)
+      } else {
+        form[f.id] = f.value ?? null
+      }
+    })
+  })
+  newFormTabs.value = tabs
+  newFormActiveTab.value = tabs[0]?.title ?? ''
+  newFormData.value = form
+}
 
 /**
  * customId -> options（下拉/单选/多选/复选框/级联）
@@ -333,9 +429,139 @@ async function loadCustomFieldOptions(
 // 选择模板（标题栏右侧下拉）
 const DEFAULT_TEMPLATE = 'default'
 const selectedTemplate = ref<string>(DEFAULT_TEMPLATE)
-const templateOptions = [
-  { value: 'default', label: '默认模板' },
-]
+const templateOptions = ref<{ value: string; label: string }[]>([
+  { value: DEFAULT_TEMPLATE, label: '请选择模板' },
+])
+
+/** 打开弹窗时拉取一次「已启用」模板填充下拉（不分页=status:1，大 perPage 尽量取全） */
+async function loadTemplateOptions() {
+  newFormLoading.value = true
+  try {
+    const res = await queryTemplates({ page: 1, perPage: 200, status: 1 })
+    if (res?.success && res.data) {
+      const list: any[] = res.data.list || []
+      const opts = [{ value: DEFAULT_TEMPLATE, label: '请选择模板' }]
+      for (const t of list) {
+        const id = String(t.id)
+        const issueTypeId: number | undefined = t.issueTypeId ?? t.issue_type?.issue_type_id
+        const tabs: any[] = Array.isArray(t.tabs) ? t.tabs : []
+        templateCache[id] = {
+          issue_type_id: issueTypeId,
+          tabs: tabs.map((tab: any, idx: number) => ({
+            name: tab.name ?? tab.tabName ?? `表单${idx + 1}`,
+            sequence: tab.tabOrder ?? tab.sequence ?? idx,
+            widgetData:
+              typeof tab.widgetData === 'string'
+                ? (parseWidgetDataSafe(tab.widgetData))
+                : Array.isArray(tab.widgetData) ? tab.widgetData : [],
+          })),
+        }
+        opts.push({ value: id, label: t.templateName ?? `模板 ${id}` })
+      }
+      templateOptions.value = opts
+    }
+  } catch {
+    message.error('加载模板列表失败')
+  } finally {
+    newFormLoading.value = false
+  }
+}
+
+function parseWidgetDataSafe(s: string): any[] {
+  if (!s) return []
+  try { const v = JSON.parse(s); return Array.isArray(v) ? v : [] } catch { return [] }
+}
+
+const handleTemplateChange = async (val: string) => {
+  // 1) 选了"请选择模板"占位项：清空
+  if (!val || val === DEFAULT_TEMPLATE) {
+    newFormTabs.value = []
+    newFormData.value = {}
+    return
+  }
+  // 2) 缓存命中：直接按 widgetData 渲染
+  if (templateCache[val]) {
+    newFormLoading.value = true
+    applyTemplateToForm(val)
+    postLoadAfterBuildTabs()
+    newFormLoading.value = false
+    return
+  }
+  // 3) 缓存未命中（理论上不会，loadTemplateOptions 已做了全量预取）：兜底拉详情
+  newFormLoading.value = true
+  try {
+    const res = await getTemplate(Number(val))
+    if (res?.success && res.data) {
+      const t: any = res.data
+      const issueTypeId: number | undefined = t.issueTypeId ?? t.issue_type?.issue_type_id
+      const tabs: any[] = Array.isArray(t.tabs) ? t.tabs : []
+      templateCache[val] = {
+        issue_type_id: issueTypeId,
+        tabs: tabs.map((tab: any, idx: number) => ({
+          name: tab.name ?? tab.tabName ?? `表单${idx + 1}`,
+          sequence: tab.tabOrder ?? tab.sequence ?? idx,
+          widgetData:
+            typeof tab.widgetData === 'string'
+              ? parseWidgetDataSafe(tab.widgetData)
+              : Array.isArray(tab.widgetData) ? tab.widgetData : [],
+        })),
+      }
+      applyTemplateToForm(val)
+      postLoadAfterBuildTabs()
+    } else {
+      newFormTabs.value = []
+    }
+  } catch {
+    message.error('加载模板详情失败')
+    newFormTabs.value = []
+  } finally {
+    newFormLoading.value = false
+  }
+}
+
+/** 模板字段构建完 Tabs + newFormData 后，补做成员选项预取和自定义字段接口拉取 */
+function postLoadAfterBuildTabs() {
+  const projectId = NEW_FORM_DEFAULT_PROJECT_ID
+  const issueTypeId = newFormIssueTypeId.value
+  // member 字段初始值回显所需用户选项
+  // eslint-disable-next-line @typescript-eslint/no-floating-promises
+  ;(async () => {
+    const needPrefetch: string[] = []
+    for (const tab of newFormTabs.value) {
+      for (const f of tab.issueFields) {
+        if ((f.type === 'SELECT_USER_SINGLE' || f.type === 'member') && f.value) {
+          needPrefetch.push(f.id)
+        }
+      }
+    }
+    if (!needPrefetch.length) return
+    try {
+      const res = await queryUsers({ keyword: '', isActive: 1, page: 1, pageSize: 50 })
+      if (res.success && res.data) {
+        const list = res.data.list || []
+        for (const fid of needPrefetch) {
+          if (!(fid in memberOptionsMap)) memberOptionsMap[fid] = []
+          memberOptionsMap[fid] = [...memberOptionsMap[fid], ...list]
+        }
+      }
+    } catch { /* ignore */ }
+  })()
+  // 自定义字段选项（服务端枚举/级联，widget.options.options 若已填会先被用作兜底）
+  // eslint-disable-next-line @typescript-eslint/no-floating-promises
+  loadCustomFieldOptions(projectId, issueTypeId, newFormTabs.value)
+}
+
+// 手动切问题类型：解除模板关联，避免不一致（除非对应模板下已就该 issue_type）
+function onIssueTypeChanged(_v: string) {
+  if (selectedTemplate.value && selectedTemplate.value !== DEFAULT_TEMPLATE) {
+    const tpl = templateCache[selectedTemplate.value]
+    if (tpl?.issue_type_id && String(tpl.issue_type_id) !== String(_v)) {
+      selectedTemplate.value = DEFAULT_TEMPLATE
+      newFormTabs.value = []
+      newFormData.value = {}
+    }
+  }
+}
 
 /**
  * 解析某字段的可用选项（下拉/单选/复选框/级联）
@@ -427,49 +653,7 @@ function destroyRichEditors() {
   })
 }
 
-const handleTemplateChange = (_val: string) => {
-  // TODO: 根据不同模板预填表单/切换字段配置
-  // 目前仅记录选择，保持现有新建流程不变
-}
-
-// 加载创建表单元数据
-async function loadCreateMeta() {
-  newFormLoading.value = true
-  const projectId = NEW_FORM_DEFAULT_PROJECT_ID
-  const issueTypeId = newFormIssueTypeId.value
-  try {
-    const res = await getIssueCreateMeta({ projectId, issueTypeId })
-    const info = res?.data
-    if (info?.data?.tabItems?.length) {
-      newFormTabs.value = info.data.tabItems
-      newFormActiveTab.value = info.data.tabItems[0].title
-    } else if (info?.issueFields?.length) {
-      newFormTabs.value = [{ title: '表单', sequence: 0, issueFields: info.issueFields }]
-      newFormActiveTab.value = '表单'
-    } else {
-      newFormTabs.value = []
-    }
-    const form: Record<string, unknown> = {}
-    for (const tab of newFormTabs.value) {
-      for (const f of tab.issueFields) {
-        if (f.type === 'rich_text') {
-          form[f.id] = f.value ?? ''
-        } else {
-          form[f.id] = f.value ?? null
-        }
-      }
-    }
-    newFormData.value = form
-    // 拉取自定义字段选项（与元数据并行，失败不阻塞）
-    // eslint-disable-next-line @typescript-eslint/no-floating-promises
-    loadCustomFieldOptions(projectId, issueTypeId, newFormTabs.value)
-  } catch {
-    message.error('获取表单元数据失败')
-    newFormTabs.value = []
-  } finally {
-    newFormLoading.value = false
-  }
-}
+// 注：旧流程（getIssueCreateMeta）已替换为「选中模板 → 解析 widgetData → 渲染表单」，详见 handleTemplateChange
 
 function handleNewFormCancel() {
   selectedTemplate.value = DEFAULT_TEMPLATE

@@ -13,6 +13,7 @@
     />
 
     <AppSideDrawer
+      v-if="drawerOpen"
       :open="drawerOpen"
       @close="drawerOpen = false"
       @menu-click="handleRemoteMenuClick"
@@ -172,15 +173,11 @@
                 </template>
                 <a-menu-item key="/settings/template-list">
                   <component :is="UnorderedListOutlined" />
-                  <span>模板列表</span>
+                  <span>模板管理</span>
                 </a-menu-item>
-                <a-menu-item key="/settings/form-list">
-                  <component :is="TableOutlined" />
-                  <span>表单列表</span>
-                </a-menu-item>
-                <a-menu-item key="/settings/component-list">
+                <a-menu-item key="/settings/available-field">
                   <component :is="AppstoreOutlined" />
-                  <span>可选自定义字段表</span>
+                  <span>可选字段</span>
                 </a-menu-item>
               </a-sub-menu>
               <a-menu-item key="/settings/profile">
@@ -244,7 +241,6 @@ import {
   LockOutlined,
   BuildOutlined,
   UserOutlined,
-  TableOutlined,
   InfoCircleOutlined,
   ExperimentOutlined,
   RocketOutlined,
@@ -256,7 +252,7 @@ import NewIssueFormModal from '@/components/NewIssueFormModal.vue'
 import WorkbenchPanel from './WorkbenchPanel.vue'
 import { useAuth } from '@/utils/auth'
 import { useViewStore } from '@/utils/view-store'
-import type { ViewGroup, ViewItem } from '@/types/faiz'
+import type { ViewItem } from '@/types/faiz'
 
 const iconBarItems = [
   { key: 'workspace', icon: HomeOutlined, label: '工作台' },
@@ -280,7 +276,6 @@ const isNonWorkbenchRoute = computed(() => {
 // ========== 我的视图（/view/list 异步，单例共享自 @/utils/view-store） ==========
 const {
   viewGroups,
-  viewListLoading,
   ensureLoaded: fetchViewList,
   viewGroupKey,
   viewItemKey,
@@ -296,8 +291,7 @@ watch(
   (path) => {
     if (
       path.startsWith('/settings/template-list') ||
-      path.startsWith('/settings/form-list') ||
-      path.startsWith('/settings/component-list')
+      path.startsWith('/settings/available-field')
     ) {
       if (!settingsOpenKeys.value.includes('template-config')) {
         settingsOpenKeys.value = [...settingsOpenKeys.value, 'template-config']
@@ -307,13 +301,6 @@ watch(
   { immediate: true }
 )
 
-/** viewType → 路由路径映射（list 仍走 /workbench/todo；其余统一走 /workbench/view/<code>） */
-const VIEW_TYPE_ROUTE_MAP: Record<string, string> = {
-  list: '/workbench/todo',
-  KAN_BAN: '/workbench/view',
-  gantt: '/workbench/view',
-  CALENDAR_VIEW: '/workbench/view',
-}
 /** viewType → 默认图标组件（找不到更特殊映射时使用） */
 const VIEW_TYPE_ICON_MAP: Record<string, unknown> = {
   list: UnorderedListOutlined,

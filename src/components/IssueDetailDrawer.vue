@@ -644,6 +644,7 @@
 
 <script setup lang="ts">
 import { h, ref, computed, watch, reactive, nextTick } from 'vue'
+import dayjs from 'dayjs'
 import type { IDomEditor, IEditorConfig } from '@wangeditor/editor'
 import { Editor, Toolbar } from '@wangeditor/editor-for-vue'
 import '@wangeditor/editor/dist/css/style.css'
@@ -659,7 +660,6 @@ import {
   UserOutlined,
   PlusOutlined,
   FileUnknownOutlined,
-  LoadingOutlined,
   DownOutlined,
   AppstoreOutlined,
   CodeOutlined,
@@ -1052,8 +1052,8 @@ const SUMMARY_EXCLUDED_IDS = new Set(['summary', 'status', 'priority', 'issuetyp
 
 function isUserField(f: DetailField): boolean {
   const t = f.type || ''
-  if (t === 'SELECT_USER_SINGLE' || t === 'SELECT_USER_MULTIPLE') return true
-  if (f.id === 'assignee' || f.id === 'reporter' || f.id === 'creator') return true
+  if (t === 'SELECT_USER_SINGLE' || t === 'SELECT_USER_MULTIPLE' || t === 'member') return true
+  if (f.id === 'assignee' || f.id === 'reporter' || f.id === 'creator' || f.id === 'updater') return true
   return false
 }
 
@@ -1210,22 +1210,58 @@ function formatFieldValue(field: DetailField): string {
     case 'TEXT_BOX_SINGLE_LINE':
     case 'TEXT_BOX_MULTI_LINE':
     case 'NUMERIC_FIELD':
+    case 'input_text':
+    case 'textarea':
       return String(value)
+    case 'input_number':
+      return String(value)
+    case 'DATE_PICKER':
+    case 'DATE_TIME_PICKER':
+    case 'date_picker':
+    case 'datetime_picker': {
+      if (typeof value === 'string') return value
+      if (value && typeof (value as { format?: unknown }).format === 'function') {
+        return (value as { format: (fmt: string) => string }).format(type === 'DATE_TIME_PICKER' || type === 'datetime_picker' ? 'YYYY-MM-DD HH:mm:ss' : 'YYYY-MM-DD')
+      }
+      try {
+        return dayjs(value as string | number).format(
+          type === 'DATE_TIME_PICKER' || type === 'datetime_picker' ? 'YYYY-MM-DD HH:mm:ss' : 'YYYY-MM-DD'
+        )
+      } catch {
+        return String(value)
+      }
+    }
     case 'SELECT_LIST_SINGLE':
     case 'SELECT_LIST_SINGLE_PROJECT':
     case 'SELECT_LIST_SINGLE_ISSUETYPE':
     case 'SELECT_LIST_SINGLE_PRIORITY':
     case 'SECURITY_FIELD':
     case 'SPRINT_FIELD':
+    case 'select_single':
+    case 'radio_group':
       return formatObject(value)
     case 'SELECT_USER_SINGLE':
+    case 'member':
       return formatUser(value)
+    case 'SELECT_LIST_MULTIPLE':
+    case 'MULTI_SELECT':
+    case 'select_multiple':
+    case 'checkbox_group': {
+      if (Array.isArray(value)) {
+        return (value as unknown[]).map(v => formatObject(v)).filter(Boolean).join('、')
+      }
+      return formatObject(value)
+    }
+    case 'cascader':
+    case 'SELECT_LIST_CASCADING':
+      return formatObject(value)
     case 'VIEW_WATCH_FIELD': {
       const obj = (value ?? {}) as Record<string, unknown>
       const n = obj.numWatchers ?? 0
       return `关注者 ${n} 人`
     }
     case 'RICH_TEXT':
+    case 'rich_text':
       return stripHtml(value)
     default:
       if (typeof value === 'string') return value

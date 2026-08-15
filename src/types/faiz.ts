@@ -28,45 +28,26 @@ export interface Template {
   tabs: TemplateTab[]
 }
 
-export interface TemplateListData {
-  list: Template[]
-  total: number
-  enabledCount: number
-  totalTabs: number
-}
-
-export interface TemplateQuery {
+/** 模板分页查询请求（对应后端 QueryTemplatesRequest） */
+export interface TemplateQueryRequest {
+  page?: number
+  perPage?: number
   keyword?: string
+  /** 预留：分类 */
   category?: string
+  /** 状态：0-停用, 1-启用 */
   status?: number
 }
 
-// ========== Form ==========
-export interface FormItem {
-  id: number
-  name: string
-  widgetCount: number
-  formConfig: string
-  widgetData: string
-  templateId: number
-  templateName: string
-  templateStatus: boolean
-  category: string
-  updatedAt?: string
-}
-
-export interface FormListData {
-  list: FormItem[]
+/** 模板分页查询结果（对应后端 TemplatePageVO） */
+export interface TemplatePageData {
   total: number
-  totalWidgets: number
-  templatesWithForms: number
-}
-
-// ========== Template Stats ==========
-export interface TemplateStats {
-  total: number
+  pageCount: number
+  currentPage: number
+  perPage: number
   enabledCount: number
-  categoryCount: Record<string, number>
+  totalTabs: number
+  list: Template[]
 }
 
 // ========== Issue ==========
@@ -412,38 +393,6 @@ export interface CreateIssuePayload {
   inputFields: CreateIssueInputField[]
 }
 
-// ========== Component ==========
-export interface ComponentItem {
-  id: number
-  name: string
-  componentKey: string // 组件类型：input_text/textarea/select_single...
-  icon: string
-  description: string
-  configSchema: string | null
-  required: number // 0=非必填, 1=必填
-  status: number // 0=禁用, 1=启用
-  createdAt?: string
-  updatedAt?: string
-}
-
-export interface ComponentQueryPayload {
-  keyword: string
-  status: number | undefined
-  page: number
-  pageSize: number
-}
-
-// 表单设计页专用：不分页的组件列表查询入参
-export interface ComponentListPayload {
-  keyword: string
-  status: number | undefined
-}
-
-export interface ComponentListData {
-  list: ComponentItem[]
-  total: number
-}
-
 // ========== Custom Field Option ==========
 
 export type CustomFieldType =
@@ -473,11 +422,6 @@ export interface CustomFieldOptionItem {
   disabled?: boolean
   children?: CustomFieldOptionItem[]
   [k: string]: unknown
-}
-
-/** 按 customId 映射后的选项集合（前端内部使用的 map 结构） */
-export interface CustomFieldOptionMap {
-  [customId: string]: CustomFieldOptionItem[]
 }
 
 /** 接口返回的 joptions.list 中每一项：optionId + optionName + 可选子级 childJOptions */
@@ -543,8 +487,18 @@ export interface AvailableFieldItem {
   referencedFieldId: string | null
   enumSettingType: string | null
   obsolete: boolean
+  isRequired: boolean
   fieldTag: string | null
   fieldSource: string | null
+  configSchema?: string
+  fieldValue?: string | null
+}
+
+/** 枚举选项（单选/下拉/级联通用） */
+export interface EnumOptionItem {
+  label: string
+  value: string
+  children?: EnumOptionItem[]
 }
 
 /** 可用字段查询结果（分页） */
@@ -575,8 +529,11 @@ export interface AvailableFieldSavePayload {
   referencedFieldId?: string
   enumSettingType?: string
   obsolete?: boolean
+  isRequired?: boolean
   fieldTag?: string
   fieldSource?: string
+  configSchema?: string
+  fieldValue?: string
 }
 
 // ========== Issue Detail (POST /issue/queryDetail) ==========
