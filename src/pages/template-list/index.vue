@@ -982,7 +982,7 @@ function adaptBackendTemplate(t: any): Template {
       ...tab,
       id: String(tab.id),
       templateId: String(tab.templateId ?? ''),
-      widgetData: typeof tab.widgetData === 'string' ? JSON.parse(tab.widgetData || '[]') : tab.widgetData,
+      widgetData: normalizeWidgets(typeof tab.widgetData === 'string' ? JSON.parse(tab.widgetData || '[]') : tab.widgetData),
     })),
   }
 }
@@ -1002,9 +1002,47 @@ function serializeTemplatePayload(form: any) {
       name: tab.name ?? '',
       is_tab,
       tabOrder: tab.tabOrder ?? idx + 1,
-      widgetData: typeof tab.widgetData === 'string' ? tab.widgetData : JSON.stringify(tab.widgetData || []),
+      widgetData: serializeWidgetData(tab.widgetData),
     })),
   }
+}
+
+/**
+ * 序列化 widgetData：
+ * 去掉 field（与 fieldId 重复），保留 fieldId
+ * 去掉顶层 name（Comp_xxx 组件名），把字段标题统一放到 name
+ * 兼容旧格式（field + title + name=Comp_xxx）与新格式（fieldId + name=字段标题）
+ */
+function serializeWidgetData(widgetData: any): string {
+  let arr: any[] = []
+  if (typeof widgetData === 'string') {
+    try { arr = JSON.parse(widgetData || '[]') } catch { arr = [] }
+  } else if (Array.isArray(widgetData)) {
+    arr = widgetData
+  }
+  return JSON.stringify(arr.map((w: any) => {
+    if (!w || typeof w !== 'object') return w
+    const fieldId = w.fieldId ?? w.field
+    // name 以 Comp_ 开头时为旧格式组件名，取 title 作为字段名；否则 name 即字段名
+    const isCompName = typeof w.name === 'string' && w.name.startsWith('Comp_')
+    const widgetName = isCompName ? (w.title ?? w.name) : (w.name ?? w.title)
+    const { field: _f, title: _t, name: _n, ...rest } = w
+    return { ...rest, fieldId, name: widgetName }
+  }))
+}
+
+/** 规范化 widget：确保 field/title 存在（兼容新格式 fieldId/name 与旧格式 field/title） */
+function normalizeWidgets(ws: any): any[] {
+  if (!Array.isArray(ws)) return []
+  return ws.map((w: any) => {
+    if (!w || typeof w !== 'object') return w
+    const isCompName = typeof w.name === 'string' && w.name.startsWith('Comp_')
+    return {
+      ...w,
+      field: w.fieldId ?? w.field,
+      title: isCompName ? (w.title ?? w.name) : (w.name ?? w.title),
+    }
+  })
 }
 
 // ---- 持久化 ----

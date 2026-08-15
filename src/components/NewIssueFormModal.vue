@@ -58,7 +58,7 @@
           <template v-if="newFormTabs.length > 0">
             <a-tabs
               v-model:activeKey="newFormActiveTab"
-              class="new-form-tabs"
+              :class="['new-form-tabs', { 'no-tab-bar': newFormTabs.length <= 1 }]"
               :tab-bar-style="{ marginBottom: '16px' }"
             >
               <a-tab-pane v-for="tab in newFormTabs" :key="tab.title" :tab="tab.title">
@@ -194,7 +194,7 @@ import {
 import { Editor, Toolbar } from '@wangeditor/editor-for-vue'
 import type { IDomEditor, IEditorConfig } from '@wangeditor/editor'
 import '@wangeditor/editor/dist/css/style.css'
-import { createIssue, getCustomFieldOptions, queryUsers, queryTemplates, getTemplate } from '@/api/faiz'
+import { createIssue, getCustomFieldOptions, queryUsers, queryTemplates, getTemplate, getIssueCreateMeta } from '@/api/faiz'
 import type {
   CustomFieldOptionReq,
   CustomFieldOptionItem,
@@ -229,14 +229,8 @@ watch(
       customFieldOptionsMap.value = {}
       // eslint-disable-next-line @typescript-eslint/no-floating-promises
       await loadTemplateOptions()
-      // 有启用模板则默认选第一个，按该模板 widgetData 渲染
-      if (templateOptions.value.length > 1) {
-        selectedTemplate.value = templateOptions.value[1].value
-        handleTemplateChange(selectedTemplate.value)
-      } else {
-        newFormTabs.value = []
-        newFormData.value = {}
-      }
+      // 弹窗出现触发 queryCreateMeta（projectId + issueTypeId）渲染默认表单
+      await loadCreateMeta()
     }
   },
   { immediate: true },
@@ -450,10 +444,11 @@ async function loadTemplateOptions() {
           tabs: tabs.map((tab: any, idx: number) => ({
             name: tab.name ?? tab.tabName ?? `表单${idx + 1}`,
             sequence: tab.tabOrder ?? tab.sequence ?? idx,
-            widgetData:
+            widgetData: normalizeWidgets(
               typeof tab.widgetData === 'string'
-                ? (parseWidgetDataSafe(tab.widgetData))
+                ? parseWidgetDataSafe(tab.widgetData)
                 : Array.isArray(tab.widgetData) ? tab.widgetData : [],
+            ),
           })),
         }
         opts.push({ value: id, label: t.templateName ?? `模板 ${id}` })
@@ -472,11 +467,25 @@ function parseWidgetDataSafe(s: string): any[] {
   try { const v = JSON.parse(s); return Array.isArray(v) ? v : [] } catch { return [] }
 }
 
+/** 规范化 widget：确保 field/title 存在（兼容新格式 fieldId/name 与旧格式 field/title） */
+function normalizeWidgets(ws: any[]): any[] {
+  if (!Array.isArray(ws)) return []
+  return ws.map((w: any) => {
+    if (!w || typeof w !== 'object') return w
+    const isCompName = typeof w.name === 'string' && w.name.startsWith('Comp_')
+    return {
+      ...w,
+      field: w.fieldId ?? w.field,
+      title: isCompName ? (w.title ?? w.name) : (w.name ?? w.title),
+    }
+  })
+}
+
 const handleTemplateChange = async (val: string) => {
-  // 1) 选了"请选择模板"占位项：清空
+  // 1) 选了"请选择模板"占位项：重新拉取 queryCreateMeta 渲染默认表单
   if (!val || val === DEFAULT_TEMPLATE) {
-    newFormTabs.value = []
-    newFormData.value = {}
+    // eslint-disable-next-line @typescript-eslint/no-floating-promises
+    await loadCreateMeta()
     return
   }
   // 2) 缓存命中：直接按 widgetData 渲染
@@ -500,10 +509,11 @@ const handleTemplateChange = async (val: string) => {
         tabs: tabs.map((tab: any, idx: number) => ({
           name: tab.name ?? tab.tabName ?? `表单${idx + 1}`,
           sequence: tab.tabOrder ?? tab.sequence ?? idx,
-          widgetData:
+          widgetData: normalizeWidgets(
             typeof tab.widgetData === 'string'
               ? parseWidgetDataSafe(tab.widgetData)
               : Array.isArray(tab.widgetData) ? tab.widgetData : [],
+          ),
         })),
       }
       applyTemplateToForm(val)
@@ -553,13 +563,68 @@ function postLoadAfterBuildTabs() {
 
 // 手动切问题类型：解除模板关联，避免不一致（除非对应模板下已就该 issue_type）
 function onIssueTypeChanged(_v: string) {
+  // 切换问题类型：重置模板选择，重新拉取 queryCreateMeta 渲染默认表单
   if (selectedTemplate.value && selectedTemplate.value !== DEFAULT_TEMPLATE) {
     const tpl = templateCache[selectedTemplate.value]
     if (tpl?.issue_type_id && String(tpl.issue_type_id) !== String(_v)) {
       selectedTemplate.value = DEFAULT_TEMPLATE
+    }
+  }
+  // eslint-disable-next-line @typescript-eslint/no-floating-promises
+  loadCreateMeta()
+}
+
+/**
+ * 调用 /issue/queryCreateMeta 获取默认表单元数据并渲染
+ * 入参：projectId + issueTypeId
+ */
+async function loadCreateMeta() {
+  newFormLoading.value = true
+  try {
+    const res = await getIssueCreateMeta({
+      projectId: NEW_FORM_DEFAULT_PROJECT_ID,
+      issueTypeId: newFormIssueTypeId.value,
+    })
+    const meta = res?.success ? res.data : null
+    const metaData = meta?.data
+    let tabs: any[] = []
+    if (meta?.type === 'FORM') {
+      // type=FORM 时无 tab 分组，fromItems 直接包装为单 tab
+      const items = metaData?.fromItems || []
+      if (items.length) tabs = [{ title: '', sequence: 0, issueFields: items }]
+    } else {
+      tabs = metaData?.tabItems || []
+    }
+    if (tabs.length) {
+      newFormTabs.value = tabs
+      newFormActiveTab.value = tabs[0]?.title ?? ''
+      // 初始化 newFormData（日期类转 dayjs，富文本初始化为空串）
+      const form: Record<string, any> = {}
+      for (const tab of tabs) {
+        for (const f of tab.issueFields) {
+          const isDateLike = /DATE_PICKER|DATE_TIME_PICKER|date_picker|datetime_picker/i.test(f.type)
+          if (f.type === 'rich_text' || f.type === 'RICH_TEXT') {
+            form[f.id] = ''
+          } else if (isDateLike && f.value && typeof f.value === 'string') {
+            form[f.id] = dayjs(f.value)
+          } else {
+            form[f.id] = f.value ?? null
+          }
+        }
+      }
+      newFormData.value = form
+      // 复用模板流程的成员预取 + 自定义字段选项拉取
+      postLoadAfterBuildTabs()
+    } else {
       newFormTabs.value = []
       newFormData.value = {}
     }
+  } catch {
+    message.error('加载表单元数据失败')
+    newFormTabs.value = []
+    newFormData.value = {}
+  } finally {
+    newFormLoading.value = false
   }
 }
 
@@ -1052,7 +1117,7 @@ async function handleNewFormSubmit() {
   flex: 1 1 auto;
   min-height: 0;
   overflow: hidden;
-  padding: 6px 24px 16px;
+  padding: 6px 24px 0;
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
@@ -1094,7 +1159,7 @@ async function handleNewFormSubmit() {
 .new-form-divider.ant-divider {
   flex-shrink: 0;
   border-top: 1px solid rgba(15, 23, 42, 0.08);
-  margin: 0 0 12px;
+  margin: 0 0 20px;
 }
 
 /* ===== 第二段承载区：Tabs 外壳（不滚，传高度给 Tabs） ===== */
@@ -1131,7 +1196,16 @@ async function handleNewFormSubmit() {
   padding: 0;
   border-radius: 0;
   border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+}
+.new-form-tabs-area .new-form-tabs.no-tab-bar .ant-tabs-nav {
+  display: none;
+}
+.new-form-tabs-area .new-form-tabs.no-tab-bar .ant-tabs-content-holder {
+  margin-top: 0;
   box-shadow: none;
+}
+.new-form-tabs-area .new-form-tabs.no-tab-bar {
+  padding-top: 16px;
 }
 
 .new-form-tabs-area .new-form-tabs .ant-tabs-nav::before {
@@ -1175,32 +1249,34 @@ async function handleNewFormSubmit() {
 }
 
 .new-form-tabs-area .new-form-tabs .ant-tabs-content-holder {
-  flex: 1;
-  min-height: 0;
-  overflow: visible;
-  display: flex;
-  flex-direction: column;
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
+  display: flex !important;
+  flex-direction: column !important;
 }
 
 .new-form-tabs-area .new-form-tabs .ant-tabs-content {
-  flex: 1;
-  min-height: 0;
-  overflow: visible;
-  display: flex;
-  flex-direction: column;
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
 }
 
 .new-form-tabs-area .new-form-tabs .ant-tabs-tabpane {
-  flex: 1 1 auto;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  overflow: visible;
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
 }
 
-/* ===== 真正的滚动区：直接用 max-height 约束，不依赖 tabs 内部 flex 传递 ===== */
+/* ===== 真正的滚动区：flex + max-height 双保险，确保滚动条出现 ===== */
 .tab-pane-scroll {
-  max-height: calc(75vh - 320px);
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+  max-height: calc(75vh - 280px);
   overflow-y: auto;
   overflow-x: hidden;
   padding-right: 8px;

@@ -58,6 +58,16 @@ export function copyTemplate(id: number): Promise<Result<Template>> {
   return request.post(`${PREFIX}/template/${id}/copy`)
 }
 
+/** 模板预览（表单模式，GET /template/{id}/preview/form） */
+export function previewTemplateForm(id: number | string): Promise<Result<Record<string, any>>> {
+  return request.get(`${PREFIX}/template/${id}/preview/form`)
+}
+
+/** 模板预览（表格模式，GET /template/{id}/preview/table） */
+export function previewTemplateTable(id: number | string): Promise<Result<Record<string, any>>> {
+  return request.get(`${PREFIX}/template/${id}/preview/table`)
+}
+
 // ==================== Issue API ====================
 
 /** Issue 分页搜索（POST /issue/query） */

@@ -346,7 +346,9 @@ export interface CreateMetaTabItem {
 
 /** 创建表单 info.data 层 */
 export interface CreateMetaData {
-  tabItems: CreateMetaTabItem[]
+  tabItems: CreateMetaTabItem[] | null
+  /** type=FORM 时无 tab 分组，字段扁平放在 fromItems */
+  fromItems?: CreateMetaField[] | null
 }
 
 /** 创建表单 info 层 */
