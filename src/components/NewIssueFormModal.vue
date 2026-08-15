@@ -219,6 +219,15 @@ const emit = defineEmits<{
 }>()
 
 const visible = ref(props.open)
+
+// 新建表单弹窗内部状态（需在 watch 之前声明，因 watch immediate 会立即访问）
+const DEFAULT_TEMPLATE = 'default'
+const selectedTemplate = ref<string>(DEFAULT_TEMPLATE)
+const templateOptions = ref<{ value: string; label: string }[]>([
+  { value: DEFAULT_TEMPLATE, label: '请选择模板' },
+])
+const customFieldOptionsMap = ref<Record<string, CustomFieldOptionItem[]>>({})
+
 watch(
   () => props.open,
   async (val) => {
@@ -334,7 +343,6 @@ function applyTemplateToForm(tplId: string | number) {
  * customId -> options（下拉/单选/多选/复选框/级联）
  * 批量接口返回后写入此处，渲染时按 customId 查找
  */
-const customFieldOptionsMap = ref<Record<string, CustomFieldOptionItem[]>>({})
 
 /** 根据表单元数据里的字段 type 判断是否需要走自定义字段选项接口 */
 const CUSTOM_FIELD_TYPE_SET = new Set([
@@ -421,11 +429,6 @@ async function loadCustomFieldOptions(
 }
 
 // 选择模板（标题栏右侧下拉）
-const DEFAULT_TEMPLATE = 'default'
-const selectedTemplate = ref<string>(DEFAULT_TEMPLATE)
-const templateOptions = ref<{ value: string; label: string }[]>([
-  { value: DEFAULT_TEMPLATE, label: '请选择模板' },
-])
 
 /** 打开弹窗时拉取一次「已启用」模板填充下拉（不分页=status:1，大 perPage 尽量取全） */
 async function loadTemplateOptions() {
@@ -921,8 +924,9 @@ async function handleNewFormSubmit() {
 .new-form-modal .ant-modal-content {
   display: flex;
   flex-direction: column;
-  height: 75vh;
-  max-height: 75vh;
+  height: auto;
+  min-height: 420px;
+  max-height: 90vh;
   border-radius: 20px;
   overflow: hidden;
   background: #ffffff;
@@ -1054,7 +1058,7 @@ async function handleNewFormSubmit() {
 /* ========== Footer：按钮区 + 细分隔线 ========== */
 .new-form-modal .ant-modal-footer {
   flex-shrink: 0;
-  padding: 12px 24px 16px;
+  padding: 10px 24px 10px;
   border-top: 1px solid rgba(15, 23, 42, 0.06);
   background: transparent;
   text-align: right;
@@ -1263,7 +1267,7 @@ async function handleNewFormSubmit() {
   flex-direction: column !important;
 }
 
-.new-form-tabs-area .new-form-tabs .ant-tabs-tabpane {
+.new-form-tabs-area .new-form-tabs .ant-tabs-tabpane.ant-tabs-tabpane-active {
   flex: 1 1 auto !important;
   min-height: 0 !important;
   display: flex !important;
@@ -1271,12 +1275,9 @@ async function handleNewFormSubmit() {
   overflow: hidden !important;
 }
 
-/* ===== 真正的滚动区：flex + max-height 双保险，确保滚动条出现 ===== */
+/* ===== 滚动区：max-height 限制，超出滚动；内容少时跟随内容高度 ===== */
 .tab-pane-scroll {
-  flex: 1 1 auto;
-  min-height: 0;
-  height: 100%;
-  max-height: calc(75vh - 280px);
+  max-height: calc(85vh - 260px);
   overflow-y: auto;
   overflow-x: hidden;
   padding-right: 8px;
