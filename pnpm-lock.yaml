@@ -14,9 +14,6 @@ importers:
       '@vxe-ui/plugin-render-antd':
         specifier: 4.4.0
         version: 4.4.0
-      '@vxe-ui/plugin-render-wangeditor':
-        specifier: ^4.3.1
-        version: 4.3.1
       '@wangeditor/editor':
         specifier: ^5.1.23
         version: 5.1.23
@@ -38,9 +35,6 @@ importers:
       vue-router:
         specifier: ^4.6.4
         version: 4.6.4(vue@3.5.40(typescript@5.8.3))
-      vxe-design:
-        specifier: ^4.1.6
-        version: 4.1.6
       vxe-gantt:
         specifier: ^4.6.5
         version: 4.6.5
@@ -880,9 +874,6 @@ packages:
 
   '@vxe-ui/plugin-render-antd@4.4.0':
     resolution: {integrity: sha512-TYqzB/ItYb4ylEsd9Cee7Q2C9ZVrm/GEQZ+839Uv2FdAv76s2Fxh4+rKPPMVN7mkctat9ZwR82dwzLgYnAUrbA==}
-
-  '@vxe-ui/plugin-render-wangeditor@4.3.1':
-    resolution: {integrity: sha512-+jOXmJQxeja6IZWQ59IvuDQQd3H7eduSz+EjhP60gV10QAds9bfDpBT+1GRABjX0fpn6GQTkejGIIDLDPUbstA==}
 
   '@wangeditor/basic-modules@1.1.7':
     resolution: {integrity: sha512-cY9CPkLJaqF05STqfpZKWG4LpxTMeGSIIF1fHvfm/mz+JXatCagjdkbxdikOuKYlxDdeqvOeBmsUBItufDLXZg==}
@@ -1833,9 +1824,6 @@ packages:
       typescript:
         optional: true
 
-  vxe-design@4.1.6:
-    resolution: {integrity: sha512-FSHOuPTLW22B1c7jpFZ1OjQRPeB46VVy0hh6LfNUcHcA/OfJ/s3NxJSfMlz5yT/WubaiBXSa3Pn+YkqpEeAUkw==}
-
   vxe-gantt@4.6.5:
     resolution: {integrity: sha512-XqLsbNakDr1Ssxbswd95OTR6tpG8gQqFgV09awe7FdO+fGq/Th9aoy5ECbczgyRcMEiAk+7B/Gf1ogtde5eqOw==}
 
@@ -2559,8 +2547,6 @@ snapshots:
       xe-utils: 4.0.12
 
   '@vxe-ui/plugin-render-antd@4.4.0': {}
-
-  '@vxe-ui/plugin-render-wangeditor@4.3.1': {}
 
   '@wangeditor/basic-modules@1.1.7(@wangeditor/core@1.1.19(@uppy/core@2.3.4)(@uppy/xhr-upload@2.1.3(@uppy/core@2.3.4))(dom7@3.0.0)(is-hotkey@0.2.0)(lodash.camelcase@4.3.0)(lodash.clonedeep@4.5.0)(lodash.debounce@4.0.8)(lodash.foreach@4.5.0)(lodash.isequal@4.5.0)(lodash.throttle@4.1.1)(lodash.toarray@4.4.0)(nanoid@3.3.17)(slate@0.72.8)(snabbdom@3.6.4))(dom7@3.0.0)(lodash.throttle@4.1.1)(nanoid@3.3.17)(slate@0.72.8)(snabbdom@3.6.4)':
     dependencies:
@@ -3475,8 +3461,6 @@ snapshots:
       '@vue/shared': 3.5.40
     optionalDependencies:
       typescript: 5.8.3
-
-  vxe-design@4.1.6: {}
 
   vxe-gantt@4.6.5: {}
 
