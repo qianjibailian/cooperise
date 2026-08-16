@@ -405,10 +405,11 @@ export type CustomFieldType =
   | 'CHECKBOX'
   | 'MULTI_SELECT'
 
-/** POST /custom_field/option/customOptions 单条请求项 */
+/** POST /availableField/customOptions 单条请求项 */
 export interface CustomFieldOptionReq {
-  customId: string
-  type: CustomFieldType
+  fieldId: string
+  /** 组件 key（与 queryCreateMeta 返回的 type 一致，如 cascader / select_single 等） */
+  type: string
   projectId: string
   issueTypeId: string
   issueKey?: string

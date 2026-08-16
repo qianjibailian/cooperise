@@ -131,7 +131,7 @@
                         <a-checkbox-group v-if="field.type === 'checkbox_group'" v-model:value="newFormData[field.id]" :disabled="!field.editable">
                           <a-checkbox v-for="opt in parseFieldOptions(field)" :key="opt.value" :value="opt.value" style="margin-right: 16px; margin-bottom: 8px">{{ opt.label }}</a-checkbox>
                         </a-checkbox-group>
-                        <a-cascader v-if="field.type === 'cascader'" v-model:value="newFormData[field.id]" :options="parseFieldOptions(field)" :placeholder="field.description || '请选择'" :disabled="!field.editable" style="width: 100%" />
+                        <a-cascader v-if="field.type === 'cascader'" v-model:value="newFormData[field.id]" :options="parseFieldOptions(field)" :placeholder="field.description || '请选择'" :disabled="!field.editable" :field-names="{ label: 'label', value: 'value', children: 'children' }" allow-clear style="width: 100%" />
                         <a-select
                           v-if="field.type === 'member'"
                           v-model:value="newFormData[field.id]"
@@ -194,7 +194,7 @@ import {
 import { Editor, Toolbar } from '@wangeditor/editor-for-vue'
 import type { IDomEditor, IEditorConfig } from '@wangeditor/editor'
 import '@wangeditor/editor/dist/css/style.css'
-import { createIssue, getCustomFieldOptions, queryUsers, queryTemplates, getTemplate, getIssueCreateMeta } from '@/api/faiz'
+import { createIssue, getAvailableFieldOptions, queryUsers, queryTemplates, getTemplate, getIssueCreateMeta } from '@/api/faiz'
 import type {
   CustomFieldOptionReq,
   CustomFieldOptionItem,
@@ -345,13 +345,15 @@ function applyTemplateToForm(tplId: string | number) {
  */
 
 /** 根据表单元数据里的字段 type 判断是否需要走自定义字段选项接口 */
-const CUSTOM_FIELD_TYPE_SET = new Set([
-  'SELECT_LIST_SINGLE',
-  'SELECT_LIST_MULTIPLE',
-  'SELECT_LIST_CASCADING',
-  'RADIO',
-  'CHECKBOX',
-  'MULTI_SELECT',
+/** 需要拉取枚举选项的组件 key（小写，与 queryCreateMeta 返回的 type 对应） */
+const OPTION_WIDGET_TYPE_SET = new Set([
+  'cascader',
+  'select',
+  'select_single',
+  'select_multiple',
+  'multi_select',
+  'radio',
+  'checkbox',
 ])
 
 /**
@@ -373,20 +375,62 @@ function mapJOptionToItem(jopt: CustomFieldJOption): CustomFieldOptionItem {
 }
 
 /**
- * 将响应 data（按 customFieldId 分桶的 list）转为 { customId: CustomFieldOptionItem[] } map
+ * 将 label/value/children 结构（如 options.options 中的项）递归转为 CustomFieldOptionItem
+ * 兼容子级字段名为 children 或 childJOptions（后端旧 joptions 风格）
+ */
+function mapLabelValueToOption(
+  raw: any,
+  idx: number,
+): CustomFieldOptionItem {
+  const base = raw ?? {}
+  const label = String(base.label ?? base.name ?? base.optionName ?? base.text ?? base.title ?? `选项${idx + 1}`)
+  const value = String(base.value ?? base.id ?? base.optionId ?? base.key ?? '')
+  const childArr = Array.isArray(base.children)
+    ? base.children
+    : Array.isArray(base.childJOptions)
+      ? base.childJOptions
+      : null
+  const children = childArr
+    ? childArr.map((c: any, i: number) => mapLabelValueToOption(c, i))
+    : undefined
+  return {
+    id: value,
+    name: label,
+    value,
+    disabled: !!base.disabled || !!base.obsolete,
+    children,
+  }
+}
+
+/**
+ * 将响应 data 转为 { fieldId: CustomFieldOptionItem[] } map
+ * 兼容两种格式：
+ *   1) 新格式：{ fieldId, options: { options: [{label,value,children?}], ... } }
+ *   2) 旧格式：{ customFieldId, joptions: { list: CustomFieldJOption[] } }
  */
 function buildOptionMapFromResponse(
-  list: CustomFieldOptionResponseItem[],
+  list: any[],
 ): Record<string, CustomFieldOptionItem[]> {
   const result: Record<string, CustomFieldOptionItem[]> = {}
   if (!Array.isArray(list)) return result
   for (const bucket of list) {
-    const customId = String(bucket.customFieldId)
+    // 新格式：fieldId + options.options
+    const fieldId = String(bucket.fieldId ?? bucket.customFieldId ?? bucket.customId ?? '')
+    if (!fieldId) continue
+    const innerOpts = bucket?.options?.options
+    if (Array.isArray(innerOpts) && innerOpts.length) {
+      result[fieldId] = innerOpts
+        .filter((x: any) => x != null)
+        .map((x: any, i: number) => mapLabelValueToOption(x, i))
+      continue
+    }
+    // 旧格式：joptions.list
     const jList = bucket?.joptions?.list
-    if (!customId || !Array.isArray(jList) || !jList.length) continue
-    result[customId] = jList
-      .filter((x: CustomFieldJOption) => x != null)
-      .map(mapJOptionToItem)
+    if (Array.isArray(jList) && jList.length) {
+      result[fieldId] = jList
+        .filter((x: CustomFieldJOption) => x != null)
+        .map(mapJOptionToItem)
+    }
   }
   return result
 }
@@ -402,23 +446,21 @@ async function loadCustomFieldOptions(
   const reqs: CustomFieldOptionReq[] = []
   for (const tab of tabs) {
     for (const f of tab.issueFields) {
-      const type = (f.type ?? '').toString().toUpperCase()
-      if (!CUSTOM_FIELD_TYPE_SET.has(type)) continue
-      const customId = String(f.id)
-      if (!/^\d+$/.test(customId)) continue
+      const widgetType = (f.type ?? '').toString().toLowerCase()
+      if (!OPTION_WIDGET_TYPE_SET.has(widgetType)) continue
+      const customId = String(f.id ?? f.fieldId ?? '')
+      if (!customId) continue
       reqs.push({
-        customId,
-        type: type as CustomFieldOptionReq['type'],
+        fieldId: customId,
+        type: widgetType,
         projectId,
         issueTypeId,
-        perPage: 20,
-        page: 1,
       })
     }
   }
   if (!reqs.length) return
   try {
-    const res = await getCustomFieldOptions(reqs)
+    const res = await getAvailableFieldOptions(reqs)
     if (res && res.success && res.data) {
       const nextMap = buildOptionMapFromResponse(res.data)
       customFieldOptionsMap.value = { ...customFieldOptionsMap.value, ...nextMap }
@@ -636,21 +678,30 @@ async function loadCreateMeta() {
  * 优先使用批量接口返回的 options；否则回落到 createMeta 返回的 exportValue
  */
 function getFieldOptions(field: any): CustomFieldOptionItem[] {
-  const customId = String(field.id)
-  const fromApi = customFieldOptionsMap.value?.[customId]
+  const fid = String(field.id ?? field.fieldId ?? '')
+  // 1) 优先：接口返回的枚举（已存入 map）
+  const fromApi = fid ? customFieldOptionsMap.value?.[fid] : undefined
   if (fromApi && Array.isArray(fromApi) && fromApi.length) return fromApi
+  // 2) 回退：configSchema / options.options（模板/自定义字段配置中自带）
+  const cfgRaw = field?.configSchema ?? field?.options?.options ?? field?.widgetOptions?.options
+  if (cfgRaw) {
+    let arr: any[] = []
+    if (Array.isArray(cfgRaw)) arr = cfgRaw
+    else if (typeof cfgRaw === 'string') { try { arr = JSON.parse(cfgRaw) } catch { /* ignore */ } }
+    if (Array.isArray(arr) && arr.length) {
+      return arr
+        .filter((x: any) => x != null)
+        .map((x: any, i: number) => mapLabelValueToOption(x, i))
+    }
+  }
+  // 3) 回退：exportValue 数组（递归处理 children / childJOptions，保证级联二级枚举不丢）
   const ev = field?.exportValue
   if (Array.isArray(ev) && ev.length) {
     const normalized: CustomFieldOptionItem[] = []
     for (const raw of ev) {
       if (raw == null) continue
-      if (typeof raw === 'object' && ('value' in raw || 'id' in raw)) {
-        normalized.push({
-          id: String(raw.id ?? raw.value ?? ''),
-          name: String(raw.name ?? raw.label ?? raw.value ?? raw.id ?? ''),
-          value: String(raw.value ?? raw.id ?? ''),
-          disabled: !!raw.disabled,
-        })
+      if (typeof raw === 'object' && ('value' in raw || 'id' in raw || 'optionId' in raw)) {
+        normalized.push(mapLabelValueToOption(raw, normalized.length))
       } else {
         const str = String(raw)
         normalized.push({ id: str, name: str, value: str })
@@ -662,17 +713,20 @@ function getFieldOptions(field: any): CustomFieldOptionItem[] {
 }
 
 /**
- * 解析字段的 configSchema（JSON 字符串或数组）为选项数组
- * 用于新 type 分支（select_single/select_multiple/radio_group/checkbox_group/cascader）
+ * 解析字段的 configSchema（JSON 字符串或数组）为选项数组（保留旧兼容）
+ * 已被 getFieldOptions 取代，模板/新 type 分支统一用 getFieldOptions
+ * 递归把 CustomFieldOptionItem（name/value/children）映射为 cascader 需要的 {label,value,children}
  */
 function parseFieldOptions(field: any): any[] {
-  const raw = field?.configSchema
-  if (!raw) return []
-  if (Array.isArray(raw)) return raw
-  if (typeof raw === 'string') {
-    try { return JSON.parse(raw) } catch { return [] }
-  }
-  return []
+  const mapItem = (o: CustomFieldOptionItem): any => ({
+    label: o.name,
+    value: o.value,
+    disabled: o.disabled,
+    children: Array.isArray(o.children) && o.children.length
+      ? o.children.map(mapItem)
+      : undefined,
+  })
+  return getFieldOptions(field).map(mapItem)
 }
 
 // ---- member 类型：远程搜索用户（按 field id 独立状态） ----

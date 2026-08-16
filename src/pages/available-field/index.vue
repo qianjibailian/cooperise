@@ -343,7 +343,8 @@ const fieldTypeOptions = [
   { value: 'CASCADER', label: '级联选择器' },
   { value: 'OBJECT', label: '对象' },
   { value: 'ARRAY', label: '数组' },
-  { value: 'USER', label: '成员' },
+  { value: 'USER_SINGLE_SELECT', label: '人员单选' },
+  { value: 'USER_MULTI_SELECT', label: '人员多选' },
   { value: 'RICH_TEXT', label: '富文本' },
 ]
 

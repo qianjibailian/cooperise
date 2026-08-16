@@ -113,8 +113,8 @@ export function queryUsers(payload: UserQueryPayload): Promise<Result<UserListDa
 
 // ==================== Custom Field Option API ====================
 
-/** 批量查询自定义字段选项（POST /custom_field/option/customOptions） */
-export function getCustomFieldOptions(
+/** 批量查询自定义字段选项（POST /availableField/customOptions） */
+export function getAvailableFieldOptions(
   fieldReqs: CustomFieldOptionReq[],
 ): Promise<CustomFieldOptionResult> {
   return request.post(`${PREFIX}/availableField/customOptions`, { fieldReqs })
