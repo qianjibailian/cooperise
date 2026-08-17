@@ -239,12 +239,12 @@
             </span>
             <div class="preview-control">
               <a-input
-                v-if="isType('STRING')"
+                v-if="isType('INPUT_TEXT')"
                 placeholder="请输入"
                 :disabled="!editForm.fieldName"
               />
               <a-input-number
-                v-else-if="isType('NUMBER')"
+                v-else-if="isType('INPUT_NUMBER')"
                 placeholder="请输入数字"
                 :disabled="!editForm.fieldName"
               />
@@ -255,10 +255,6 @@
               <a-date-picker
                 v-else-if="isType('DATETIME')"
                 show-time
-                :disabled="!editForm.fieldName"
-              />
-              <a-switch
-                v-else-if="isType('BOOLEAN')"
                 :disabled="!editForm.fieldName"
               />
               <a-select
@@ -287,11 +283,19 @@
                 :field-names="{ label: 'label', value: 'value', children: 'children' }"
               />
               <a-select
-                v-else-if="isType('USER')"
+                v-else-if="isType('USER_SINGLE_SELECT')"
                 placeholder="请选择成员"
                 show-search
                 :disabled="!editForm.fieldName"
                 allow-clear
+              />
+              <a-select
+                v-else-if="isType('USER_MULTI_SELECT')"
+                placeholder="请选择成员"
+                show-search
+                :disabled="!editForm.fieldName"
+                allow-clear
+                mode="multiple"
               />
               <a-textarea
                 v-else-if="isType('RICH_TEXT')"
@@ -299,6 +303,10 @@
                 :rows="4"
                 :disabled="!editForm.fieldName"
               />
+              <span
+                v-else-if="isType('DISPLAY_TEXT')"
+                class="display-text-preview"
+              >{{ editForm.fieldName ? '这是展示文本内容' : '展示文本' }}</span>
               <a-input
                 v-else
                 placeholder="请先选择字段类型"
@@ -333,26 +341,23 @@ import type { AvailableFieldItem, AvailableFieldSavePayload, EnumOptionItem } fr
 
 // ---- 字段类型选项 ----
 const fieldTypeOptions = [
-  { value: 'STRING', label: '文本' },
-  { value: 'NUMBER', label: '数字' },
+  { value: 'INPUT_TEXT', label: '文本输入框' },
+  { value: 'INPUT_NUMBER', label: '数字输入框' },
   { value: 'DATE', label: '日期' },
   { value: 'DATETIME', label: '日期时间' },
-  { value: 'BOOLEAN', label: '布尔' },
   { value: 'SINGLE_SELECT', label: '单选下拉' },
   { value: 'MULTI_SELECT', label: '多选下拉' },
   { value: 'CASCADER', label: '级联选择器' },
-  { value: 'OBJECT', label: '对象' },
-  { value: 'ARRAY', label: '数组' },
   { value: 'USER_SINGLE_SELECT', label: '人员单选' },
   { value: 'USER_MULTI_SELECT', label: '人员多选' },
   { value: 'RICH_TEXT', label: '富文本' },
+  { value: 'DISPLAY_TEXT', label: '展示文本' },
 ]
 
 // 需要配置选项的类型
 const ENUM_TYPES = ['SINGLE_SELECT', 'MULTI_SELECT', 'CASCADER']
 const isEnumType = computed(() => ENUM_TYPES.includes(editForm.value.type as string))
 const isCascaderType = computed(() => editForm.value.type === 'CASCADER')
-
 // type 值 → 中文标签
 const TYPE_LABEL_MAP: Record<string, string> = fieldTypeOptions.reduce(
   (acc, t) => { acc[t.value] = t.label; return acc },
@@ -365,18 +370,17 @@ function formatTypeLabel(type?: string | null): string {
 
 function typeTagColor(type?: string | null): string {
   const colorMap: Record<string, string> = {
-    STRING: 'default',
-    NUMBER: 'green',
+    INPUT_TEXT: 'default',
+    INPUT_NUMBER: 'green',
     DATE: 'blue',
     DATETIME: 'cyan',
-    BOOLEAN: 'orange',
     SINGLE_SELECT: 'purple',
     MULTI_SELECT: 'magenta',
     CASCADER: 'gold',
-    OBJECT: 'geekblue',
-    ARRAY: 'volcano',
-    USER: 'lime',
+    USER_SINGLE_SELECT: 'lime',
+    USER_MULTI_SELECT: 'lime',
     RICH_TEXT: 'red',
+    DISPLAY_TEXT: 'geekblue',
   }
   return colorMap[type || ''] || 'default'
 }
@@ -730,6 +734,7 @@ onMounted(loadFields)
 .preview-control :deep(.ant-input-number-input) { width: 100%; }
 .preview-control :deep(textarea.ant-input) { width: 100%; height: auto; min-height: 80px; }
 .preview-control :deep(.ant-switch) { margin-top: 4px; }
+.display-text-preview { display: inline-block; padding: 4px 0; color: #262626; font-size: 14px; line-height: 1.5; }
 
 /* 选项编辑器样式 */
 .enum-options-editor { width: 100%; }

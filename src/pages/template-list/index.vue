@@ -257,12 +257,12 @@
                     v-for="(w, idx) in singleFormTab.widgetData"
                     :key="w.id || idx"
                     class="added-item"
-                    :class="{ 'is-dragging': dragIndex === idx, 'is-drag-over': dragOverIndex === idx }"
+                    :class="{ 'is-dragging': dragTabId === '' && dragIndex === idx, 'is-drag-over': dragOverTabId === '' && dragOverIndex === idx }"
                     draggable="true"
-                    @dragstart="onDragStart(idx, $event)"
-                    @dragover.prevent="onDragOver(idx, $event)"
-                    @dragleave="onDragLeave(idx)"
-                    @drop.prevent="onDrop(idx)"
+                    @dragstart="onDragStart(null, idx, $event)"
+                    @dragover.prevent="onDragOver(null, idx, $event)"
+                    @dragleave="onDragLeave(null, idx)"
+                    @drop.prevent="onDrop(null, idx)"
                     @dragend="onDragEnd"
                   >
                     <HolderOutlined class="added-drag-handle" />
@@ -271,7 +271,7 @@
                       <span v-if="w.required" class="afp-required">*</span>
                       {{ w.title || w.field || '未命名字段' }}
                     </span>
-                    <span class="added-type-tag" :title="w.componentKey || w.name">{{ componentLabel(w) }}</span>
+                    <span class="added-type-tag" :title="w.type || w.name">{{ componentLabel(w) }}</span>
                     <a-button type="text" size="small" danger class="added-remove" @click="removeAddedWidget(idx)">
                       <CloseCircleFilled />
                     </a-button>
@@ -298,22 +298,39 @@
                 </a-button>
               </div>
 
-              <!-- 表单字段（可删除） -->
+              <!-- 表单字段（可拖拽排序 / 删除） -->
               <div v-if="tab.widgetData?.length" class="tab-form-preview">
                 <div class="form-summary">
                   <span class="summary-count">{{ countWidgets(tab.widgetData) }} 个控件</span>
                   <a-button size="small" danger type="link" @click="clearTabFields(idx)">清空</a-button>
                 </div>
-                <div class="widget-chips">
-                  <a-tag
+                <div class="added-list tab-sort-list">
+                  <div
                     v-for="(w, wi) in tab.widgetData"
-                    :key="w.id"
-                    color="default"
-                    closable
-                    @close="removeWidgetFromTab(idx, wi)"
+                    :key="w.id || wi"
+                    class="added-item"
+                    :class="{
+                      'is-dragging': dragTabId === String(tab.id) && dragIndex === wi,
+                      'is-drag-over': dragOverTabId === String(tab.id) && dragOverIndex === wi,
+                    }"
+                    draggable="true"
+                    @dragstart="onDragStart(tab.id, wi, $event)"
+                    @dragover.prevent="onDragOver(tab.id, wi, $event)"
+                    @dragleave="onDragLeave(tab.id, wi)"
+                    @drop.prevent="onDrop(tab.id, wi)"
+                    @dragend="onDragEnd"
                   >
-                    {{ w.title }}
-                  </a-tag>
+                    <HolderOutlined class="added-drag-handle" />
+                    <span class="added-sort">{{ wi + 1 }}</span>
+                    <span class="added-title">
+                      <span v-if="w.required" class="afp-required">*</span>
+                      {{ w.title || w.field || '未命名字段' }}
+                    </span>
+                    <span class="added-type-tag" :title="w.type || w.name">{{ componentLabel(w) }}</span>
+                    <a-button type="text" size="small" danger class="added-remove" @click="removeWidgetFromTab(idx, wi)">
+                      <CloseCircleFilled />
+                    </a-button>
+                  </div>
                 </div>
               </div>
               <div v-else class="tab-empty">
@@ -504,16 +521,17 @@ const availableFieldKeyword = ref('')
 const availableFieldTypeFilter = ref('')
 const selectedAvailableFieldIds = ref<string[]>([])
 const FIELD_TYPE_OPTIONS = [
-  { value: 'STRING', label: '文本' },
-  { value: 'NUMBER', label: '数字' },
+  { value: 'INPUT_TEXT', label: '文本输入框' },
+  { value: 'INPUT_NUMBER', label: '数字输入框' },
   { value: 'DATE', label: '日期' },
   { value: 'DATETIME', label: '日期时间' },
-  { value: 'BOOLEAN', label: '布尔' },
   { value: 'SINGLE_SELECT', label: '单选下拉' },
   { value: 'MULTI_SELECT', label: '多选下拉' },
   { value: 'CASCADER', label: '级联' },
-  { value: 'USER', label: '成员' },
+  { value: 'USER_SINGLE_SELECT', label: '人员单选' },
+  { value: 'USER_MULTI_SELECT', label: '人员多选' },
   { value: 'RICH_TEXT', label: '富文本' },
+  { value: 'DISPLAY_TEXT', label: '展示文本' },
 ]
 
 async function loadAvailableFields(force = false) {
@@ -561,7 +579,10 @@ function parseFieldValue(raw: string | null | undefined): EnumOptionItem[] {
   return []
 }
 
-/** 可用字段 → widget 对象（vxe 兼容结构） */
+/** 可用字段 → widget 对象（vxe 兼容结构）
+ *  type 与可用字段 type 一一映射（大写枚举），不再使用 componentKey
+ *  name 仅作为 vxe-table row key 标识符，后缀保留小写 componentKey 风格仅用于唯一性
+ */
 function availableFieldToWidget(f: AvailableFieldItem): any {
   const id = generateId()
   const opts = parseFieldValue(f.fieldValue)
@@ -578,32 +599,30 @@ function availableFieldToWidget(f: AvailableFieldItem): any {
     },
   }
   switch (f.type) {
-    case 'STRING':
-      return { ...base, name: `Comp_00000000_${id}_input_text`, componentKey: 'input_text' }
-    case 'NUMBER':
-      return { ...base, name: `Comp_00000000_${id}_input_number`, componentKey: 'input_number' }
+    case 'INPUT_TEXT':
+      return { ...base, type: 'INPUT_TEXT', name: `Comp_00000000_${id}_input_text` }
+    case 'INPUT_NUMBER':
+      return { ...base, type: 'INPUT_NUMBER', name: `Comp_00000000_${id}_input_number` }
     case 'DATE':
-      return { ...base, name: `Comp_00000000_${id}_date_picker`, componentKey: 'date_picker', options: { ...base.options, format: 'YYYY-MM-DD' } }
+      return { ...base, type: 'DATE', name: `Comp_00000000_${id}_date_picker`, options: { ...base.options, format: 'YYYY-MM-DD' } }
     case 'DATETIME':
-      return { ...base, name: `Comp_00000000_${id}_date_picker`, componentKey: 'date_picker', options: { ...base.options, format: 'YYYY-MM-DD HH:mm:ss', hasTime: true } }
-    case 'BOOLEAN':
-      return { ...base, name: `Comp_00000000_${id}_boolean_switch`, componentKey: 'switch' }
+      return { ...base, type: 'DATETIME', name: `Comp_00000000_${id}_date_picker`, options: { ...base.options, format: 'YYYY-MM-DD HH:mm:ss', hasTime: true } }
     case 'SINGLE_SELECT':
-      return { ...base, name: `Comp_00000000_${id}_select_single`, componentKey: 'select_single', options: { ...base.options, options: opts, multiple: false } }
+      return { ...base, type: 'SINGLE_SELECT', name: `Comp_00000000_${id}_select_single`, options: { ...base.options, options: opts, multiple: false } }
     case 'MULTI_SELECT':
-      return { ...base, name: `Comp_00000000_${id}_select_multiple`, componentKey: 'select_multiple', options: { ...base.options, options: opts, multiple: true } }
+      return { ...base, type: 'MULTI_SELECT', name: `Comp_00000000_${id}_select_multiple`, options: { ...base.options, options: opts, multiple: true } }
     case 'CASCADER':
-      return { ...base, name: `Comp_00000000_${id}_cascader`, componentKey: 'cascader', options: { ...base.options, options: opts } }
-    case 'USER':
-      return { ...base, name: `Comp_00000000_${id}_member`, componentKey: 'member', options: { ...base.options, multiple: false } }
+      return { ...base, type: 'CASCADER', name: `Comp_00000000_${id}_cascader`, options: { ...base.options, options: opts } }
+    case 'USER_SINGLE_SELECT':
+      return { ...base, type: 'USER_SINGLE_SELECT', name: `Comp_00000000_${id}_member`, options: { ...base.options, multiple: false } }
+    case 'USER_MULTI_SELECT':
+      return { ...base, type: 'USER_MULTI_SELECT', name: `Comp_00000000_${id}_member`, options: { ...base.options, multiple: true } }
     case 'RICH_TEXT':
-      return { ...base, name: `Comp_00000000_${id}_rich_text`, componentKey: 'rich_text' }
-    case 'OBJECT':
-      return { ...base, name: `Comp_00000000_${id}_input_text`, componentKey: 'input_text' }
-    case 'ARRAY':
-      return { ...base, name: `Comp_00000000_${id}_select_multiple`, componentKey: 'select_multiple', options: { ...base.options, options: opts } }
+      return { ...base, type: 'RICH_TEXT', name: `Comp_00000000_${id}_rich_text` }
+    case 'DISPLAY_TEXT':
+      return { ...base, type: 'DISPLAY_TEXT', name: `Comp_00000000_${id}_display_text`, required: false, options: { ...base.options, required: false } }
     default:
-      return { ...base, name: `Comp_00000000_${id}_input_text`, componentKey: 'input_text' }
+      return { ...base, type: 'INPUT_TEXT', name: `Comp_00000000_${id}_input_text` }
   }
 }
 
@@ -640,21 +659,35 @@ const TYPE_LABEL_MAP: Record<string, string> = FIELD_TYPE_OPTIONS.reduce(
 )
 function typeLabel(t: string | undefined | null): string { return TYPE_LABEL_MAP[t ?? ''] || (t ? String(t) : '未知') }
 
-/** componentKey / widget.name → 中文标签 */
+/** widget.type（大写枚举）→ 中文标签 */
 function componentLabel(w: any): string {
   if (!w) return '未知'
-  const key: string = (w.componentKey || '').toLowerCase()
-  if (key.includes('textarea')) return '多行文本'
-  if (key.includes('number') || key.includes('amount')) return '数字'
-  if (key.includes('date_picker') || key.includes('datepicker')) return w.options?.hasTime ? '日期时间' : '日期'
-  if (key.includes('switch') || key.includes('boolean')) return '布尔'
-  if (key.includes('select')) return key.includes('multi') || w.options?.multiple ? '多选下拉' : '单选下拉'
-  if (key.includes('cascader')) return '级联'
-  if (key.includes('member') || key.includes('user')) return '成员'
-  if (key.includes('richtext') || key.includes('rich_text')) return '富文本'
-  if (key.includes('uploadimage') || key.includes('image')) return '图片'
-  if (key.includes('uploadfile') || key.includes('upload')) return '附件'
-  return '单行文本'
+  switch (String(w.type ?? '').toUpperCase()) {
+    case 'INPUT_TEXT':
+      return '单行文本'
+    case 'INPUT_NUMBER':
+      return '数字'
+    case 'DATE':
+      return '日期'
+    case 'DATETIME':
+      return '日期时间'
+    case 'SINGLE_SELECT':
+      return '单选下拉'
+    case 'MULTI_SELECT':
+      return '多选下拉'
+    case 'CASCADER':
+      return '级联'
+    case 'USER_SINGLE_SELECT':
+      return '人员单选'
+    case 'USER_MULTI_SELECT':
+      return '人员多选'
+    case 'RICH_TEXT':
+      return '富文本'
+    case 'DISPLAY_TEXT':
+      return '展示文本'
+    default:
+      return '单行文本'
+  }
 }
 
 /** 全选当前筛选状态 */
@@ -858,47 +891,77 @@ function addTabAllAvailable(tabId: string | number) {
   message.success(`已添加 ${widgets.length} 个字段`)
 }
 
-/** 拖拽排序：上下拖动已添加字段调整顺序 */
+/** 拖拽排序：支持单表单模式与多 Tab 模式。tabId 为 null 时操作单表单 singleFormTab，否则操作对应 tab.widgetData */
+const dragTabId = ref<string | number | null>(null)
 const dragIndex = ref<number | null>(null)
+const dragOverTabId = ref<string | number | null>(null)
 const dragOverIndex = ref<number | null>(null)
 
-function onDragStart(idx: number, e: DragEvent) {
+function resolveWidgetArr(tabId: string | number | null) {
+  if (tabId == null || tabId === '') {
+    // 单表单模式
+    return singleFormTab.value.widgetData = singleFormTab.value.widgetData || []
+  }
+  const tab = editForm.tabs.find(t => String(t.id) === String(tabId))
+  if (!tab) return [] as any[]
+  tab.widgetData = tab.widgetData || []
+  return tab.widgetData
+}
+
+function onDragStart(tabId: string | number | null, idx: number, e: DragEvent) {
+  // 统一转为字符串，避免 null !== '' 导致单表单模式拖拽失效
+  dragTabId.value = String(tabId ?? '')
   dragIndex.value = idx
   if (e.dataTransfer) {
     e.dataTransfer.effectAllowed = 'move'
     // Firefox 需要 setData 才能触发拖拽
-    e.dataTransfer.setData('text/plain', String(idx))
+    e.dataTransfer.setData('text/plain', `${String(tabId ?? '')}::${idx}`)
   }
 }
 
-function onDragOver(idx: number, e: DragEvent) {
+function onDragOver(tabId: string | number | null, idx: number, e: DragEvent) {
   if (e.dataTransfer) e.dataTransfer.dropEffect = 'move'
+  if (dragTabId.value !== String(tabId ?? '')) return
   if (dragIndex.value === null || dragIndex.value === idx) {
+    dragOverTabId.value = null
     dragOverIndex.value = null
     return
   }
+  dragOverTabId.value = String(tabId ?? '')
   dragOverIndex.value = idx
 }
 
-function onDragLeave(idx: number) {
-  if (dragOverIndex.value === idx) dragOverIndex.value = null
+function onDragLeave(tabId: string | number | null, idx: number) {
+  if (dragOverTabId.value === String(tabId ?? '') && dragOverIndex.value === idx) {
+    dragOverTabId.value = null
+    dragOverIndex.value = null
+  }
 }
 
-function onDrop(idx: number) {
+function onDrop(tabId: string | number | null, idx: number) {
   const from = dragIndex.value
+  if (dragTabId.value !== String(tabId ?? '')) { resetDrag(); return }
   if (from === null || from === idx) { resetDrag(); return }
-  const arr = singleFormTab.value.widgetData
+  const arr = resolveWidgetArr(tabId)
+  if (!Array.isArray(arr) || from >= arr.length || idx > arr.length) { resetDrag(); return }
   const moved = arr.splice(from, 1)[0]
   arr.splice(idx, 0, moved)
-  // 触发响应式更新
-  singleFormTab.value.widgetData = [...arr]
+  // 触发响应式更新（单表单模式 singleFormTab 是 computed set 路径，需重新赋值）
+  if (tabId == null || tabId === '') {
+    singleFormTab.value.widgetData = [...arr]
+  } else {
+    const tab = editForm.tabs.find(t => String(t.id) === String(tabId))
+    if (tab) tab.widgetData = [...arr]
+  }
   resetDrag()
 }
 
 function onDragEnd() { resetDrag() }
 
 function resetDrag() {
+  dragTabId.value = null
   dragIndex.value = null
+  dragOverTabId.value = null
   dragOverIndex.value = null
 }
 
@@ -1408,6 +1471,7 @@ onMounted(loadTemplates)
 .form-summary { display: flex; align-items: center; justify-content: space-between; }
 .summary-count { font-size: 13px; color: #6e6e73; font-weight: 500; }
 .widget-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.tab-sort-list { max-height: 300px; }
 
 .tab-empty { text-align: center; padding: 20px 0; }
 .tab-empty p { font-size: 14px; color: #aeaeb2; margin: 0 0 6px; }

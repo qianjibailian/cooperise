@@ -21,6 +21,7 @@ import type {
   AvailableFieldItem,
   AvailableFieldSavePayload,
   ViewListResult,
+  FilterDraft,
 } from '@/types/faiz'
 
 const PREFIX = '/faiz-api'
@@ -95,6 +96,18 @@ export function getIssueCreateMeta(data: { projectId: string; issueTypeId: strin
 /** 查询事项详情（POST /issue/queryDetail） */
 export function queryDetail(payload: QueryDetailPayload): Promise<QueryDetailResult> {
   return request.post(`${PREFIX}/issue/queryDetail`, payload)
+}
+
+// ==================== Filter Draft API ====================
+
+/** 获取草稿筛选（GET /filter/draft?userNo=xxx） */
+export function getFilterDraft(userNo: string): Promise<Result<FilterDraft>> {
+  return request.get(`${PREFIX}/filter/draft`, { params: { userNo } })
+}
+
+/** 更新草稿筛选（PUT /filter/draft） */
+export function updateFilterDraft(data: Partial<FilterDraft> & { userNo: string }): Promise<Result<FilterDraft>> {
+  return request.put(`${PREFIX}/filter/draft`, data)
 }
 
 // ==================== View API ====================

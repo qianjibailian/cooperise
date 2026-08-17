@@ -32,7 +32,7 @@
             筛选({{ filterDisplayCount }})
           </a-button>
         </a-popover>
-        <a-button class="tool-btn">
+        <a-button v-if="false" class="tool-btn">
           <component :is="UnorderedListOutlined" />
           分组
         </a-button>
@@ -40,15 +40,15 @@
           <component :is="isSortDesc ? SortDescendingOutlined : SortAscendingOutlined" />
           排序({{ sortCountComputed }})
         </a-button>
-        <a-button class="tool-btn">
+        <a-button v-if="false" class="tool-btn">
           <component :is="MenuOutlined" />
           分层
         </a-button>
-        <a-button class="tool-btn">
+        <a-button v-if="false" class="tool-btn">
           <component :is="CheckSquareOutlined" />
           批量操作
         </a-button>
-        <a-button class="tool-btn">
+        <a-button v-if="false" class="tool-btn">
           <component :is="FullscreenOutlined" />
           全屏
         </a-button>
@@ -64,7 +64,7 @@
           </template>
         </a-dropdown>
         <a-divider type="vertical" class="toolbar-divider" />
-        <a-button class="tool-btn view-btn">
+        <a-button v-if="false" class="tool-btn view-btn">
           <component :is="UnorderedListOutlined" />
           列表视图
         </a-button>
@@ -79,72 +79,36 @@
         :loading="loading"
         height="100%"
         border="none"
-        keep-source
         :row-config="{ keyField: 'issueKey' }"
         :column-config="{ resizable: true }"
         :checkbox-config="{ highlight: true, range: false }"
-        :edit-config="{ trigger: 'click', mode: 'cell', showStatus: true, showIcon: false }"
-        @edit-actived="onEditActived"
-        @edit-closed="onEditClosed"
         class="items-table"
       >
         <vxe-column type="checkbox" width="50" align="center" fixed="left" />
-        <vxe-column field="summary" :title="fieldLabel('summary', '概要')" min-width="300" fixed="left" :edit-render="{}">
+        <vxe-column
+          v-for="col in tableColumns"
+          :key="col.id"
+          :field="col.id"
+          :title="col.name"
+          min-width="140"
+          :fixed="col.id === 'summary' ? 'left' : undefined"
+        >
           <template #default="{ row }">
-            <span class="summary-text">{{ row.summary }}</span>
-          </template>
-          <template #edit="{ row }">
-            <a-input v-model:value="row.summary" size="small" />
-          </template>
-        </vxe-column>
-        <vxe-column field="issueKey" :title="fieldLabel('issuekey', '编号')" width="140">
-          <template #default="{ row }">
-            <a class="issue-key-link" @click="openDetail(row.issueKey)">{{ row.issueKey }}</a>
-          </template>
-        </vxe-column>
-        <vxe-column field="priorityId" :title="fieldLabel('priority', '优先级')" width="100" :edit-render="{}">
-          <template #default="{ row }">
-            <a-tag :color="priorityColor(row.priorityId)">{{ row.priorityName || priorityLabel(row.priorityId) }}</a-tag>
-          </template>
-          <template #edit="{ row }">
-            <a-select v-model:value="row.priorityId" size="small" style="width:100%" @change="(v: string) => onSelectChange(row, 'priorityId', 'priorityName', v, priorityOptions)">
-              <a-select-option v-for="o in priorityOptions" :key="o.value" :value="o.value">{{ o.label }}</a-select-option>
-            </a-select>
-          </template>
-        </vxe-column>
-        <vxe-column field="statusId" :title="fieldLabel('status', '状态')" width="100" :edit-render="{}">
-          <template #default="{ row }">
-            <a-tag :color="statusColor(row.statusId)">{{ row.statusName || statusLabel(row.statusId) }}</a-tag>
-          </template>
-          <template #edit="{ row }">
-            <a-select v-model:value="row.statusId" size="small" style="width:100%" @change="(v: string) => onSelectChange(row, 'statusId', 'statusName', v, statusOptions)">
-              <a-select-option v-for="o in statusOptions" :key="o.value" :value="o.value">{{ o.label }}</a-select-option>
-            </a-select>
-          </template>
-        </vxe-column>
-        <vxe-column field="issuetypeId" :title="fieldLabel('issuetype', '分类')" width="80" :edit-render="{}">
-          <template #default="{ row }">
-            <a-tag>{{ row.issuetypeName || typeLabel(row.issuetypeId) }}</a-tag>
-          </template>
-          <template #edit="{ row }">
-            <a-select v-model:value="row.issuetypeId" size="small" style="width:100%" @change="(v: string) => onSelectChange(row, 'issuetypeId', 'issuetypeName', v, typeOptions)">
-              <a-select-option v-for="o in typeOptions" :key="o.value" :value="o.value">{{ o.label }}</a-select-option>
-            </a-select>
-          </template>
-        </vxe-column>
-        <vxe-column field="assigneeName" :title="fieldLabel('assignee', '经办人')" width="120" :edit-render="{}">
-          <template #edit="{ row }">
-            <a-input v-model:value="row.assigneeName" size="small" />
-          </template>
-        </vxe-column>
-        <vxe-column field="createdAt" :title="fieldLabel('created', '创建时间')" width="120">
-          <template #default="{ row }">
-            <span>{{ row.createdAt?.split(' ')[0] }}</span>
-          </template>
-        </vxe-column>
-        <vxe-column field="updatedAt" :title="fieldLabel('updated', '更新时间')" width="120">
-          <template #default="{ row }">
-            <span>{{ row.updatedAt?.split(' ')[0] }}</span>
+            <a
+              v-if="col.id === 'issuekey'"
+              class="issue-key-link"
+              @click="openDetail(row.issueKey)"
+            >{{ getCellValue(row, col.id) }}</a>
+            <a-tag
+              v-else-if="col.id === 'status'"
+              :color="statusColor(getStatusId(row))"
+            >{{ getCellValue(row, col.id) }}</a-tag>
+            <a-tag
+              v-else-if="col.id === 'priority'"
+              :color="priorityColor(getPriorityId(row))"
+            >{{ getCellValue(row, col.id) }}</a-tag>
+            <a-tag v-else-if="col.id === 'issuetype'">{{ getCellValue(row, col.id) }}</a-tag>
+            <span v-else>{{ getCellValue(row, col.id) }}</span>
           </template>
         </vxe-column>
         <vxe-column title="操作" width="72" fixed="right" align="center">
@@ -234,7 +198,7 @@
                   :is="HolderOutlined"
                   class="field-drag-handle"
                 />
-                <a-checkbox v-model:checked="item.checked">
+                <a-checkbox v-model:checked="item.checked" @change="onShownFieldUncheck(item)">
                   {{ item.label }}
                 </a-checkbox>
               </div>
@@ -247,7 +211,7 @@
                 :key="item.key"
                 class="field-item"
               >
-                <a-checkbox v-model:checked="item.checked">
+                <a-checkbox v-model:checked="item.checked" @change="onHiddenFieldCheck(item)">
                   {{ item.label }}
                 </a-checkbox>
               </div>
@@ -279,18 +243,18 @@ import {
   HolderOutlined,
   CaretRightFilled,
 } from '@ant-design/icons-vue'
-import { getIssues, patchIssue, queryAvailableFields } from '@/api/faiz'
+import { getIssues, queryAvailableFields, getFilterDraft, updateFilterDraft } from '@/api/faiz'
 import type {
-  IssueRow,
   IssueRecord,
   IssueQueryPayload,
   ChildConditionGroup,
   SortItem,
+  FilterDraft,
 } from '@/types/faiz'
 import IssueDetailDrawer from '@/components/IssueDetailDrawer.vue'
 import FilterPanel from '@/components/FilterPanel.vue'
 
-const tableRef = ref<VxeTableInstance<IssueRow>>()
+const tableRef = ref<VxeTableInstance<IssueRecord>>()
 
 // 详情抽屉
 const detailDrawerOpen = ref(false)
@@ -316,8 +280,38 @@ interface FieldOption {
   checked: boolean
 }
 
+/** 标准字段 ID → 中文名称（draft showField 里的标准字段可能不在可用字段列表中） */
+const STANDARD_FIELD_LABELS: Record<string, string> = {
+  summary: '概要',
+  status: '状态',
+  assignee: '经办人',
+  createtime: '创建时间',
+  created: '创建时间',
+  updated: '更新时间',
+  priority: '优先级',
+  issuetype: '分类',
+  issuekey: '编号',
+  issuetypeId: '分类',
+  statusId: '状态',
+  priorityId: '优先级',
+  assigneeName: '经办人',
+}
+
 const shownFields = ref<FieldOption[]>([])
 const hiddenFields = ref<FieldOption[]>([])
+
+/** 从 draft 的 showField 解析已展示字段 ID 列表（保留顺序），兼容字符串数组和对象数组两种格式 */
+function getDraftShownFieldIds(): string[] {
+  const d = draftFilter.value
+  if (!d) return []
+  const parsed = safeParse<{ showFieldItemList: unknown[] }>(d.showField, { showFieldItemList: [] })
+  return parsed.showFieldItemList.map(item => {
+    if (typeof item === 'string') return item
+    // 兼容旧格式 { field: { id: "xxx" } }
+    const obj = item as { field?: { id?: string } }
+    return obj?.field?.id ?? ''
+  }).filter(Boolean)
+}
 
 async function fetchAvailableFields(keyword?: string) {
   settingLoading.value = true
@@ -330,12 +324,36 @@ async function fetchAvailableFields(keyword?: string) {
     })
     if (res.success && res.data?.list) {
       const list = res.data.list
-      shownFields.value = list
-        .filter((f) => f.frontPage)
-        .map((f) => ({ key: f.fieldId, label: f.fieldName, checked: true }))
-      hiddenFields.value = list
-        .filter((f) => !f.frontPage)
-        .map((f) => ({ key: f.fieldId, label: f.fieldName, checked: false }))
+      // 构建 fieldId → fieldName 映射
+      const labelMap: Record<string, string> = {}
+      for (const f of list) labelMap[f.fieldId] = f.fieldName
+
+      const shownIds = new Set(getDraftShownFieldIds())
+
+      if (shownIds.size > 0) {
+        // 有 draft：shownFields 取 draft 的 showFieldItemList（保留顺序），label 从可用字段/标准映射/fieldNameMap 取
+        const allLabelMap: Record<string, string> = { ...STANDARD_FIELD_LABELS, ...labelMap }
+        for (const [k, v] of Object.entries(fieldNameMap.value)) {
+          if (v && v.trim()) allLabelMap[k] = v
+        }
+        shownFields.value = getDraftShownFieldIds().map(id => ({
+          key: id,
+          label: allLabelMap[id] || id,
+          checked: true,
+        }))
+        // hiddenFields = 可用字段中不在 shownIds 里的
+        hiddenFields.value = list
+          .filter((f) => !shownIds.has(f.fieldId))
+          .map((f) => ({ key: f.fieldId, label: f.fieldName, checked: false }))
+      } else {
+        // 无 draft：走 frontPage 逻辑兜底
+        shownFields.value = list
+          .filter((f) => f.frontPage)
+          .map((f) => ({ key: f.fieldId, label: f.fieldName, checked: true }))
+        hiddenFields.value = list
+          .filter((f) => !f.frontPage)
+          .map((f) => ({ key: f.fieldId, label: f.fieldName, checked: false }))
+      }
       hiddenCurrentPage.value = res.data.currentPage
       hiddenPageCount.value = res.data.pageCount
     }
@@ -357,8 +375,9 @@ async function loadMoreHiddenFields() {
       searchKey: settingSearchKeyword.value || '',
     })
     if (res.success && res.data?.list) {
+      const shownIds = new Set(getDraftShownFieldIds())
       const moreHidden = res.data.list
-        .filter((f) => !f.frontPage)
+        .filter((f) => shownIds.size > 0 ? !shownIds.has(f.fieldId) : !f.frontPage)
         .map((f) => ({ key: f.fieldId, label: f.fieldName, checked: false }))
       hiddenFields.value.push(...moreHidden)
       hiddenCurrentPage.value = res.data.currentPage
@@ -414,10 +433,52 @@ function onShownDrop(_e: DragEvent, targetIndex: number) {
   const [moved] = list.splice(sourceIndex, 1)
   list.splice(targetIndex, 0, moved)
   shownFields.value = list
+  saveShownFields()
 }
 
 function onShownDragEnd() {
   shownDragIndex.value = null
+}
+
+/** 将当前 shownFields 保存到 /filter/draft，成功后重新拉取 draft 刷新本地 */
+async function saveShownFields() {
+  const d = draftFilter.value
+  if (!d) return
+  // showFieldItemList 直接传字段 ID 字符串数组
+  const showFieldItemList = shownFields.value.map(f => f.key)
+  const newShowField = JSON.stringify({ showFieldItemList })
+  try {
+    const res = await updateFilterDraft({
+      id: d.id,
+      userNo: d.userNo,
+      showField: newShowField,
+    })
+    if (res?.success) {
+      // 更新成功后重新拉取 draft
+      const fresh = await getFilterDraft(d.userNo)
+      if (fresh?.success && fresh.data) {
+        draftFilter.value = fresh.data
+      }
+    }
+  } catch { /* 保存失败静默处理 */ }
+}
+
+/** 未显示字段勾选 → 移到已显示字段 → 保存 */
+function onHiddenFieldCheck(item: FieldOption) {
+  if (!item.checked) return
+  // 从 hiddenFields 移除，加入 shownFields
+  hiddenFields.value = hiddenFields.value.filter(f => f.key !== item.key)
+  shownFields.value.push({ key: item.key, label: item.label, checked: true })
+  saveShownFields()
+}
+
+/** 已显示字段取消勾选 → 移到未显示字段 → 保存 */
+function onShownFieldUncheck(item: FieldOption) {
+  if (item.checked) return
+  // 从 shownFields 移除，加入 hiddenFields
+  shownFields.value = shownFields.value.filter(f => f.key !== item.key)
+  hiddenFields.value.unshift({ key: item.key, label: item.label, checked: false })
+  saveShownFields()
 }
 
 // 工具栏状态
@@ -500,41 +561,43 @@ function buildChildConditionGroups(): ChildConditionGroup[] {
   })
 }
 
-/** 构建完整查询入参 */
+/** 草稿筛选（从 GET /filter/draft 获取，issue/query 入参全部取自此处） */
+const draftFilter = ref<FilterDraft | null>(null)
+
+/** 安全 parse JSON 字符串 */
+function safeParse<T>(str: string | null | undefined, fallback: T): T {
+  if (!str) return fallback
+  try { return JSON.parse(str) as T } catch { return fallback }
+}
+
+/** 构建完整查询入参（全部取自 /filter/draft 返回值，page/pageSize 用本地状态） */
 function buildQueryPayload(): IssueQueryPayload {
-  const logicType = LOGIC_MAP[filterConditions.value[0]?.logic] ?? 'AND'
+  const d = draftFilter.value
+  if (!d) {
+    return {
+      globalFilter: { filter: { logicType: 'AND', isGroupModule: false, condition: null, disable: null, includeObsolete: null, isPass: null, associatedConditions: [], matchAllLinks: false, isDevActivity: null, isSprintBlock: null, isVersionBlock: null, isCustomColumnBlock: null, childConditionGroupList: [] }, isOnlyShowAssociation: false },
+      group: { groupItemList: [], isFollowPreviousGroup: true },
+      layered: { layeredItemList: [], layerType: 'FLAT' },
+      page: currentPage.value,
+      pageSize: pageSize.value,
+      showField: { showFieldItemList: [] },
+      sort: { sortItemList: [] },
+      viewCode: viewCode.value,
+      needShowGroupValues: [],
+      referencedFilter: { filter: null },
+    }
+  }
   return {
-    globalFilter: {
-      filter: {
-        logicType,
-        isGroupModule: false,
-        condition: null,
-        disable: null,
-        includeObsolete: null,
-        isPass: null,
-        associatedConditions: [],
-        matchAllLinks: false,
-        isDevActivity: null,
-        isSprintBlock: null,
-        isVersionBlock: null,
-        isCustomColumnBlock: null,
-        childConditionGroupList: buildChildConditionGroups(),
-      },
-      isOnlyShowAssociation: false,
-    },
-    group: { groupItemList: [], isFollowPreviousGroup: true },
-    layered: { layeredItemList: [], layerType: 'FLAT' },
+    globalFilter: safeParse(d.globalFilter, { filter: null, isOnlyShowAssociation: false }),
+    group: safeParse(d.group, { groupItemList: [], isFollowPreviousGroup: true }),
+    layered: safeParse(d.layered, { layeredItemList: [], layerType: 'FLAT' }),
     page: currentPage.value,
     pageSize: pageSize.value,
-    showField: {
-      showFieldItemList: shownFields.value
-        .filter((f) => f.checked)
-        .map((f) => ({ field: { id: f.key } })),
-    },
-    sort: { sortItemList: sortItemList.value },
-    viewCode: viewCode.value,
-    needShowGroupValues: [],
-    referencedFilter: { filter: null },
+    showField: safeParse(d.showField, { showFieldItemList: [] }),
+    sort: safeParse(d.sort, { sortItemList: [] }),
+    viewCode: d.viewCode ?? viewCode.value,
+    needShowGroupValues: safeParse(d.needShowGroupValues, []),
+    referencedFilter: safeParse(d.referencedFilter, { filter: null }),
   }
 }
 
@@ -564,27 +627,74 @@ const pageSize = ref(50)
 const total = ref(0)
 
 const loading = ref(false)
-const dataList = ref<IssueRow[]>([])
+const dataList = ref<IssueRecord[]>([])
 const rawIssueRecords = ref<IssueRecord[]>([])
 
+/** fieldId → name 映射（仅包含 name 非空的字段），用于列设置抽屉 */
 const fieldNameMap = computed<Record<string, string>>(() => {
   const m: Record<string, string> = {}
   for (const rec of rawIssueRecords.value) {
     if (!rec.issueField) continue
     for (const f of rec.issueField) {
-      if (f.id && f.name != null && !(f.id in m)) m[f.id] = String(f.name)
+      if (!f.id) continue
+      const name = f.name != null ? String(f.name).trim() : ''
+      if (name && !(f.id in m)) m[f.id] = name
     }
   }
   return m
 })
-function fieldLabel(fieldId: string, fallback: string): string {
-  const v = fieldNameMap.value[fieldId]
-  return (v && v.trim()) || fallback
+
+/** 动态表格列：取自 issueField，name 为空则不展示该列 */
+const tableColumns = computed(() => {
+  const m: Record<string, { id: string; name: string; type?: string }> = {}
+  for (const rec of rawIssueRecords.value) {
+    if (!rec.issueField) continue
+    for (const f of rec.issueField) {
+      if (!f.id) continue
+      const name = f.name != null ? String(f.name).trim() : ''
+      if (!name) continue
+      if (!(f.id in m)) m[f.id] = { id: f.id, name, type: f.type }
+    }
+  }
+  return Object.values(m)
+})
+
+/** 从 issueField 取单元格显示值 */
+function getCellValue(rec: IssueRecord, fieldId: string): string {
+  const f = rec.issueField?.find(it => it.id === fieldId)
+  if (!f) return ''
+  if (f.exportValue != null) return String(f.exportValue)
+  const v = f.value
+  if (v == null) return ''
+  if (typeof v === 'object') {
+    const obj = v as Record<string, unknown>
+    return String(obj.name ?? obj.id ?? '')
+  }
+  return String(v)
 }
 
-function statusLabel(s: string) {
-  const map: Record<string, string> = { '1': '待处理', '2': '进行中', '3': '已完成' }
-  return map[s] ?? s
+/** 取 issueKey（用于行标识和详情跳转） */
+function getIssueKey(rec: IssueRecord): string {
+  const f = rec.issueField?.find(it => it.id === 'issuekey')
+  return f ? String(f.value ?? '') : ''
+}
+
+/** 取 status id（用于 tag 颜色） */
+function getStatusId(rec: IssueRecord): string {
+  const f = rec.issueField?.find(it => it.id === 'status')
+  if (!f || !f.value) return ''
+  const v = f.value
+  if (typeof v === 'object') return String((v as Record<string, unknown>).id ?? '')
+  return String(v)
+}
+
+/** 取 priority id（用于 tag 颜色） */
+function getPriorityId(rec: IssueRecord): string {
+  const f = rec.issueField?.find(it => it.id === 'priority')
+  if (!f || !f.value) return ''
+  const v = f.value
+  if (typeof v === 'object') return String((v as Record<string, unknown>).id ?? '')
+  return String(v)
 }
 
 function statusColor(s: string) {
@@ -592,99 +702,9 @@ function statusColor(s: string) {
   return map[s] ?? 'default'
 }
 
-function priorityLabel(p: string) {
-  const map: Record<string, string> = { '1': '高', '2': '中', '3': '低' }
-  return map[p] ?? p
-}
-
 function priorityColor(p: string) {
   const map: Record<string, string> = { '1': 'red', '2': 'orange', '3': 'default' }
   return map[p] ?? 'default'
-}
-
-function typeLabel(t: string) {
-  const map: Record<string, string> = { '10001': '需求', '10002': '任务', '10003': '缺陷', '10004': '其他' }
-  return map[t] ?? t
-}
-
-// ---------- 单元格编辑 ----------
-const priorityOptions = [
-  { value: '1', label: '高' },
-  { value: '2', label: '中' },
-  { value: '3', label: '低' },
-]
-const statusOptions = [
-  { value: '1', label: '待处理' },
-  { value: '2', label: '进行中' },
-  { value: '3', label: '已完成' },
-]
-const typeOptions = [
-  { value: '10001', label: '需求' },
-  { value: '10002', label: '任务' },
-  { value: '10003', label: '缺陷' },
-  { value: '10004', label: '其他' },
-]
-
-// 下拉选择变更时同步 name 字段
-function onSelectChange(row: IssueRow, idField: string, nameField: string, val: string, options: { value: string; label: string }[]) {
-  ;(row as unknown as Record<string, unknown>)[idField] = val
-  const o = options.find(i => i.value === val)
-  ;(row as unknown as Record<string, unknown>)[nameField] = o ? o.label : ''
-}
-
-// 编辑前的快照
-const editBackup = ref<{ issueKey: string; field: string; value: unknown } | null>(null)
-
-function onEditActived(params: { row: IssueRow; column: { field: string } }) {
-  const { row, column } = params
-  editBackup.value = {
-    issueKey: row.issueKey,
-    field: column.field,
-    value: (row as unknown as Record<string, unknown>)[column.field],
-  }
-}
-
-function onEditClosed(params: { row: IssueRow; column: { field: string } }) {
-  const { row, column } = params
-  const field = column.field
-  if (!editBackup.value || editBackup.value.issueKey !== row.issueKey || editBackup.value.field !== field) return
-  const oldVal = editBackup.value.value
-  const newVal = (row as unknown as Record<string, unknown>)[field]
-  editBackup.value = null
-  if (oldVal === newVal) return
-  // 调后端保存
-  patchIssue(row.issueKey, { [field]: newVal })
-    .then(() => message.success('已保存'))
-    .catch(() => message.error('保存失败'))
-}
-
-// 将后端 issueField 数组拍平为表格行对象
-function flattenIssue(rec: IssueRecord): IssueRow {
-  const m: Record<string, unknown> = {}
-  rec.issueField?.forEach((f) => { m[f.id] = f.value })
-  const status = (m.status || {}) as Record<string, unknown>
-  const priority = (m.priority || {}) as Record<string, unknown>
-  const issuetype = (m.issuetype || {}) as Record<string, unknown>
-  const assignee = (m.assignee || {}) as Record<string, unknown>
-  const creator = (m.creator || {}) as Record<string, unknown>
-  const project = (m.project || {}) as Record<string, unknown>
-  return {
-    issueKey: String(m.issuekey ?? ''),
-    summary: String(m.summary ?? ''),
-    description: String(m.description ?? ''),
-    statusId: String(status.id ?? ''),
-    statusName: String(status.name ?? ''),
-    priorityId: String(priority.id ?? ''),
-    priorityName: String(priority.pname ?? ''),
-    issuetypeId: String(issuetype.id ?? ''),
-    issuetypeName: String(issuetype.name ?? ''),
-    assigneeName: String(assignee.userEnName || assignee.userCoAccount || ''),
-    creatorName: String(creator.userEnName || creator.userCoAccount || ''),
-    createdAt: String(m.createtime ?? m.created ?? m.createTime ?? ''),
-    updatedAt: String(m.updatetime ?? m.updated ?? m.updateTime ?? ''),
-    projectName: String(project.name ?? ''),
-    parentIssueKey: (m.parentIssueKey as string | null) ?? null,
-  }
 }
 
 async function fetchIssues() {
@@ -694,7 +714,7 @@ async function fetchIssues() {
     const info = res?.data
     if (info && info.list) {
       rawIssueRecords.value = info.list
-      dataList.value = info.list.map(flattenIssue)
+      dataList.value = info.list.map(rec => ({ ...rec, issueKey: getIssueKey(rec) }))
       total.value = info.total ?? 0
     } else {
       rawIssueRecords.value = []
@@ -709,11 +729,11 @@ async function fetchIssues() {
   }
 }
 
-function handleMenuClick(e: { key: string }, row: IssueRow) {
+function handleMenuClick(e: { key: string }, row: IssueRecord) {
   handleAction(e.key, row)
 }
 
-function handleAction(key: string, row: IssueRow) {
+function handleAction(key: string, row: IssueRecord) {
   switch (key) {
     case 'edit':
       console.log('编辑:', row)
@@ -764,7 +784,16 @@ watch([currentPage, pageSize], () => {
 })
 
 onMounted(async () => {
-  // 先加载字段配置（shownFields），再查询事项，确保 showField 入参正确
+  // 先获取草稿筛选（showField 决定已展示字段，其他字段决定 issue/query 入参）
+  try {
+    const res = await getFilterDraft('10284941')
+    if (res?.success && res.data) {
+      draftFilter.value = res.data
+      currentPage.value = res.data.page || 1
+      pageSize.value = res.data.pageSize || 50
+    }
+  } catch { /* 草稿获取失败时走兜底空筛选 */ }
+  // 再加载字段配置（shownFields 从 draft 的 showField 解析）
   await fetchAvailableFields()
   shownFieldsSnapshot = JSON.stringify(shownFields.value)
   filterSnapshot = JSON.stringify(filterConditions.value)

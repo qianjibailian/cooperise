@@ -54,7 +54,7 @@ export interface TemplatePageData {
 /** 后端 issueField 单个字段项 */
 export interface IssueFieldItem {
   id: string
-  name: string
+  name: string | null
   type?: string
   value: unknown
   exportValue?: unknown
@@ -182,14 +182,9 @@ export interface ReferencedFilter {
   filter: FilterBody | null
 }
 
-/** 显示字段项 */
-export interface ShowFieldItem {
-  field: FilterFieldRef
-}
-
 /** 显示字段 */
 export interface ShowField {
-  showFieldItemList: ShowFieldItem[]
+  showFieldItemList: string[]
 }
 
 /** 排序项 */
@@ -227,6 +222,27 @@ export interface IssueQueryPayload {
   viewCode?: string
   needShowGroupValues?: unknown[]
   referencedFilter: ReferencedFilter
+}
+
+// ========== Filter Draft（GET /filter/draft） ==========
+
+/** GET /filter/draft 返回的草稿筛选（JSON 字符串字段需 parse 后使用） */
+export interface FilterDraft {
+  id: number
+  userNo: string
+  draftName: string
+  viewCode: string | null
+  page: number
+  pageSize: number
+  globalFilter: string
+  group: string
+  layered: string
+  showField: string
+  sort: string | null
+  needShowGroupValues: string
+  referencedFilter: string
+  createdTime: string
+  updatedTime: string
 }
 
 // ========== User 分页搜索（POST /user/query） ==========

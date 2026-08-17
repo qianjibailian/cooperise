@@ -74,17 +74,19 @@
                         <span v-if="field.required" class="form-item-required-mark">*</span>
                       </template>
                       <div class="form-field-content">
-                        <!-- ===== 旧 type 分支（Jira 枚举风格） ===== -->
-                        <a-input v-if="field.type === 'TEXT_BOX_SINGLE_LINE'" v-model:value="newFormData[field.id]" :placeholder="field.description || ''" :disabled="!field.editable" style="width: 100%" />
-                        <a-textarea v-if="field.type === 'RICH_TEXT' || field.type === 'TEXT_BOX_MULTILINE'" v-model:value="newFormData[field.id]" :placeholder="field.description || ''" :rows="4" :disabled="!field.editable" style="width: 100%" />
-                        <a-input-number v-if="field.type === 'NUMERIC_FIELD'" v-model:value="newFormData[field.id]" :placeholder="field.description || ''" :disabled="!field.editable" style="width: 100%" />
-                        <a-date-picker v-if="field.type === 'DATE_PICKER'" v-model:value="newFormData[field.id]" :placeholder="field.description || ''" :disabled="!field.editable" style="width: 100%" />
-                        <a-date-picker v-if="field.type === 'DATE_TIME_PICKER'" v-model:value="newFormData[field.id]" show-time :placeholder="field.description || ''" :disabled="!field.editable" style="width: 100%" />
-                        <a-select v-if="field.type === 'SELECT_LIST_SINGLE' || field.type === 'SPRINT_FIELD'" v-model:value="newFormData[field.id]" :placeholder="field.description || '请选择'" :disabled="!field.editable" allow-clear style="width: 100%">
+                        <a-input v-if="field.type === 'INPUT_TEXT'" v-model:value="newFormData[field.id]" :placeholder="field.description || '请输入'" :disabled="!field.editable" style="width: 100%" />
+                        <a-input-number v-if="field.type === 'INPUT_NUMBER'" v-model:value="newFormData[field.id]" :placeholder="field.description || '请输入数字'" :disabled="!field.editable" style="width: 100%" />
+                        <a-date-picker v-if="field.type === 'DATE'" v-model:value="newFormData[field.id]" :placeholder="field.description || '请选择日期'" :disabled="!field.editable" style="width: 100%" />
+                        <a-date-picker v-if="field.type === 'DATETIME'" v-model:value="newFormData[field.id]" show-time :placeholder="field.description || '请选择日期时间'" :disabled="!field.editable" style="width: 100%" />
+                        <a-select v-if="field.type === 'SINGLE_SELECT'" v-model:value="newFormData[field.id]" :placeholder="field.description || '请选择'" :disabled="!field.editable" allow-clear style="width: 100%">
                           <a-select-option v-for="opt in getFieldOptions(field)" :key="opt.value" :value="opt.value" :disabled="opt.disabled">{{ opt.name }}</a-select-option>
                         </a-select>
+                        <a-select v-if="field.type === 'MULTI_SELECT'" v-model:value="newFormData[field.id]" mode="multiple" :placeholder="field.description || '请选择'" :disabled="!field.editable" allow-clear style="width: 100%">
+                          <a-select-option v-for="opt in getFieldOptions(field)" :key="opt.value" :value="opt.value" :disabled="opt.disabled">{{ opt.name }}</a-select-option>
+                        </a-select>
+                        <a-cascader v-if="field.type === 'CASCADER'" v-model:value="newFormData[field.id]" :options="getFieldOptions(field)" :placeholder="field.description || '请选择'" :disabled="!field.editable" :field-names="{ label: 'name', value: 'value', children: 'children' }" allow-clear style="width: 100%" />
                         <a-select
-                          v-if="field.type === 'SELECT_USER_SINGLE'"
+                          v-if="field.type === 'USER_SINGLE_SELECT'"
                           v-model:value="newFormData[field.id]"
                           show-search
                           :filter="false"
@@ -97,46 +99,12 @@
                           :loading="memberLoadingMap[field.id] || false"
                           @search="(kw: string) => handleMemberSearch(field.id, kw)"
                         />
-                        <a-cascader v-if="field.type === 'SELECT_LIST_CASCADING'" v-model:value="newFormData[field.id]" :options="getFieldOptions(field)" :placeholder="field.description || '请选择'" :disabled="!field.editable" :field-names="{ label: 'name', value: 'value', children: 'children' }" allow-clear style="width: 100%" />
-                        <a-checkbox-group v-if="field.type === 'CHECKBOX'" v-model:value="newFormData[field.id]" :disabled="!field.editable">
-                          <a-checkbox v-for="opt in getFieldOptions(field)" :key="opt.value" :value="opt.value" :disabled="opt.disabled" style="margin-right: 16px; margin-bottom: 8px">{{ opt.name }}</a-checkbox>
-                        </a-checkbox-group>
-                        <a-select v-if="field.type === 'SELECT_LIST_MULTIPLE' || field.type === 'MULTI_SELECT'" v-model:value="newFormData[field.id]" :placeholder="field.description || '请选择'" :disabled="!field.editable" mode="multiple" allow-clear style="width: 100%">
-                          <a-select-option v-for="opt in getFieldOptions(field)" :key="opt.value" :value="opt.value" :disabled="opt.disabled">{{ opt.name }}</a-select-option>
-                        </a-select>
-                        <a-radio-group v-if="field.type === 'RADIO'" v-model:value="newFormData[field.id]" :disabled="!field.editable">
-                          <a-radio v-for="opt in getFieldOptions(field)" :key="opt.value" :value="opt.value" :disabled="opt.disabled">{{ opt.name }}</a-radio>
-                        </a-radio-group>
-                        <a-upload v-if="field.type === 'ATTACHMENT_FIELD'" :disabled="!field.editable">
-                          <a-button>点击上传</a-button>
-                        </a-upload>
-                        <a-input v-if="field.type === 'LINKS_FIELD'" v-model:value="newFormData[field.id]" placeholder="输入关联事项编号" :disabled="!field.editable" style="width: 100%" />
-
-                        <!-- ===== 新 type 分支（componentKey 风格，configSchema 作为选项源） ===== -->
-                        <a-input v-if="field.type === 'input_text'" v-model:value="newFormData[field.id]" :placeholder="field.description || '请输入'" :disabled="!field.editable" style="width: 100%" />
-                        <a-textarea v-if="field.type === 'textarea'" v-model:value="newFormData[field.id]" :placeholder="field.description || '请输入'" :rows="4" :disabled="!field.editable" style="width: 100%" />
-                        <a-input-number v-if="field.type === 'input_number'" v-model:value="newFormData[field.id]" :placeholder="field.description || '请输入数字'" :disabled="!field.editable" style="width: 100%" />
-                        <a-date-picker v-if="field.type === 'date_picker'" v-model:value="newFormData[field.id]" :placeholder="field.description || '请选择日期'" :disabled="!field.editable" style="width: 100%" />
-                        <a-date-picker v-if="field.type === 'datetime_picker'" v-model:value="newFormData[field.id]" show-time :placeholder="field.description || '请选择日期时间'" :disabled="!field.editable" style="width: 100%" />
-                        <a-time-picker v-if="field.type === 'time'" v-model:value="newFormData[field.id]" :placeholder="field.description || '请选择时间'" :disabled="!field.editable" style="width: 100%" />
-                        <a-select v-if="field.type === 'select_single'" v-model:value="newFormData[field.id]" :placeholder="field.description || '请选择'" :disabled="!field.editable" allow-clear style="width: 100%">
-                          <a-select-option v-for="opt in parseFieldOptions(field)" :key="opt.value" :value="opt.value">{{ opt.label }}</a-select-option>
-                        </a-select>
-                        <a-select v-if="field.type === 'select_multiple'" v-model:value="newFormData[field.id]" mode="multiple" :placeholder="field.description || '请选择'" :disabled="!field.editable" allow-clear style="width: 100%">
-                          <a-select-option v-for="opt in parseFieldOptions(field)" :key="opt.value" :value="opt.value">{{ opt.label }}</a-select-option>
-                        </a-select>
-                        <a-radio-group v-if="field.type === 'radio_group'" v-model:value="newFormData[field.id]" :disabled="!field.editable">
-                          <a-radio v-for="opt in parseFieldOptions(field)" :key="opt.value" :value="opt.value">{{ opt.label }}</a-radio>
-                        </a-radio-group>
-                        <a-checkbox-group v-if="field.type === 'checkbox_group'" v-model:value="newFormData[field.id]" :disabled="!field.editable">
-                          <a-checkbox v-for="opt in parseFieldOptions(field)" :key="opt.value" :value="opt.value" style="margin-right: 16px; margin-bottom: 8px">{{ opt.label }}</a-checkbox>
-                        </a-checkbox-group>
-                        <a-cascader v-if="field.type === 'cascader'" v-model:value="newFormData[field.id]" :options="parseFieldOptions(field)" :placeholder="field.description || '请选择'" :disabled="!field.editable" :field-names="{ label: 'label', value: 'value', children: 'children' }" allow-clear style="width: 100%" />
                         <a-select
-                          v-if="field.type === 'member'"
+                          v-if="field.type === 'USER_MULTI_SELECT'"
                           v-model:value="newFormData[field.id]"
                           show-search
                           :filter="false"
+                          mode="multiple"
                           :placeholder="field.description || '搜索姓名/拼音/账号'"
                           :disabled="!field.editable"
                           allow-clear
@@ -146,7 +114,7 @@
                           :loading="memberLoadingMap[field.id] || false"
                           @search="(kw: string) => handleMemberSearch(field.id, kw)"
                         />
-                        <div v-if="field.type === 'rich_text'" style="border: 1px solid #d9d9d9; border-radius: 6px; width: 100%; position: relative; z-index: 0">
+                        <div v-if="field.type === 'RICH_TEXT'" style="border: 1px solid #d9d9d9; border-radius: 6px; width: 100%; position: relative; z-index: 0">
                           <Toolbar v-if="richEditorInstances[field.id]" :editor="richEditorInstances[field.id]" :default-config="{}" mode="default" />
                           <Editor
                             v-model="newFormData[field.id]"
@@ -156,18 +124,9 @@
                             @on-created="(editor: IDomEditor) => handleRichEditorCreated(field.id, editor)"
                           />
                         </div>
-                        <a-upload v-if="field.type === 'image'" list-type="picture-card" :before-upload="() => false" :max-count="9" :disabled="!field.editable">
-                          <div><PlusOutlined /><div style="margin-top: 8px">上传图片</div></div>
-                        </a-upload>
-                        <a-upload v-if="field.type === 'upload'" :before-upload="() => false" :max-count="9" :disabled="!field.editable">
-                          <a-button><UploadOutlined /> 点击上传</a-button>
-                        </a-upload>
-                        <a-input v-if="field.type === 'location'" v-model:value="newFormData[field.id]" :placeholder="field.description || '请选择位置'" :disabled="!field.editable" readonly style="width: 100%">
-                          <template #prefix><EnvironmentOutlined /></template>
-                        </a-input>
-                        <a-input v-if="field.type === 'link'" v-model:value="newFormData[field.id]" :placeholder="field.description || '请输入链接'" :disabled="!field.editable" style="width: 100%">
-                          <template #prefix><LinkOutlined /></template>
-                        </a-input>
+                        <span v-if="field.type === 'DISPLAY_TEXT'" class="display-text-value">
+                          {{ newFormData[field.id] != null ? String(newFormData[field.id]) : '' }}
+                        </span>
                         <a-input v-if="!field.type" v-model:value="newFormData[field.id]" :placeholder="field.description || ''" :disabled="!field.editable" style="width: 100%" />
                       </div>
                     </a-form-item>
@@ -188,9 +147,6 @@ import { watch } from 'vue'
 import { message } from 'ant-design-vue'
 import { ref, reactive } from 'vue'
 import dayjs from 'dayjs'
-import {
-  PlusOutlined, UploadOutlined, EnvironmentOutlined, LinkOutlined,
-} from '@ant-design/icons-vue'
 import { Editor, Toolbar } from '@wangeditor/editor-for-vue'
 import type { IDomEditor, IEditorConfig } from '@wangeditor/editor'
 import '@wangeditor/editor/dist/css/style.css'
@@ -198,7 +154,6 @@ import { createIssue, getAvailableFieldOptions, queryUsers, queryTemplates, getT
 import type {
   CustomFieldOptionReq,
   CustomFieldOptionItem,
-  CustomFieldOptionResponseItem,
   CustomFieldJOption,
   CreateMetaField,
   CreateIssueInputField,
@@ -273,16 +228,14 @@ const templateCache = reactive<Record<string, { issue_type_id?: number; tabs: { 
 /** 将后端 Tab.widgetData 的每个 widget 映射为 NewIssueFormModal 需要的 issueField（CreateMetaField 风格） */
 function widgetToIssueField(w: any, sequence: number): CreateMetaField & { configSchema?: unknown } {
   const fieldId = String(w.field ?? w.fieldId ?? w.id)
-  const componentKey = (w.componentKey ?? w.type ?? 'input_text').toString()
   const title = String(w.title ?? fieldId)
   const required = !!w.required
   const rawOpts = Array.isArray(w.options?.options) ? w.options.options : []
-  // 选项：按 CreateMetaField 的 exportValue 约定存放，也放在 configSchema 里供 parseFieldOptions 使用
   const configSchema = rawOpts
   return {
     id: fieldId,
     name: title,
-    type: componentKey,
+    type: String(w.type ?? 'INPUT_TEXT'),
     jiraType: null,
     value: null,
     editable: true,
@@ -324,10 +277,9 @@ function applyTemplateToForm(tplId: string | number) {
     const issueFields = flat.map((w, i) => widgetToIssueField(w, i))
     tabs.push({ title: t.name || `表单${idx + 1}`, sequence: t.sequence ?? idx, issueFields })
     issueFields.forEach(f => {
-      const isDateLike = /DATE_PICKER|DATE_TIME_PICKER|date_picker|datetime_picker/i.test(f.type)
-      if (f.type === 'rich_text' || f.type === 'RICH_TEXT') {
+      if (f.type === 'RICH_TEXT') {
         form[f.id] = ''
-      } else if (isDateLike && f.value && typeof f.value === 'string') {
+      } else if ((f.type === 'DATE' || f.type === 'DATETIME') && f.value && typeof f.value === 'string') {
         form[f.id] = dayjs(f.value)
       } else {
         form[f.id] = f.value ?? null
@@ -347,13 +299,9 @@ function applyTemplateToForm(tplId: string | number) {
 /** 根据表单元数据里的字段 type 判断是否需要走自定义字段选项接口 */
 /** 需要拉取枚举选项的组件 key（小写，与 queryCreateMeta 返回的 type 对应） */
 const OPTION_WIDGET_TYPE_SET = new Set([
-  'cascader',
-  'select',
-  'select_single',
-  'select_multiple',
-  'multi_select',
-  'radio',
-  'checkbox',
+  'CASCADER',
+  'SINGLE_SELECT',
+  'MULTI_SELECT',
 ])
 
 /**
@@ -446,7 +394,7 @@ async function loadCustomFieldOptions(
   const reqs: CustomFieldOptionReq[] = []
   for (const tab of tabs) {
     for (const f of tab.issueFields) {
-      const widgetType = (f.type ?? '').toString().toLowerCase()
+      const widgetType = String(f.type ?? '').toUpperCase()
       if (!OPTION_WIDGET_TYPE_SET.has(widgetType)) continue
       const customId = String(f.id ?? f.fieldId ?? '')
       if (!customId) continue
@@ -584,7 +532,7 @@ function postLoadAfterBuildTabs() {
     const needPrefetch: string[] = []
     for (const tab of newFormTabs.value) {
       for (const f of tab.issueFields) {
-        if ((f.type === 'SELECT_USER_SINGLE' || f.type === 'member') && f.value) {
+        if ((f.type === 'USER_SINGLE_SELECT' || f.type === 'USER_MULTI_SELECT') && f.value) {
           needPrefetch.push(f.id)
         }
       }
@@ -647,10 +595,9 @@ async function loadCreateMeta() {
       const form: Record<string, any> = {}
       for (const tab of tabs) {
         for (const f of tab.issueFields) {
-          const isDateLike = /DATE_PICKER|DATE_TIME_PICKER|date_picker|datetime_picker/i.test(f.type)
-          if (f.type === 'rich_text' || f.type === 'RICH_TEXT') {
+          if (f.type === 'RICH_TEXT') {
             form[f.id] = ''
-          } else if (isDateLike && f.value && typeof f.value === 'string') {
+          } else if ((f.type === 'DATE' || f.type === 'DATETIME') && f.value && typeof f.value === 'string') {
             form[f.id] = dayjs(f.value)
           } else {
             form[f.id] = f.value ?? null
@@ -710,23 +657,6 @@ function getFieldOptions(field: any): CustomFieldOptionItem[] {
     if (normalized.length) return normalized
   }
   return []
-}
-
-/**
- * 解析字段的 configSchema（JSON 字符串或数组）为选项数组（保留旧兼容）
- * 已被 getFieldOptions 取代，模板/新 type 分支统一用 getFieldOptions
- * 递归把 CustomFieldOptionItem（name/value/children）映射为 cascader 需要的 {label,value,children}
- */
-function parseFieldOptions(field: any): any[] {
-  const mapItem = (o: CustomFieldOptionItem): any => ({
-    label: o.name,
-    value: o.value,
-    disabled: o.disabled,
-    children: Array.isArray(o.children) && o.children.length
-      ? o.children.map(mapItem)
-      : undefined,
-  })
-  return getFieldOptions(field).map(mapItem)
 }
 
 // ---- member 类型：远程搜索用户（按 field id 独立状态） ----
@@ -850,34 +780,54 @@ function buildCascadingValue(raw: unknown): CreateIssueCascadingValue | undefine
 
 /**
  * 将表单值按 field.type 转为 POST /issue/create 期望的 value 结构
+ * SINGLE_SELECT / MULTI_SELECT / USER_SINGLE_SELECT / USER_MULTI_SELECT 传整个选项对象
  */
 function buildFieldValue(field: CreateMetaField, raw: unknown): unknown {
-  const type = (field.type ?? '').toString()
-  const typeUpper = type.toUpperCase()
+  const type = String(field.type ?? '')
   if (isEmptyValue(raw)) {
-    return type === 'input_number' || typeUpper === 'NUMERIC_FIELD' ? null : undefined
+    return type === 'INPUT_NUMBER' ? null : undefined
   }
   // 级联字段：特殊结构嵌套 optionId + childJOptions
-  if (type === 'cascader' || typeUpper === 'SELECT_LIST_CASCADING') {
+  if (type === 'CASCADER') {
     return buildCascadingValue(raw)
   }
   // 数字字段：保持 number 类型
-  if (type === 'input_number' || typeUpper === 'NUMERIC_FIELD') {
+  if (type === 'INPUT_NUMBER') {
     if (typeof raw === 'number') return raw
     const n = Number(raw)
     return Number.isFinite(n) ? n : raw
   }
-  // 多选/复选框：一般已经是 string[]，直接返回
-  if (
-    type === 'select_multiple' ||
-    type === 'checkbox_group' ||
-    typeUpper === 'SELECT_LIST_MULTIPLE' ||
-    typeUpper === 'CHECKBOX' ||
-    typeUpper === 'MULTI_SELECT'
-  ) {
-    return raw
+  // 单选下拉：传 { optionId, optionName }
+  if (type === 'SINGLE_SELECT') {
+    const opts = getFieldOptions(field)
+    const found = opts.find(o => String(o.value) === String(raw))
+    return found ? { optionId: found.value, optionName: found.name } : { optionId: String(raw), optionName: String(raw) }
   }
-  // 单选/用户单选/日期/文本等：保持原值（日期组件返回 Dayjs；后端如要求字符串可在此做 format）
+  // 多选下拉：传 [{ optionId, optionName }, ...]
+  if (type === 'MULTI_SELECT') {
+    const opts = getFieldOptions(field)
+    const arr = Array.isArray(raw) ? raw : [raw]
+    return arr.map((v: unknown) => {
+      const found = opts.find(o => String(o.value) === String(v))
+      return found ? { optionId: found.value, optionName: found.name } : { optionId: String(v), optionName: String(v) }
+    })
+  }
+  // 用户单选：传整个 UserItem
+  if (type === 'USER_SINGLE_SELECT') {
+    const opts = memberOptionsMap[String(field.id)] || []
+    const found = opts.find(u => String(u.userNo) === String(raw))
+    return found || { userNo: String(raw) }
+  }
+  // 用户多选：传 UserItem 数组
+  if (type === 'USER_MULTI_SELECT') {
+    const opts = memberOptionsMap[String(field.id)] || []
+    const arr = Array.isArray(raw) ? raw : [raw]
+    return arr.map((v: unknown) => {
+      const found = opts.find(u => String(u.userNo) === String(v))
+      return found || { userNo: String(v) }
+    })
+  }
+  // 文本/日期/富文本等：保持原值
   return raw
 }
 
@@ -912,7 +862,7 @@ function buildCreateIssuePayload(): CreateIssuePayload {
     const value = buildFieldValue(field, raw)
     inputFields.push({
       id,
-      type: (field.type ?? '').toString(),
+      type: String(field.type ?? ''),
       value,
     })
   }
@@ -923,6 +873,8 @@ function buildCreateIssuePayload(): CreateIssuePayload {
 async function handleNewFormSubmit() {
   for (const tab of newFormTabs.value) {
     for (const f of tab.issueFields) {
+      // 展示文本不参与必填校验
+      if (f.type === 'DISPLAY_TEXT') continue
       if (f.required) {
         const val = newFormData.value[f.id]
         if (isEmptyValue(val)) {
@@ -1370,6 +1322,14 @@ async function handleNewFormSubmit() {
   margin-left: 2px;
   font-family: -apple-system, "SF Pro Text", "PingFang SC", "Microsoft YaHei", sans-serif;
   font-weight: 600;
+}
+.display-text-value {
+  display: inline-block;
+  padding: 4px 0;
+  color: #262626;
+  font-size: 14px;
+  line-height: 1.6;
+  word-break: break-word;
 }
 
 .new-form-modal .ant-form-item {

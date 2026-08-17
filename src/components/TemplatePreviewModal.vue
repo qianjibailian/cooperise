@@ -123,12 +123,9 @@ import { previewTemplateForm, previewTemplateTable } from '@/api/faiz'
 import {
   Form as AForm, FormItem as AFormItem,
   Input as AInput, Textarea as ATextarea, InputNumber as AInputNumber,
-  DatePicker as ADatePicker, TimePicker as ATimePicker,
+  DatePicker as ADatePicker,
   Select as ASelect, SelectOption as ASelectOption,
-  RadioGroup as ARadioGroup, Radio as ARadio,
-  CheckboxGroup as ACheckboxGroup, Checkbox as ACheckbox,
-  Cascader as ACascader, Switch as ASwitch,
-  Upload as AUpload, Button as AButton,
+  Cascader as ACascader,
 } from 'ant-design-vue'
 
 /** 预览模板入参：父组件可以直接传后端原始 record，widgetData 允许是 JSON 字符串或数组 */
@@ -263,19 +260,23 @@ function toCascaderOpts(w: any): any[] {
   return walk(opts)
 }
 
-/** 根据 componentKey 返回编辑控件类型 */
+/** 根据 widget.type 返回编辑控件类型 */
 function widgetEditType(w: any): string {
-  const k = String(w?.componentKey ?? w?.type ?? '').toLowerCase()
-  if (['input_number', 'numeric_field'].includes(k)) return 'number'
-  if (['datetime_picker', 'date_time_picker'].includes(k)) return 'datetime'
-  if (['date_picker', 'date'].includes(k)) return 'date'
-  if (['time', 'time_picker'].includes(k)) return 'time'
-  if (['cascader', 'select_list_cascading'].includes(k)) return 'cascader'
-  if (['select_multiple', 'select_list_multiple', 'multi_select', 'checkbox_group', 'checkbox'].includes(k)) return 'multi-select'
-  if (['select_single', 'select_list_single', 'sprint_field', 'radio_group', 'radio', 'member', 'select_user_single', 'select_user_multiple'].includes(k)) return 'select'
-  if (['switch', 'boolean'].includes(k)) return 'switch'
-  if (['textarea', 'rich_text', 'text_box_multiline'].includes(k)) return 'textarea'
-  return 'text'
+  const k = String(w?.type ?? '').toUpperCase()
+  switch (k) {
+    case 'DISPLAY_TEXT': return 'text'
+    case 'INPUT_NUMBER': return 'number'
+    case 'DATETIME': return 'datetime'
+    case 'DATE': return 'date'
+    case 'CASCADER': return 'cascader'
+    case 'MULTI_SELECT': return 'multi-select'
+    case 'SINGLE_SELECT':
+    case 'USER_SINGLE_SELECT':
+    case 'USER_MULTI_SELECT':
+      return 'select'
+    case 'RICH_TEXT': return 'textarea'
+    default: return 'text'
+  }
 }
 
 /** 新增一行空数据 */
@@ -364,7 +365,7 @@ watch(previewMode, async (mode) => {
 
 // ============================================================
 // NativeFormPreview：基于 widgetData 真实字段渲染 Ant Design 表单控件
-//  - 类型判断以 componentKey 为准（与新建弹窗 field.type 分支保持一致）
+//  - 类型判断以 widget.type 为准（大写枚举）
 //  - 选项读取 options.options（级联则递归 children）
 //  - 必填直接用 widget.required
 // ============================================================
@@ -405,116 +406,70 @@ const NativeFormPreview = defineComponent({
         )
       }
       const field = String(w.field)
-      const componentKey = (w.componentKey ?? w.type ?? '').toString()
+      const type = String(w.type ?? '').toUpperCase()
       const val = p.modelValue?.[field]
       const title = w.title ?? field
       const required = !!w.required
       const placeholder = w.options?.placeholder ?? (
-        /select|radio|checkbox|cascader|member|upload|image|switch|date|time/.test(componentKey)
+        /SINGLE_SELECT|MULTI_SELECT|CASCADER|USER_SINGLE_SELECT|USER_MULTI_SELECT|DATE|DATETIME/.test(type)
           ? `请选择${title}`
           : `请输入${title}`
       )
       const rawOpts = (w.options?.options as any[]) || []
-      const multiple = !!w.options?.multiple
 
       let ctrl: any
-      switch (componentKey) {
-        case 'textarea':
+      switch (type) {
+        case 'DISPLAY_TEXT':
+          ctrl = h('span', { style: { display: 'inline-block', padding: '4px 0', color: '#262626', fontSize: '14px', lineHeight: 1.6, wordBreak: 'break-word' } }, val != null ? String(val) : '')
+          break
         case 'RICH_TEXT':
-        case 'TEXT_BOX_MULTILINE':
           ctrl = h(ATextarea, { value: val ?? undefined, 'onUpdate:value': (v: any) => update(field, v), placeholder, rows: 4, style: { width: '100%' } })
           break
-        case 'input_number':
-        case 'NUMERIC_FIELD':
+        case 'INPUT_NUMBER':
           ctrl = h(AInputNumber, { value: val ?? undefined, 'onUpdate:value': (v: any) => update(field, v), placeholder, style: { width: '100%' } })
           break
-        case 'date_picker':
-        case 'DATE_PICKER':
+        case 'DATE':
           ctrl = h(ADatePicker, { value: val ?? undefined, 'onUpdate:value': (v: any) => update(field, v), placeholder, style: { width: '100%' } })
           break
-        case 'datetime_picker':
-        case 'DATE_TIME_PICKER':
+        case 'DATETIME':
           ctrl = h(ADatePicker, { value: val ?? undefined, 'onUpdate:value': (v: any) => update(field, v), placeholder, showTime: true, style: { width: '100%' } })
           break
-        case 'time':
-          ctrl = h(ATimePicker, { value: val ?? undefined, 'onUpdate:value': (v: any) => update(field, v), placeholder, style: { width: '100%' } })
-          break
-        case 'select_single':
-        case 'SELECT_LIST_SINGLE':
-        case 'SPRINT_FIELD':
-        case 'radio_group':
-        case 'RADIO': {
+        case 'SINGLE_SELECT': {
           const options = rawOpts.filter(Boolean).map((o) => ({ label: optLabel(o), value: optValue(o), disabled: !!o.disabled || !!o.obsolete }))
-          if (componentKey === 'RADIO' || componentKey === 'radio_group') {
-            ctrl = h(ARadioGroup, { value: val ?? undefined, 'onUpdate:value': (v: any) => update(field, v) }, {
-              default: () => options.map((o) => h(ARadio, { key: String(o.value), value: o.value, disabled: o.disabled }, () => o.label)),
-            })
-          } else {
-            ctrl = h(ASelect, { value: val ?? undefined, 'onUpdate:value': (v: any) => update(field, v), placeholder, allowClear: true, style: { width: '100%' } }, {
-              default: () => options.map((o) => h(ASelectOption, { key: String(o.value), value: o.value, disabled: o.disabled }, () => o.label)),
-            })
-          }
+          ctrl = h(ASelect, { value: val ?? undefined, 'onUpdate:value': (v: any) => update(field, v), placeholder, allowClear: true, style: { width: '100%' } }, {
+            default: () => options.map((o) => h(ASelectOption, { key: String(o.value), value: o.value, disabled: o.disabled }, () => o.label)),
+          })
           break
         }
-        case 'select_multiple':
-        case 'SELECT_LIST_MULTIPLE':
-        case 'MULTI_SELECT':
-        case 'checkbox_group':
-        case 'CHECKBOX': {
+        case 'MULTI_SELECT': {
           const options = rawOpts.filter(Boolean).map((o) => ({ label: optLabel(o), value: optValue(o), disabled: !!o.disabled || !!o.obsolete }))
-          if (componentKey === 'CHECKBOX' || componentKey === 'checkbox_group') {
-            ctrl = h(ACheckboxGroup, { value: val ?? undefined, 'onUpdate:value': (v: any) => update(field, v) }, {
-              default: () => options.map((o) => h(ACheckbox, { key: String(o.value), value: o.value, disabled: o.disabled, style: { marginRight: '16px', marginBottom: '8px' } }, () => o.label)),
-            })
-          } else {
-            ctrl = h(ASelect, { value: val ?? undefined, 'onUpdate:value': (v: any) => update(field, v), placeholder, allowClear: true, mode: 'multiple', style: { width: '100%' } }, {
-              default: () => options.map((o) => h(ASelectOption, { key: String(o.value), value: o.value, disabled: o.disabled }, () => o.label)),
-            })
-          }
+          ctrl = h(ASelect, { value: val ?? undefined, 'onUpdate:value': (v: any) => update(field, v), placeholder, allowClear: true, mode: 'multiple', style: { width: '100%' } }, {
+            default: () => options.map((o) => h(ASelectOption, { key: String(o.value), value: o.value, disabled: o.disabled }, () => o.label)),
+          })
           break
         }
-        case 'cascader':
-        case 'SELECT_LIST_CASCADING': {
+        case 'CASCADER': {
           ctrl = h(ACascader, { value: val ?? undefined, 'onUpdate:value': (v: any) => update(field, v), placeholder, options: toCascaderOptions(rawOpts), style: { width: '100%' }, allowClear: true })
           break
         }
-        case 'member':
-        case 'SELECT_USER_SINGLE':
+        case 'USER_SINGLE_SELECT':
+        case 'USER_MULTI_SELECT': {
+          const isMulti = type === 'USER_MULTI_SELECT'
           ctrl = h(ASelect, {
             value: val ?? undefined, 'onUpdate:value': (v: any) => update(field, v),
-            placeholder, allowClear: true, mode: multiple ? 'multiple' : undefined, style: { width: '100%' },
+            placeholder, allowClear: true, mode: isMulti ? 'multiple' : undefined, style: { width: '100%' },
           }, {
             default: () => rawOpts.filter(Boolean).map((o) => h(ASelectOption, { key: String(optValue(o)), value: optValue(o) }, () => optLabel(o))),
           })
           break
-        case 'switch':
-        case 'BOOLEAN':
-          ctrl = h(ASwitch, { checked: !!val, 'onUpdate:checked': (v: any) => update(field, v) })
-          break
-        case 'rich_text':
-          ctrl = h(ATextarea, { value: val ?? undefined, 'onUpdate:value': (v: any) => update(field, v), placeholder, rows: 5, style: { width: '100%' } })
-          break
-        case 'upload':
-        case 'ATTACHMENT_FIELD':
-          ctrl = h(AUpload, { 'before-upload': () => false }, () => h(AButton, {}, () => '上传附件'))
-          break
-        case 'image':
-          ctrl = h(AUpload, { accept: 'image/*', 'before-upload': () => false, listType: 'picture-card' }, () => h(AButton, {}, () => '上传图片'))
-          break
-        case 'location':
-          ctrl = h(AInput, { value: val ?? undefined, 'onUpdate:value': (v: any) => update(field, v), placeholder, readonly: true, style: { width: '100%' } })
-          break
-        case 'link':
-        case 'LINKS_FIELD':
-          ctrl = h(AInput, { value: val ?? undefined, 'onUpdate:value': (v: any) => update(field, v), placeholder, style: { width: '100%' } })
-          break
-        case 'input_text':
-        case 'TEXT_BOX_SINGLE_LINE':
-        case 'STRING':
+        }
+        case 'INPUT_TEXT':
         default:
           ctrl = h(AInput, { value: val ?? undefined, 'onUpdate:value': (v: any) => update(field, v), placeholder, style: { width: '100%' } })
       }
-      return h(AFormItem, { key: w.id || field, label: title, required, style: { marginBottom: '12px' } }, () => ctrl)
+      // 展示文本强制 required=false，不显示必填星号
+      const itemRequired = type === 'DISPLAY_TEXT' ? false : required
+      return h(AFormItem, { key: w.id || field, label: title, required: itemRequired, style: { marginBottom: '12px' } }, () => ctrl)
     }
 
     return () => h(AForm, { layout: 'vertical', style: { width: '100%' } }, () =>
