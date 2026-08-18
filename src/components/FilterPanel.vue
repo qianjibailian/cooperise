@@ -52,6 +52,9 @@
           v-model:value="cond.field"
           class="condition-field"
           size="small"
+          :loading="loading"
+          show-search
+          option-filter-prop="label"
         >
           <a-select-option
             v-for="f in fieldOptions"
@@ -121,11 +124,19 @@
         </a-dropdown>
       </div>
     </div>
+
+    <!-- 底部操作 -->
+    <div class="filter-footer">
+      <a-button size="small" @click="emit('save')">保存</a-button>
+      <a-button size="small" type="primary" @click="emit('update:visible', false)">赋值</a-button>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
+import { queryAvailableFields } from '@/api/faiz'
+import type { AvailableFieldItem } from '@/types/faiz'
 
 interface FilterCondition {
   logic: string
@@ -139,22 +150,74 @@ interface Props {
   modelValue?: FilterCondition[]
 }
 
-withDefaults(defineProps<Props>(), {
+const props = withDefaults(defineProps<Props>(), {
   visible: false,
+  modelValue: () => [],
 })
 
 const emit = defineEmits<{
   (e: 'update:visible', value: boolean): void
   (e: 'update:modelValue', value: FilterCondition[]): void
+  (e: 'save'): void
 }>()
 
-const fieldOptions = [
-  { value: 'assignee', label: '经办人' },
-  { value: 'status', label: '状态' },
-  { value: 'issueType', label: '问题类型' },
-  { value: 'priority', label: '优先级' },
-  { value: 'project', label: '所属项目' },
+const DEFAULT_CONDITIONS: FilterCondition[] = [
+  { logic: '且', field: 'assignee', operator: '属于', value: '当前用户' },
+  { logic: '且', field: 'status', operator: '属于', value: '所有未结束状态' },
+  { logic: '或', field: 'issueType', operator: '属于', value: '' },
 ]
+
+// 本地筛选条件：初始化自父级 modelValue，编辑后实时同步回父级
+const conditions = ref<FilterCondition[]>(
+  props.modelValue?.length
+    ? JSON.parse(JSON.stringify(props.modelValue))
+    : JSON.parse(JSON.stringify(DEFAULT_CONDITIONS)),
+)
+
+watch(
+  conditions,
+  () => {
+    emit('update:modelValue', JSON.parse(JSON.stringify(conditions.value)))
+  },
+  { deep: true },
+)
+
+const loading = ref(false)
+const availableFields = ref<AvailableFieldItem[]>([])
+
+// 字段下拉：取自接口 /availableField/list
+const apiFieldOptions = computed(() =>
+  availableFields.value.map(f => ({ value: f.fieldId, label: f.fieldName })),
+)
+
+// 当前条件里已选但接口未返回的字段，追加展示，避免 select 显示裸 fieldId
+const fieldOptions = computed(() => {
+  const known = new Set(apiFieldOptions.value.map(f => f.value))
+  const extra: { value: string; label: string }[] = []
+  for (const cond of conditions.value) {
+    if (cond.field && !known.has(cond.field)) {
+      known.add(cond.field)
+      extra.push({ value: cond.field, label: cond.field })
+    }
+  }
+  return [...apiFieldOptions.value, ...extra]
+})
+
+async function loadAvailableFields() {
+  try {
+    loading.value = true
+    const res = await queryAvailableFields({ page: 1, perPage: 20, searchKey: '' })
+    if (res.success && res.data?.list) {
+      availableFields.value = res.data.list.filter(f => !f.obsolete)
+    }
+  } catch {
+    availableFields.value = []
+  } finally {
+    loading.value = false
+  }
+}
+
+onMounted(loadAvailableFields)
 
 const operatorOptions = [
   { value: '属于', label: '属于' },
@@ -173,19 +236,6 @@ const defaultValueMap: Record<string, Record<string, string>> = {
   priority: { high: '高', medium: '中', low: '低' },
   project: { default: '默认项目' },
 }
-
-const conditions = computed({
-  get() {
-    return [
-      { logic: '且', field: 'assignee', operator: '属于', value: '当前用户' },
-      { logic: '且', field: 'status', operator: '属于', value: '所有未结束状态' },
-      { logic: '或', field: 'issueType', operator: '属于', value: '' },
-    ]
-  },
-  set(val) {
-    emit('update:modelValue', val)
-  },
-})
 
 function getValuePlaceholder(cond: FilterCondition): string {
   const options = defaultValueMap[cond.field]
@@ -436,6 +486,16 @@ function handleClear() {
   border-radius: 6px;
   background: #f0f7ff;
   transition: all 0.15s;
+}
+
+.filter-footer {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #f0f0f0;
 }
 
 .filter-add-btn:hover {

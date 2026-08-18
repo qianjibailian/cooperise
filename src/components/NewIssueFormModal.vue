@@ -7,7 +7,7 @@
     :confirm-loading="newFormSubmitting"
     @ok="handleNewFormSubmit"
     @cancel="handleNewFormCancel"
-    ok-text="提交"
+    :ok-text="isEditMode ? '保存' : '提交'"
     cancel-text="取消"
     destroy-on-close
     class="new-form-modal"
@@ -15,9 +15,9 @@
     <template #title>
       <div class="new-form-title-bar">
         <span class="new-form-title-side"></span>
-        <span class="new-form-title-text">新建</span>
+        <span class="new-form-title-text">{{ isEditMode ? '编辑' : '新建' }}</span>
         <div class="new-form-title-side new-form-title-side-right">
-          <div class="new-form-template-selector">
+          <div v-if="!isEditMode" class="new-form-template-selector">
             <span class="new-form-template-label">选择模板</span>
             <a-select
               v-model:value="selectedTemplate"
@@ -44,6 +44,7 @@
               <a-select
                 v-model:value="newFormIssueTypeId"
                 style="width: 100%"
+                :disabled="isEditMode"
                 @change="onIssueTypeChanged"
               >
                 <a-select-option v-for="opt in issueTypeOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</a-select-option>
@@ -94,11 +95,33 @@
                           :disabled="!field.editable"
                           allow-clear
                           style="width: 100%"
-                          :options="memberOptionsMap[field.id] || []"
-                          :field-names="{ label: 'userEnName', value: 'userNo' }"
                           :loading="memberLoadingMap[field.id] || false"
                           @search="(kw: string) => handleMemberSearch(field.id, kw)"
-                        />
+                        >
+                          <template #selection="{ value }">
+                            <span class="user-selection-cell">
+                              <a-avatar
+                                :src="memberSelectionAvatar(field.id, String(value ?? ''))"
+                                :size="18"
+                                class="user-option-avatar"
+                              >{{ memberSelectionInitial(field.id, String(value ?? '')) }}</a-avatar>
+                              <span>{{ memberSelectionLabel(field.id, String(value ?? '')) }}</span>
+                            </span>
+                          </template>
+                          <a-select-option
+                            v-for="u in memberOptionsMap[field.id] || []"
+                            :key="String(u.userNo)"
+                            :value="String(u.userNo)"
+                            :label="formatMemberLabel(u)"
+                          >
+                            <span class="user-option-cell">
+                              <a-avatar :src="u.avatarUrl || u.userAvatar" :size="18" class="user-option-avatar">
+                                {{ memberInitial(u) }}
+                              </a-avatar>
+                              <span>{{ formatMemberLabel(u) }}</span>
+                            </span>
+                          </a-select-option>
+                        </a-select>
                         <a-select
                           v-if="field.type === 'USER_MULTI_SELECT'"
                           v-model:value="newFormData[field.id]"
@@ -109,11 +132,33 @@
                           :disabled="!field.editable"
                           allow-clear
                           style="width: 100%"
-                          :options="memberOptionsMap[field.id] || []"
-                          :field-names="{ label: 'userEnName', value: 'userNo' }"
                           :loading="memberLoadingMap[field.id] || false"
                           @search="(kw: string) => handleMemberSearch(field.id, kw)"
-                        />
+                        >
+                          <template #selection="{ value }">
+                            <span class="user-selection-cell">
+                              <a-avatar
+                                :src="memberSelectionAvatar(field.id, String(value ?? ''))"
+                                :size="18"
+                                class="user-option-avatar"
+                              >{{ memberSelectionInitial(field.id, String(value ?? '')) }}</a-avatar>
+                              <span>{{ memberSelectionLabel(field.id, String(value ?? '')) }}</span>
+                            </span>
+                          </template>
+                          <a-select-option
+                            v-for="u in memberOptionsMap[field.id] || []"
+                            :key="String(u.userNo)"
+                            :value="String(u.userNo)"
+                            :label="formatMemberLabel(u)"
+                          >
+                            <span class="user-option-cell">
+                              <a-avatar :src="u.avatarUrl || u.userAvatar" :size="18" class="user-option-avatar">
+                                {{ memberInitial(u) }}
+                              </a-avatar>
+                              <span>{{ formatMemberLabel(u) }}</span>
+                            </span>
+                          </a-select-option>
+                        </a-select>
                         <div v-if="field.type === 'RICH_TEXT'" style="border: 1px solid #d9d9d9; border-radius: 6px; width: 100%; position: relative; z-index: 0">
                           <Toolbar v-if="richEditorInstances[field.id]" :editor="richEditorInstances[field.id]" :default-config="{}" mode="default" />
                           <Editor
@@ -145,12 +190,12 @@
 <script setup lang="ts">
 import { watch } from 'vue'
 import { message } from 'ant-design-vue'
-import { ref, reactive } from 'vue'
+import { ref, reactive, computed } from 'vue'
 import dayjs from 'dayjs'
 import { Editor, Toolbar } from '@wangeditor/editor-for-vue'
 import type { IDomEditor, IEditorConfig } from '@wangeditor/editor'
 import '@wangeditor/editor/dist/css/style.css'
-import { createIssue, getAvailableFieldOptions, queryUsers, queryTemplates, getTemplate, getIssueCreateMeta } from '@/api/faiz'
+import { createIssue, getAvailableFieldOptions, queryUsers, queryTemplates, getTemplate, getIssueCreateMeta, queryDetail, patchIssue } from '@/api/faiz'
 import type {
   CustomFieldOptionReq,
   CustomFieldOptionItem,
@@ -160,13 +205,20 @@ import type {
   CreateIssueCascadingValue,
   CreateIssuePayload,
   UserItem,
+  IssuePatchField,
+  DetailLayoutGroup,
 } from '@/types/faiz'
 
 interface Props {
   open: boolean
+  /** 传入 issueKey 时进入编辑模式：调 /issue/queryDetail 获取数据回填 */
+  issueKey?: string
 }
 
 const props = defineProps<Props>()
+
+/** 是否为编辑模式（顶部标题「编辑」，保存走 PATCH /issue/{key}） */
+const isEditMode = computed(() => !!props.issueKey)
 
 const emit = defineEmits<{
   'update:open': [value: boolean]
@@ -191,10 +243,16 @@ watch(
       // 每次打开：清空残留 + 拉取最新启用模板列表
       selectedTemplate.value = DEFAULT_TEMPLATE
       customFieldOptionsMap.value = {}
-      // eslint-disable-next-line @typescript-eslint/no-floating-promises
-      await loadTemplateOptions()
-      // 弹窗出现触发 queryCreateMeta（projectId + issueTypeId）渲染默认表单
-      await loadCreateMeta()
+      if (props.issueKey) {
+        // 编辑模式：/issue/queryDetail 获取数据回填
+        // eslint-disable-next-line @typescript-eslint/no-floating-promises
+        loadEditDetail(props.issueKey)
+      } else {
+        // eslint-disable-next-line @typescript-eslint/no-floating-promises
+        await loadTemplateOptions()
+        // 弹窗出现触发 queryCreateMeta（projectId + issueTypeId）渲染默认表单
+        await loadCreateMeta()
+      }
     }
   },
   { immediate: true },
@@ -526,14 +584,15 @@ const handleTemplateChange = async (val: string) => {
 function postLoadAfterBuildTabs() {
   const projectId = NEW_FORM_DEFAULT_PROJECT_ID
   const issueTypeId = newFormIssueTypeId.value
-  // member 字段初始值回显所需用户选项
+  // member 字段：USER_SINGLE_SELECT / USER_MULTI_SELECT 一律预取用户数据（/user/query），
+  // 保证新建弹窗打开时人员下拉即有可选数据（无需输入关键词搜索）
   // eslint-disable-next-line @typescript-eslint/no-floating-promises
   ;(async () => {
     const needPrefetch: string[] = []
     for (const tab of newFormTabs.value) {
       for (const f of tab.issueFields) {
-        if ((f.type === 'USER_SINGLE_SELECT' || f.type === 'USER_MULTI_SELECT') && f.value) {
-          needPrefetch.push(f.id)
+        if (f.type === 'USER_SINGLE_SELECT' || f.type === 'USER_MULTI_SELECT') {
+          if (!needPrefetch.includes(f.id)) needPrefetch.push(f.id)
         }
       }
     }
@@ -544,7 +603,12 @@ function postLoadAfterBuildTabs() {
         const list = res.data.list || []
         for (const fid of needPrefetch) {
           if (!(fid in memberOptionsMap)) memberOptionsMap[fid] = []
-          memberOptionsMap[fid] = [...memberOptionsMap[fid], ...list]
+          // 与编辑回填预置的用户合并去重，避免重复选项/丢失当前选中
+          const merged = [...(memberOptionsMap[fid] || [])]
+          for (const u of list) {
+            if (!merged.some(m => String(m.userNo) === String(u.userNo))) merged.push(u)
+          }
+          memberOptionsMap[fid] = merged
         }
       }
     } catch { /* ignore */ }
@@ -621,6 +685,115 @@ async function loadCreateMeta() {
 }
 
 /**
+ * 编辑模式：调用 /issue/queryDetail 获取详情，将 layoutGroup 转为表单 tabs 并回填值
+ */
+async function loadEditDetail(issueKey: string) {
+  newFormLoading.value = true
+  try {
+    const res = await queryDetail({ key: issueKey })
+    if (res?.success && res.data) {
+      const tabs = buildTabsFromDetail(res.data.layoutGroup)
+      if (tabs.length) {
+        newFormTabs.value = tabs
+        newFormActiveTab.value = tabs[0]?.title ?? ''
+        // 回填字段值：日期转 dayjs，富文本取原文，其余取 value
+        const form: Record<string, any> = {}
+        for (const tab of tabs) {
+          for (const f of tab.issueFields) {
+            const fid = String(f.id ?? '')
+            if (!fid) continue
+            if (f.type === 'RICH_TEXT') {
+              form[fid] = typeof f.value === 'string' ? f.value : ''
+            } else if ((f.type === 'DATE' || f.type === 'DATETIME') && f.value && typeof f.value === 'string') {
+              form[fid] = dayjs(f.value)
+            } else if (f.type === 'USER_SINGLE_SELECT' || f.type === 'USER_MULTI_SELECT') {
+              // 用户字段：form 值规范为 userNo（a-select option value 为 userNo），
+              // 并预填充当前已选用户对象，避免选项异步加载前 a-select 只显示 userNo
+              const rawVal = f.value
+              if (f.type === 'USER_MULTI_SELECT') {
+                const arr = Array.isArray(rawVal) ? rawVal : rawVal == null ? [] : [rawVal]
+                form[fid] = arr
+                  .map(v => (v != null && typeof v === 'object' ? String((v as any).userNo ?? (v as any).id ?? '') : String(v ?? '')))
+                  .filter(Boolean)
+              } else if (rawVal != null && typeof rawVal === 'object') {
+                form[fid] = String((rawVal as any).userNo ?? (rawVal as any).id ?? '')
+              } else {
+                form[fid] = rawVal ?? null
+              }
+              const rawUser = f.exportValue ?? f.value
+              const userObjs = (f.type === 'USER_MULTI_SELECT'
+                ? (Array.isArray(rawUser) ? rawUser : rawUser == null ? [] : [rawUser])
+                : rawUser == null ? [] : [rawUser]
+              ).filter((v: unknown) => v != null && typeof v === 'object')
+              if (userObjs.length) {
+                memberOptionsMap[fid] = userObjs.map(o => ({ ...(o as UserItem) }))
+              }
+            } else {
+              form[fid] = f.value ?? null
+            }
+            // 问题类型仅用于展示（编辑模式下下拉禁用）
+            if (fid === 'issuetype' && f.value != null) {
+              newFormIssueTypeId.value =
+                typeof f.value === 'object'
+                  ? String((f.value as any).id ?? '')
+                  : String(f.value)
+            }
+          }
+        }
+        newFormData.value = form
+        // 成员选项预取 + 自定义字段选项拉取（保证人员下拉/级联可选）
+        postLoadAfterBuildTabs()
+      } else {
+        newFormTabs.value = []
+        newFormData.value = {}
+      }
+    } else {
+      message.error(res?.message || '加载详情失败')
+    }
+  } catch {
+    message.error('加载详情失败')
+  } finally {
+    newFormLoading.value = false
+  }
+}
+
+/**
+ * 将 queryDetail 的 layoutGroup 转为表单 tab 结构（与详情页一致）：
+ * COMMON_LIST 生成单 tab；TAB_CONTAINER 每个 tabItem 一个 tab；同标题合并
+ */
+function buildTabsFromDetail(layoutGroup: DetailLayoutGroup[]): any[] {
+  const tabs: any[] = []
+  const idxByTitle = new Map<string, number>()
+  const appendTab = (title: string, sequence: number, fields: any[]) => {
+    if (!fields || !fields.length) return
+    const idx = idxByTitle.get(title)
+    if (idx != null) {
+      tabs[idx].issueFields.push(...fields)
+    } else {
+      idxByTitle.set(title, tabs.length)
+      tabs.push({ title, sequence, issueFields: [...fields] })
+    }
+  }
+  const mapTabTitle = (t: string) => (t === '必填' ? '团队自定义信息' : t === '选填' ? '公司标准信息' : t)
+  for (const g of layoutGroup || []) {
+    const s = g?.fieldGroupStructure
+    if (!s) continue
+    if (s.type === 'TAB_CONTAINER') {
+      const items = (s.data as any)?.tabItems || []
+      for (const it of items) {
+        if (it.title === 'C端专用字段') continue
+        appendTab(mapTabTitle(it.title), it.sequence ?? 0, it.issueFields)
+      }
+    } else if (s.type === 'COMMON_LIST') {
+      const fields = Array.isArray(s.data) ? s.data : Array.isArray(s.issueFields) ? s.issueFields : []
+      const title = g.type === 'SUMMARY' ? '基本信息' : g.type === 'DESCRIPTION' ? '描述' : '自定义信息'
+      appendTab(title, g.sequence ?? tabs.length, fields)
+    }
+  }
+  return tabs
+}
+
+/**
  * 解析某字段的可用选项（下拉/单选/复选框/级联）
  * 优先使用批量接口返回的 options；否则回落到 createMeta 返回的 exportValue
  */
@@ -670,17 +843,70 @@ function handleMemberSearch(fieldId: string, keyword: string) {
     memberLoadingMap[fieldId] = true
     try {
       const res = await queryUsers({ keyword, isActive: 1, page: 1, pageSize: 20 })
-      if (res.success && res.data) {
-        memberOptionsMap[fieldId] = res.data.list || []
-      } else {
-        memberOptionsMap[fieldId] = []
+      const list = res.success && res.data ? res.data.list || [] : []
+      // 合并当前已选用户（编辑回填预置/已选标签），保证选中值始终有匹配选项
+      const merged = [...list]
+      const curVal = newFormData.value[fieldId]
+      const curNos = Array.isArray(curVal)
+        ? curVal.map((v: unknown) => String(v ?? '')).filter(Boolean)
+        : curVal != null && curVal !== ''
+          ? [String(curVal)]
+          : []
+      for (const no of curNos) {
+        if (!merged.some(u => String(u.userNo) === no)) {
+          const pre = (memberOptionsMap[fieldId] || []).find(u => String(u.userNo) === no)
+          merged.unshift(pre ? { ...pre } : ({ userNo: no } as UserItem))
+        }
       }
+      memberOptionsMap[fieldId] = merged
     } catch {
       memberOptionsMap[fieldId] = []
     } finally {
       memberLoadingMap[fieldId] = false
     }
   }, 300)
+}
+
+/** 用户下拉选项文字：账号/姓名（工号），如 Shenyuan1（10284941）或 王芳（20240003） */
+function formatMemberLabel(u: UserItem): string {
+  const account = String(u.coAccount ?? u.userCoAccount ?? u.userEnName ?? u.displayName ?? u.name ?? '').trim()
+  const no = u.userNo != null ? String(u.userNo).trim() : ''
+  if (!account && !no) return ''
+  if (!account) return no
+  return no ? `${account}（${no}）` : account
+}
+
+/** 无头像时显示的名称首字母（账号/姓名/英文名首字符） */
+function memberInitial(u: UserItem): string {
+  const name = String(u.coAccount ?? u.userCoAccount ?? u.userEnName ?? '').trim()
+  return name ? name.charAt(0).toUpperCase() : ''
+}
+
+/** 根据 userNo 从字段选项列表中查找用户对象 */
+function findMemberByNo(fieldId: string, no: string): UserItem | undefined {
+  return (memberOptionsMap[fieldId] || []).find(u => String(u.userNo) === no)
+}
+
+/** 选中标签文字：账号（工号），选项未加载时兜底显示 userNo */
+function memberSelectionLabel(fieldId: string, no: string): string {
+  if (!no) return ''
+  const u = findMemberByNo(fieldId, no)
+  return u ? formatMemberLabel(u) : no
+}
+
+/** 选中标签头像：avatarUrl（旧接口 userAvatar），无头像返回空串显示首字母 */
+function memberSelectionAvatar(fieldId: string, no: string): string {
+  if (!no) return ''
+  const u = findMemberByNo(fieldId, no)
+  return u ? String(u.avatarUrl ?? u.userAvatar ?? '') : ''
+}
+
+/** 选中标签无头像时的首字母 */
+function memberSelectionInitial(fieldId: string, no: string): string {
+  if (!no) return ''
+  const u = findMemberByNo(fieldId, no)
+  if (!u) return ''
+  return memberInitial(u)
 }
 
 // ---- 富文本编辑器（wangeditor）实例管理 ----
@@ -887,16 +1113,42 @@ async function handleNewFormSubmit() {
   }
   newFormSubmitting.value = true
   try {
-    const payload = buildCreateIssuePayload()
-    await createIssue(payload)
-    message.success('提交成功')
+    if (isEditMode.value) {
+      await saveEditForm()
+      message.success('保存成功')
+    } else {
+      const payload = buildCreateIssuePayload()
+      await createIssue(payload)
+      message.success('提交成功')
+    }
     visible.value = false
     emit('submitted')
   } catch (err: any) {
-    message.error(err?.response?.data?.message || '提交失败，请稍后重试')
+    message.error(err?.response?.data?.message || (isEditMode.value ? '保存失败，请稍后重试' : '提交失败，请稍后重试'))
   } finally {
     newFormSubmitting.value = false
   }
+}
+
+/**
+ * 编辑模式保存：构造 PATCH /issue/{key} 数组请求体 [{ fieldId, fieldValue }]
+ * 仅提交可编辑字段，跳过只读/系统字段（project、issuetype、issuekey、creator、created、updated）
+ */
+async function saveEditForm() {
+  const allFields = collectAllFields()
+  const fields: IssuePatchField[] = []
+  const seenIds = new Set<string>()
+  for (const field of allFields) {
+    const fid = String(field.id ?? field.fieldId ?? '').trim()
+    if (!fid || seenIds.has(fid)) continue
+    if (fid === 'project' || fid === 'issuetype' || fid === 'issuekey' || fid === 'creator' || fid === 'created' || fid === 'updated') continue
+    if (field.editable === false || field.readOnly) continue
+    seenIds.add(fid)
+    const raw = newFormData.value[fid]
+    const value = buildFieldValue(field, raw)
+    fields.push({ fieldId: fid, fieldValue: value === undefined ? null : value })
+  }
+  await patchIssue(String(props.issueKey), fields)
 }
 </script>
 
@@ -1330,6 +1582,33 @@ async function handleNewFormSubmit() {
   font-size: 14px;
   line-height: 1.6;
   word-break: break-word;
+}
+
+/* 人员下拉选项（头像 + 账号（工号）） */
+.user-option-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.user-option-avatar {
+  flex-shrink: 0;
+  background: #1890ff;
+  font-size: 11px;
+}
+
+/* a-select 选中标签（头像 + 账号（工号）） */
+.user-selection-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+}
+
+.user-selection-cell > span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .new-form-modal .ant-form-item {

@@ -22,6 +22,7 @@ import type {
   AvailableFieldSavePayload,
   ViewListResult,
   FilterDraft,
+  IssuePatchField,
 } from '@/types/faiz'
 
 const PREFIX = '/faiz-api'
@@ -83,8 +84,8 @@ export function createIssue(
   return request.post(`${PREFIX}/issue/create`, payload)
 }
 
-/** 单元格编辑 - 部分字段更新 Issue */
-export function patchIssue(id: string | number, fields: Record<string, unknown>): Promise<Result<IssueRow>> {
+/** 单元格编辑 - 部分字段更新 Issue（PATCH /issue/{id}，body 为 [{ fieldId, fieldValue }] 数组） */
+export function patchIssue(id: string | number, fields: IssuePatchField[]): Promise<Result<IssueRow>> {
   return request.patch(`${PREFIX}/issue/${id}`, fields)
 }
 

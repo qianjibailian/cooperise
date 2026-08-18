@@ -255,16 +255,26 @@ export interface UserQueryPayload {
 }
 
 export interface UserItem {
+  id?: number
   userNo: string
-  userCoAccount: string
-  userAvatar: string
-  isActive: boolean
-  userEnName: string
-  deptId: string
-  userDeptInfo: string
-  from: string
-  jiraUserKey: string | null
-  userActualBelongDep: string | null
+  /** 账号/姓名（新接口），旧接口字段为 userCoAccount */
+  coAccount?: string
+  userCoAccount?: string
+  /** 头像地址（新接口），旧接口字段为 userAvatar */
+  avatarUrl?: string
+  userAvatar?: string
+  isActive: boolean | number
+  userEnName?: string
+  deptId?: string
+  deptInfo?: string
+  userDeptInfo?: string
+  actualDept?: string | null
+  userActualBelongDep?: string | null
+  from?: string
+  jiraUserKey?: string | null
+  /** 兼容部分接口返回的展示字段 */
+  displayName?: string
+  name?: string
 }
 
 export interface UserListData {
@@ -277,15 +287,21 @@ export interface UserListData {
 /** 视图归属人 */
 export interface ViewOwner {
   userNo: string
-  userCoAccount: string
-  userAvatar: string
-  isActive: boolean
-  userEnName: string
-  deptId: string
-  userDeptInfo: string
-  from: string
-  jiraUserKey: string | null
-  userActualBelongDep: string | null
+  /** 账号/姓名（新接口），旧接口字段为 userCoAccount */
+  coAccount?: string
+  userCoAccount?: string
+  /** 头像地址（新接口），旧接口字段为 userAvatar */
+  avatarUrl?: string
+  userAvatar?: string
+  isActive: boolean | number
+  userEnName?: string
+  deptId?: string
+  deptInfo?: string
+  userDeptInfo?: string
+  actualDept?: string | null
+  userActualBelongDep?: string | null
+  from?: string
+  jiraUserKey?: string | null
 }
 
 /** 单条视图项 */
@@ -382,6 +398,14 @@ export interface IssueCreateMetaResult {
   data: CreateMetaInfo
 }
 
+// ========== Issue Patch (PATCH /issue/{id}) ==========
+
+/** PATCH /issue/{id} 单条字段更新项 */
+export interface IssuePatchField {
+  fieldId: string
+  fieldValue: unknown
+}
+
 // ========== Issue Create (POST /issue/create) ==========
 
 /**
@@ -466,11 +490,14 @@ export interface CustomFieldJOptions {
 
 /** POST /custom_field/option/customOptions 响应 data 的单条（按 customFieldId 分桶） */
 export interface CustomFieldOptionResponseItem {
+  fieldId?: string
   customFieldId: string
-  common: unknown | null
+  common?: unknown | null
   isOptionAdmin: unknown | null
   afterKey: unknown | null
-  joptions: CustomFieldJOptions
+  joptions?: CustomFieldJOptions
+  /** 新格式：options 直接为选项数组（label/value/children） */
+  options?: EnumOptionItem[] | { options?: EnumOptionItem[] }
 }
 
 /** POST /custom_field/option/customOptions 完整响应 */
@@ -598,6 +625,7 @@ export interface DetailFieldGroupStructure {
 export interface DetailLayoutGroup {
   type: 'SUMMARY' | 'DESCRIPTION' | 'CUSTOM_FIELD' | string
   fieldGroupStructure: DetailFieldGroupStructure
+  sequence?: number
 }
 
 /** queryDetail 响应 data */

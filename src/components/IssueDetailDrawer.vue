@@ -714,9 +714,10 @@ const UserAvatar = {
       const v = props.user
       if (!v || typeof v !== 'object') return { name: '', id: '', firstLetter: '?', color: '#d9d9d9', textColor: '#595959' }
       const obj = v as Record<string, unknown>
-      const name = String(obj.userEnName ?? obj.userCoAccount ?? obj.displayName ?? obj.name ?? '')
+      const name = String(obj.coAccount ?? obj.userCoAccount ?? obj.userEnName ?? obj.displayName ?? obj.name ?? '')
       const idPart = obj.id || obj.userId ? String(obj.id ?? obj.userId ?? '') : ''
       const firstLetter = (name || '?').trim().charAt(0).toUpperCase()
+      const avatar = String(obj.avatarUrl ?? obj.userAvatar ?? '')
       const palette = [
         { bg: 'linear-gradient(135deg, #1677ff 0%, #4096ff 100%)', solid: '#1677ff' },
         { bg: 'linear-gradient(135deg, #52c41a 0%, #73d13d 100%)', solid: '#52c41a' },
@@ -732,13 +733,14 @@ const UserAvatar = {
         name: name || '—',
         id: idPart,
         firstLetter,
+        avatar,
         bg: item.bg,
         solid: item.solid,
       }
     })
     const size = computed(() => props.size ?? 22)
     return () => {
-      const { name, id, firstLetter, bg } = info.value
+      const { name, id, firstLetter, bg, avatar } = info.value
       const s = size.value
       const wrap = h('div', {
         style: {
@@ -748,26 +750,38 @@ const UserAvatar = {
           maxWidth: '100%',
         },
       }, [
-        // 渐变头像
-        h('span', {
-          style: {
-            position: 'relative',
-            display: 'inline-flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            width: `${s}px`,
-            height: `${s}px`,
-            borderRadius: '50%',
-            background: bg,
-            color: '#fff',
-            fontSize: `${Math.max(10, Math.round(s * 0.5))}px`,
-            fontWeight: 700,
-            letterSpacing: '-0.2px',
-            boxShadow: '0 1px 3px rgba(0, 0, 0, 0.12), 0 1px 1px rgba(0, 0, 0, 0.06)',
-            flexShrink: 0,
-            userSelect: 'none',
-          },
-        }, firstLetter),
+        // 头像：有 avatarUrl 显示真实头像，否则渐变首字母
+        avatar
+          ? h('img', {
+              src: avatar,
+              style: {
+                width: `${s}px`,
+                height: `${s}px`,
+                borderRadius: '50%',
+                objectFit: 'cover',
+                flexShrink: 0,
+                boxShadow: '0 1px 3px rgba(0, 0, 0, 0.12), 0 1px 1px rgba(0, 0, 0, 0.06)',
+              },
+            })
+          : h('span', {
+              style: {
+                position: 'relative',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: `${s}px`,
+                height: `${s}px`,
+                borderRadius: '50%',
+                background: bg,
+                color: '#fff',
+                fontSize: `${Math.max(10, Math.round(s * 0.5))}px`,
+                fontWeight: 700,
+                letterSpacing: '-0.2px',
+                boxShadow: '0 1px 3px rgba(0, 0, 0, 0.12), 0 1px 1px rgba(0, 0, 0, 0.06)',
+                flexShrink: 0,
+                userSelect: 'none',
+              },
+            }, firstLetter),
         // 名字
         h('span', {
           style: {
@@ -1264,7 +1278,7 @@ function formatObject(v: unknown): string {
 function formatUser(v: unknown): string {
   if (typeof v === 'object' && v !== null) {
     const obj = v as Record<string, unknown>
-    const s = obj.userEnName ?? obj.userCoAccount ?? obj.displayName ?? obj.name
+    const s = obj.coAccount ?? obj.userCoAccount ?? obj.userEnName ?? obj.displayName ?? obj.name
     if (s) return String(s)
   }
   return '—'
@@ -2049,6 +2063,7 @@ function formatRichText(v: unknown): string {
 }
 .desc-rich-wrap :deep(.w-e-scroll) {
   overflow-y: hidden !important;
+  min-height: 300px !important;
 }
 .desc-rich-wrap :deep(.w-e-text-placeholder) {
   display: none !important;
