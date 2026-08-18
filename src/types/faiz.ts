@@ -463,6 +463,8 @@ export interface CustomFieldOptionItem {
   name: string
   value: string
   disabled?: boolean
+  /** 选项颜色（如 #ff1420） */
+  color?: string
   children?: CustomFieldOptionItem[]
   [k: string]: unknown
 }
@@ -544,6 +546,8 @@ export interface AvailableFieldItem {
 export interface EnumOptionItem {
   label: string
   value: string
+  /** 选项颜色（单选/多选下拉配置用，如 #1677ff） */
+  color?: string
   children?: EnumOptionItem[]
 }
 

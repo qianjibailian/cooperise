@@ -189,7 +189,7 @@
 
 <script setup lang="ts">
 import { watch } from 'vue'
-import { message } from 'ant-design-vue'
+
 import { ref, reactive, computed } from 'vue'
 import dayjs from 'dayjs'
 import { Editor, Toolbar } from '@wangeditor/editor-for-vue'
@@ -507,7 +507,6 @@ async function loadTemplateOptions() {
       templateOptions.value = opts
     }
   } catch {
-    message.error('加载模板列表失败')
   } finally {
     newFormLoading.value = false
   }
@@ -573,7 +572,6 @@ const handleTemplateChange = async (val: string) => {
       newFormTabs.value = []
     }
   } catch {
-    message.error('加载模板详情失败')
     newFormTabs.value = []
   } finally {
     newFormLoading.value = false
@@ -676,7 +674,6 @@ async function loadCreateMeta() {
       newFormData.value = {}
     }
   } catch {
-    message.error('加载表单元数据失败')
     newFormTabs.value = []
     newFormData.value = {}
   } finally {
@@ -747,11 +744,8 @@ async function loadEditDetail(issueKey: string) {
         newFormTabs.value = []
         newFormData.value = {}
       }
-    } else {
-      message.error(res?.message || '加载详情失败')
     }
   } catch {
-    message.error('加载详情失败')
   } finally {
     newFormLoading.value = false
   }
@@ -1104,7 +1098,6 @@ async function handleNewFormSubmit() {
       if (f.required) {
         const val = newFormData.value[f.id]
         if (isEmptyValue(val)) {
-          message.warning(`请填写${f.name}`)
           newFormActiveTab.value = tab.title
           return
         }
@@ -1115,16 +1108,13 @@ async function handleNewFormSubmit() {
   try {
     if (isEditMode.value) {
       await saveEditForm()
-      message.success('保存成功')
     } else {
       const payload = buildCreateIssuePayload()
       await createIssue(payload)
-      message.success('提交成功')
     }
     visible.value = false
     emit('submitted')
-  } catch (err: any) {
-    message.error(err?.response?.data?.message || (isEditMode.value ? '保存失败，请稍后重试' : '提交失败，请稍后重试'))
+  } catch {
   } finally {
     newFormSubmitting.value = false
   }

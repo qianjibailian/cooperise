@@ -119,7 +119,7 @@
 
 <script setup lang="ts">
 import { ref, nextTick } from 'vue'
-import { message } from 'ant-design-vue'
+
 import {
   HomeOutlined,
   SearchOutlined,
@@ -233,7 +233,6 @@ async function handleLogout() {
 
   // 接口成功后清除 cookie
   auth.logout()
-  message.success('已退出登录')
 
   // 跳转到登录页
   const loginUrl = import.meta.env.VITE_ACCOUNT_URL + '?oauth_callback=' + encodeURIComponent(window.location.href)

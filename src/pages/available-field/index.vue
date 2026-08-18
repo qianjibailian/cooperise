@@ -139,6 +139,7 @@
               <div class="enum-options-header">
                 <span class="opt-col">选项名称</span>
                 <span class="opt-col">选项值</span>
+                <span v-if="isColorableType" class="opt-col opt-color-col">颜色</span>
                 <span class="opt-col opt-action-col">操作</span>
               </div>
               <div v-for="(opt, idx) in enumOptions" :key="idx" class="enum-option-row">
@@ -153,6 +154,24 @@
                     :placeholder="isCascaderType ? '一级选项值' : '选项值'"
                     @input="onEnumOptionChange"
                   />
+                  <div
+                    v-if="isColorableType"
+                    class="enum-option-color-wrap"
+                    title="选项颜色"
+                  >
+                    <input
+                      type="color"
+                      class="enum-option-color-input"
+                      :value="opt.color || '#1677ff'"
+                      @input="onColorInput(opt, $event)"
+                    />
+                    <span
+                      v-if="opt.color"
+                      class="enum-option-color-clear"
+                      title="清除颜色"
+                      @click="opt.color = ''; onEnumOptionChange()"
+                    >×</span>
+                  </div>
                   <a-button
                     type="text"
                     danger
@@ -263,7 +282,12 @@
                 :disabled="!editForm.fieldName"
                 allow-clear
               >
-                <a-select-option v-for="opt in enumOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</a-select-option>
+                <a-select-option v-for="opt in enumOptions" :key="opt.value" :value="opt.value">
+                  <span class="preview-option-item">
+                    <span v-if="opt.color" class="preview-option-dot" :style="{ background: opt.color }" />
+                    <span :style="opt.color ? { color: opt.color } : {}">{{ opt.label }}</span>
+                  </span>
+                </a-select-option>
               </a-select>
               <a-select
                 v-else-if="isType('MULTI_SELECT')"
@@ -272,7 +296,12 @@
                 allow-clear
                 mode="multiple"
               >
-                <a-select-option v-for="opt in enumOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</a-select-option>
+                <a-select-option v-for="opt in enumOptions" :key="opt.value" :value="opt.value">
+                  <span class="preview-option-item">
+                    <span v-if="opt.color" class="preview-option-dot" :style="{ background: opt.color }" />
+                    <span :style="opt.color ? { color: opt.color } : {}">{{ opt.label }}</span>
+                  </span>
+                </a-select-option>
               </a-select>
               <a-cascader
                 v-else-if="isType('CASCADER')"
@@ -328,7 +357,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
-import { message, Modal } from 'ant-design-vue'
+import { Modal } from 'ant-design-vue'
 import {
   SearchOutlined, CloseCircleFilled, PlusOutlined,
   EditOutlined, DeleteOutlined, MinusCircleOutlined,
@@ -358,6 +387,8 @@ const fieldTypeOptions = [
 const ENUM_TYPES = ['SINGLE_SELECT', 'MULTI_SELECT', 'CASCADER']
 const isEnumType = computed(() => ENUM_TYPES.includes(editForm.value.type as string))
 const isCascaderType = computed(() => editForm.value.type === 'CASCADER')
+/** 支持为枚举值配置颜色的类型（单选/多选下拉，级联不配置） */
+const isColorableType = computed(() => editForm.value.type === 'SINGLE_SELECT' || editForm.value.type === 'MULTI_SELECT')
 // type 值 → 中文标签
 const TYPE_LABEL_MAP: Record<string, string> = fieldTypeOptions.reduce(
   (acc, t) => { acc[t.value] = t.label; return acc },
@@ -453,7 +484,13 @@ function syncFieldValue() {
 }
 
 function addEnumOption() {
-  enumOptions.value.push({ label: '', value: '' })
+  enumOptions.value.push({ label: '', value: '', color: '' })
+  syncFieldValue()
+}
+
+/** 选项颜色输入：写入 hex 色值并同步到 fieldValue */
+function onColorInput(opt: EnumOptionItem, e: Event) {
+  opt.color = (e.target as HTMLInputElement).value
   syncFieldValue()
 }
 
@@ -504,7 +541,6 @@ async function loadFields() {
       totalCount.value = res.data?.total || 0
     }
   } catch {
-    message.error('加载字段列表失败')
   } finally {
     loading.value = false
   }
@@ -593,25 +629,19 @@ async function handleEdit(record: AvailableFieldItem) {
 
 async function handleSubmit() {
   if (!editForm.value.fieldName?.trim()) {
-    message.warning('请输入字段名称')
     return
   }
   submitting.value = true
   try {
     const payload: AvailableFieldSavePayload = { ...editForm.value }
     if (isEdit.value && editingId.value) {
-      const res = await updateAvailableField(editingId.value, payload)
-      if (res.success) message.success('更新成功')
-      else message.error(res.message || '更新失败')
+      await updateAvailableField(editingId.value, payload)
     } else {
-      const res = await createAvailableField(payload)
-      if (res.success) message.success('创建成功')
-      else message.error(res.message || '创建失败')
+      await createAvailableField(payload)
     }
     showEditModal.value = false
     loadFields()
   } catch {
-    message.error(isEdit.value ? '更新失败' : '创建失败')
   } finally {
     submitting.value = false
   }
@@ -625,16 +655,14 @@ function handleDelete(record: AvailableFieldItem) {
     onOk: async () => {
       try {
         const res = await deleteAvailableField(record.id)
-        if (res.success) { message.success('已删除'); loadFields() }
-        else message.error(res.message || '删除失败')
-      } catch { message.error('删除失败') }
+        if (res.success) { loadFields() }
+      } catch {}
     },
   })
 }
 
 function handleBatchDelete() {
   if (!selectedRowKeys.value.length) {
-    message.warning('请先勾选要删除的字段')
     return
   }
   Modal.confirm({
@@ -646,13 +674,10 @@ function handleBatchDelete() {
         const ids = selectedRowKeys.value.map(k => Number(k)).filter(n => !Number.isNaN(n))
         const res = await batchDeleteAvailableFields(ids)
         if (res.success) {
-          message.success(`已删除 ${ids.length} 个字段`)
           selectedRowKeys.value = []
           loadFields()
-        } else {
-          message.error(res.message || '批量删除失败')
         }
-      } catch { message.error('批量删除失败') }
+      } catch {}
     },
   })
 }
@@ -740,7 +765,22 @@ onMounted(loadFields)
 .enum-options-editor { width: 100%; }
 .enum-options-header { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
 .enum-options-header .opt-col { flex: 1; font-size: 12px; color: #86868b; font-weight: 600; }
+.enum-options-header .opt-color-col { flex: 0 0 92px; }
 .enum-options-header .opt-action-col { flex: 0 0 40px; }
+.enum-option-color-wrap { flex: 0 0 92px; display: flex; align-items: center; gap: 6px; }
+.enum-option-color-input {
+  width: 36px; height: 26px; padding: 2px; border: 1px solid #d9d9d9; border-radius: 4px;
+  background: transparent; cursor: pointer; flex: none;
+}
+.enum-option-color-input::-webkit-color-swatch-wrapper { padding: 2px; }
+.enum-option-color-input::-webkit-color-swatch { border: none; border-radius: 2px; }
+.enum-option-color-clear {
+  flex: none; width: 16px; height: 16px; line-height: 14px; text-align: center;
+  border-radius: 50%; color: #86868b; cursor: pointer; font-size: 14px; user-select: none;
+}
+.enum-option-color-clear:hover { color: #ff4d4f; background: #fff1f0; }
+.preview-option-item { display: inline-flex; align-items: center; gap: 6px; }
+.preview-option-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; flex: none; }
 .enum-option-row { display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px; }
 .enum-option-row.child { margin-bottom: 6px; padding-left: 24px; border-left: 2px solid #e8e8e8; }
 .enum-option-inputs { display: flex; gap: 8px; align-items: center; }

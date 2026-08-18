@@ -124,6 +124,39 @@
                   @change="confirmCellEdit"
                 />
                 <a-select
+                  v-else-if="isSingleSelectField(row, col.id)"
+                  v-focus
+                  v-model:value="editValue"
+                  :loading="singleLoading"
+                  allow-clear
+                  size="small"
+                  style="width: 100%"
+                  placeholder="请选择"
+                  @change="confirmCellEdit"
+                >
+                  <template #selection="{ value }">
+                    <span class="single-option-item">
+                      <a-tag
+                        v-if="getSingleOptionColor(String(value))"
+                        class="single-option-tag"
+                        :color="getSingleOptionColor(String(value))"
+                      >{{ getSingleOptionName(String(value)) }}</a-tag>
+                      <span v-else>{{ getSingleOptionName(String(value)) }}</span>
+                    </span>
+                  </template>
+                  <a-select-option
+                    v-for="opt in singleOptions"
+                    :key="String(opt.value)"
+                    :value="String(opt.value)"
+                    :disabled="opt.disabled"
+                  >
+                    <span class="single-option-item">
+                      <a-tag v-if="opt.color" class="single-option-tag" :color="opt.color">{{ opt.name }}</a-tag>
+                      <span v-else>{{ opt.name }}</span>
+                    </span>
+                  </a-select-option>
+                </a-select>
+                <a-select
                   v-else-if="isUserSingleSelectField(row, col.id)"
                   v-focus
                   v-model:value="editUserValue"
@@ -187,7 +220,7 @@
                     :color="priorityColor(getPriorityId(row))"
                   >{{ getCellValue(row, col.id) }}</a-tag>
                   <a-tag v-else-if="col.id === 'issuetype'">{{ getCellValue(row, col.id) }}</a-tag>
-                  <div v-else-if="isUserSingleSelectField(row, col.id)" class="user-cell">
+                  <div v-else-if="isUserField(row, col.id)" class="user-cell">
                     <a-avatar
                       :src="getUserAvatar(row, col.id)"
                       :size="22"
@@ -195,11 +228,17 @@
                     >{{ getUserInitial(row, col.id) }}</a-avatar>
                     <span class="user-cell-text">{{ getUserCellText(row, col.id) }}</span>
                   </div>
+                  <a-tag
+                    v-else-if="isSingleSelectField(row, col.id) && getCellValue(row, col.id)"
+                    class="single-select-tag"
+                    :color="getSingleColor(row, col.id) || undefined"
+                  >{{ getCellValue(row, col.id) }}</a-tag>
                   <span v-else>{{ getCellValue(row, col.id) }}</span>
                 </div>
                 <span
                   v-if="isFieldEditable(row, col.id)"
                   class="cell-edit-icon"
+                  :class="{ 'always-visible': !getCellValue(row, col.id) }"
                   title="编辑"
                   @click.stop="startCellEdit(row, col.id)"
                 >
@@ -338,7 +377,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, computed, watch } from 'vue'
-import { message } from 'ant-design-vue'
+
 import {
   ReloadOutlined,
   AlignCenterOutlined,
@@ -693,7 +732,6 @@ async function handleFilterSave() {
       globalFilter: JSON.stringify(globalFilter),
     })
     if (res?.success) {
-      message.success('筛选已保存')
       // 保存成功后重新拉取草稿并刷新列表
       const fresh = await getFilterDraft(userNo)
       if (fresh?.success && fresh.data) {
@@ -702,9 +740,7 @@ async function handleFilterSave() {
       currentPage.value = 1
       fetchIssues()
     }
-  } catch {
-    message.error('保存失败')
-  }
+  } catch {}
 }
 
 /** 草稿筛选（从 GET /filter/draft 获取，issue/query 入参全部取自此处） */
@@ -755,10 +791,8 @@ function handleReset() {
 function handleImportExportClick(e: { key: string }) {
   switch (e.key) {
     case 'import':
-      message.info('导入功能')
       break
     case 'export':
-      message.info('导出功能')
       break
   }
 }
@@ -827,6 +861,16 @@ function getCellValue(rec: IssueRecord, fieldId: string): string {
   if (String(f.type ?? '').toUpperCase() === 'USER_SINGLE_SELECT') {
     return getUserCellText(rec, fieldId)
   }
+  // 单选下拉字段：value 结构为 { optionId, optionName }，显示 optionName
+  if (String(f.type ?? '').toUpperCase() === 'SINGLE_SELECT') {
+    const sv = f.exportValue ?? f.value
+    if (sv == null) return ''
+    if (typeof sv === 'object') {
+      const obj = sv as Record<string, unknown>
+      return String(obj.optionName ?? obj.name ?? '')
+    }
+    return String(sv)
+  }
   if (f.exportValue != null) return String(f.exportValue)
   const v = f.value
   if (v == null) return ''
@@ -835,6 +879,29 @@ function getCellValue(rec: IssueRecord, fieldId: string): string {
     return String(obj.name ?? obj.id ?? '')
   }
   return String(v)
+}
+
+/** 单选下拉字段：读取选项颜色（value 结构为 { optionId, optionName, color }） */
+function getSingleColor(rec: IssueRecord, fieldId: string): string {
+  const f = rec.issueField?.find(it => it.id === fieldId)
+  const v = f?.value
+  if (v != null && typeof v === 'object') {
+    const color = (v as Record<string, unknown>).color
+    return typeof color === 'string' ? color : ''
+  }
+  return ''
+}
+
+/** 单选下拉：按 optionId 查找选项显示名 */
+function getSingleOptionName(value: string): string {
+  const opt = singleOptions.value.find(o => String(o.value) === String(value))
+  return opt ? opt.name : value
+}
+
+/** 单选下拉：按 optionId 查找选项颜色 */
+function getSingleOptionColor(value: string): string {
+  const opt = singleOptions.value.find(o => String(o.value) === String(value))
+  return typeof opt?.color === 'string' && opt.color ? opt.color : ''
 }
 
 /** 判断字段是否可编辑（issueField 中 editable 为 true） */
@@ -855,22 +922,30 @@ interface UserLike {
   userAvatar?: unknown
 }
 
-/** 取人员字段的原始用户对象（exportValue 优先，兼容字符串） */
+/** 取人员字段的原始用户对象（exportValue 与 value 中优先取信息更完整的对象，兼容字符串） */
 function getUserField(rec: IssueRecord, fieldId: string): UserLike | string | null {
   const f = rec.issueField?.find(it => it.id === fieldId)
   if (!f) return null
+  // exportValue 常为字符串/空串，value 才是完整用户对象（含 avatarUrl/userNo/coAccount）
+  const asObj = (v: unknown): UserLike | null =>
+    v != null && typeof v === 'object' ? (v as UserLike) : null
+  const candidates = [asObj(f.exportValue), asObj(f.value)]
+  const valid = candidates.filter((c): c is UserLike => c != null)
+  if (valid.length) {
+    const score = (u: UserLike): number =>
+      (u.avatarUrl != null ? 1 : 0) + (u.userNo != null ? 1 : 0) + (u.coAccount != null ? 1 : 0)
+    valid.sort((a, b) => score(b) - score(a))
+    return valid[0]
+  }
   const raw = f.exportValue ?? f.value
   if (raw == null) return null
-  return typeof raw === 'object' ? (raw as UserLike) : String(raw)
+  return String(raw)
 }
 
-/** 取人员字段当前已选用户对象（exportValue 优先，仅对象返回，字符串返回 null） */
+/** 取人员字段当前已选用户对象（同 getUserField，仅对象返回，字符串返回 null） */
 function getUserFieldObj(rec: IssueRecord, fieldId: string): Record<string, unknown> | null {
-  const f = rec.issueField?.find(it => it.id === fieldId)
-  if (!f) return null
-  const raw = f.exportValue ?? f.value
-  if (raw == null || typeof raw !== 'object') return null
-  return raw as Record<string, unknown>
+  const raw = getUserField(rec, fieldId)
+  return raw != null && typeof raw === 'object' ? (raw as Record<string, unknown>) : null
 }
 
 /** 用户文字：账号/姓名（工号），如 Shenyuan1（10284941）或 王芳（20240003） */
@@ -953,6 +1028,11 @@ const cascaderOptions = ref<CustomFieldOptionItem[]>([])
 /** 级联字段原始选项（未归一化，保存时取整个对象用） */
 const cascaderRawOptions = ref<unknown[]>([])
 const cascaderLoading = ref(false)
+/** 单选下拉字段选项（SINGLE_SELECT） */
+const singleOptions = ref<CustomFieldOptionItem[]>([])
+/** 单选下拉字段原始选项 */
+const singleRawOptions = ref<unknown[]>([])
+const singleLoading = ref(false)
 /** 人员单选字段编辑值（userNo） */
 const editUserValue = ref<string | null>(null)
 /** 人员单选字段选项（UserItem[]，label 取 userEnName） */
@@ -983,9 +1063,20 @@ function isCascaderField(rec: IssueRecord, fieldId: string): boolean {
   return getFieldType(rec, fieldId).toUpperCase() === 'CASCADER'
 }
 
+/** 是否为单选下拉字段（SINGLE_SELECT，大小写不敏感） */
+function isSingleSelectField(rec: IssueRecord, fieldId: string): boolean {
+  return getFieldType(rec, fieldId).toUpperCase() === 'SINGLE_SELECT'
+}
+
 /** 是否为人员单选字段（USER_SINGLE_SELECT，大小写不敏感） */
 function isUserSingleSelectField(rec: IssueRecord, fieldId: string): boolean {
   return getFieldType(rec, fieldId).toUpperCase() === 'USER_SINGLE_SELECT'
+}
+
+/** 是否为用户类型字段：人员单选、创建人（creator）、更新人（updater） */
+function isUserField(rec: IssueRecord, fieldId: string): boolean {
+  const id = String(fieldId ?? '').toLowerCase()
+  return id === 'creator' || id === 'updater' || isUserSingleSelectField(rec, fieldId)
 }
 
 /**
@@ -1139,19 +1230,33 @@ function toOptionItem(raw: unknown, idx: number): CustomFieldOptionItem {
       ? base.childJOptions
       : null
   const children = childArr ? childArr.map((c: unknown, i: number) => toOptionItem(c, i)) : undefined
+  const ext = base.ext && typeof base.ext === 'object'
+    ? (base.ext as Record<string, unknown>)
+    : undefined
+  const color = typeof base.color === 'string'
+    ? base.color
+    : typeof ext?.color === 'string'
+      ? ext.color
+      : undefined
   return {
     id: value,
     name: label,
     value,
     disabled: !!base.disabled || !!base.obsolete,
+    color: color || undefined,
     children,
   }
 }
 
 /**
- * 加载级联字段选项：优先用字段自带 configSchema / options，否则调 customOptions 接口
+ * 拉取自定义字段枚举选项（级联/单选下拉等）：
+ * 优先用字段自带 configSchema / options，否则调 POST /availableField/customOptions
  */
-async function loadCascaderOptions(rec: IssueRecord, fieldId: string) {
+async function fetchEnumOptions(
+  kind: 'CASCADER' | 'SINGLE_SELECT',
+  rec: IssueRecord,
+  fieldId: string,
+): Promise<{ raw: unknown[]; items: CustomFieldOptionItem[] }> {
   const f = rec.issueField?.find(it => it.id === fieldId)
   const fRec = f as Record<string, unknown> | undefined
   const optionsRaw = fRec?.options
@@ -1161,66 +1266,80 @@ async function loadCascaderOptions(rec: IssueRecord, fieldId: string) {
       : undefined)
   if (Array.isArray(cfgRaw) && cfgRaw.length) {
     const arr = cfgRaw.filter((x: unknown) => x != null)
-    cascaderRawOptions.value = arr
-    cascaderOptions.value = arr.map((x: unknown, i: number) => toOptionItem(x, i))
-    return
+    return { raw: arr, items: arr.map((x: unknown, i: number) => toOptionItem(x, i)) }
   }
+  const res = await getAvailableFieldOptions([
+    {
+      fieldId,
+      type: kind,
+      projectId: '',
+      issueTypeId: '',
+      issueKey: getIssueKey(rec),
+      page: 1,
+      perPage: 100,
+    },
+  ])
+  if (res?.success && Array.isArray(res.data)) {
+    const bucket = res.data.find(
+      (b: any) => String(b.fieldId ?? b.customFieldId ?? b.customId ?? '') === fieldId,
+    )
+    const bucketRec = bucket as Record<string, unknown> | undefined
+    const jOptionsRaw = bucketRec?.joptions
+    const jList = jOptionsRaw && typeof jOptionsRaw === 'object'
+      ? (jOptionsRaw as { list?: unknown }).list
+      : undefined
+    const rawOptions = bucketRec?.options
+    // 兼容三种选项结构：joptions.list（optionId/optionName/childJOptions）、
+    // options.options 嵌套、options 直接为数组（label/value/children）
+    let innerOpts: unknown[] | null = null
+    if (Array.isArray(rawOptions)) {
+      innerOpts = rawOptions
+    } else if (
+      rawOptions &&
+      typeof rawOptions === 'object' &&
+      Array.isArray((rawOptions as Record<string, unknown>).options)
+    ) {
+      innerOpts = (rawOptions as Record<string, unknown>).options as unknown[]
+    }
+    if (Array.isArray(jList) && jList.length) {
+      const arr = jList.filter((x: unknown) => x != null)
+      return { raw: arr, items: arr.map((x: unknown, i: number) => toOptionItem(x, i)) }
+    }
+    if (innerOpts && innerOpts.length) {
+      const arr = innerOpts.filter((x: unknown) => x != null)
+      return { raw: arr, items: arr.map((x: unknown, i: number) => toOptionItem(x, i)) }
+    }
+  }
+  return { raw: [], items: [] }
+}
+
+/** 加载级联字段选项（CASCADER） */
+async function loadCascaderOptions(rec: IssueRecord, fieldId: string) {
   cascaderLoading.value = true
   try {
-    const res = await getAvailableFieldOptions([
-      {
-        fieldId,
-        type: 'CASCADER',
-        projectId: '',
-        issueTypeId: '',
-        issueKey: getIssueKey(rec),
-        page: 1,
-        perPage: 100,
-      },
-    ])
-    if (res?.success && Array.isArray(res.data)) {
-      const bucket = res.data.find(
-        (b: any) => String(b.fieldId ?? b.customFieldId ?? b.customId ?? '') === fieldId,
-      )
-      const bucketRec = bucket as Record<string, unknown> | undefined
-      const jOptionsRaw = bucketRec?.joptions
-      const jList = jOptionsRaw && typeof jOptionsRaw === 'object'
-        ? (jOptionsRaw as { list?: unknown }).list
-        : undefined
-      const rawOptions = bucketRec?.options
-      // 兼容三种选项结构：joptions.list（optionId/optionName/childJOptions）、
-      // options.options 嵌套、options 直接为数组（label/value/children）
-      let innerOpts: unknown[] | null = null
-      if (Array.isArray(rawOptions)) {
-        innerOpts = rawOptions
-      } else if (
-        rawOptions &&
-        typeof rawOptions === 'object' &&
-        Array.isArray((rawOptions as Record<string, unknown>).options)
-      ) {
-        innerOpts = (rawOptions as Record<string, unknown>).options as unknown[]
-      }
-      if (Array.isArray(jList) && jList.length) {
-        const arr = jList.filter((x: unknown) => x != null)
-        cascaderRawOptions.value = arr
-        cascaderOptions.value = arr.map((x: unknown, i: number) => toOptionItem(x, i))
-      } else if (innerOpts && innerOpts.length) {
-        const arr = innerOpts.filter((x: unknown) => x != null)
-        cascaderRawOptions.value = arr
-        cascaderOptions.value = arr.map((x: unknown, i: number) => toOptionItem(x, i))
-      } else {
-        cascaderOptions.value = []
-        cascaderRawOptions.value = []
-      }
-    } else {
-      cascaderOptions.value = []
-      cascaderRawOptions.value = []
-    }
+    const { raw, items } = await fetchEnumOptions('CASCADER', rec, fieldId)
+    cascaderRawOptions.value = raw
+    cascaderOptions.value = items
   } catch {
-    cascaderOptions.value = []
     cascaderRawOptions.value = []
+    cascaderOptions.value = []
   } finally {
     cascaderLoading.value = false
+  }
+}
+
+/** 加载单选下拉字段选项（SINGLE_SELECT） */
+async function loadSingleOptions(rec: IssueRecord, fieldId: string) {
+  singleLoading.value = true
+  try {
+    const { raw, items } = await fetchEnumOptions('SINGLE_SELECT', rec, fieldId)
+    singleRawOptions.value = raw
+    singleOptions.value = items
+  } catch {
+    singleRawOptions.value = []
+    singleOptions.value = []
+  } finally {
+    singleLoading.value = false
   }
 }
 
@@ -1293,6 +1412,24 @@ function startCellEdit(rec: IssueRecord, fieldId: string) {
       memberOptions.value = [{ userNo: uv } as UserItem]
     }
     handleMemberSearch('')
+  } else if (upperType === 'SINGLE_SELECT') {
+    // 单选下拉字段：回填 optionId（value 结构为 { optionId, optionName }）+ 异步加载选项
+    const sv = raw != null && typeof raw === 'object'
+      ? String((raw as Record<string, unknown>).optionId ?? '')
+      : raw == null
+        ? ''
+        : String(raw)
+    editValue.value = sv || null
+    editDateValue.value = null
+    editCascaderValue.value = []
+    cascaderOptions.value = []
+    cascaderRawOptions.value = []
+    editUserValue.value = null
+    memberOptions.value = []
+    singleOptions.value = []
+    singleRawOptions.value = []
+    // eslint-disable-next-line @typescript-eslint/no-floating-promises
+    loadSingleOptions(rec, fieldId)
   } else {
     editDateValue.value = null
     editCascaderValue.value = []
@@ -1300,6 +1437,8 @@ function startCellEdit(rec: IssueRecord, fieldId: string) {
     cascaderRawOptions.value = []
     editUserValue.value = null
     memberOptions.value = []
+    singleOptions.value = []
+    singleRawOptions.value = []
   }
 }
 
@@ -1312,6 +1451,8 @@ function cancelCellEdit() {
   editCascaderValue.value = []
   memberOptions.value = []
   editUserValue.value = null
+  singleOptions.value = []
+  singleRawOptions.value = []
 }
 
 /** 确认编辑：调用 PATCH /issue/{id} 保存（body 为 [{ fieldId, fieldValue }] 数组） */
@@ -1337,20 +1478,30 @@ async function confirmCellEdit() {
       const found = memberOptions.value.find(u => String(u.userNo) === String(uv))
       fieldValue = found || { userNo: String(uv) }
     }
+  } else if (isSingleSelectField(cell.row, cell.fieldId)) {
+    // 单选下拉字段：传整个选项对象 { optionId, optionName, color }（与新增/编辑弹窗一致）
+    const sv = editValue.value == null ? '' : String(editValue.value).trim()
+    if (sv === '') {
+      fieldValue = null
+    } else {
+      const found = singleOptions.value.find(o => String(o.value) === sv)
+      fieldValue = found
+        ? {
+            optionId: found.value,
+            optionName: found.name,
+            ...(found.color ? { color: found.color } : {}),
+          }
+        : { optionId: sv, optionName: sv }
+    }
   } else {
     fieldValue = editValue.value
   }
   try {
     const res = await patchIssue(cell.key, [{ fieldId: cell.fieldId, fieldValue }])
     if (res?.success) {
-      message.success('保存成功')
       fetchIssues()
-    } else {
-      message.error('保存失败')
     }
-  } catch {
-    message.error('保存失败')
-  }
+  } catch {}
 }
 
 /** 复制概要内容到剪贴板 */
@@ -1359,10 +1510,7 @@ async function handleCopySummary(rec: IssueRecord) {
   if (!text) return
   try {
     await navigator.clipboard.writeText(text)
-    message.success('概要已复制')
-  } catch {
-    message.info('复制失败，请手动复制')
-  }
+  } catch {}
 }
 
 /** 获取概要对应事项链接（域名/jira/browse/{issueKey}）并复制到剪贴板 */
@@ -1372,10 +1520,7 @@ async function handleOpenSummaryLink(rec: IssueRecord) {
   const link = `${window.location.origin}/jira/browse/${key}`
   try {
     await navigator.clipboard.writeText(link)
-    message.success('链接已复制')
-  } catch {
-    message.info('复制失败，请手动复制')
-  }
+  } catch {}
 }
 
 /** 取 issueKey（用于行标识、详情跳转和单元格更新 URL 路径），优先 issueField，兜底记录顶层字段 */
@@ -1765,6 +1910,17 @@ onMounted(async () => {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.single-select-tag {
+  margin-right: 0;
+}
+.single-option-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.single-option-tag {
+  margin-right: 0;
+}
 
 .cell-edit-icon {
   display: none;
@@ -1780,7 +1936,8 @@ onMounted(async () => {
   line-height: 1;
 }
 
-.editable-cell.is-editable:hover .cell-edit-icon {
+.editable-cell.is-editable:hover .cell-edit-icon,
+.cell-edit-icon.always-visible {
   display: inline-flex;
 }
 

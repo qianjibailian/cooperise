@@ -445,7 +445,7 @@
 
 <script setup lang="ts">
 import { ref, computed, reactive, onMounted, watch, nextTick } from 'vue'
-import { message, Modal } from 'ant-design-vue'
+import { Modal } from 'ant-design-vue'
 import {
   PlusOutlined, SearchOutlined, CloseCircleFilled, FormOutlined,
   EyeOutlined, EditOutlined, DeleteOutlined, CopyOutlined,
@@ -628,12 +628,11 @@ function availableFieldToWidget(f: AvailableFieldItem): any {
 
 function addSelectedFieldsToForm() {
   const target = selectedAvailableFieldIds.value.filter(id => !addedFieldIds.value.has(String(id)))
-  if (target.length === 0) { message.info('勾选的字段已全部添加'); return }
+  if (target.length === 0) { return }
   const rows = availableFieldsList.value.filter(f => target.includes(String(f.fieldId)) || target.includes(String(f.id)))
-  if (rows.length === 0) { message.warning('未找到勾选的字段'); return }
+  if (rows.length === 0) { return }
   const widgets = rows.map(r => availableFieldToWidget(r))
   singleFormTab.value.widgetData = [...(singleFormTab.value.widgetData || []), ...widgets]
-  message.success(`已添加 ${widgets.length} 个字段`)
 }
 
 /** 根据单表单已有 widgetData 回显勾选状态（仅新增阶段自动勾选一次） */
@@ -865,14 +864,13 @@ function addTabSelectedFields(tabId: string | number) {
   if (!tab) return
   const added = tabAddedFieldIds(k)
   const target = (tabSelectedIdsMap[k] || []).filter((id) => !added.has(String(id)))
-  if (!target.length) { message.info('勾选的字段已全部添加'); return }
+  if (!target.length) { return }
   const rows = availableFieldsList.value.filter((f) =>
     target.includes(String(f.fieldId)) || target.includes(String(f.id)),
   )
-  if (!rows.length) { message.warning('未找到勾选的字段'); return }
+  if (!rows.length) { return }
   const widgets = rows.map((r) => availableFieldToWidget(r))
   tab.widgetData = [...(tab.widgetData || []), ...widgets]
-  message.success(`已添加 ${widgets.length} 个字段`)
 }
 /** Tab：一键添加当前过滤结果里所有未添加字段 */
 function addTabAllAvailable(tabId: string | number) {
@@ -882,13 +880,12 @@ function addTabAllAvailable(tabId: string | number) {
   const added = tabAddedFieldIds(k)
   const target = tabFilteredAvailable(k)
     .filter((f) => !added.has(String(f.fieldId)))
-  if (!target.length) { message.info('没有可添加的字段'); return }
+  if (!target.length) { return }
   const widgets = target.map((f) => availableFieldToWidget(f))
   tab.widgetData = [...(tab.widgetData || []), ...widgets]
   const sel = new Set(tabSelectedIdsMap[k] || [])
   target.forEach((f) => sel.add(String(f.fieldId)))
   tabSelectedIdsMap[k] = Array.from(sel)
-  message.success(`已添加 ${widgets.length} 个字段`)
 }
 
 /** 拖拽排序：支持单表单模式与多 Tab 模式。tabId 为 null 时操作单表单 singleFormTab，否则操作对应 tab.widgetData */
@@ -1130,7 +1127,6 @@ async function loadTemplates() {
       totalTabs.value = res.data.totalTabs || 0
     }
   } catch {
-    message.error('加载模板列表失败')
   } finally {
     loading.value = false
   }
@@ -1178,7 +1174,7 @@ function addTab() {
 
 function removeTab(idx: number) {
   if (!editForm.useTabs) return
-  if (editForm.tabs.length <= 1) { message.warning('至少保留一个表单；关闭 Tab 布局可切换为单表单'); return }
+  if (editForm.tabs.length <= 1) { return }
   const removed = editForm.tabs[idx]
   editForm.tabs.splice(idx, 1)
   if (activeEditTab.value === removed.id) {
@@ -1212,7 +1208,6 @@ async function handleEdit(record: Template) {
     const detail = res.success ? adaptBackendTemplate(res.data) : record
     fillEditForm(detail)
   } catch {
-    message.error('加载模板详情失败')
   }
 }
 
@@ -1235,32 +1230,27 @@ function fillEditForm(record: Template) {
 }
 
 function handleEditSubmit() {
-  if (!editForm.templateName.trim()) return message.warning('请输入模板名称')
+  if (!editForm.templateName.trim()) return
   // Tab 模式下所有表单命名；单表单模式下 tabs 至少有 1 个（singleFormTab lazy 生成），不强制命名（空时不显示标题）
   editForm.tabs.forEach((t, i) => { if (!t.name?.trim()) t.name = editForm.useTabs ? `表单 ${i + 1}` : '' })
   const payload = serializeTemplatePayload(editForm)
   if (isEdit.value) {
     const tplId = Number(editForm.id)
-    updateTemplate(tplId, payload).then(res => {
-      if (res.success) message.success('更新成功')
-      else message.error(res.message || '更新失败')
+    updateTemplate(tplId, payload).then(() => {
       loadTemplates(); showEditModal.value = false
-    }).catch(() => { message.error('更新失败') })
+    }).catch(() => {})
   } else {
-    createTemplate(payload).then(res => {
-      if (res.success) message.success('创建成功')
-      else message.error(res.message || '创建失败')
+    createTemplate(payload).then(() => {
       loadTemplates(); showEditModal.value = false
-    }).catch(() => { message.error('创建失败') })
+    }).catch(() => {})
   }
 }
 
 function handleCopy(record: Template) {
   const tplId = Number(record.id)
   copyTemplate(tplId).then(res => {
-    if (res.success) { message.success('已创建副本'); loadTemplates() }
-    else message.error(res.message || '复制失败')
-  }).catch(() => { message.error('复制失败') })
+    if (res.success) { loadTemplates() }
+  }).catch(() => {})
 }
 
 function handleDelete(record: Template) {
@@ -1271,9 +1261,8 @@ function handleDelete(record: Template) {
     onOk: () => {
       const tplId = Number(record.id)
       deleteTemplate(tplId).then(res => {
-        if (res.success) { message.success('已删除'); loadTemplates() }
-        else message.error(res.message || '删除失败')
-      }).catch(() => { message.error('删除失败') })
+        if (res.success) { loadTemplates() }
+      }).catch(() => {})
     },
   })
 }

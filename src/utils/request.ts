@@ -4,6 +4,7 @@ import axios, {
   InternalAxiosRequestConfig,
   AxiosRequestConfig
 } from 'axios'
+import { message } from 'ant-design-vue'
 
 const API_BASE_URL = import.meta.env.VITE_API_DOMAIN + import.meta.env.VITE_API_PREFIX
 
@@ -32,10 +33,22 @@ request.interceptors.request.use(
 
 request.interceptors.response.use(
   (response: AxiosResponse) => {
-    return response.data
+    const data = response.data
+    // 统一全局提示：HTTP 2xx 且业务 success=true → message.success(接口 message)；其余 → message.error
+    if (data && typeof data === 'object' && 'success' in data) {
+      if (data.success === true) {
+        if (data.message) message.success(data.message)
+      } else {
+        message.error(data.message || '请求失败')
+      }
+    }
+    return data
   },
   (error) => {
     console.error('request error:', error)
+    message.error(
+      error?.response?.data?.message || error?.message || '网络异常，请稍后重试',
+    )
     return Promise.reject(error)
   }
 )
