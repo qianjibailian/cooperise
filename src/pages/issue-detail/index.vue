@@ -635,7 +635,7 @@ const UserAvatar = {
       if (!v || typeof v !== 'object') return { name: '', id: '', firstLetter: '?', color: '#d9d9d9', textColor: '#595959' }
       const obj = v as Record<string, unknown>
       const name = String(obj.coAccount ?? obj.userCoAccount ?? obj.userEnName ?? obj.displayName ?? obj.name ?? '')
-      const idPart = obj.id || obj.userId ? String(obj.id ?? obj.userId ?? '') : ''
+      const idPart = obj.id || obj.userId || obj.userNo ? String(obj.id ?? obj.userId ?? obj.userNo ?? '') : ''
       const firstLetter = (name || '?').trim().charAt(0).toUpperCase()
       const avatar = String(obj.avatarUrl ?? obj.userAvatar ?? '')
       const palette = [
@@ -702,7 +702,7 @@ const UserAvatar = {
                 userSelect: 'none',
               },
             }, firstLetter),
-        // 名字
+        // 名字 + 工号
         h('span', {
           style: {
             color: '#1f1f1f',
@@ -711,24 +711,10 @@ const UserAvatar = {
             whiteSpace: 'nowrap',
             overflow: 'hidden',
             textOverflow: 'ellipsis',
-            maxWidth: 'calc(100% - 50px)',
+            flex: '0 1 auto',
+            minWidth: 0,
           },
-        }, name),
-        // 工号
-        id
-          ? h('span', {
-              style: {
-                color: '#8c8c8c',
-                fontSize: '11px',
-                fontFamily: "'SF Mono', Menlo, Consolas, monospace",
-                padding: '1px 6px',
-                background: '#f5f5f5',
-                borderRadius: '10px',
-                whiteSpace: 'nowrap',
-                flexShrink: 0,
-              },
-            }, `#${id}`)
-          : null,
+        }, `${name}${id ? `（${id}）` : ''}`),
       ].filter(Boolean))
       return wrap
     }
@@ -1826,7 +1812,7 @@ function formatRichText(v: unknown): string {
 .kv-row {
   display: grid;
   grid-template-columns: 120px 1fr;
-  gap: 14px;
+  gap: 4px;
   align-items: start;
   padding: 0;
   background: transparent;

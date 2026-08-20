@@ -154,32 +154,21 @@
           </template>
 
           <template v-else-if="activeSection === 'settings'">
-            <div v-if="!sidebarCollapsed" class="panel-section-header">
-              <component :is="SettingOutlined" class="section-icon" />
-              <span class="section-title">设置</span>
-            </div>
             <a-menu
               theme="light"
               mode="inline"
               :selectedKeys="[currentPath]"
-              v-model:openKeys="settingsOpenKeys"
               @click="handleLocalMenuClick"
               class="sidebar-menu"
             >
-              <a-sub-menu key="template-config">
-                <template #title>
-                  <component :is="AppstoreOutlined" />
-                  <span>模板配置</span>
-                </template>
-                <a-menu-item key="/settings/template-list">
-                  <component :is="UnorderedListOutlined" />
-                  <span>模板管理</span>
-                </a-menu-item>
-                <a-menu-item key="/settings/available-field">
-                  <component :is="AppstoreOutlined" />
-                  <span>可选字段</span>
-                </a-menu-item>
-              </a-sub-menu>
+              <a-menu-item key="/settings/template-list">
+                <component :is="UnorderedListOutlined" />
+                <span>模板管理</span>
+              </a-menu-item>
+              <a-menu-item key="/settings/available-field">
+                <component :is="AppstoreOutlined" />
+                <span>自定义字段</span>
+              </a-menu-item>
               <a-menu-item key="/settings/profile">
                 <component :is="UserOutlined" />
                 <span>个人中心</span>
@@ -187,6 +176,21 @@
               <a-menu-item key="/settings/account">
                 <component :is="LockOutlined" />
                 <span>账户设置</span>
+              </a-menu-item>
+            </a-menu>
+          </template>
+
+          <template v-else-if="activeSection === 'admin'">
+            <a-menu
+              theme="light"
+              mode="inline"
+              :selectedKeys="[currentPath]"
+              @click="handleLocalMenuClick"
+              class="sidebar-menu"
+            >
+              <a-menu-item key="/admin/system-field">
+                <component :is="AppstoreOutlined" />
+                <span>系统字段</span>
               </a-menu-item>
             </a-menu>
           </template>
@@ -244,6 +248,7 @@ import {
   InfoCircleOutlined,
   ExperimentOutlined,
   RocketOutlined,
+  ToolOutlined,
 } from '@ant-design/icons-vue'
 import { useRouter, useRoute } from 'vue-router'
 import AppHeader from '@/components/AppHeader.vue'
@@ -257,6 +262,7 @@ import type { ViewItem } from '@/types/faiz'
 const iconBarItems = [
   { key: 'workspace', icon: HomeOutlined, label: '工作台' },
   { key: 'settings', icon: SettingOutlined, label: '设置' },
+  { key: 'admin', icon: ToolOutlined, label: '管理后台' },
 ]
 
 const router = useRouter()
@@ -269,7 +275,7 @@ const activeSection = ref('workspace')
 // 设置路由与工作台路由同样展示侧边栏（含二级菜单），仅其余路由（如事项详情）隐藏侧边面板
 const isNonWorkbenchRoute = computed(() => {
   const path = route.path
-  if (path.startsWith('/settings')) return false
+  if (path.startsWith('/settings') || path.startsWith('/admin')) return false
   return !path.startsWith('/workbench')
 })
 
@@ -283,23 +289,6 @@ const {
   findViewItem: __findViewItem,
 } = useViewStore()
 const viewSubmenuOpenKeys = ref<string[]>([])
-
-// 设置面板「模板配置」二级菜单展开控制：进入子路由时自动展开
-const settingsOpenKeys = ref<string[]>([])
-watch(
-  () => route.path,
-  (path) => {
-    if (
-      path.startsWith('/settings/template-list') ||
-      path.startsWith('/settings/available-field')
-    ) {
-      if (!settingsOpenKeys.value.includes('template-config')) {
-        settingsOpenKeys.value = [...settingsOpenKeys.value, 'template-config']
-      }
-    }
-  },
-  { immediate: true }
-)
 
 /** viewType → 默认图标组件（找不到更特殊映射时使用） */
 const VIEW_TYPE_ICON_MAP: Record<string, unknown> = {
@@ -368,6 +357,10 @@ const currentPath = computed(() => {
     activeSection.value = 'settings'
     return route.path
   }
+  if (route.path.startsWith('/admin')) {
+    activeSection.value = 'admin'
+    return route.path
+  }
   return route.path
 })
 
@@ -377,6 +370,8 @@ function handleSectionClick(key: string) {
     router.push('/workbench/todo')
   } else if (key === 'settings') {
     router.push('/settings/template-list')
+  } else if (key === 'admin') {
+    router.push('/admin/system-field')
   }
 }
 

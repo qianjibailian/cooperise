@@ -206,7 +206,7 @@ const fieldOptions = computed(() => {
 async function loadAvailableFields() {
   try {
     loading.value = true
-    const res = await queryAvailableFields({ page: 1, perPage: 20, searchKey: '' })
+    const res = await queryAvailableFields({ page: 1, pageSize: 20, searchKey: '' })
     if (res.success && res.data?.list) {
       availableFields.value = res.data.list.filter(f => !f.obsolete)
     }

@@ -21,7 +21,7 @@
           <DeleteOutlined /><span>批量删除</span>
           <span v-if="selectedRowKeys.length > 0" class="badge">({{ selectedRowKeys.length }})</span>
         </button>
-        <button class="create-btn" @click="handleCreate">
+        <button v-if="props.showCreate" class="create-btn" @click="handleCreate">
           <PlusOutlined /><span>新增字段</span>
         </button>
       </div>
@@ -30,8 +30,10 @@
     <!-- 统计行 -->
     <div class="stats-row">
       <div class="stat-item"><span class="stat-value">{{ totalCount }}</span><span class="stat-label">字段总数</span></div>
-      <div class="stat-divider" />
-      <div class="stat-item"><span class="stat-value stat-green">{{ systemCount }}</span><span class="stat-label">系统字段</span></div>
+      <template v-if="showSystemColumn">
+        <div class="stat-divider" />
+        <div class="stat-item"><span class="stat-value stat-green">{{ systemCount }}</span><span class="stat-label">系统字段</span></div>
+      </template>
       <div class="stat-divider" />
       <div class="stat-item"><span class="stat-value stat-blue">{{ activeCount }}</span><span class="stat-label">生效中</span></div>
     </div>
@@ -46,14 +48,14 @@
         :row-selection="{ selectedRowKeys: selectedRowKeys, onChange: onSelectChange }"
         row-key="id"
         size="middle"
-        :scroll="{ x: 1200 }"
+        :scroll="{ x: props.showMetaColumns ? 'max-content' : 1900 }"
       >
         <template #bodyCell="{ column, record }">
           <template v-if="column.key === 'fieldName'">
             <span class="cell-field-name">{{ record.fieldName }}</span>
           </template>
           <template v-else-if="column.key === 'type'">
-            <a-tag :color="typeTagColor(record.type)">{{ formatTypeLabel(record.type) }}</a-tag>
+            <a-tag :color="typeTagColor(record.type || record.filedType)">{{ formatTypeLabel(record.type || record.filedType) }}</a-tag>
           </template>
           <template v-else-if="column.key === 'required'">
             <a-tag :color="record.isRequired ? 'red' : 'default'">{{ record.isRequired ? '是' : '否' }}</a-tag>
@@ -70,9 +72,15 @@
             </span>
             <span v-else class="cell-muted">-</span>
           </template>
+          <template v-else-if="column.key === 'creator' || column.key === 'updater'">
+            <UserCell :raw="record[column.key]" />
+          </template>
+          <template v-else-if="column.key === 'createTime' || column.key === 'updateTime'">
+            <span>{{ formatTime(record[column.key]) }}</span>
+          </template>
           <template v-else-if="column.key === 'action'">
             <a-space :size="4">
-              <a-button type="link" size="small" @click="handleEdit(record)"><EditOutlined /> 编辑</a-button>
+              <a-button v-if="props.showEdit" type="link" size="small" @click="handleEdit(record)"><EditOutlined /> 编辑</a-button>
               <a-button type="link" size="small" danger @click="handleDelete(record)"><DeleteOutlined /> 删除</a-button>
             </a-space>
           </template>
@@ -84,7 +92,7 @@
     <div class="pagination-bar" v-if="!loading && totalCount > 0">
       <a-pagination
         v-model:current="page"
-        v-model:page-size="perPage"
+        v-model:page-size="pageSize"
         :total="totalCount"
         :show-size-changer="true"
         :show-quick-jumper="true"
@@ -112,22 +120,24 @@
             </a-form-item>
           </a-col>
           <a-col :span="12">
-            <a-form-item label="字段类型 (type)">
-              <a-select v-model:value="editForm.type" placeholder="选择字段类型" size="large" allow-clear style="width: 100%">
-                <a-select-option v-for="t in fieldTypeOptions" :key="t.value" :value="t.value">{{ t.label }}</a-select-option>
-              </a-select>
+            <a-form-item label="字段编号">
+              <a-input v-model:value="editForm.fieldNumId" placeholder="字段编号" style="width: 100%" />
             </a-form-item>
           </a-col>
         </a-row>
         <a-row :gutter="24">
           <a-col :span="12">
-            <a-form-item label="枚举设置类型 (enumSettingType)">
-              <a-input v-model:value="editForm.enumSettingType" placeholder="enumSettingType" style="width: 100%" />
+            <a-form-item label="字段分组">
+              <a-select v-model:value="editForm.fieldGroup" placeholder="选择字段分组" size="large" allow-clear style="width: 100%">
+                <a-select-option v-for="g in fieldGroupOptions" :key="g.value" :value="g.value">{{ g.label }}</a-select-option>
+              </a-select>
             </a-form-item>
           </a-col>
           <a-col :span="12">
-            <a-form-item label="字段数字ID (fieldNumId)">
-              <a-input v-model:value="editForm.fieldNumId" placeholder="fieldNumId" style="width: 100%" />
+            <a-form-item label="字段类型">
+              <a-select v-model:value="editForm.type" placeholder="选择字段类型" size="large" allow-clear style="width: 100%">
+                <a-select-option v-for="t in fieldTypeOptions" :key="t.value" :value="t.value">{{ t.label }}</a-select-option>
+              </a-select>
             </a-form-item>
           </a-col>
         </a-row>
@@ -234,7 +244,7 @@
               <a-switch v-model:checked="editForm.isRequired" checked-children="是" un-check-children="否" />
             </a-form-item>
           </a-col>
-          <a-col :span="6">
+          <a-col v-if="props.showSystemSwitch" :span="6">
             <a-form-item label="系统字段">
               <a-switch v-model:checked="editForm.isSystem" checked-children="是" un-check-children="否" />
             </a-form-item>
@@ -258,26 +268,32 @@
             </span>
             <div class="preview-control">
               <a-input
-                v-if="isType('INPUT_TEXT')"
+                v-if="isType(FIELD_TYPE.TEXT_BOX_SINGLE_LINE)"
                 placeholder="请输入"
                 :disabled="!editForm.fieldName"
               />
+              <a-textarea
+                v-else-if="isType(FIELD_TYPE.TEXT_BOX_MULTI_LINE)"
+                placeholder="请输入"
+                :rows="4"
+                :disabled="!editForm.fieldName"
+              />
               <a-input-number
-                v-else-if="isType('INPUT_NUMBER')"
+                v-else-if="isType(FIELD_TYPE.TEXT_BOX_NUMBER)"
                 placeholder="请输入数字"
                 :disabled="!editForm.fieldName"
               />
               <a-date-picker
-                v-else-if="isType('DATE')"
+                v-else-if="isType(FIELD_TYPE.DATE_PICKER)"
                 :disabled="!editForm.fieldName"
               />
               <a-date-picker
-                v-else-if="isType('DATETIME')"
+                v-else-if="isType(FIELD_TYPE.TIME_PICKER)"
                 show-time
                 :disabled="!editForm.fieldName"
               />
               <a-select
-                v-else-if="isType('SINGLE_SELECT')"
+                v-else-if="isType(FIELD_TYPE.SELECT_LIST_SINGLE)"
                 placeholder="请选择"
                 :disabled="!editForm.fieldName"
                 allow-clear
@@ -290,7 +306,7 @@
                 </a-select-option>
               </a-select>
               <a-select
-                v-else-if="isType('MULTI_SELECT')"
+                v-else-if="isType(FIELD_TYPE.SELECT_LIST_MULTI)"
                 placeholder="请选择"
                 :disabled="!editForm.fieldName"
                 allow-clear
@@ -304,7 +320,7 @@
                 </a-select-option>
               </a-select>
               <a-cascader
-                v-else-if="isType('CASCADER')"
+                v-else-if="isType(FIELD_TYPE.CASCADER_SINGLE)"
                 placeholder="请选择"
                 :disabled="!editForm.fieldName"
                 allow-clear
@@ -312,14 +328,14 @@
                 :field-names="{ label: 'label', value: 'value', children: 'children' }"
               />
               <a-select
-                v-else-if="isType('USER_SINGLE_SELECT')"
+                v-else-if="isType(FIELD_TYPE.SELECT_USER_SINGLE)"
                 placeholder="请选择成员"
                 show-search
                 :disabled="!editForm.fieldName"
                 allow-clear
               />
               <a-select
-                v-else-if="isType('USER_MULTI_SELECT')"
+                v-else-if="isType(FIELD_TYPE.SELECT_USER_MULTI)"
                 placeholder="请选择成员"
                 show-search
                 :disabled="!editForm.fieldName"
@@ -327,13 +343,13 @@
                 mode="multiple"
               />
               <a-textarea
-                v-else-if="isType('RICH_TEXT')"
+                v-else-if="isType(FIELD_TYPE.RICH_TEXT)"
                 placeholder="请输入描述"
                 :rows="4"
                 :disabled="!editForm.fieldName"
               />
               <span
-                v-else-if="isType('DISPLAY_TEXT')"
+                v-else-if="isType(FIELD_TYPE.LABEL)"
                 class="display-text-preview"
               >{{ editForm.fieldName ? '这是展示文本内容' : '展示文本' }}</span>
               <a-input
@@ -356,87 +372,141 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, watch, h } from 'vue'
 import { Modal } from 'ant-design-vue'
 import {
   SearchOutlined, CloseCircleFilled, PlusOutlined,
   EditOutlined, DeleteOutlined, MinusCircleOutlined,
 } from '@ant-design/icons-vue'
 import {
-  queryAvailableFields, createAvailableField, updateAvailableField, deleteAvailableField,
+  queryAvailableFields, createAvailableField, updateAvailableField,
   batchDeleteAvailableFields, getAvailableFieldDetail,
 } from '@/api/faiz'
 import type { AvailableFieldItem, AvailableFieldSavePayload, EnumOptionItem } from '@/types/faiz'
+import {
+  FIELD_TYPE, fieldTypeOptions, formatTypeLabel, typeTagColor, isEnumFieldType, defaultFieldGroupByType,
+} from '@/types/fieldType'
 
-// ---- 字段类型选项 ----
-const fieldTypeOptions = [
-  { value: 'INPUT_TEXT', label: '文本输入框' },
-  { value: 'INPUT_NUMBER', label: '数字输入框' },
-  { value: 'DATE', label: '日期' },
-  { value: 'DATETIME', label: '日期时间' },
-  { value: 'SINGLE_SELECT', label: '单选下拉' },
-  { value: 'MULTI_SELECT', label: '多选下拉' },
-  { value: 'CASCADER', label: '级联选择器' },
-  { value: 'USER_SINGLE_SELECT', label: '人员单选' },
-  { value: 'USER_MULTI_SELECT', label: '人员多选' },
-  { value: 'RICH_TEXT', label: '富文本' },
-  { value: 'DISPLAY_TEXT', label: '展示文本' },
+// ---- 组件 props：可选字段与系统字段共用，通过 fieldApi 注入不同的接口实现 ----
+/** 通用字段行结构（兼容 AvailableFieldItem 与 SystemFieldItem） */
+interface FieldRow {
+  id?: string
+  fieldId?: string
+  fieldName?: string
+  type?: string
+  /** 后端返回的原始类型字段（系统字段 VO 为 filedType，可选字段两者都有） */
+  filedType?: string
+  fieldGroup?: string
+  isRequired?: boolean
+  obsolete?: boolean
+  isSystem?: boolean
+  supportOperator?: string[]
+  configSchema?: string | null
+  fieldValue?: string | null
+  /** 系统字段特有：启用状态、创建人/更新人、创建/更新时间 */
+  status?: boolean
+  creator?: string | null
+  updater?: string | null
+  createTime?: string | null
+  updateTime?: string | null
+}
+
+interface FieldApi {
+  query: (params: { page: number; pageSize: number; searchKey?: string }) => Promise<{ success?: boolean; data?: { list?: FieldRow[]; total?: number } }>
+  getDetail: (id: string | number) => Promise<{ success?: boolean; data?: FieldRow | null }>
+  create: (data: AvailableFieldSavePayload) => Promise<{ success?: boolean }>
+  update: (id: string | number, data: AvailableFieldSavePayload) => Promise<{ success?: boolean }>
+  delete: (id: string | number) => Promise<{ success?: boolean }>
+  batchDelete: (ids: Array<number | string>) => Promise<{ success?: boolean }>
+}
+
+const props = withDefaults(defineProps<{
+  /** 字段 CRUD 接口集合，默认使用「可选字段」接口 */
+  fieldApi?: FieldApi
+  /** 是否展示「系统字段」列与统计（自定义字段页面无该字段，固定为自定义，默认不展示） */
+  showSystemColumn?: boolean
+  /** 是否展示「新增字段」按钮（系统字段内置，不可新增，默认展示） */
+  showCreate?: boolean
+  /** 是否展示操作列「编辑」按钮（系统字段内置，不可编辑，默认展示） */
+  showEdit?: boolean
+  /** 是否展示表单「系统字段」开关（自定义字段固定为自定义，默认不展示） */
+  showSystemSwitch?: boolean
+  /** 是否展示元信息列：创建人/更新人/创建时间/更新时间（默认展示，与系统字段页面一致） */
+  showMetaColumns?: boolean
+}>(), {
+  showSystemColumn: false,
+  showCreate: true,
+  showEdit: true,
+  showSystemSwitch: false,
+  showMetaColumns: true,
+})
+
+/** 后端 CustomFieldSaveRequest 用 filedType 接收类型，前端表单字段为 type，做映射 */
+function mapPayload(data: AvailableFieldSavePayload): AvailableFieldSavePayload {
+  return { ...data, filedType: data.type }
+}
+
+const defaultFieldApi: FieldApi = {
+  query: queryAvailableFields,
+  getDetail: getAvailableFieldDetail,
+  create: (data) => createAvailableField(mapPayload(data)),
+  update: (id, data) => updateAvailableField(String(id), mapPayload(data)),
+  // 单个删除后端未提供，复用批量删除
+  delete: (id) => batchDeleteAvailableFields([Number(id)]),
+  batchDelete: batchDeleteAvailableFields,
+}
+const fieldApi = computed<FieldApi>(() => props.fieldApi || defaultFieldApi)
+
+// ---- 字段分组选项 ----
+const fieldGroupOptions = [
+  { value: 'PERSON', label: '人员信息' },
+  { value: 'DESCRIPTION', label: '描述' },
+  { value: 'TIME', label: '时间信息' },
+  { value: 'CUSTOM_FIELD', label: '自定义字段' },
+  { value: 'SUBJECT', label: '主内容' },
 ]
 
-// 需要配置选项的类型
-const ENUM_TYPES = ['SINGLE_SELECT', 'MULTI_SELECT', 'CASCADER']
-const isEnumType = computed(() => ENUM_TYPES.includes(editForm.value.type as string))
-const isCascaderType = computed(() => editForm.value.type === 'CASCADER')
+// 需要配置选项的类型 / 类型相关判定，均来自 @/types/fieldType 统一维护
+const isEnumType = computed(() => isEnumFieldType(editForm.value.type))
+const isCascaderType = computed(() => editForm.value.type === FIELD_TYPE.CASCADER_SINGLE)
 /** 支持为枚举值配置颜色的类型（单选/多选下拉，级联不配置） */
-const isColorableType = computed(() => editForm.value.type === 'SINGLE_SELECT' || editForm.value.type === 'MULTI_SELECT')
-// type 值 → 中文标签
-const TYPE_LABEL_MAP: Record<string, string> = fieldTypeOptions.reduce(
-  (acc, t) => { acc[t.value] = t.label; return acc },
-  {} as Record<string, string>,
+const isColorableType = computed(
+  () => editForm.value.type === FIELD_TYPE.SELECT_LIST_SINGLE || editForm.value.type === FIELD_TYPE.SELECT_LIST_MULTI,
 )
-function formatTypeLabel(type?: string | null): string {
-  if (!type) return '-'
-  return TYPE_LABEL_MAP[type] || type
-}
-
-function typeTagColor(type?: string | null): string {
-  const colorMap: Record<string, string> = {
-    INPUT_TEXT: 'default',
-    INPUT_NUMBER: 'green',
-    DATE: 'blue',
-    DATETIME: 'cyan',
-    SINGLE_SELECT: 'purple',
-    MULTI_SELECT: 'magenta',
-    CASCADER: 'gold',
-    USER_SINGLE_SELECT: 'lime',
-    USER_MULTI_SELECT: 'lime',
-    RICH_TEXT: 'red',
-    DISPLAY_TEXT: 'geekblue',
-  }
-  return colorMap[type || ''] || 'default'
-}
 
 function isType(...vals: string[]) {
   return vals.includes(editForm.value.type as string)
 }
 
-// ---- 表格列定义 ----
-const columns = [
+// ---- 表格列定义（系统字段页面隐藏「系统字段」列） ----
+const baseColumns = [
   { title: '字段名称', dataIndex: 'fieldName', key: 'fieldName', width: 180, ellipsis: true },
   { title: '类型', dataIndex: 'type', key: 'type', width: 120 },
   { title: '必填', dataIndex: 'required', key: 'required', width: 70 },
   { title: '系统字段', dataIndex: 'isSystem', key: 'isSystem', width: 90 },
   { title: '状态', dataIndex: 'obsolete', key: 'obsolete', width: 80 },
   { title: '操作符', dataIndex: 'supportOperator', key: 'supportOperator', width: 200 },
-  { title: '操作', key: 'action', fixed: 'right' as const, width: 160 },
 ]
+const metaColumns = [
+  { title: '创建人', dataIndex: 'creator', key: 'creator' },
+  { title: '更新人', dataIndex: 'updater', key: 'updater' },
+  { title: '创建时间', dataIndex: 'createTime', key: 'createTime' },
+  { title: '更新时间', dataIndex: 'updateTime', key: 'updateTime' },
+]
+const columns = computed(() => {
+  let list = props.showSystemColumn ? baseColumns : baseColumns.filter(c => c.key !== 'isSystem')
+  if (props.showMetaColumns) {
+    list = [...list, ...metaColumns]
+  }
+  return [...list, { title: '操作', key: 'action', fixed: 'right' as const, width: 160 }]
+})
 
 // ---- 状态 ----
 const searchValue = ref('')
 const tableData = ref<AvailableFieldItem[]>([])
 const totalCount = ref(0)
 const page = ref(1)
-const perPage = ref(10)
+const pageSize = ref(10)
 const loading = ref(false)
 
 const showEditModal = ref(false)
@@ -452,10 +522,10 @@ function onSelectChange(keys: string[]) {
 const editForm = ref<AvailableFieldSavePayload & { supportOperator: string[] }>({
   fieldNumId: '',
   fieldName: '',
+  fieldGroup: '',
   type: '',
   supportOperator: [],
   isSystem: false,
-  enumSettingType: '',
   obsolete: false,
   isRequired: false,
   configSchema: '',
@@ -523,21 +593,91 @@ watch(isEnumType, (val) => {
   syncFieldValue()
 })
 
+// ---- 字段类型 → 默认分组映射（选择类型时自动带出分组） ----
+watch(() => editForm.value.type, (val) => {
+  const group = defaultFieldGroupByType(val)
+  if (group) {
+    editForm.value.fieldGroup = group
+  }
+})
+
 // ---- 计算属性 ----
 const systemCount = computed(() => tableData.value.filter(r => r.isSystem).length)
 const activeCount = computed(() => tableData.value.filter(r => !r.obsolete).length)
+
+// ---- 元信息格式化（创建人/更新人为 JSON 字符串，时间含 T 分隔符） ----
+interface UserBrief {
+  name: string
+  id: string
+  firstLetter: string
+  avatar: string
+  bg: string
+}
+function parseUserInfo(v: unknown): UserBrief | null {
+  if (v == null || v === '') return null
+  let obj: Record<string, unknown> | null = null
+  if (typeof v === 'string') {
+    try {
+      obj = JSON.parse(v) as Record<string, unknown>
+    } catch {
+      return null
+    }
+  } else if (typeof v === 'object') {
+    obj = v as Record<string, unknown>
+  }
+  if (!obj) return null
+  const name = String(obj.coAccount ?? obj.userCoAccount ?? obj.userEnName ?? obj.displayName ?? obj.name ?? obj.userNo ?? '')
+  if (!name) return null
+  const idPart = obj.id || obj.userId || obj.userNo ? String(obj.id ?? obj.userId ?? obj.userNo ?? '') : ''
+  const firstLetter = name.trim().charAt(0).toUpperCase()
+  const avatar = String(obj.avatarUrl ?? obj.userAvatar ?? '')
+  const palette = [
+    'linear-gradient(135deg, #1677ff 0%, #4096ff 100%)',
+    'linear-gradient(135deg, #52c41a 0%, #73d13d 100%)',
+    'linear-gradient(135deg, #fa8c16 0%, #ffa940 100%)',
+    'linear-gradient(135deg, #722ed1 0%, #9254de 100%)',
+    'linear-gradient(135deg, #eb2f96 0%, #f759ab 100%)',
+    'linear-gradient(135deg, #13c2c2 0%, #36cfc9 100%)',
+    'linear-gradient(135deg, #faad14 0%, #ffc53d 100%)',
+    'linear-gradient(135deg, #2f54eb 0%, #597ef7 100%)',
+  ]
+  return {
+    name,
+    id: idPart,
+    firstLetter,
+    avatar,
+    bg: palette[name.charCodeAt(0) % palette.length],
+  }
+}
+
+/** 用户单元格：头像（无头像显示渐变首字母）+ 名称（工号） */
+const UserCell = (props: { raw: unknown }) => {
+  const u = parseUserInfo(props.raw)
+  if (!u) return h('span', { class: 'cell-muted' }, '-')
+  return h('span', { class: 'cell-user' }, [
+    u.avatar
+      ? h('img', { src: u.avatar, class: 'cell-user-avatar', alt: '' })
+      : h('span', { class: 'cell-user-avatar cell-user-avatar-text', style: { background: u.bg } }, u.firstLetter),
+    h('span', { class: 'cell-user-name' }, `${u.name}${u.id ? `（${u.id}）` : ''}`),
+  ])
+}
+
+function formatTime(v?: string | null): string {
+  if (!v) return '-'
+  return v.replace('T', ' ').slice(0, 16)
+}
 
 // ---- 数据加载 ----
 async function loadFields() {
   loading.value = true
   try {
-    const res = await queryAvailableFields({
+    const res = await fieldApi.value.query({
       page: page.value,
-      perPage: perPage.value,
+      pageSize: pageSize.value,
       searchKey: searchValue.value.trim() || undefined,
     })
     if (res.success) {
-      tableData.value = res.data?.list || []
+      tableData.value = (res.data?.list as unknown as AvailableFieldItem[]) || []
       totalCount.value = res.data?.total || 0
     }
   } catch {
@@ -553,13 +693,13 @@ function handleQuery() {
 
 function handlePageChange(cur: number, size: number) {
   page.value = cur
-  perPage.value = size
+  pageSize.value = size
   loadFields()
 }
 
 function handleSizeChange(_cur: number, size: number) {
   page.value = 1
-  perPage.value = size
+  pageSize.value = size
   loadFields()
 }
 
@@ -568,10 +708,10 @@ function resetEditForm() {
   editForm.value = {
     fieldNumId: '',
     fieldName: '',
+    fieldGroup: '',
     type: '',
     supportOperator: [],
     isSystem: false,
-    enumSettingType: '',
     obsolete: false,
     isRequired: false,
     configSchema: '',
@@ -592,16 +732,16 @@ async function handleEdit(record: AvailableFieldItem) {
   editingId.value = record.id
   showEditModal.value = true
   try {
-    const res = await getAvailableFieldDetail(record.id)
+    const res = await fieldApi.value.getDetail(record.id)
     if (res.success && res.data) {
-      const d: AvailableFieldItem = res.data
+      const d = res.data as unknown as AvailableFieldItem
       editForm.value = {
         fieldNumId: d.fieldId || '',
         fieldName: d.fieldName || '',
-        type: d.type || '',
+        fieldGroup: d.fieldGroup || '',
+        type: d.type || d.filedType || '',
         supportOperator: d.supportOperator ? [...d.supportOperator] : [],
         isSystem: d.isSystem ?? false,
-        enumSettingType: d.enumSettingType || '',
         obsolete: d.obsolete ?? false,
         isRequired: d.isRequired ?? false,
         configSchema: d.configSchema || '',
@@ -614,10 +754,10 @@ async function handleEdit(record: AvailableFieldItem) {
     editForm.value = {
       fieldNumId: record.fieldId || '',
       fieldName: record.fieldName || '',
-      type: record.type || '',
+      fieldGroup: record.fieldGroup || '',
+      type: record.type || record.filedType || '',
       supportOperator: record.supportOperator ? [...record.supportOperator] : [],
       isSystem: record.isSystem ?? false,
-      enumSettingType: record.enumSettingType || '',
       obsolete: record.obsolete ?? false,
       isRequired: record.isRequired ?? false,
       configSchema: record.configSchema || '',
@@ -635,9 +775,9 @@ async function handleSubmit() {
   try {
     const payload: AvailableFieldSavePayload = { ...editForm.value }
     if (isEdit.value && editingId.value) {
-      await updateAvailableField(editingId.value, payload)
+      await fieldApi.value.update(editingId.value, payload)
     } else {
-      await createAvailableField(payload)
+      await fieldApi.value.create(payload)
     }
     showEditModal.value = false
     loadFields()
@@ -654,7 +794,7 @@ function handleDelete(record: AvailableFieldItem) {
     okText: '删除', cancelText: '取消', okType: 'danger',
     onOk: async () => {
       try {
-        const res = await deleteAvailableField(record.id)
+        const res = await fieldApi.value.delete(record.id)
         if (res.success) { loadFields() }
       } catch {}
     },
@@ -672,7 +812,7 @@ function handleBatchDelete() {
     onOk: async () => {
       try {
         const ids = selectedRowKeys.value.map(k => Number(k)).filter(n => !Number.isNaN(n))
-        const res = await batchDeleteAvailableFields(ids)
+        const res = await fieldApi.value.batchDelete(ids)
         if (res.success) {
           selectedRowKeys.value = []
           loadFields()
@@ -726,6 +866,19 @@ onMounted(loadFields)
 
 .cell-operators { display: inline-flex; flex-wrap: wrap; gap: 4px; }
 .cell-muted { color: #aeaeb2; }
+:deep(.cell-user) { display: inline-flex; align-items: center; gap: 8px; max-width: 100%; }
+:deep(.cell-user-avatar) {
+  width: 18px; height: 18px; border-radius: 50%; object-fit: cover;
+  flex-shrink: 0; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+}
+:deep(.cell-user-avatar-text) {
+  display: inline-flex; align-items: center; justify-content: center;
+  color: #fff; font-size: 9px; font-weight: 700; user-select: none;
+}
+:deep(.cell-user-name) {
+  color: #1f1f1f; font-size: 13px; font-weight: 500;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;
+}
 
 /* ---- pagination ---- */
 .pagination-bar { display: flex; justify-content: flex-end; padding-top: 24px; }

@@ -120,6 +120,7 @@
 import { defineComponent, h, ref, computed, watch } from 'vue'
 import { PlusOutlined } from '@ant-design/icons-vue'
 import { previewTemplateForm, previewTemplateTable } from '@/api/faiz'
+import { FIELD_TYPE, normalizeFieldType } from '@/types/fieldType'
 import {
   Form as AForm, FormItem as AFormItem,
   Input as AInput, Textarea as ATextarea, InputNumber as AInputNumber,
@@ -264,15 +265,15 @@ function toCascaderOpts(w: any): any[] {
 function widgetEditType(w: any): string {
   const k = String(w?.type ?? '').toUpperCase()
   switch (k) {
-    case 'DISPLAY_TEXT': return 'text'
-    case 'INPUT_NUMBER': return 'number'
-    case 'DATETIME': return 'datetime'
-    case 'DATE': return 'date'
-    case 'CASCADER': return 'cascader'
-    case 'MULTI_SELECT': return 'multi-select'
-    case 'SINGLE_SELECT':
-    case 'USER_SINGLE_SELECT':
-    case 'USER_MULTI_SELECT':
+    case FIELD_TYPE.LABEL: return 'text'
+    case FIELD_TYPE.TEXT_BOX_NUMBER: return 'number'
+    case FIELD_TYPE.TIME_PICKER: return 'datetime'
+    case FIELD_TYPE.DATE_PICKER: return 'date'
+    case FIELD_TYPE.CASCADER_SINGLE: return 'cascader'
+    case FIELD_TYPE.SELECT_LIST_MULTI: return 'multi-select'
+    case FIELD_TYPE.SELECT_LIST_SINGLE:
+    case FIELD_TYPE.SELECT_USER_SINGLE:
+    case FIELD_TYPE.SELECT_USER_MULTI:
       return 'select'
     case 'RICH_TEXT': return 'textarea'
     default: return 'text'
@@ -406,12 +407,13 @@ const NativeFormPreview = defineComponent({
         )
       }
       const field = String(w.field)
-      const type = String(w.type ?? '').toUpperCase()
+      // 兼容历史数据中的旧版类型值（INPUT_TEXT / CASCADER / USER_SINGLE_SELECT 等）
+      const type = normalizeFieldType(w.type ?? w.filedType ?? w.fieldType).toUpperCase()
       const val = p.modelValue?.[field]
       const title = w.title ?? field
       const required = !!w.required
       const placeholder = w.options?.placeholder ?? (
-        /SINGLE_SELECT|MULTI_SELECT|CASCADER|USER_SINGLE_SELECT|USER_MULTI_SELECT|DATE|DATETIME/.test(type)
+        /SELECT_LIST_SINGLE|SELECT_LIST_MULTI|CASCADER_SINGLE|SELECT_USER_SINGLE|SELECT_USER_MULTI|DATE_PICKER|TIME_PICKER/.test(type)
           ? `请选择${title}`
           : `请输入${title}`
       )
@@ -419,42 +421,42 @@ const NativeFormPreview = defineComponent({
 
       let ctrl: any
       switch (type) {
-        case 'DISPLAY_TEXT':
+        case FIELD_TYPE.LABEL:
           ctrl = h('span', { style: { display: 'inline-block', padding: '4px 0', color: '#262626', fontSize: '14px', lineHeight: 1.6, wordBreak: 'break-word' } }, val != null ? String(val) : '')
           break
         case 'RICH_TEXT':
           ctrl = h(ATextarea, { value: val ?? undefined, 'onUpdate:value': (v: any) => update(field, v), placeholder, rows: 4, style: { width: '100%' } })
           break
-        case 'INPUT_NUMBER':
+        case FIELD_TYPE.TEXT_BOX_NUMBER:
           ctrl = h(AInputNumber, { value: val ?? undefined, 'onUpdate:value': (v: any) => update(field, v), placeholder, style: { width: '100%' } })
           break
-        case 'DATE':
+        case FIELD_TYPE.DATE_PICKER:
           ctrl = h(ADatePicker, { value: val ?? undefined, 'onUpdate:value': (v: any) => update(field, v), placeholder, style: { width: '100%' } })
           break
-        case 'DATETIME':
+        case FIELD_TYPE.TIME_PICKER:
           ctrl = h(ADatePicker, { value: val ?? undefined, 'onUpdate:value': (v: any) => update(field, v), placeholder, showTime: true, style: { width: '100%' } })
           break
-        case 'SINGLE_SELECT': {
+        case FIELD_TYPE.SELECT_LIST_SINGLE: {
           const options = rawOpts.filter(Boolean).map((o) => ({ label: optLabel(o), value: optValue(o), disabled: !!o.disabled || !!o.obsolete }))
           ctrl = h(ASelect, { value: val ?? undefined, 'onUpdate:value': (v: any) => update(field, v), placeholder, allowClear: true, style: { width: '100%' } }, {
             default: () => options.map((o) => h(ASelectOption, { key: String(o.value), value: o.value, disabled: o.disabled }, () => o.label)),
           })
           break
         }
-        case 'MULTI_SELECT': {
+        case FIELD_TYPE.SELECT_LIST_MULTI: {
           const options = rawOpts.filter(Boolean).map((o) => ({ label: optLabel(o), value: optValue(o), disabled: !!o.disabled || !!o.obsolete }))
           ctrl = h(ASelect, { value: val ?? undefined, 'onUpdate:value': (v: any) => update(field, v), placeholder, allowClear: true, mode: 'multiple', style: { width: '100%' } }, {
             default: () => options.map((o) => h(ASelectOption, { key: String(o.value), value: o.value, disabled: o.disabled }, () => o.label)),
           })
           break
         }
-        case 'CASCADER': {
+        case FIELD_TYPE.CASCADER_SINGLE: {
           ctrl = h(ACascader, { value: val ?? undefined, 'onUpdate:value': (v: any) => update(field, v), placeholder, options: toCascaderOptions(rawOpts), style: { width: '100%' }, allowClear: true })
           break
         }
-        case 'USER_SINGLE_SELECT':
-        case 'USER_MULTI_SELECT': {
-          const isMulti = type === 'USER_MULTI_SELECT'
+        case FIELD_TYPE.SELECT_USER_SINGLE:
+        case FIELD_TYPE.SELECT_USER_MULTI: {
+          const isMulti = type === FIELD_TYPE.SELECT_USER_MULTI
           ctrl = h(ASelect, {
             value: val ?? undefined, 'onUpdate:value': (v: any) => update(field, v),
             placeholder, allowClear: true, mode: isMulti ? 'multiple' : undefined, style: { width: '100%' },
@@ -463,12 +465,12 @@ const NativeFormPreview = defineComponent({
           })
           break
         }
-        case 'INPUT_TEXT':
+        case FIELD_TYPE.TEXT_BOX_SINGLE_LINE:
         default:
           ctrl = h(AInput, { value: val ?? undefined, 'onUpdate:value': (v: any) => update(field, v), placeholder, style: { width: '100%' } })
       }
       // 展示文本强制 required=false，不显示必填星号
-      const itemRequired = type === 'DISPLAY_TEXT' ? false : required
+      const itemRequired = type === FIELD_TYPE.LABEL ? false : required
       return h(AFormItem, { key: w.id || field, label: title, required: itemRequired, style: { marginBottom: '12px' } }, () => ctrl)
     }
 

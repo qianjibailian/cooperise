@@ -20,6 +20,10 @@ import type {
   AvailableFieldResult,
   AvailableFieldItem,
   AvailableFieldSavePayload,
+  SystemFieldQuery,
+  SystemFieldPageData,
+  SystemFieldItem,
+  SystemFieldSavePayload,
   ViewListResult,
   FilterDraft,
   IssuePatchField,
@@ -134,41 +138,79 @@ export function getAvailableFieldOptions(
   return request.post(`${PREFIX}/availableField/customOptions`, { fieldReqs })
 }
 
-/** 查询可用字段列表（POST /custom_field/queryAvailableFields） */
+/** 查询可用字段列表（POST /customField/query，不走缓存） */
 export function queryAvailableFields(
+  params?: AvailableFieldQuery,
+): Promise<AvailableFieldResult> {
+  return request.post(`${PREFIX}/customField/query`, params)
+}
+
+/** 查询可用字段列表（POST /availableField/list，走缓存，custom_field + system_field，供模板构建表单） */
+export function queryAvailableFieldList(
   params?: AvailableFieldQuery,
 ): Promise<AvailableFieldResult> {
   return request.post(`${PREFIX}/availableField/list`, params)
 }
 
-/** 新增可选自定义字段（POST /custom_field/availableField） */
+/** 新增可选自定义字段（POST /customField） */
 export function createAvailableField(
   data: AvailableFieldSavePayload,
 ): Promise<Result<AvailableFieldItem>> {
-  return request.post(`${PREFIX}/availableField`, data)
+  return request.post(`${PREFIX}/customField`, data)
 }
 
-/** 查询可用字段详情（GET /availableField/{id}） */
+/** 查询可用字段详情（GET /customField/{id}） */
 export function getAvailableFieldDetail(
   id: string | number,
 ): Promise<Result<AvailableFieldItem>> {
-  return request.get(`${PREFIX}/availableField/${id}`)
+  return request.get(`${PREFIX}/customField/${id}`)
 }
 
-/** 更新可选自定义字段（PUT /custom_field/availableField/{id}） */
+/** 更新可选自定义字段（PUT /customField/{id}） */
 export function updateAvailableField(
   id: string,
   data: AvailableFieldSavePayload,
 ): Promise<Result<AvailableFieldItem>> {
-  return request.put(`${PREFIX}/availableField/${id}`, data)
+  return request.put(`${PREFIX}/customField/${id}`, data)
 }
 
-/** 删除可选自定义字段（DELETE /custom_field/availableField/{id}） */
-export function deleteAvailableField(id: string): Promise<Result<void>> {
-  return request.delete(`${PREFIX}/availableField/${id}`)
-}
-
-/** 批量删除可选自定义字段（DELETE /custom_field/availableField/batch） */
+/** 批量删除可选自定义字段（DELETE /customField/customField/batch，逻辑删除） */
 export function batchDeleteAvailableFields(ids: Array<number | string>): Promise<Result<void>> {
-  return request.delete(`${PREFIX}/availableField/batch`, { data: ids })
+  return request.delete(`${PREFIX}/customField/customField/batch`, { data: ids })
+}
+
+// ==================== System Field API ====================
+
+/** 查询系统字段列表（分页 POST /systemField/query） */
+export function querySystemFields(
+  params?: SystemFieldQuery,
+): Promise<Result<SystemFieldPageData>> {
+  return request.post(`${PREFIX}/systemField/query`, params)
+}
+
+/** 查询系统字段详情（GET /systemField/{id}） */
+export function getSystemFieldDetail(
+  id: string | number,
+): Promise<Result<SystemFieldItem>> {
+  return request.get(`${PREFIX}/systemField/${id}`)
+}
+
+/** 新增系统字段（POST /systemField） */
+export function createSystemField(
+  data: SystemFieldSavePayload,
+): Promise<Result<void>> {
+  return request.post(`${PREFIX}/systemField`, data)
+}
+
+/** 更新系统字段（PUT /systemField/{id}） */
+export function updateSystemField(
+  id: string | number,
+  data: SystemFieldSavePayload,
+): Promise<Result<void>> {
+  return request.put(`${PREFIX}/systemField/${id}`, data)
+}
+
+/** 批量删除系统字段（DELETE /systemField/systemField/batch，逻辑删除） */
+export function batchDeleteSystemFields(ids: Array<number | string>): Promise<Result<void>> {
+  return request.delete(`${PREFIX}/systemField/systemField/batch`, { data: ids })
 }

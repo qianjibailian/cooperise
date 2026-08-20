@@ -31,7 +31,7 @@ export interface Template {
 /** 模板分页查询请求（对应后端 QueryTemplatesRequest） */
 export interface TemplateQueryRequest {
   page?: number
-  perPage?: number
+  pageSize?: number
   keyword?: string
   /** 预留：分类 */
   category?: string
@@ -44,7 +44,7 @@ export interface TemplatePageData {
   total: number
   pageCount: number
   currentPage: number
-  perPage: number
+  pageSize: number
   enabledCount: number
   totalTabs: number
   list: Template[]
@@ -76,7 +76,7 @@ export interface IssueQueryInfo {
   total: number
   pageCount: number
   currentPage: number
-  perPage: number
+  pageSize: number
   list: IssueRecord[]
 }
 
@@ -453,7 +453,7 @@ export interface CustomFieldOptionReq {
   projectId: string
   issueTypeId: string
   issueKey?: string
-  perPage?: number
+  pageSize?: number
   page?: number
 }
 
@@ -485,7 +485,7 @@ export interface CustomFieldJOptions {
   total: number
   pageCount: number | null
   currentPage: number | null
-  perPage: number | null
+  pageSize: number | null
   list: CustomFieldJOption[]
   searchAfter: unknown | null
 }
@@ -514,7 +514,7 @@ export interface CustomFieldOptionResult {
 /** 可用字段查询参数 */
 export interface AvailableFieldQuery {
   page?: number
-  perPage?: number
+  pageSize?: number
   searchKey?: string
 }
 
@@ -527,13 +527,14 @@ export interface AvailableFieldItem {
   filedType: string
   type: string
   typeName: string | null
+  /** 字段分组：PERSON/DESCRIPTION/TIME/CUSTOM_FIELD/SUBJECT */
+  fieldGroup?: string
   orderAble: boolean
   supportOperator: string[]
   isSystem: boolean
   frontPage: boolean
   esFieldType: string | null
   referencedFieldId: string | null
-  enumSettingType: string | null
   obsolete: boolean
   isRequired: boolean
   fieldTag: string | null
@@ -559,7 +560,7 @@ export interface AvailableFieldResult {
     total: number
     pageCount: number
     currentPage: number
-    perPage: number
+    pageSize: number
     list: AvailableFieldItem[]
   }
 }
@@ -568,6 +569,8 @@ export interface AvailableFieldResult {
 export interface AvailableFieldSavePayload {
   fieldNumId?: string
   fieldName?: string
+  /** 字段分组：PERSON/DESCRIPTION/TIME/CUSTOM_FIELD/SUBJECT */
+  fieldGroup?: string
   filedType?: string
   type?: string
   typeName?: string
@@ -577,13 +580,71 @@ export interface AvailableFieldSavePayload {
   frontPage?: boolean
   esFieldType?: string
   referencedFieldId?: string
-  enumSettingType?: string
   obsolete?: boolean
   isRequired?: boolean
   fieldTag?: string
   fieldSource?: string
   configSchema?: string
   fieldValue?: string
+}
+
+// ========== System Fields (POST /systemField/query) ==========
+
+/** 系统字段查询参数 */
+export interface SystemFieldQuery {
+  page?: number
+  pageSize?: number
+  searchKey?: string
+}
+
+/** 系统字段单项（对应后端 SystemFieldVO） */
+export interface SystemFieldItem {
+  fieldId?: string
+  id?: string
+  fieldName?: string
+  fieldValue?: string
+  /** 字段分组：PERSON/DESCRIPTION/TIME/CUSTOM_FIELD/SUBJECT */
+  fieldGroup?: string
+  isRequired?: boolean
+  filedType?: string
+  type?: string
+  supportOperator?: string[]
+  obsolete?: boolean
+  fieldSource?: string
+  /** 启用状态（true=启用，false=停用） */
+  status?: boolean
+  createTime?: string
+  updateTime?: string
+  creator?: string
+  updater?: string
+  configSchema?: string
+}
+
+/** 系统字段分页结果（对应后端 SystemFieldPageVO） */
+export interface SystemFieldPageData {
+  total?: number
+  pageCount?: number
+  currentPage?: number
+  pageSize?: number
+  list?: SystemFieldItem[]
+}
+
+/** 新增/更新系统字段请求（对应后端 SystemFieldSaveRequest） */
+export interface SystemFieldSavePayload {
+  fieldNumId?: string
+  fieldId?: string
+  fieldName?: string
+  fieldValue?: string
+  /** 字段分组：PERSON/DESCRIPTION/TIME/CUSTOM_FIELD/SUBJECT */
+  fieldGroup?: string
+  isRequired?: boolean
+  required?: boolean
+  filedType?: string
+  type?: string
+  supportOperator?: string[]
+  obsolete?: boolean
+  fieldSource?: string
+  configSchema?: string
 }
 
 // ========== Issue Detail (POST /issue/queryDetail) ==========

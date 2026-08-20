@@ -670,6 +670,7 @@ import {
 } from '@ant-design/icons-vue'
 import { queryDetail } from '@/api/faiz'
 import type { DetailData, DetailField } from '@/types/faiz'
+import { FIELD_TYPE } from '@/types/fieldType'
 
 // ============================================================
 // 子组件：MiniEmpty 小型空状态
@@ -715,7 +716,7 @@ const UserAvatar = {
       if (!v || typeof v !== 'object') return { name: '', id: '', firstLetter: '?', color: '#d9d9d9', textColor: '#595959' }
       const obj = v as Record<string, unknown>
       const name = String(obj.coAccount ?? obj.userCoAccount ?? obj.userEnName ?? obj.displayName ?? obj.name ?? '')
-      const idPart = obj.id || obj.userId ? String(obj.id ?? obj.userId ?? '') : ''
+      const idPart = obj.id || obj.userId || obj.userNo ? String(obj.id ?? obj.userId ?? obj.userNo ?? '') : ''
       const firstLetter = (name || '?').trim().charAt(0).toUpperCase()
       const avatar = String(obj.avatarUrl ?? obj.userAvatar ?? '')
       const palette = [
@@ -782,7 +783,7 @@ const UserAvatar = {
                 userSelect: 'none',
               },
             }, firstLetter),
-        // 名字
+        // 名字 + 工号
         h('span', {
           style: {
             color: '#1f1f1f',
@@ -791,24 +792,10 @@ const UserAvatar = {
             whiteSpace: 'nowrap',
             overflow: 'hidden',
             textOverflow: 'ellipsis',
-            maxWidth: 'calc(100% - 50px)',
+            flex: '0 1 auto',
+            minWidth: 0,
           },
-        }, name),
-        // 工号
-        id
-          ? h('span', {
-              style: {
-                color: '#8c8c8c',
-                fontSize: '11px',
-                fontFamily: "'SF Mono', Menlo, Consolas, monospace",
-                padding: '1px 6px',
-                background: '#f5f5f5',
-                borderRadius: '10px',
-                whiteSpace: 'nowrap',
-                flexShrink: 0,
-              },
-            }, `#${id}`)
-          : null,
+        }, `${name}${id ? `（${id}）` : ''}`),
       ].filter(Boolean))
       return wrap
     }
@@ -837,7 +824,7 @@ const ValueWithBadge = {
     const shouldShowBadge = computed(() =>
       !!badgeId.value &&
       !!props.field.type &&
-      props.field.type === 'SINGLE_SELECT' &&
+      props.field.type === FIELD_TYPE.SELECT_LIST_SINGLE &&
       /^\d{5,}$/.test(badgeId.value),
     )
     return () => {
@@ -1066,7 +1053,7 @@ const SUMMARY_EXCLUDED_IDS = new Set(['summary', 'status', 'priority', 'issuetyp
 
 function isUserField(f: DetailField): boolean {
   const t = f.type || ''
-  if (t === 'USER_SINGLE_SELECT' || t === 'USER_MULTI_SELECT') return true
+  if (t === FIELD_TYPE.SELECT_USER_SINGLE || t === FIELD_TYPE.SELECT_USER_MULTI) return true
   if (f.id === 'assignee' || f.id === 'reporter' || f.id === 'creator' || f.id === 'updater') return true
   return false
 }
@@ -1222,31 +1209,31 @@ function formatFieldValue(field: DetailField): string {
   const type = String(field.type ?? '')
   if (!hasValue(field)) return '—'
   switch (type) {
-    case 'INPUT_TEXT':
-    case 'INPUT_NUMBER':
-    case 'DISPLAY_TEXT':
+    case FIELD_TYPE.TEXT_BOX_SINGLE_LINE:
+    case FIELD_TYPE.TEXT_BOX_NUMBER:
+    case FIELD_TYPE.LABEL:
       return String(value)
-    case 'DATE':
-    case 'DATETIME': {
+    case FIELD_TYPE.DATE_PICKER:
+    case FIELD_TYPE.TIME_PICKER: {
       if (typeof value === 'string') return value
       if (value && typeof (value as { format?: unknown }).format === 'function') {
-        return (value as { format: (fmt: string) => string }).format(type === 'DATETIME' ? 'YYYY-MM-DD HH:mm:ss' : 'YYYY-MM-DD')
+        return (value as { format: (fmt: string) => string }).format(type === FIELD_TYPE.TIME_PICKER ? 'YYYY-MM-DD HH:mm:ss' : 'YYYY-MM-DD')
       }
       try {
         return dayjs(value as string | number).format(
-          type === 'DATETIME' ? 'YYYY-MM-DD HH:mm:ss' : 'YYYY-MM-DD'
+          type === FIELD_TYPE.TIME_PICKER ? 'YYYY-MM-DD HH:mm:ss' : 'YYYY-MM-DD'
         )
       } catch {
         return String(value)
       }
     }
-    case 'SINGLE_SELECT':
-    case 'CASCADER':
+    case FIELD_TYPE.SELECT_LIST_SINGLE:
+    case FIELD_TYPE.CASCADER_SINGLE:
       return formatObject(value)
-    case 'USER_SINGLE_SELECT':
-    case 'USER_MULTI_SELECT':
+    case FIELD_TYPE.SELECT_USER_SINGLE:
+    case FIELD_TYPE.SELECT_USER_MULTI:
       return formatUser(value)
-    case 'MULTI_SELECT': {
+    case FIELD_TYPE.SELECT_LIST_MULTI: {
       if (Array.isArray(value)) {
         return (value as unknown[]).map(v => formatObject(v)).filter(Boolean).join('、')
       }
@@ -1987,13 +1974,18 @@ function formatRichText(v: unknown): string {
 .kv-row {
   display: grid;
   grid-template-columns: 120px 1fr;
-  gap: 14px;
+  gap: 4px;
   align-items: start;
   padding: 0;
   background: transparent;
 }
 .kv-row:hover {
   background: transparent;
+}
+/* 人员信息行：label 列宽随内容收缩，让 label 与值水平贴紧 */
+.user-row {
+  grid-template-columns: auto 1fr;
+  gap: 8px;
 }
 .kv-label {
   display: flex;

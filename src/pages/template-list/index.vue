@@ -93,7 +93,7 @@
     <div v-if="!loading && totalCount > 0" class="pagination-bar">
       <a-pagination
         v-model:current="page"
-        v-model:page-size="perPage"
+        v-model:page-size="pageSize"
         :total="totalCount"
         :show-size-changer="true"
         :show-quick-jumper="true"
@@ -271,7 +271,7 @@
                       <span v-if="w.required" class="afp-required">*</span>
                       {{ w.title || w.field || '未命名字段' }}
                     </span>
-                    <span class="added-type-tag" :title="w.type || w.name">{{ componentLabel(w) }}</span>
+                    <span class="added-type-tag" :title="w.type || w.name">{{ typeLabel(w.type) }}</span>
                     <a-button type="text" size="small" danger class="added-remove" @click="removeAddedWidget(idx)">
                       <CloseCircleFilled />
                     </a-button>
@@ -326,7 +326,7 @@
                       <span v-if="w.required" class="afp-required">*</span>
                       {{ w.title || w.field || '未命名字段' }}
                     </span>
-                    <span class="added-type-tag" :title="w.type || w.name">{{ componentLabel(w) }}</span>
+                    <span class="added-type-tag" :title="w.type || w.name">{{ typeLabel(w.type) }}</span>
                     <a-button type="text" size="small" danger class="added-remove" @click="removeWidgetFromTab(idx, wi)">
                       <CloseCircleFilled />
                     </a-button>
@@ -453,7 +453,8 @@ import {
   HolderOutlined,
 } from '@ant-design/icons-vue'
 import type { AvailableFieldItem, EnumOptionItem } from '@/types/faiz'
-import { queryTemplates, getTemplate, createTemplate, updateTemplate, deleteTemplate, copyTemplate, queryAvailableFields } from '@/api/faiz'
+import { queryTemplates, getTemplate, createTemplate, updateTemplate, deleteTemplate, copyTemplate, queryAvailableFieldList } from '@/api/faiz'
+import { FIELD_TYPE, normalizeFieldType } from '@/types/fieldType'
 import TemplatePreviewModal from '@/components/TemplatePreviewModal.vue'
 
 // ---- 类型 ----
@@ -521,25 +522,28 @@ const availableFieldKeyword = ref('')
 const availableFieldTypeFilter = ref('')
 const selectedAvailableFieldIds = ref<string[]>([])
 const FIELD_TYPE_OPTIONS = [
-  { value: 'INPUT_TEXT', label: '文本输入框' },
-  { value: 'INPUT_NUMBER', label: '数字输入框' },
-  { value: 'DATE', label: '日期' },
-  { value: 'DATETIME', label: '日期时间' },
-  { value: 'SINGLE_SELECT', label: '单选下拉' },
-  { value: 'MULTI_SELECT', label: '多选下拉' },
-  { value: 'CASCADER', label: '级联' },
-  { value: 'USER_SINGLE_SELECT', label: '人员单选' },
-  { value: 'USER_MULTI_SELECT', label: '人员多选' },
-  { value: 'RICH_TEXT', label: '富文本' },
-  { value: 'DISPLAY_TEXT', label: '展示文本' },
+  { value: FIELD_TYPE.TEXT_BOX_SINGLE_LINE, label: '文本输入框' },
+  { value: FIELD_TYPE.TEXT_BOX_MULTI_LINE, label: '多行文本' },
+  { value: FIELD_TYPE.TEXT_BOX_NUMBER, label: '数字输入框' },
+  { value: FIELD_TYPE.DATE_PICKER, label: '日期' },
+  { value: FIELD_TYPE.TIME_PICKER, label: '日期时间' },
+  { value: FIELD_TYPE.SELECT_LIST_SINGLE, label: '单选下拉' },
+  { value: FIELD_TYPE.SELECT_LIST_MULTI, label: '多选下拉' },
+  { value: FIELD_TYPE.CASCADER_SINGLE, label: '级联' },
+  { value: FIELD_TYPE.SELECT_USER_SINGLE, label: '人员单选' },
+  { value: FIELD_TYPE.SELECT_USER_MULTI, label: '人员多选' },
+  { value: FIELD_TYPE.RICH_TEXT, label: '富文本' },
+  { value: FIELD_TYPE.LABEL, label: '展示文本' },
 ]
 
 async function loadAvailableFields(force = false) {
   if (availableFieldsList.value.length > 0 && !force) return
   availableFieldsLoading.value = true
   try {
-    const res = await queryAvailableFields({ page: 1, perPage: 999, searchKey: '' })
-    availableFieldsList.value = res?.data?.list || []
+    const res = await queryAvailableFieldList({ page: 1, pageSize: 999, searchKey: '' })
+    // 接口返回的 filedType 可能是旧枚举（INPUT_TEXT / CASCADER / USER_SINGLE_SELECT 等），
+    // 统一归一化为新枚举，保证左侧类型标签、过滤与右侧组件映射（availableFieldToWidget）一致
+    availableFieldsList.value = (res?.data?.list || []).map(f => ({ ...f, type: normalizeFieldType(f.type || f.filedType || f.fieldType) }))
   } catch {
     availableFieldsList.value = []
   } finally {
@@ -580,7 +584,7 @@ function parseFieldValue(raw: string | null | undefined): EnumOptionItem[] {
 }
 
 /** 可用字段 → widget 对象（vxe 兼容结构）
- *  type 与可用字段 type 一一映射（大写枚举），不再使用 componentKey
+ *  type 与可用字段 type 一一映射（新枚举体系），不再使用 componentKey
  *  name 仅作为 vxe-table row key 标识符，后缀保留小写 componentKey 风格仅用于唯一性
  */
 function availableFieldToWidget(f: AvailableFieldItem): any {
@@ -599,30 +603,32 @@ function availableFieldToWidget(f: AvailableFieldItem): any {
     },
   }
   switch (f.type) {
-    case 'INPUT_TEXT':
-      return { ...base, type: 'INPUT_TEXT', name: `Comp_00000000_${id}_input_text` }
-    case 'INPUT_NUMBER':
-      return { ...base, type: 'INPUT_NUMBER', name: `Comp_00000000_${id}_input_number` }
-    case 'DATE':
-      return { ...base, type: 'DATE', name: `Comp_00000000_${id}_date_picker`, options: { ...base.options, format: 'YYYY-MM-DD' } }
-    case 'DATETIME':
-      return { ...base, type: 'DATETIME', name: `Comp_00000000_${id}_date_picker`, options: { ...base.options, format: 'YYYY-MM-DD HH:mm:ss', hasTime: true } }
-    case 'SINGLE_SELECT':
-      return { ...base, type: 'SINGLE_SELECT', name: `Comp_00000000_${id}_select_single`, options: { ...base.options, options: opts, multiple: false } }
-    case 'MULTI_SELECT':
-      return { ...base, type: 'MULTI_SELECT', name: `Comp_00000000_${id}_select_multiple`, options: { ...base.options, options: opts, multiple: true } }
-    case 'CASCADER':
-      return { ...base, type: 'CASCADER', name: `Comp_00000000_${id}_cascader`, options: { ...base.options, options: opts } }
-    case 'USER_SINGLE_SELECT':
-      return { ...base, type: 'USER_SINGLE_SELECT', name: `Comp_00000000_${id}_member`, options: { ...base.options, multiple: false } }
-    case 'USER_MULTI_SELECT':
-      return { ...base, type: 'USER_MULTI_SELECT', name: `Comp_00000000_${id}_member`, options: { ...base.options, multiple: true } }
-    case 'RICH_TEXT':
-      return { ...base, type: 'RICH_TEXT', name: `Comp_00000000_${id}_rich_text` }
-    case 'DISPLAY_TEXT':
-      return { ...base, type: 'DISPLAY_TEXT', name: `Comp_00000000_${id}_display_text`, required: false, options: { ...base.options, required: false } }
+    case FIELD_TYPE.TEXT_BOX_SINGLE_LINE:
+      return { ...base, type: FIELD_TYPE.TEXT_BOX_SINGLE_LINE, name: `Comp_00000000_${id}_input_text` }
+    case FIELD_TYPE.TEXT_BOX_MULTI_LINE:
+      return { ...base, type: FIELD_TYPE.TEXT_BOX_MULTI_LINE, name: `Comp_00000000_${id}_textarea` }
+    case FIELD_TYPE.TEXT_BOX_NUMBER:
+      return { ...base, type: FIELD_TYPE.TEXT_BOX_NUMBER, name: `Comp_00000000_${id}_input_number` }
+    case FIELD_TYPE.DATE_PICKER:
+      return { ...base, type: FIELD_TYPE.DATE_PICKER, name: `Comp_00000000_${id}_date_picker`, options: { ...base.options, format: 'YYYY-MM-DD' } }
+    case FIELD_TYPE.TIME_PICKER:
+      return { ...base, type: FIELD_TYPE.TIME_PICKER, name: `Comp_00000000_${id}_date_picker`, options: { ...base.options, format: 'YYYY-MM-DD HH:mm:ss', hasTime: true } }
+    case FIELD_TYPE.SELECT_LIST_SINGLE:
+      return { ...base, type: FIELD_TYPE.SELECT_LIST_SINGLE, name: `Comp_00000000_${id}_select_single`, options: { ...base.options, options: opts, multiple: false } }
+    case FIELD_TYPE.SELECT_LIST_MULTI:
+      return { ...base, type: FIELD_TYPE.SELECT_LIST_MULTI, name: `Comp_00000000_${id}_select_multiple`, options: { ...base.options, options: opts, multiple: true } }
+    case FIELD_TYPE.CASCADER_SINGLE:
+      return { ...base, type: FIELD_TYPE.CASCADER_SINGLE, name: `Comp_00000000_${id}_cascader`, options: { ...base.options, options: opts } }
+    case FIELD_TYPE.SELECT_USER_SINGLE:
+      return { ...base, type: FIELD_TYPE.SELECT_USER_SINGLE, name: `Comp_00000000_${id}_member`, options: { ...base.options, multiple: false } }
+    case FIELD_TYPE.SELECT_USER_MULTI:
+      return { ...base, type: FIELD_TYPE.SELECT_USER_MULTI, name: `Comp_00000000_${id}_member`, options: { ...base.options, multiple: true } }
+    case FIELD_TYPE.RICH_TEXT:
+      return { ...base, type: FIELD_TYPE.RICH_TEXT, name: `Comp_00000000_${id}_rich_text` }
+    case FIELD_TYPE.LABEL:
+      return { ...base, type: FIELD_TYPE.LABEL, name: `Comp_00000000_${id}_display_text`, required: false, options: { ...base.options, required: false } }
     default:
-      return { ...base, type: 'INPUT_TEXT', name: `Comp_00000000_${id}_input_text` }
+      return { ...base, type: FIELD_TYPE.TEXT_BOX_SINGLE_LINE, name: `Comp_00000000_${id}_input_text` }
   }
 }
 
@@ -657,37 +663,6 @@ const TYPE_LABEL_MAP: Record<string, string> = FIELD_TYPE_OPTIONS.reduce(
   {} as Record<string, string>,
 )
 function typeLabel(t: string | undefined | null): string { return TYPE_LABEL_MAP[t ?? ''] || (t ? String(t) : '未知') }
-
-/** widget.type（大写枚举）→ 中文标签 */
-function componentLabel(w: any): string {
-  if (!w) return '未知'
-  switch (String(w.type ?? '').toUpperCase()) {
-    case 'INPUT_TEXT':
-      return '单行文本'
-    case 'INPUT_NUMBER':
-      return '数字'
-    case 'DATE':
-      return '日期'
-    case 'DATETIME':
-      return '日期时间'
-    case 'SINGLE_SELECT':
-      return '单选下拉'
-    case 'MULTI_SELECT':
-      return '多选下拉'
-    case 'CASCADER':
-      return '级联'
-    case 'USER_SINGLE_SELECT':
-      return '人员单选'
-    case 'USER_MULTI_SELECT':
-      return '人员多选'
-    case 'RICH_TEXT':
-      return '富文本'
-    case 'DISPLAY_TEXT':
-      return '展示文本'
-    default:
-      return '单行文本'
-  }
-}
 
 /** 全选当前筛选状态 */
 const isAllFilteredChecked = computed(() => {
@@ -1101,6 +1076,8 @@ function normalizeWidgets(ws: any): any[] {
       ...w,
       field: w.fieldId ?? w.field,
       title: isCompName ? (w.title ?? w.name) : (w.name ?? w.title),
+      // 兼容历史数据中的旧版类型值（INPUT_TEXT / CASCADER / USER_SINGLE_SELECT 等）
+      type: normalizeFieldType(w.type ?? w.filedType ?? w.fieldType),
     }
   })
 }
@@ -1108,7 +1085,7 @@ function normalizeWidgets(ws: any): any[] {
 // ---- 持久化 ----
 const loading = ref(false)
 const page = ref(1)
-const perPage = ref(12)
+const pageSize = ref(12)
 const totalCount = ref(0)
 
 async function loadTemplates() {
@@ -1116,7 +1093,7 @@ async function loadTemplates() {
   try {
     const res = await queryTemplates({
       page: page.value,
-      perPage: perPage.value,
+      pageSize: pageSize.value,
       keyword: searchValue.value.trim() || undefined,
       status: filterStatus.value === '' ? undefined : Number(filterStatus.value),
     })
@@ -1134,13 +1111,13 @@ async function loadTemplates() {
 
 function handlePageChange(cur: number, size: number) {
   page.value = cur
-  perPage.value = size
+  pageSize.value = size
   loadTemplates()
 }
 
 function handleSizeChange(_cur: number, size: number) {
   page.value = 1
-  perPage.value = size
+  pageSize.value = size
   loadTemplates()
 }
 
@@ -1398,6 +1375,8 @@ onMounted(loadTemplates)
   border: 1px solid #eef0f3; border-radius: 12px; background: #fcfcfd;
   padding: 14px; min-height: 420px;
 }
+/* 表单字段面板去掉底部内边距，让列表展示得更靠下 */
+.added-fields-panel { padding-bottom: 0; }
 .afp-title-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
 .afp-title { font-size: 13px; font-weight: 600; color: #1d1d1f; }
 
@@ -1431,7 +1410,9 @@ onMounted(loadTemplates)
 .added-empty-icon { font-size: 36px; margin-bottom: 12px; opacity: 0.55; }
 .added-empty p { font-size: 13px; margin: 0; max-width: 260px; line-height: 1.5; }
 
-.added-list { display: flex; flex-direction: column; gap: 6px; flex: 1; overflow-y: auto; max-height: 380px; padding-right: 2px; }
+/* 填满面板剩余高度（min-height: 0 保证内容超出时在内部滚动而非撑高面板），
+   面板高度由 grid stretch 与左侧可用字段面板保持一致 */
+.added-list { display: flex; flex-direction: column; gap: 6px; flex: 1 1 auto; min-height: 0; overflow-y: auto; padding-right: 2px; }
 .added-item { display: grid; grid-template-columns: 16px 22px 1fr auto auto; align-items: center; gap: 8px; padding: 7px 8px; border-radius: 8px; background: #fff; border: 1px solid #eef0f3; transition: all 0.15s; cursor: grab; }
 .added-item:hover { border-color: #d6dee9; background: #f7faff; }
 .added-item.is-dragging { opacity: 0.4; cursor: grabbing; }

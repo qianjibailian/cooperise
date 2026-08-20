@@ -83,7 +83,7 @@
           :key="col.id"
           :field="col.id"
           :title="col.name"
-          min-width="140"
+          :width="columnWidths[col.id]"
           :fixed="col.id === 'summary' ? 'left' : undefined"
         >
           <template #default="{ row }">
@@ -93,7 +93,7 @@
             >
               <div v-if="isCellEditing(row, col.id)" class="cell-editor">
                 <a-input-number
-                  v-if="getFieldType(row, col.id) === 'INPUT_NUMBER'"
+                  v-if="getFieldType(row, col.id) === FIELD_TYPE.TEXT_BOX_NUMBER"
                   v-focus
                   v-model:value="editValue"
                   size="small"
@@ -409,6 +409,7 @@ import IssueDetailDrawer from '@/components/IssueDetailDrawer.vue'
 import FilterPanel from '@/components/FilterPanel.vue'
 import SortPanel from '@/components/SortPanel.vue'
 import NewIssueFormModal from '@/components/NewIssueFormModal.vue'
+import { FIELD_TYPE } from '@/types/fieldType'
 
 // 详情抽屉
 const detailDrawerOpen = ref(false)
@@ -473,7 +474,7 @@ async function fetchAvailableFields(keyword?: string) {
   try {
     const res = await queryAvailableFields({
       page: 1,
-      perPage: 20,
+      pageSize: 20,
       searchKey: keyword || '',
     })
     if (res.success && res.data?.list) {
@@ -525,7 +526,7 @@ async function loadMoreHiddenFields() {
   try {
     const res = await queryAvailableFields({
       page: nextPage,
-      perPage: 20,
+      pageSize: 20,
       searchKey: settingSearchKeyword.value || '',
     })
     if (res.success && res.data?.list) {
@@ -837,12 +838,61 @@ const tableColumns = computed(() => {
   return Object.values(m)
 })
 
+/** 估算文本渲染宽度（px）：中文字符按字号、英文/数字按 0.62 倍 */
+function estimateTextWidth(text: unknown, fontSize = 13): number {
+  const t = String(text ?? '')
+  let w = 0
+  for (const ch of t) {
+    w += ch.charCodeAt(0) > 255 ? fontSize : fontSize * 0.62
+  }
+  return w
+}
+
+/** 每列宽度：根据该列单元格值内容动态计算，值越长列越宽 */
+const columnWidths = computed<Record<string, number>>(() => {
+  const res: Record<string, number> = {}
+  const rows = dataList.value
+  for (const col of tableColumns.value) {
+    const sample = rows.find(r => getCellValue(r, col.id) !== '') || rows[0]
+    let maxText = 0
+    for (const row of rows) {
+      // 用户字段取 账号（工号），其余取单元格显示值
+      const text = isUserField(row, col.id) ? getUserCellText(row, col.id) : getCellValue(row, col.id)
+      if (!text) continue
+      const w = estimateTextWidth(text)
+      if (w > maxText) maxText = w
+    }
+    // 表头文本也要放得下
+    maxText = Math.max(maxText, estimateTextWidth(col.name) + 6)
+    // 按单元格渲染形态附加宽度
+    let extra = 24 // 单元格左右 padding
+    if (sample && isUserField(sample, col.id)) {
+      extra += 28 // 头像 22 + 间隙 6
+    } else if (
+      sample &&
+      (col.id === 'status' || col.id === 'priority' || col.id === 'issuetype' || isSingleSelectField(sample, col.id))
+    ) {
+      extra += 22 // tag 内边距
+    } else if (col.id === 'issuekey') {
+      extra += 12
+    }
+    if (sample && isFieldEditable(sample, col.id)) {
+      extra += 22 // 编辑 icon 18 + 间隙 4
+    }
+    if (col.id === 'summary') {
+      extra += 44 // 复制 + 链接 icon
+    }
+    res[col.id] = Math.max(Math.ceil(maxText + extra), 90)
+  }
+  return res
+})
+
 /** 从 issueField 取单元格显示值 */
 function getCellValue(rec: IssueRecord, fieldId: string): string {
   const f = rec.issueField?.find(it => it.id === fieldId)
   if (!f) return ''
   // 日期字段：统一格式化为 YYYY-MM-DD，不显示时间
-  if (String(f.type ?? '').toUpperCase() === 'DATE') {
+  if (String(f.type ?? '').toUpperCase() === FIELD_TYPE.DATE_PICKER) {
     const rawDate = f.exportValue ?? f.value
     if (rawDate == null) return ''
     const rawText = typeof rawDate === 'object'
@@ -852,17 +902,17 @@ function getCellValue(rec: IssueRecord, fieldId: string): string {
     return d && d.isValid() ? d.format('YYYY-MM-DD') : rawText
   }
   // 级联字段：逐层取 label，一级与二级用 / 分隔显示（如 后端任务 / 代码开发）
-  if (String(f.type ?? '').toUpperCase() === 'CASCADER') {
+  if (String(f.type ?? '').toUpperCase() === FIELD_TYPE.CASCADER_SINGLE) {
     const rawC = f.exportValue ?? f.value
     if (rawC == null) return ''
     return cascadingValueToLabels(rawC)
   }
   // 人员单选字段：显示 账号（工号），如 Shenyuan1（10284941）
-  if (String(f.type ?? '').toUpperCase() === 'USER_SINGLE_SELECT') {
+  if (String(f.type ?? '').toUpperCase() === FIELD_TYPE.SELECT_USER_SINGLE) {
     return getUserCellText(rec, fieldId)
   }
   // 单选下拉字段：value 结构为 { optionId, optionName }，显示 optionName
-  if (String(f.type ?? '').toUpperCase() === 'SINGLE_SELECT') {
+  if (String(f.type ?? '').toUpperCase() === FIELD_TYPE.SELECT_LIST_SINGLE) {
     const sv = f.exportValue ?? f.value
     if (sv == null) return ''
     if (typeof sv === 'object') {
@@ -1028,7 +1078,7 @@ const cascaderOptions = ref<CustomFieldOptionItem[]>([])
 /** 级联字段原始选项（未归一化，保存时取整个对象用） */
 const cascaderRawOptions = ref<unknown[]>([])
 const cascaderLoading = ref(false)
-/** 单选下拉字段选项（SINGLE_SELECT） */
+/** 单选下拉字段选项（SELECT_LIST_SINGLE） */
 const singleOptions = ref<CustomFieldOptionItem[]>([])
 /** 单选下拉字段原始选项 */
 const singleRawOptions = ref<unknown[]>([])
@@ -1048,29 +1098,29 @@ const vFocus = {
   },
 }
 
-/** 取字段类型（与新增字段一致，如 INPUT_TEXT / INPUT_NUMBER） */
+/** 取字段类型（与新增字段一致，如 TEXT_BOX_SINGLE_LINE / TEXT_BOX_NUMBER） */
 function getFieldType(rec: IssueRecord, fieldId: string): string {
   return rec.issueField?.find(it => it.id === fieldId)?.type ?? ''
 }
 
-/** 是否为日期字段（DATE，大小写不敏感） */
+/** 是否为日期字段（DATE_PICKER，大小写不敏感） */
 function isDateField(rec: IssueRecord, fieldId: string): boolean {
-  return getFieldType(rec, fieldId).toUpperCase() === 'DATE'
+  return getFieldType(rec, fieldId).toUpperCase() === FIELD_TYPE.DATE_PICKER
 }
 
-/** 是否为级联字段（CASCADER，大小写不敏感） */
+/** 是否为级联字段（CASCADER_SINGLE，大小写不敏感） */
 function isCascaderField(rec: IssueRecord, fieldId: string): boolean {
-  return getFieldType(rec, fieldId).toUpperCase() === 'CASCADER'
+  return getFieldType(rec, fieldId).toUpperCase() === FIELD_TYPE.CASCADER_SINGLE
 }
 
-/** 是否为单选下拉字段（SINGLE_SELECT，大小写不敏感） */
+/** 是否为单选下拉字段（SELECT_LIST_SINGLE，大小写不敏感） */
 function isSingleSelectField(rec: IssueRecord, fieldId: string): boolean {
-  return getFieldType(rec, fieldId).toUpperCase() === 'SINGLE_SELECT'
+  return getFieldType(rec, fieldId).toUpperCase() === FIELD_TYPE.SELECT_LIST_SINGLE
 }
 
-/** 是否为人员单选字段（USER_SINGLE_SELECT，大小写不敏感） */
+/** 是否为人员单选字段（SELECT_USER_SINGLE，大小写不敏感） */
 function isUserSingleSelectField(rec: IssueRecord, fieldId: string): boolean {
-  return getFieldType(rec, fieldId).toUpperCase() === 'USER_SINGLE_SELECT'
+  return getFieldType(rec, fieldId).toUpperCase() === FIELD_TYPE.SELECT_USER_SINGLE
 }
 
 /** 是否为用户类型字段：人员单选、创建人（creator）、更新人（updater） */
@@ -1253,7 +1303,7 @@ function toOptionItem(raw: unknown, idx: number): CustomFieldOptionItem {
  * 优先用字段自带 configSchema / options，否则调 POST /availableField/customOptions
  */
 async function fetchEnumOptions(
-  kind: 'CASCADER' | 'SINGLE_SELECT',
+  kind: typeof FIELD_TYPE.CASCADER_SINGLE | typeof FIELD_TYPE.SELECT_LIST_SINGLE,
   rec: IssueRecord,
   fieldId: string,
 ): Promise<{ raw: unknown[]; items: CustomFieldOptionItem[] }> {
@@ -1276,7 +1326,7 @@ async function fetchEnumOptions(
       issueTypeId: '',
       issueKey: getIssueKey(rec),
       page: 1,
-      perPage: 100,
+      pageSize: 100,
     },
   ])
   if (res?.success && Array.isArray(res.data)) {
@@ -1313,11 +1363,11 @@ async function fetchEnumOptions(
   return { raw: [], items: [] }
 }
 
-/** 加载级联字段选项（CASCADER） */
+/** 加载级联字段选项（CASCADER_SINGLE） */
 async function loadCascaderOptions(rec: IssueRecord, fieldId: string) {
   cascaderLoading.value = true
   try {
-    const { raw, items } = await fetchEnumOptions('CASCADER', rec, fieldId)
+    const { raw, items } = await fetchEnumOptions(FIELD_TYPE.CASCADER_SINGLE, rec, fieldId)
     cascaderRawOptions.value = raw
     cascaderOptions.value = items
   } catch {
@@ -1328,11 +1378,11 @@ async function loadCascaderOptions(rec: IssueRecord, fieldId: string) {
   }
 }
 
-/** 加载单选下拉字段选项（SINGLE_SELECT） */
+/** 加载单选下拉字段选项（SELECT_LIST_SINGLE） */
 async function loadSingleOptions(rec: IssueRecord, fieldId: string) {
   singleLoading.value = true
   try {
-    const { raw, items } = await fetchEnumOptions('SINGLE_SELECT', rec, fieldId)
+    const { raw, items } = await fetchEnumOptions(FIELD_TYPE.SELECT_LIST_SINGLE, rec, fieldId)
     singleRawOptions.value = raw
     singleOptions.value = items
   } catch {
@@ -1357,8 +1407,8 @@ function startCellEdit(rec: IssueRecord, fieldId: string) {
   let val: string | number | null = ''
   if (raw == null) {
     // 数字字段初始为空时用 null，避免字符串导致 a-input-number 异常
-    val = type === 'INPUT_NUMBER' ? null : ''
-  } else if (type === 'INPUT_NUMBER') {
+    val = type === FIELD_TYPE.TEXT_BOX_NUMBER ? null : ''
+  } else if (type === FIELD_TYPE.TEXT_BOX_NUMBER) {
     // 数字字段保持 number 类型
     if (typeof raw === 'number') {
       val = raw
@@ -1375,13 +1425,13 @@ function startCellEdit(rec: IssueRecord, fieldId: string) {
   editingCell.value = { key: getIssueKey(rec), row: rec, fieldId }
   editValue.value = val
   const upperType = type.toUpperCase()
-  if (upperType === 'DATE') {
+  if (upperType === FIELD_TYPE.DATE_PICKER) {
     // 日期字段：将显示值解析为 dayjs 对象（复用 getCellValue 的 YYYY-MM-DD 格式化）
     const text = getCellValue(rec, fieldId)
     const d = text ? dayjs(text) : null
     editDateValue.value = d && d.isValid() ? d : null
     editValue.value = null
-  } else if (upperType === 'CASCADER') {
+  } else if (upperType === FIELD_TYPE.CASCADER_SINGLE) {
     // 级联字段：路径数组回填 + 异步加载选项
     editCascaderValue.value = cascadingValueToPath(raw)
     editValue.value = null
@@ -1390,7 +1440,7 @@ function startCellEdit(rec: IssueRecord, fieldId: string) {
     cascaderRawOptions.value = []
     // eslint-disable-next-line @typescript-eslint/no-floating-promises
     loadCascaderOptions(rec, fieldId)
-  } else if (upperType === 'USER_SINGLE_SELECT') {
+  } else if (upperType === FIELD_TYPE.SELECT_USER_SINGLE) {
     // 人员单选字段：回填 userNo + 预填充当前用户 + 预取用户列表（含当前值）
     const uv = typeof raw === 'object' && raw != null
       ? String((raw as Record<string, unknown>).userNo ?? (raw as Record<string, unknown>).id ?? '')
@@ -1412,7 +1462,7 @@ function startCellEdit(rec: IssueRecord, fieldId: string) {
       memberOptions.value = [{ userNo: uv } as UserItem]
     }
     handleMemberSearch('')
-  } else if (upperType === 'SINGLE_SELECT') {
+  } else if (upperType === FIELD_TYPE.SELECT_LIST_SINGLE) {
     // 单选下拉字段：回填 optionId（value 结构为 { optionId, optionName }）+ 异步加载选项
     const sv = raw != null && typeof raw === 'object'
       ? String((raw as Record<string, unknown>).optionId ?? '')
