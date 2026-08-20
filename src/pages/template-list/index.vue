@@ -543,7 +543,7 @@ async function loadAvailableFields(force = false) {
     const res = await queryAvailableFieldList({ page: 1, pageSize: 999, searchKey: '' })
     // 接口返回的 filedType 可能是旧枚举（INPUT_TEXT / CASCADER / USER_SINGLE_SELECT 等），
     // 统一归一化为新枚举，保证左侧类型标签、过滤与右侧组件映射（availableFieldToWidget）一致
-    availableFieldsList.value = (res?.data?.list || []).map(f => ({ ...f, type: normalizeFieldType(f.type || f.filedType || f.fieldType) }))
+    availableFieldsList.value = (res?.data?.list || []).map(f => ({ ...f, type: normalizeFieldType(f.type || f.filedType) }))
   } catch {
     availableFieldsList.value = []
   } finally {

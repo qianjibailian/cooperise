@@ -358,7 +358,7 @@ function applyTemplateToForm(tplId: string | number) {
 
 /** 根据表单元数据里的字段 type 判断是否需要走自定义字段选项接口 */
 /** 需要拉取枚举选项的组件 key（小写，与 queryCreateMeta 返回的 type 对应） */
-const OPTION_WIDGET_TYPE_SET = new Set([
+const OPTION_WIDGET_TYPE_SET = new Set<string>([
   FIELD_TYPE.CASCADER_SINGLE,
   FIELD_TYPE.SELECT_LIST_SINGLE,
   FIELD_TYPE.SELECT_LIST_MULTI,

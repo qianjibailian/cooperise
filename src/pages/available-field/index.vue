@@ -488,10 +488,10 @@ const baseColumns = [
   { title: '操作符', dataIndex: 'supportOperator', key: 'supportOperator', width: 200 },
 ]
 const metaColumns = [
-  { title: '创建人', dataIndex: 'creator', key: 'creator' },
-  { title: '更新人', dataIndex: 'updater', key: 'updater' },
-  { title: '创建时间', dataIndex: 'createTime', key: 'createTime' },
-  { title: '更新时间', dataIndex: 'updateTime', key: 'updateTime' },
+  { title: '创建人', dataIndex: 'creator', key: 'creator', width: 120 },
+  { title: '更新人', dataIndex: 'updater', key: 'updater', width: 120 },
+  { title: '创建时间', dataIndex: 'createTime', key: 'createTime', width: 170 },
+  { title: '更新时间', dataIndex: 'updateTime', key: 'updateTime', width: 170 },
 ]
 const columns = computed(() => {
   let list = props.showSystemColumn ? baseColumns : baseColumns.filter(c => c.key !== 'isSystem')
