@@ -202,7 +202,7 @@ watch(
                       contenteditable="true"
                       :data-rt="n.nodeId"
                       @input="onRtInput"
-                      @vue:mounted="(v) => onRtMounted(v, n.nodeId)"
+                      @vue:mounted="(v: any) => onRtMounted(v, n.nodeId)"
                     ></div>
                   </div>
                 </div>

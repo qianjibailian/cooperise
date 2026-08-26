@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, reactive, computed, watch } from 'vue'
+import { ref, computed, watch } from 'vue'
 import type { WorkflowInstance, WorkflowDefinition, WorkflowNode } from '@/types/faiz'
 import { listWorkflowInstances, getWorkflowInstance, listWorkflowDefinitions } from '@/api/faiz'
 import { normalizeLegacyNodes } from '@/components/workflow-flow-layout'
