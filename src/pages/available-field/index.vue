@@ -121,7 +121,12 @@
           </a-col>
           <a-col :span="12">
             <a-form-item label="字段编号">
-              <a-input v-model:value="editForm.fieldNumId" placeholder="字段编号" style="width: 100%" />
+              <a-input
+                v-model:value="editForm.fieldNumId"
+                placeholder="字段编号"
+                style="width: 100%"
+                :disabled="disableFieldNum"
+              />
             </a-form-item>
           </a-col>
         </a-row>
@@ -230,11 +235,21 @@
           </a-form-item>
         </template>
 
-        <a-form-item label="支持的操作符 (supportOperator)">
+        <a-form-item label="支持的操作">
           <a-select
             v-model:value="editForm.supportOperator"
             mode="tags"
-            placeholder="输入操作符后回车，如 EQ / NE / LIKE"
+            :options="supportOperatorOptions"
+            placeholder="选择或输入支持的操作"
+            style="width: 100%"
+          />
+        </a-form-item>
+        <a-form-item label="展示场景">
+          <a-select
+            v-model:value="editForm.displayScene"
+            mode="multiple"
+            :options="displaySceneOptions"
+            placeholder="选择展示场景（新建 / 编辑 / 详情）"
             style="width: 100%"
           />
         </a-form-item>
@@ -403,6 +418,8 @@ interface FieldRow {
   supportOperator?: string[]
   configSchema?: string | null
   fieldValue?: string | null
+  /** 展示场景：CREATE（新建）/ EDIT（编辑）/ DETAIL（详情） */
+  displayScene?: string[]
   /** 系统字段特有：启用状态、创建人/更新人、创建/更新时间 */
   status?: boolean
   creator?: string | null
@@ -433,11 +450,14 @@ const props = withDefaults(defineProps<{
   showSystemSwitch?: boolean
   /** 是否展示元信息列：创建人/更新人/创建时间/更新时间（默认展示，与系统字段页面一致） */
   showMetaColumns?: boolean
+  /** 弹窗中「字段编号」是否置灰（自定义字段页面默认置灰，系统字段页面可传 false 保持可编辑） */
+  disableFieldNum?: boolean
 }>(), {
   showSystemColumn: false,
   showCreate: true,
   showEdit: true,
   showSystemSwitch: false,
+  disableFieldNum: true,
   showMetaColumns: true,
 })
 
@@ -464,6 +484,22 @@ const fieldGroupOptions = [
   { value: 'TIME', label: '时间信息' },
   { value: 'CUSTOM_FIELD', label: '自定义字段' },
   { value: 'SUBJECT', label: '主内容' },
+]
+
+// ---- 支持的操作枚举 ----
+const supportOperatorOptions = [
+  { value: '大于', label: '大于' },
+  { value: '小于', label: '小于' },
+  { value: '等于', label: '等于' },
+  { value: '包含', label: '包含' },
+  { value: '不包含', label: '不包含' },
+]
+
+// ---- 展示场景枚举 ----
+const displaySceneOptions = [
+  { value: 'CREATE', label: '新建' },
+  { value: 'EDIT', label: '编辑' },
+  { value: 'DETAIL', label: '详情' },
 ]
 
 // 需要配置选项的类型 / 类型相关判定，均来自 @/types/fieldType 统一维护
@@ -525,6 +561,7 @@ const editForm = ref<AvailableFieldSavePayload & { supportOperator: string[] }>(
   fieldGroup: '',
   type: '',
   supportOperator: [],
+  displayScene: ['CREATE', 'EDIT', 'DETAIL'],
   isSystem: false,
   obsolete: false,
   isRequired: false,
@@ -711,6 +748,7 @@ function resetEditForm() {
     fieldGroup: '',
     type: '',
     supportOperator: [],
+    displayScene: ['CREATE', 'EDIT', 'DETAIL'],
     isSystem: false,
     obsolete: false,
     isRequired: false,
@@ -741,6 +779,7 @@ async function handleEdit(record: AvailableFieldItem) {
         fieldGroup: d.fieldGroup || '',
         type: d.type || d.filedType || '',
         supportOperator: d.supportOperator ? [...d.supportOperator] : [],
+        displayScene: d.displayScene?.length ? [...d.displayScene] : ['CREATE', 'EDIT', 'DETAIL'],
         isSystem: d.isSystem ?? false,
         obsolete: d.obsolete ?? false,
         isRequired: d.isRequired ?? false,
@@ -757,6 +796,7 @@ async function handleEdit(record: AvailableFieldItem) {
       fieldGroup: record.fieldGroup || '',
       type: record.type || record.filedType || '',
       supportOperator: record.supportOperator ? [...record.supportOperator] : [],
+      displayScene: record.displayScene?.length ? [...record.displayScene] : ['CREATE', 'EDIT', 'DETAIL'],
       isSystem: record.isSystem ?? false,
       obsolete: record.obsolete ?? false,
       isRequired: record.isRequired ?? false,

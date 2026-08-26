@@ -1,0 +1,116 @@
+- generic [ref=e1]:
+  - generic [ref=e3]:
+    - generic [ref=e4]:
+      - generic [ref=e5]:
+        - generic [ref=e6] [cursor=pointer]:
+          - img "需求管控平台" [ref=e7]
+          - img [ref=e12]:
+            - generic [ref=e13]: 需求管控平台
+        - generic [ref=e14]:
+          - separator [ref=e15]
+          - img "menu-fold" [ref=e16] [cursor=pointer]
+      - generic [ref=e19]:
+        - generic [ref=e20]:
+          - img "search" [ref=e22]
+          - textbox "搜索事项单号或者概要" [ref=e25]
+        - button "plus 新建" [ref=e27] [cursor=pointer]:
+          - img "plus" [ref=e28]
+          - generic [ref=e32]: 新建
+        - generic [ref=e33] [cursor=pointer]:
+          - img "user" [ref=e35]
+          - generic [ref=e38]: 用户
+    - complementary [ref=e39]:
+      - generic [ref=e41]:
+        - generic [ref=e42]:
+          - generic [ref=e43] [cursor=pointer]:
+            - img "home" [ref=e44]
+            - generic [ref=e47]: 工作台
+          - generic [ref=e48] [cursor=pointer]:
+            - img "setting" [ref=e49]
+            - generic [ref=e52]: 设置
+          - generic [ref=e53] [cursor=pointer]:
+            - img "tool" [ref=e54]
+            - generic [ref=e57]: 管理后台
+        - menu [ref=e59]:
+          - menuitem [ref=e60] [cursor=pointer]:
+            - generic [ref=e61]:
+              - img "unordered-list" [ref=e62]
+              - text: 模板管理
+          - menuitem [ref=e65] [cursor=pointer]:
+            - generic [ref=e66]:
+              - img "appstore" [ref=e67]
+              - text: 自定义字段
+          - menuitem [ref=e70] [cursor=pointer]:
+            - generic [ref=e71]:
+              - img "deployment-unit" [ref=e72]
+              - text: 工作流
+          - menuitem [ref=e75] [cursor=pointer]:
+            - generic [ref=e76]:
+              - img "user" [ref=e77]
+              - text: 个人中心
+          - menuitem [ref=e80] [cursor=pointer]:
+            - generic [ref=e81]:
+              - img "lock" [ref=e82]
+              - text: 账户设置
+    - main [ref=e86]:
+      - generic [ref=e88]:
+        - generic [ref=e89]:
+          - generic [ref=e90]: 工作流
+          - generic [ref=e91]:
+            - generic [ref=e92]: 当前用户
+            - textbox "用户账号（userNo）" [ref=e93]: "10284941"
+        - generic [ref=e94]:
+          - tablist [ref=e95]:
+            - generic [ref=e97]:
+              - tab "流程定义" [selected] [ref=e99] [cursor=pointer]
+              - tab "实例监控" [ref=e101] [cursor=pointer]
+              - tab "我的待办" [ref=e103] [cursor=pointer]
+              - tab "我的已办" [ref=e105] [cursor=pointer]
+              - tab "我的抄送" [ref=e107] [cursor=pointer]
+          - tabpanel "流程定义" [ref=e110]:
+            - generic [ref=e111]:
+              - generic [ref=e112]:
+                - generic [ref=e113]:
+                  - img "search" [ref=e114]
+                  - textbox "搜索流程名称 / 标识…" [ref=e117]
+                - button [ref=e118] [cursor=pointer]:
+                  - img "search" [ref=e119]
+                  - text: 查询
+              - button "plus 部署流程" [ref=e123] [cursor=pointer]:
+                - img "plus" [ref=e124]
+                - generic [ref=e128]: 部署流程
+            - table [ref=e136]:
+              - rowgroup [ref=e148]:
+                - row [ref=e149]:
+                  - columnheader "ID" [ref=e150]
+                  - columnheader "流程标识" [ref=e151]
+                  - columnheader "流程名称" [ref=e152]
+                  - columnheader "问题类型" [ref=e153]
+                  - columnheader "节点数" [ref=e154]
+                  - columnheader "状态" [ref=e155]
+                  - columnheader "备注" [ref=e156]
+                  - columnheader "创建时间" [ref=e157]
+                  - columnheader "更新时间" [ref=e158]
+                  - columnheader "操作" [ref=e159]
+              - rowgroup [ref=e160]:
+                - row [ref=e161]:
+                  - cell [ref=e162]:
+                    - paragraph [ref=e172]: No data
+  - dialog [ref=e174]:
+    - document:
+      - generic [ref=e175]:
+        - button "Close" [ref=e176] [cursor=pointer]:
+          - img "close" [ref=e178]
+        - generic [ref=e182]:
+          - img "info-circle" [ref=e183]
+          - generic [ref=e187]: 登录态已过期，请重新登录
+        - button "重新登录" [ref=e189] [cursor=pointer]
+  - generic:
+    - generic:
+      - generic:
+        - generic [ref=e192]:
+          - img "close-circle" [ref=e193]
+          - text: 非法或者无效的认证
+        - generic [ref=e197]:
+          - img "close-circle" [ref=e198]
+          - text: 加载流程定义失败

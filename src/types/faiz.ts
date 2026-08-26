@@ -541,6 +541,8 @@ export interface AvailableFieldItem {
   fieldSource: string | null
   configSchema?: string
   fieldValue?: string | null
+  /** 展示场景：CREATE（新建）/ EDIT（编辑）/ DETAIL（详情） */
+  displayScene?: string[]
 }
 
 /** 枚举选项（单选/下拉/级联通用） */
@@ -586,6 +588,8 @@ export interface AvailableFieldSavePayload {
   fieldSource?: string
   configSchema?: string
   fieldValue?: string
+  /** 展示场景：CREATE（新建）/ EDIT（编辑）/ DETAIL（详情） */
+  displayScene?: string[]
 }
 
 // ========== System Fields (POST /systemField/query) ==========
@@ -618,6 +622,8 @@ export interface SystemFieldItem {
   creator?: string
   updater?: string
   configSchema?: string
+  /** 展示场景：CREATE（新建）/ EDIT（编辑）/ DETAIL（详情） */
+  displayScene?: string[]
 }
 
 /** 系统字段分页结果（对应后端 SystemFieldPageVO） */
@@ -645,6 +651,8 @@ export interface SystemFieldSavePayload {
   obsolete?: boolean
   fieldSource?: string
   configSchema?: string
+  /** 展示场景：CREATE（新建）/ EDIT（编辑）/ DETAIL（详情） */
+  displayScene?: string[]
 }
 
 // ========== Issue Detail (POST /issue/queryDetail) ==========
@@ -686,9 +694,9 @@ export interface DetailFieldGroupStructure {
   isUpdateToDefault?: boolean | null
 }
 
-/** layoutGroup 分组 */
+/** layoutGroup 分组：SUBJECT 主内容 / PERSON 人员 / DESCRIPTION 描述 / TIME 时间 / CUSTOM_FIELD 自定义 */
 export interface DetailLayoutGroup {
-  type: 'SUMMARY' | 'DESCRIPTION' | 'CUSTOM_FIELD' | string
+  type: 'SUBJECT' | 'PERSON' | 'DESCRIPTION' | 'TIME' | 'CUSTOM_FIELD' | string
   fieldGroupStructure: DetailFieldGroupStructure
   sequence?: number
 }
@@ -706,4 +714,144 @@ export interface QueryDetailResult {
   message: string
   success: boolean
   data: DetailData
+}
+
+// ========== Workflow API（工作流）==========
+
+/** 流程分支（旧模型，兼容历史数据；新模型统一使用 nextNodes） */
+export interface WorkflowBranch {
+  /** 分支ID */
+  branchId: string
+  /** 分支名称，如：已完成 / 取消 / 暂停 */
+  branchName: string
+  /** 分支内的节点（顺序执行，支持一层分支内节点） */
+  nodes: WorkflowNode[]
+}
+
+/** 流程节点 */
+export interface WorkflowNode {
+  nodeId: string
+  nodeName: string
+  /** 办理人类型：CREATOR（发起人）/ USER（指定用户） */
+  assigneeType?: string
+  /** 办理人值：assigneeType=USER 时的用户账号 */
+  assigneeValue?: string | null
+  /** 对应事项状态 statusId */
+  statusId?: string | null
+  /** 入口线名称：该节点作为某个节点的后续节点时，标识来源线（如：已完成 / 取消 / 暂停），可空 */
+  branchName?: string
+  /** 后续节点：一个节点可延伸出多个后续节点（多出边），树形结构，支持任意层级 */
+  nextNodes?: WorkflowNode[]
+  /** 可回退到的节点 nodeId 列表：引用流程中已存在的节点（如 暂停 → 处理中），用于表达回退箭头 */
+  backToNodeIds?: string[]
+  /** 分支（旧模型）：仅兼容历史数据，加载时会归一化为 nextNodes */
+  branches?: WorkflowBranch[]
+}
+
+/** 流程定义 */
+export interface WorkflowDefinition {
+  id?: number
+  /** 流程标识（唯一） */
+  processKey: string
+  /** 流程名称 */
+  processName: string
+  /** 绑定的问题类型ID：10001-需求 10002-任务 10003-缺陷 10004-其他 */
+  issueTypeId?: string | number
+  /** 问题类型名称 */
+  issueTypeName?: string
+  /** 节点列表 */
+  nodes?: WorkflowNode[]
+  remark?: string
+  /** 状态：1-启用 0-停用 */
+  status?: number
+  createTime?: string
+  updateTime?: string
+}
+
+/** 流程实例 */
+export interface WorkflowInstance {
+  id?: number
+  processKey?: string
+  processName?: string
+  /** 关联单号 */
+  issueKey?: string
+  /** 发起人（账号） */
+  initiator?: string
+  /** 状态：RUNNING-运行中 END-已结束 CANCELED-已撤销 */
+  status?: string
+  currentNode?: string
+  currentNodeName?: string
+  createTime?: string
+  endTime?: string
+}
+
+/** 任务历史记录（以事项单号为维度，按创建时间倒序） */
+export interface WorkflowHistory {
+  id?: number
+  instanceId?: number
+  processName?: string
+  issueKey?: string
+  /** 处理节点 */
+  nodeId?: string
+  nodeName?: string
+  /** 兼容旧字段：当前节点 */
+  currentNode?: string
+  currentNodeName?: string
+  /** 处理人（账号） */
+  operator?: string
+  assignee?: string
+  /** 状态 */
+  status?: string
+  comment?: string
+  reason?: string
+  createTime?: string
+}
+
+/** 流程任务（待办/已办） */
+export interface WorkflowTask {
+  id?: number
+  instanceId?: number
+  processName?: string
+  issueKey?: string
+  nodeId?: string
+  nodeName?: string
+  assignee?: string
+  initiator?: string
+  /** 处理结果：APPROVE-通过 REJECT-驳回 TRANSFER-转办 */
+  action?: string
+  status?: string
+  createTime?: string
+  finishTime?: string
+}
+
+/** 审批记录 */
+export interface WorkflowApprovalRecord {
+  id?: number
+  taskId?: number
+  operator?: string
+  action?: string
+  comment?: string
+  createTime?: string
+}
+
+/** 流程抄送 */
+export interface WorkflowCc {
+  id?: number
+  instanceId?: number
+  processName?: string
+  issueKey?: string
+  ccUser?: string
+  initiator?: string
+  /** 状态：UNREAD-未读 READ-已读 */
+  status?: string
+  createTime?: string
+  readTime?: string
+}
+
+/** 工作流分页数据 */
+export interface WorkflowPageData<T> {
+  list: T[]
+  total: number
+  pageNum?: number
+  pageSize?: number
 }

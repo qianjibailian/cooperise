@@ -66,216 +66,33 @@
     </div>
 
     <!-- 表格 -->
-    <div class="table-wrapper">
-      <vxe-table
-        :data="dataList"
-        :loading="loading"
-        height="100%"
-        border="none"
-        :row-config="{ keyField: 'issueKey' }"
-        :column-config="{ resizable: true }"
-        :checkbox-config="{ highlight: true, range: false }"
+    <div ref="tableWrapperRef" class="table-wrapper">
+      <a-table
         class="items-table"
+        :columns="aTableColumns"
+        :data-source="dataList"
+        :loading="loading"
+        :pagination="false"
+        :row-key="getIssueKey"
+        :scroll="{ x: tableScrollX, y: tableScrollY }"
+        :row-selection="rowSelection"
+        size="small"
       >
-        <vxe-column type="checkbox" width="50" align="center" fixed="left" />
-        <vxe-column
-          v-for="col in tableColumns"
-          :key="col.id"
-          :field="col.id"
-          :title="col.name"
-          :width="columnWidths[col.id]"
-          :fixed="col.id === 'summary' ? 'left' : undefined"
-        >
-          <template #default="{ row }">
-            <div
-              class="editable-cell"
-              :class="{ 'is-editable': isFieldEditable(row, col.id) }"
-            >
-              <div v-if="isCellEditing(row, col.id)" class="cell-editor">
-                <a-input-number
-                  v-if="getFieldType(row, col.id) === FIELD_TYPE.TEXT_BOX_NUMBER"
-                  v-focus
-                  v-model:value="editValue"
-                  size="small"
-                  style="width: 100%"
-                  @pressEnter="confirmCellEdit"
-                  @blur="confirmCellEdit"
-                />
-                <a-date-picker
-                  v-else-if="isDateField(row, col.id)"
-                  v-focus
-                  v-model:value="editDateValue"
-                  format="YYYY-MM-DD"
-                  size="small"
-                  style="width: 100%"
-                  @pressEnter="confirmCellEdit"
-                  @blur="confirmCellEdit"
-                />
-                <a-cascader
-                  v-else-if="isCascaderField(row, col.id)"
-                  v-focus
-                  v-model:value="editCascaderValue"
-                  :options="cascaderOptions"
-                  :loading="cascaderLoading"
-                  :field-names="{ label: 'name', value: 'value', children: 'children' }"
-                  size="small"
-                  style="width: 100%"
-                  placeholder="请选择"
-                  @change="confirmCellEdit"
-                />
-                <a-select
-                  v-else-if="isSingleSelectField(row, col.id)"
-                  v-focus
-                  v-model:value="editValue"
-                  :loading="singleLoading"
-                  allow-clear
-                  size="small"
-                  style="width: 100%"
-                  placeholder="请选择"
-                  @change="confirmCellEdit"
-                >
-                  <template #selection="{ value }">
-                    <span class="single-option-item">
-                      <a-tag
-                        v-if="getSingleOptionColor(String(value))"
-                        class="single-option-tag"
-                        :color="getSingleOptionColor(String(value))"
-                      >{{ getSingleOptionName(String(value)) }}</a-tag>
-                      <span v-else>{{ getSingleOptionName(String(value)) }}</span>
-                    </span>
-                  </template>
-                  <a-select-option
-                    v-for="opt in singleOptions"
-                    :key="String(opt.value)"
-                    :value="String(opt.value)"
-                    :disabled="opt.disabled"
-                  >
-                    <span class="single-option-item">
-                      <a-tag v-if="opt.color" class="single-option-tag" :color="opt.color">{{ opt.name }}</a-tag>
-                      <span v-else>{{ opt.name }}</span>
-                    </span>
-                  </a-select-option>
-                </a-select>
-                <a-select
-                  v-else-if="isUserSingleSelectField(row, col.id)"
-                  v-focus
-                  v-model:value="editUserValue"
-                  show-search
-                  :filter="false"
-                  :loading="memberLoading"
-                  allow-clear
-                  size="small"
-                  style="width: 100%"
-                  placeholder="搜索姓名/账号"
-                  @search="handleMemberSearch"
-                  @change="confirmCellEdit"
-                >
-                  <template #selection="{ value }">
-                    <span class="user-selection-cell">
-                      <a-avatar
-                        :src="memberSelectionAvatar(String(value ?? ''))"
-                        :size="18"
-                        class="user-option-avatar"
-                      >{{ memberSelectionInitial(String(value ?? '')) }}</a-avatar>
-                      <span>{{ memberSelectionLabel(String(value ?? '')) }}</span>
-                    </span>
-                  </template>
-                  <a-select-option
-                    v-for="u in memberOptions"
-                    :key="String(u.userNo)"
-                    :value="String(u.userNo)"
-                    :label="formatUserOptionLabel(u)"
-                  >
-                    <span class="user-option-cell">
-                      <a-avatar :src="u.avatarUrl || u.userAvatar" :size="18" class="user-option-avatar">
-                        {{ userOptionInitial(u) }}
-                      </a-avatar>
-                      <span>{{ formatUserOptionLabel(u) }}</span>
-                    </span>
-                  </a-select-option>
-                </a-select>
-                <a-input
-                  v-else
-                  v-focus
-                  v-model:value="editValue"
-                  size="small"
-                  @pressEnter="confirmCellEdit"
-                  @blur="confirmCellEdit"
-                  @keydown.esc="cancelCellEdit"
-                />
-              </div>
-              <template v-else>
-                <div class="cell-content">
-                  <a
-                    v-if="col.id === 'issuekey'"
-                    class="issue-key-link"
-                    @click="openDetail(row.issueKey)"
-                  >{{ getCellValue(row, col.id) }}</a>
-                  <a-tag
-                    v-else-if="col.id === 'status'"
-                    :color="statusColor(getStatusId(row))"
-                  >{{ getCellValue(row, col.id) }}</a-tag>
-                  <a-tag
-                    v-else-if="col.id === 'priority'"
-                    :color="priorityColor(getPriorityId(row))"
-                  >{{ getCellValue(row, col.id) }}</a-tag>
-                  <a-tag v-else-if="col.id === 'issuetype'">{{ getCellValue(row, col.id) }}</a-tag>
-                  <div v-else-if="isUserField(row, col.id)" class="user-cell">
-                    <a-avatar
-                      :src="getUserAvatar(row, col.id)"
-                      :size="22"
-                      class="user-cell-avatar"
-                    >{{ getUserInitial(row, col.id) }}</a-avatar>
-                    <span class="user-cell-text">{{ getUserCellText(row, col.id) }}</span>
-                  </div>
-                  <a-tag
-                    v-else-if="isSingleSelectField(row, col.id) && getCellValue(row, col.id)"
-                    class="single-select-tag"
-                    :color="getSingleColor(row, col.id) || undefined"
-                  >{{ getCellValue(row, col.id) }}</a-tag>
-                  <span v-else>{{ getCellValue(row, col.id) }}</span>
-                </div>
-                <span
-                  v-if="isFieldEditable(row, col.id)"
-                  class="cell-edit-icon"
-                  :class="{ 'always-visible': !getCellValue(row, col.id) }"
-                  title="编辑"
-                  @click.stop="startCellEdit(row, col.id)"
-                >
-                  <component :is="EditOutlined" />
-                </span>
-                <template v-if="col.id === 'summary'">
-                  <span
-                    class="cell-edit-icon"
-                    title="复制概要"
-                    @click.stop="handleCopySummary(row)"
-                  >
-                    <component :is="CopyOutlined" />
-                  </span>
-                  <span
-                    class="cell-edit-icon"
-                    title="复制链接"
-                    @click.stop="handleOpenSummaryLink(row)"
-                  >
-                    <component :is="LinkOutlined" />
-                  </span>
-                </template>
-              </template>
-            </div>
-          </template>
-        </vxe-column>
-        <vxe-column title="操作" width="72" fixed="right" align="center">
-          <template #header>
+        <template #headerCell="{ column }">
+          <template v-if="column.key === '__op__'">
             <div style="display: flex; justify-content: space-between; align-items: center; width: 100%; padding: 0 2px;">
               <span>操作</span>
               <component :is="SettingOutlined" style="font-size: 14px; color: #0050b3; cursor: pointer;" @click.stop="openSettingDrawer" />
             </div>
           </template>
-          <template #default="{ row }">
+          <template v-else>{{ column.title }}</template>
+        </template>
+        <template #bodyCell="{ column, record }">
+          <template v-if="column.key === '__op__'">
             <a-dropdown :trigger="['click']">
               <a-button type="text" class="action-dots">···</a-button>
               <template #overlay>
-                <a-menu @click="handleMenuClick($event, row)">
+                <a-menu @click="handleMenuClick($event, record)">
                   <a-menu-item key="edit">编辑</a-menu-item>
                   <a-menu-item key="copy">复制</a-menu-item>
                   <a-menu-item key="rollback">回滚</a-menu-item>
@@ -283,8 +100,202 @@
               </template>
             </a-dropdown>
           </template>
-        </vxe-column>
-      </vxe-table>
+          <div
+            v-else
+            class="editable-cell"
+            :class="{ 'is-editable': isFieldEditable(record, String(column.dataIndex)) }"
+            @mouseenter="column.dataIndex === 'summary' && handleCellHover($event, record)"
+            @mouseleave="column.dataIndex === 'summary' && handleCellLeave(record)"
+          >
+            <div v-if="isCellEditing(record, String(column.dataIndex))" class="cell-editor">
+              <a-input-number
+                v-if="getFieldType(record, String(column.dataIndex)) === FIELD_TYPE.TEXT_BOX_NUMBER"
+                v-focus
+                v-model:value="editValue"
+                size="small"
+                style="width: 100%"
+                @pressEnter="confirmCellEdit"
+                @blur="confirmCellEdit"
+              />
+              <a-date-picker
+                v-else-if="isDateField(record, String(column.dataIndex))"
+                v-focus
+                v-model:value="editDateValue"
+                format="YYYY-MM-DD"
+                size="small"
+                style="width: 100%"
+                @pressEnter="confirmCellEdit"
+                @blur="confirmCellEdit"
+              />
+              <a-cascader
+                v-else-if="isCascaderField(record, String(column.dataIndex))"
+                v-focus
+                v-model:value="editCascaderValue"
+                :options="cascaderOptions"
+                :loading="cascaderLoading"
+                :field-names="{ label: 'name', value: 'value', children: 'children' }"
+                size="small"
+                style="width: 100%"
+                placeholder="请选择"
+                @change="confirmCellEdit"
+              />
+              <a-select
+                v-else-if="isSingleSelectField(record, String(column.dataIndex))"
+                v-focus
+                v-model:value="editValue"
+                :loading="singleLoading"
+                allow-clear
+                size="small"
+                style="width: 100%"
+                placeholder="请选择"
+                @change="confirmCellEdit"
+              >
+                <template #selection="{ value }">
+                  <span class="single-option-item">
+                    <a-tag
+                      v-if="getSingleOptionColor(String(value))"
+                      class="single-option-tag"
+                      :color="getSingleOptionColor(String(value))"
+                    >{{ getSingleOptionName(String(value)) }}</a-tag>
+                    <span v-else>{{ getSingleOptionName(String(value)) }}</span>
+                  </span>
+                </template>
+                <a-select-option
+                  v-for="opt in singleOptions"
+                  :key="String(opt.value)"
+                  :value="String(opt.value)"
+                  :disabled="opt.disabled"
+                >
+                  <span class="single-option-item">
+                    <a-tag v-if="opt.color" class="single-option-tag" :color="opt.color">{{ opt.name }}</a-tag>
+                    <span v-else>{{ opt.name }}</span>
+                  </span>
+                </a-select-option>
+              </a-select>
+              <a-select
+                v-else-if="isUserSingleSelectField(record, String(column.dataIndex))"
+                v-focus
+                v-model:value="editUserValue"
+                show-search
+                :filter="false"
+                :loading="memberLoading"
+                allow-clear
+                size="small"
+                style="width: 100%"
+                placeholder="搜索姓名/账号"
+                @search="handleMemberSearch"
+                @change="confirmCellEdit"
+              >
+                <template #selection="{ value }">
+                  <span class="user-selection-cell">
+                    <a-avatar
+                      :src="memberSelectionAvatar(String(value ?? ''))"
+                      :size="18"
+                      class="user-option-avatar"
+                    >{{ memberSelectionInitial(String(value ?? '')) }}</a-avatar>
+                    <span>{{ memberSelectionLabel(String(value ?? '')) }}</span>
+                  </span>
+                </template>
+                <a-select-option
+                  v-for="u in memberOptions"
+                  :key="String(u.userNo)"
+                  :value="String(u.userNo)"
+                  :label="formatUserOptionLabel(u)"
+                >
+                  <span class="user-option-cell">
+                    <a-avatar :src="u.avatarUrl || u.userAvatar" :size="18" class="user-option-avatar">
+                      {{ userOptionInitial(u) }}
+                    </a-avatar>
+                    <span>{{ formatUserOptionLabel(u) }}</span>
+                  </span>
+                </a-select-option>
+              </a-select>
+              <a-input
+                v-else
+                v-focus
+                v-model:value="editValue"
+                size="small"
+                @pressEnter="confirmCellEdit"
+                @blur="confirmCellEdit"
+                @keydown.esc="cancelCellEdit"
+              />
+            </div>
+            <template v-else>
+              <div class="cell-content">
+                <a
+                  v-if="column.dataIndex === 'issuekey'"
+                  class="issue-key-link"
+                  @click="openDetail(record.issueKey)"
+                >{{ getCellValue(record, String(column.dataIndex)) }}</a>
+                <a-tag
+                  v-else-if="column.dataIndex === 'status'"
+                  class="status-cell-clickable"
+                  :color="statusColor(getStatusId(record))"
+                  @click="openWorkflowModal(record)"
+                >{{ getCellValue(record, String(column.dataIndex)) }}</a-tag>
+                <span
+                  v-else-if="column.dataIndex === 'priority'"
+                  class="priority-text-cell"
+                  :style="{ color: getPriorityTextColor(record) }"
+                >
+                  <span class="priority-dot" :style="{ background: getPriorityTextColor(record) }"></span>
+                  {{ getCellValue(record, String(column.dataIndex)) }}
+                </span>
+                <a-tag v-else-if="column.dataIndex === 'issuetype'">{{ getCellValue(record, String(column.dataIndex)) }}</a-tag>
+                <div v-else-if="isUserField(record, String(column.dataIndex))" class="user-cell">
+                  <a-avatar
+                    :src="getUserAvatar(record, String(column.dataIndex))"
+                    :size="22"
+                    class="user-cell-avatar"
+                  >{{ getUserInitial(record, String(column.dataIndex)) }}</a-avatar>
+                  <span class="user-cell-text">{{ getUserCellText(record, String(column.dataIndex)) }}</span>
+                </div>
+                <a-tag
+                  v-else-if="isSingleSelectField(record, String(column.dataIndex)) && getCellValue(record, String(column.dataIndex))"
+                  class="single-select-tag"
+                  :color="getSingleColor(record, String(column.dataIndex)) || undefined"
+                >{{ getCellValue(record, String(column.dataIndex)) }}</a-tag>
+                <a-tooltip
+                  v-else-if="column.dataIndex === 'summary'"
+                  :open="summaryTips[record.issueKey]?.visible"
+                  :title="summaryTips[record.issueKey]?.title || ''"
+                >
+                  <span
+                    class="summary-cell-text"
+                    @click="openDetail(record.issueKey)"
+                  >{{ getCellValue(record, String(column.dataIndex)) }}</span>
+                </a-tooltip>
+                <span v-else>{{ getCellValue(record, String(column.dataIndex)) }}</span>
+              </div>
+              <span
+                v-if="isFieldEditable(record, String(column.dataIndex))"
+                class="cell-edit-icon"
+                :class="{ 'always-visible': !getCellValue(record, String(column.dataIndex)) }"
+                title="编辑"
+                @click.stop="startCellEdit(record, String(column.dataIndex))"
+              >
+                <component :is="EditOutlined" />
+              </span>
+              <template v-if="column.dataIndex === 'summary'">
+                <span
+                  class="cell-edit-icon"
+                  title="复制概要"
+                  @click.stop="handleCopySummary(record)"
+                >
+                  <component :is="CopyOutlined" />
+                </span>
+                <span
+                  class="cell-edit-icon"
+                  title="复制链接"
+                  @click.stop="handleOpenSummaryLink(record)"
+                >
+                  <component :is="LinkOutlined" />
+                </span>
+              </template>
+            </template>
+          </div>
+        </template>
+      </a-table>
     </div>
 
     <!-- 事项详情抽屉 -->
@@ -372,11 +383,14 @@
     </a-drawer>
     <!-- 编辑弹窗：与顶部新建弹窗同一组件，传入 issueKey 进入编辑模式 -->
     <NewIssueFormModal v-model:open="editFormOpen" :issue-key="editIssueKey" @submitted="handleEditSubmitted" />
+
+    <!-- 流程推进弹窗：点击状态字段，展示当前节点的下一步节点 -->
+    <WorkflowNextStepModal v-model:open="wfModalOpen" :issue-key="wfCurrentIssueKey" @submit="handleWfSubmitted" />
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed, watch } from 'vue'
+import { ref, reactive, onMounted, onBeforeUnmount, computed, watch } from 'vue'
 
 import {
   ReloadOutlined,
@@ -394,18 +408,11 @@ import {
 } from '@ant-design/icons-vue'
 import dayjs from 'dayjs'
 import type { Dayjs } from 'dayjs'
-import { getIssues, queryAvailableFields, getFilterDraft, updateFilterDraft, patchIssue, getAvailableFieldOptions, queryUsers } from '@/api/faiz'
-import type {
-  IssueRecord,
-  IssueQueryPayload,
-  ChildConditionGroup,
-  SortItem,
-  FilterDraft,
-  GlobalFilter,
-  CustomFieldOptionItem,
-  UserItem,
-} from '@/types/faiz'
+import { message } from 'ant-design-vue'
+import { getIssues, queryAvailableFieldList, getFilterDraft, updateFilterDraft, patchIssue, getAvailableFieldOptions, queryUsers } from '@/api/faiz'
+import type { IssueRecord, IssueQueryPayload, ChildConditionGroup, SortItem, FilterDraft, GlobalFilter, CustomFieldOptionItem, UserItem } from '@/types/faiz'
 import IssueDetailDrawer from '@/components/IssueDetailDrawer.vue'
+import WorkflowNextStepModal from '@/components/WorkflowNextStepModal.vue'
 import FilterPanel from '@/components/FilterPanel.vue'
 import SortPanel from '@/components/SortPanel.vue'
 import NewIssueFormModal from '@/components/NewIssueFormModal.vue'
@@ -418,6 +425,34 @@ const detailIssueKey = ref('')
 function openDetail(issueKey: string) {
   detailIssueKey.value = issueKey
   detailDrawerOpen.value = true
+}
+
+// ---------- 流程推进弹窗（点击状态字段，展示当前节点的下一步节点） ----------
+const wfModalOpen = ref(false)
+const wfCurrentIssueKey = ref('')
+
+/** 点击状态字段：打开流程推进弹窗 */
+function openWorkflowModal(rec: IssueRecord) {
+  const issueKey = String(rec.issueKey || '')
+  if (!issueKey) return
+  wfCurrentIssueKey.value = issueKey
+  wfModalOpen.value = true
+}
+
+/** 概要列 Tooltip（单元格维度）：按行隔离状态，悬停整个单元格时若概要文本溢出则展示完整内容 */
+const summaryTips = reactive<Record<string, { visible: boolean; title: string }>>({})
+
+function handleCellHover(e: MouseEvent, rec: IssueRecord) {
+  const el = e.currentTarget as HTMLElement
+  const text = getCellValue(rec, 'summary') || ''
+  const textEl = el.querySelector<HTMLElement>('.summary-cell-text')
+  const overflow = textEl ? textEl.scrollWidth > textEl.clientWidth : el.scrollWidth > el.clientWidth
+  summaryTips[String(rec.issueKey)] = { visible: overflow && !!text, title: text }
+}
+
+function handleCellLeave(rec: IssueRecord) {
+  const tip = summaryTips[String(rec.issueKey)]
+  if (tip) tip.visible = false
 }
 
 // 列设置抽屉
@@ -472,7 +507,7 @@ async function fetchAvailableFields(keyword?: string) {
   settingLoading.value = true
   hiddenCurrentPage.value = 1
   try {
-    const res = await queryAvailableFields({
+    const res = await queryAvailableFieldList({
       page: 1,
       pageSize: 20,
       searchKey: keyword || '',
@@ -524,7 +559,7 @@ async function loadMoreHiddenFields() {
   hiddenLoadingMore.value = true
   const nextPage = hiddenCurrentPage.value + 1
   try {
-    const res = await queryAvailableFields({
+    const res = await queryAvailableFieldList({
       page: nextPage,
       pageSize: 20,
       searchKey: settingSearchKeyword.value || '',
@@ -606,11 +641,12 @@ async function saveShownFields() {
     const res = await updateFilterDraft({
       id: d.id,
       userNo: d.userNo,
+      viewCode: viewCode.value,
       showField: newShowField,
     })
     if (res?.success) {
       // 更新成功后重新拉取 draft
-      const fresh = await getFilterDraft(d.userNo)
+      const fresh = await getFilterDraft(d.userNo, viewCode.value)
       if (fresh?.success && fresh.data) {
         draftFilter.value = fresh.data
       }
@@ -653,8 +689,8 @@ const sortItemList = ref<SortItem[]>([
 const sortCountComputed = computed(() => sortItemList.value.length)
 const isSortDesc = computed(() => sortItemList.value[0]?.sortTypeCode === 'DESC')
 
-// 视图编码（与后端约定，标识"我的事项"视图）
-const viewCode = ref('MY_TODO219415')
+// 视图编码（请求 /filter/draft 时的视图标识；issue/query 入参取接口返回的 data.viewCode）
+const viewCode = ref('MY_TODO21941')
 
 // 值映射：页面文案 → 后端枚举
 const VALUE_MAP: Record<string, string> = {
@@ -730,11 +766,12 @@ async function handleFilterSave() {
     const res = await updateFilterDraft({
       id: d?.id,
       userNo,
+      viewCode: viewCode.value,
       globalFilter: JSON.stringify(globalFilter),
     })
     if (res?.success) {
       // 保存成功后重新拉取草稿并刷新列表
-      const fresh = await getFilterDraft(userNo)
+      const fresh = await getFilterDraft(userNo, viewCode.value)
       if (fresh?.success && fresh.data) {
         draftFilter.value = fresh.data
       }
@@ -870,7 +907,7 @@ const columnWidths = computed<Record<string, number>>(() => {
       extra += 28 // 头像 22 + 间隙 6
     } else if (
       sample &&
-      (col.id === 'status' || col.id === 'priority' || col.id === 'issuetype' || isSingleSelectField(sample, col.id))
+      (col.id === 'status' || col.id === 'issuetype' || isSingleSelectField(sample, col.id))
     ) {
       extra += 22 // tag 内边距
     } else if (col.id === 'issuekey') {
@@ -880,12 +917,81 @@ const columnWidths = computed<Record<string, number>>(() => {
       extra += 22 // 编辑 icon 18 + 间隙 4
     }
     if (col.id === 'summary') {
-      extra += 44 // 复制 + 链接 icon
+      res[col.id] = 200 // 概要固定宽度
+      continue
     }
     res[col.id] = Math.max(Math.ceil(maxText + extra), 90)
   }
   return res
 })
+
+/** a-table 列配置：动态字段列（summary 固定左侧）+ 操作列（固定右侧） */
+const aTableColumns = computed(() => {
+  const cols: Array<{
+    title: string
+    dataIndex?: string
+    key: string
+    width?: number
+    fixed?: 'left' | 'right'
+    align?: 'center' | 'left' | 'right'
+  }> = tableColumns.value.map(col => ({
+    title: col.name,
+    dataIndex: col.id,
+    key: col.id,
+    width: columnWidths.value[col.id],
+    fixed: col.id === 'summary' ? 'left' : undefined,
+  }))
+  cols.push({
+    title: '操作',
+    key: '__op__',
+    width: 72,
+    fixed: 'right',
+    align: 'center',
+  })
+  return cols
+})
+
+/** 横向滚动宽度：复选框列 50 + 所有动态列 + 操作列 72 */
+const tableScrollX = computed(() => {
+  let w = 50
+  for (const col of tableColumns.value) {
+    w += columnWidths.value[col.id] || 90
+  }
+  w += 72
+  return w
+})
+
+/** 表格容器测量（用于 scroll.y 实现固定表头 + 内容滚动） */
+const tableWrapperRef = ref<HTMLDivElement | null>(null)
+const tableScrollY = ref(400)
+let tableResizeObserver: ResizeObserver | null = null
+
+function updateTableLayout() {
+  const el = tableWrapperRef.value
+  if (!el) return
+  // a-table small 表头高度约 40px，剩余高度给内容区
+  tableScrollY.value = Math.max(el.clientHeight - 40, 100)
+}
+
+function bindTableResizeObserver() {
+  updateTableLayout()
+  if (tableResizeObserver) tableResizeObserver.disconnect()
+  if (tableWrapperRef.value) {
+    tableResizeObserver = new ResizeObserver(updateTableLayout)
+    tableResizeObserver.observe(tableWrapperRef.value)
+  }
+}
+
+/** 复选框多选（固定左侧），保持与旧 vxe checkbox 列一致 */
+const selectedRowKeys = ref<(string | number)[]>([])
+const rowSelection = computed(() => ({
+  fixed: true,
+  columnWidth: 50,
+  selectedRowKeys: selectedRowKeys.value,
+  onChange: (keys: (string | number)[]) => {
+    selectedRowKeys.value = keys
+  },
+}))
 
 /** 从 issueField 取单元格显示值 */
 function getCellValue(rec: IssueRecord, fieldId: string): string {
@@ -911,15 +1017,16 @@ function getCellValue(rec: IssueRecord, fieldId: string): string {
   if (String(f.type ?? '').toUpperCase() === FIELD_TYPE.SELECT_USER_SINGLE) {
     return getUserCellText(rec, fieldId)
   }
-  // 单选下拉字段：value 结构为 { optionId, optionName }，显示 optionName
+  // 单选下拉字段：优先取 value 对象中的显示名（pname/optionName/name），否则回退 exportValue
   if (String(f.type ?? '').toUpperCase() === FIELD_TYPE.SELECT_LIST_SINGLE) {
-    const sv = f.exportValue ?? f.value
-    if (sv == null) return ''
-    if (typeof sv === 'object') {
-      const obj = sv as Record<string, unknown>
-      return String(obj.optionName ?? obj.name ?? '')
+    const raw = f.value ?? f.exportValue
+    if (raw == null) return ''
+    if (typeof raw === 'object') {
+      const obj = raw as Record<string, unknown>
+      return String(obj.pname ?? obj.optionName ?? obj.name ?? '')
     }
-    return String(sv)
+    const sv = f.exportValue ?? f.value
+    return sv == null ? '' : String(sv)
   }
   if (f.exportValue != null) return String(f.exportValue)
   const v = f.value
@@ -1570,6 +1677,7 @@ async function handleOpenSummaryLink(rec: IssueRecord) {
   const link = `${window.location.origin}/jira/browse/${key}`
   try {
     await navigator.clipboard.writeText(link)
+    message.success('链接已复制')
   } catch {}
 }
 
@@ -1618,6 +1726,25 @@ function statusColor(s: string) {
 function priorityColor(p: string) {
   const map: Record<string, string> = { '1': 'red', '2': 'orange', '3': 'default' }
   return map[p] ?? 'default'
+}
+
+/** priority 标签颜色：优先用 value.statusColor（十六进制），兜底按 id 映射预设色 */
+function getPriorityColor(rec: IssueRecord): string {
+  const f = rec.issueField?.find(it => it.id === 'priority')
+  const v = f?.value
+  if (v != null && typeof v === 'object') {
+    const sc = (v as Record<string, unknown>).statusColor
+    if (typeof sc === 'string' && /^#[0-9a-fA-F]{6}$/.test(sc)) return sc
+  }
+  return priorityColor(getPriorityId(rec))
+}
+
+/** priority 圆点/文字颜色（实际 CSS 色值）：优先 statusColor 十六进制，否则按预设色映射 */
+function getPriorityTextColor(rec: IssueRecord): string {
+  const c = getPriorityColor(rec)
+  if (/^#[0-9a-fA-F]{6}$/.test(c)) return c
+  const map: Record<string, string> = { red: '#cf1322', orange: '#d46b08', default: '#595959' }
+  return map[c] ?? '#595959'
 }
 
 async function fetchIssues() {
@@ -1669,6 +1796,11 @@ function handleEditSubmitted() {
   fetchIssues()
 }
 
+/** 流程推进（状态修改）提交成功后刷新列表 */
+function handleWfSubmitted() {
+  fetchIssues()
+}
+
 // 筛选面板关闭时，若条件有变化则重新查询
 let filterSnapshot = JSON.stringify(filterConditions.value)
 watch(filterPanelVisible, (open) => {
@@ -1708,7 +1840,7 @@ watch([currentPage, pageSize], () => {
 onMounted(async () => {
   // 先获取草稿筛选（showField 决定已展示字段，其他字段决定 issue/query 入参）
   try {
-    const res = await getFilterDraft('10284941')
+    const res = await getFilterDraft('10284941', viewCode.value)
     if (res?.success && res.data) {
       draftFilter.value = res.data
       currentPage.value = res.data.page || 1
@@ -1720,6 +1852,15 @@ onMounted(async () => {
   shownFieldsSnapshot = JSON.stringify(shownFields.value)
   filterSnapshot = JSON.stringify(filterConditions.value)
   fetchIssues()
+  // 测量表格容器尺寸（scroll.y 需在 DOM 渲染后计算）
+  bindTableResizeObserver()
+})
+
+onBeforeUnmount(() => {
+  if (tableResizeObserver) {
+    tableResizeObserver.disconnect()
+    tableResizeObserver = null
+  }
 })
 </script>
 
@@ -1875,75 +2016,57 @@ onMounted(async () => {
   overflow: hidden;
 }
 
-.items-table {
-  --vxe-ui-table-header-background-color: #f5f5f5;
-  --vxe-ui-table-border-color: transparent;
-  --vxe-ui-table-border-width: 0;
-  --vxe-ui-table-header-column-border-right-color: transparent;
-  --vxe-ui-table-body-column-border-right-color: transparent;
-  --vxe-ui-table-column-resizable-color: transparent;
-  --vxe-table-resizable-color: transparent;
+.items-table :deep(.ant-table) {
+  background: transparent;
 }
 
-.items-table :deep(.vxe-table),
-.items-table :deep(.vxe-table--main-wrapper),
-.items-table :deep(.vxe-table--header-wrapper),
-.items-table :deep(.vxe-table--body-wrapper) {
-  --vxe-ui-table-border-color: transparent !important;
-  --vxe-ui-table-border-width: 0 !important;
+.items-table :deep(.ant-table-container),
+.items-table :deep(.ant-table-content),
+.items-table :deep(.ant-table-body) {
+  background: transparent;
 }
 
-.items-table :deep(.vxe-header--column),
-.items-table :deep(.vxe-table--header .vxe-cell),
-.items-table :deep(.vxe-table--header-wrapper .vxe-header--column),
-.items-table :deep(.vxe-table--header th),
-.items-table :deep(.vxe-table--header .col--ellipsis) {
-  background: var(--vxe-ui-table-header-background-color);
+/* 表头 */
+.items-table :deep(.ant-table-thead > tr > th) {
+  background: #f5f5f5;
   color: #262626;
   font-weight: 600;
   font-size: 13px;
-  border-right: 0 !important;
-  border-left: 0 !important;
-  border-top: 0 !important;
-  box-shadow: none !important;
-  outline: none !important;
-}
-
-.items-table :deep(.vxe-table--header-wrapper),
-.items-table :deep(.vxe-table--border-line),
-.items-table :deep(.vxe-table--scroll-x-body),
-.items-table :deep(.vxe-table--header-inner-wrapper) {
-  --vxe-table-header-column-border-right-color: transparent !important;
-  --vxe-ui-table-header-column-border-right-color: transparent !important;
-}
-
-.items-table :deep(.vxe-table--border-line) {
-  border: 0 !important;
-  border-right: 0 !important;
-  border-left: 0 !important;
-  display: none !important;
-}
-
-.items-table :deep(.vxe-table--header .vxe-header--column:not(:last-child)::after),
-.items-table :deep(.vxe-table--header .vxe-header--column:not(:last-child)::before),
-.items-table :deep(.vxe-cell--col-resizable),
-.items-table :deep(.vxe-table--column-resizable) {
-  display: none !important;
-  border: 0 !important;
-  background: transparent !important;
-}
-
-.items-table :deep(.vxe-body--column),
-.items-table :deep(.vxe-table--body td) {
+  padding: 8px 12px;
   border-bottom: 1px solid #f0f0f0;
-  border-right: 0 !important;
-  border-left: 0 !important;
+  text-align: left;
+}
+
+/* 单元格 */
+.items-table :deep(.ant-table-tbody > tr > td) {
+  border-bottom: 1px solid #f0f0f0;
   font-size: 14px;
   color: #262626;
+  padding: 8px 12px;
 }
 
-.items-table :deep(.vxe-body--row:hover .vxe-body--column) {
+/* 行 hover */
+.items-table :deep(.ant-table-tbody > tr:hover > td) {
   background: #fafafa;
+}
+
+/* 固定列背景（避免内容透出） */
+.items-table :deep(.ant-table-cell-fix-left),
+.items-table :deep(.ant-table-cell-fix-right) {
+  background: #fff;
+}
+.items-table :deep(.ant-table-thead > tr > .ant-table-cell-fix-left),
+.items-table :deep(.ant-table-thead > tr > .ant-table-cell-fix-right) {
+  background: #f5f5f5;
+}
+.items-table :deep(.ant-table-tbody > tr:hover > td.ant-table-cell-fix-left),
+.items-table :deep(.ant-table-tbody > tr:hover > td.ant-table-cell-fix-right) {
+  background: #fafafa;
+}
+
+/* 选中行高亮 */
+.items-table :deep(.ant-table-tbody > tr.ant-table-row-selected > td) {
+  background: #e6f4ff;
 }
 
 /* 单元格悬停编辑 icon */
@@ -1959,6 +2082,20 @@ onMounted(async () => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.summary-cell-text {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+  cursor: pointer;
+  transition: color 0.2s;
+}
+.summary-cell-text:hover {
+  color: #1677ff;
+  text-decoration: underline;
 }
 .single-select-tag {
   margin-right: 0;
@@ -1993,6 +2130,22 @@ onMounted(async () => {
 
 .cell-edit-icon:hover {
   background: #e6f4ff;
+}
+
+/* 优先级：圆点 + 文字（只改文字颜色） */
+.priority-text-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1;
+}
+.priority-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
 }
 
 /* 人员字段单元格（头像 + 账号（工号）） */

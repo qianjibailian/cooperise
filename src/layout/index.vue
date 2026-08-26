@@ -169,6 +169,10 @@
                 <component :is="AppstoreOutlined" />
                 <span>自定义字段</span>
               </a-menu-item>
+              <a-menu-item key="/settings/workflow">
+                <component :is="DeploymentUnitOutlined" />
+                <span>工作流</span>
+              </a-menu-item>
               <a-menu-item key="/settings/profile">
                 <component :is="UserOutlined" />
                 <span>个人中心</span>
@@ -244,6 +248,7 @@ import {
   TeamOutlined,
   LockOutlined,
   BuildOutlined,
+  DeploymentUnitOutlined,
   UserOutlined,
   InfoCircleOutlined,
   ExperimentOutlined,

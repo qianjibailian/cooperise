@@ -29,5 +29,6 @@ const systemFieldApi = {
     :show-system-column="false"
     :show-system-switch="false"
     :show-meta-columns="true"
+    :disable-field-num="false"
   />
 </template>

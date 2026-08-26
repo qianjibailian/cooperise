@@ -10,6 +10,8 @@
   },
   "dependencies": {
     "@ant-design/icons-vue": "7.0.1",
+    "@logicflow/core": "1.2.10",
+    "@logicflow/extension": "1.2.10",
     "@vxe-ui/plugin-render-antd": "4.4.0",
     "@wangeditor/editor": "^5.1.23",
     "@wangeditor/editor-for-vue": "^5.1.12",

@@ -50,64 +50,58 @@
               <PlusOutlined /> 新增数据
             </a-button>
           </div>
-          <vxe-table
-            :data="tablePreviewData"
-            keep-source
-            border
-            show-overflow
+          <a-table
+            :data-source="tablePreviewData"
+            :columns="previewTableColumns"
+            :pagination="false"
+            :bordered="true"
             size="small"
-            :empty-text="'暂无数据'"
-            :edit-config="{ trigger: 'click', mode: 'cell', showStatus: true, showIcon: false }"
+            :locale="{ emptyText: '暂无数据' }"
+            :scroll="{ x: 200 + previewTableWidgets.length * 160 }"
+            :row-key="previewRowKey"
             class="preview-table"
           >
-            <vxe-column type="seq" width="50" align="center" title="#" />
-            <vxe-column
-              v-for="w in previewTableWidgets"
-              :key="w.id || w.field"
-              :field="w.field"
-              :title="w.title || w.field"
-              :min-width="160"
-              :edit-render="{}"
-            >
-              <template #edit="{ row }">
-                <a-input v-if="widgetEditType(w) === 'text'" v-model:value="row[w.field]" size="small" />
-                <a-textarea v-else-if="widgetEditType(w) === 'textarea'" v-model:value="row[w.field]" size="small" :rows="2" />
-                <a-input-number v-else-if="widgetEditType(w) === 'number'" v-model:value="row[w.field]" size="small" style="width:100%" />
-                <a-date-picker v-else-if="widgetEditType(w) === 'date'" v-model:value="row[w.field]" size="small" style="width:100%" />
-                <a-date-picker v-else-if="widgetEditType(w) === 'datetime'" v-model:value="row[w.field]" size="small" style="width:100%" show-time />
-                <a-time-picker v-else-if="widgetEditType(w) === 'time'" v-model:value="row[w.field]" size="small" style="width:100%" />
+            <template #bodyCell="{ column, record, index }">
+              <template v-if="column.key === '__seq__'">{{ index + 1 }}</template>
+              <template v-else-if="column.widget">
+                <a-input v-if="widgetEditType(column.widget) === 'text'" v-model:value="record[column.dataIndex]" size="small" />
+                <a-textarea v-else-if="widgetEditType(column.widget) === 'textarea'" v-model:value="record[column.dataIndex]" size="small" :rows="2" />
+                <a-input-number v-else-if="widgetEditType(column.widget) === 'number'" v-model:value="record[column.dataIndex]" size="small" style="width:100%" />
+                <a-date-picker v-else-if="widgetEditType(column.widget) === 'date'" v-model:value="record[column.dataIndex]" size="small" style="width:100%" />
+                <a-date-picker v-else-if="widgetEditType(column.widget) === 'datetime'" v-model:value="record[column.dataIndex]" size="small" style="width:100%" show-time />
+                <a-time-picker v-else-if="widgetEditType(column.widget) === 'time'" v-model:value="record[column.dataIndex]" size="small" style="width:100%" />
                 <a-select
-                  v-else-if="widgetEditType(w) === 'select'"
-                  v-model:value="row[w.field]"
+                  v-else-if="widgetEditType(column.widget) === 'select'"
+                  v-model:value="record[column.dataIndex]"
                   size="small"
                   style="width:100%"
                   allow-clear
                 >
-                  <a-select-option v-for="o in toSelectOptions(w)" :key="String(o.value)" :value="o.value">{{ o.label }}</a-select-option>
+                  <a-select-option v-for="o in toSelectOptions(column.widget)" :key="String(o.value)" :value="o.value">{{ o.label }}</a-select-option>
                 </a-select>
                 <a-select
-                  v-else-if="widgetEditType(w) === 'multi-select'"
-                  v-model:value="row[w.field]"
+                  v-else-if="widgetEditType(column.widget) === 'multi-select'"
+                  v-model:value="record[column.dataIndex]"
                   size="small"
                   mode="multiple"
                   style="width:100%"
                   allow-clear
                 >
-                  <a-select-option v-for="o in toSelectOptions(w)" :key="String(o.value)" :value="o.value">{{ o.label }}</a-select-option>
+                  <a-select-option v-for="o in toSelectOptions(column.widget)" :key="String(o.value)" :value="o.value">{{ o.label }}</a-select-option>
                 </a-select>
                 <a-cascader
-                  v-else-if="widgetEditType(w) === 'cascader'"
-                  v-model:value="row[w.field]"
+                  v-else-if="widgetEditType(column.widget) === 'cascader'"
+                  v-model:value="record[column.dataIndex]"
                   size="small"
                   style="width:100%"
-                  :options="toCascaderOpts(w)"
+                  :options="toCascaderOpts(column.widget)"
                   allow-clear
                 />
-                <a-switch v-else-if="widgetEditType(w) === 'switch'" v-model:checked="row[w.field]" />
-                <a-input v-else v-model:value="row[w.field]" size="small" />
+                <a-switch v-else-if="widgetEditType(column.widget) === 'switch'" v-model:checked="record[column.dataIndex]" />
+                <a-input v-else v-model:value="record[column.dataIndex]" size="small" />
               </template>
-            </vxe-column>
-          </vxe-table>
+            </template>
+          </a-table>
         </div>
         <div v-else class="empty-preview">此表单暂无配置</div>
       </template>
@@ -240,6 +234,26 @@ const previewTableWidgets = computed<any[]>(() => {
 
 /** 表格数据行（支持新增/编辑） */
 const tablePreviewData = ref<any[]>([])
+
+/** a-table 列配置：第一列序号 + 每个 widget 一列（widget 挂到列上供 bodyCell 渲染编辑控件） */
+const previewTableColumns = computed<any[]>(() => {
+  const cols: any[] = [{ title: '#', key: '__seq__', width: 50, align: 'center' }]
+  for (const w of previewTableWidgets.value) {
+    cols.push({
+      title: w.title || w.field,
+      key: w.field,
+      dataIndex: w.field,
+      width: 160,
+      widget: w,
+    })
+  }
+  return cols
+})
+
+/** a-table row-key：无稳定主键，用行下标兜底 */
+function previewRowKey(_record: any, index?: number): number {
+  return index ?? 0
+}
 
 /** 选项辅助函数（兼容 {label,value} / {name,id} 两种后端风格） */
 function optLabel(o: any): string { return String(o?.label ?? o?.name ?? o?.value ?? o?.id ?? '') }

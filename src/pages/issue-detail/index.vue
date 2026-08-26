@@ -13,10 +13,25 @@
           <div class="dh-inline-actions">
             <div class="dh-icon-btn" title="复制单号"><component :is="CopyOutlined" /></div>
             <div class="dh-icon-btn" title="收藏"><component :is="StarOutlined" /></div>
-            <div class="dh-icon-btn" title="复制链接"><component :is="LinkOutlined" /></div>
+            <div class="dh-icon-btn" title="复制链接" @click="copyIssueLink"><component :is="LinkOutlined" /></div>
           </div>
         </div>
-        <h1 class="dh-title">{{ heroSummary || '（未填写标题）' }}</h1>
+        <div v-if="editingSummary" class="dh-title-edit">
+          <a-input
+            ref="summaryInputRef"
+            v-model:value="summaryDraft"
+            class="dh-summary-input"
+            placeholder="请输入概要"
+            maxlength="200"
+            @pressEnter="saveSummary"
+            @blur="saveSummary"
+          />
+        </div>
+        <div v-else-if="!heroSummary" class="dh-title-empty" @click="startEditSummary">
+          <span class="dh-summary-label">概要</span>
+          <span class="dh-summary-empty-tip">未填写概要，点击填写</span>
+        </div>
+        <h1 v-else class="dh-title" @click="startEditSummary">{{ heroSummary }}</h1>
       </div>
     </header>
 
@@ -137,16 +152,16 @@
                 {{ statusLabel }}
               </a-tag>
               <span v-else class="attr-empty">—</span>
-              <a v-if="statusLabel" class="attr-workflow">查看工作流</a>
+              <a v-if="statusLabel" class="attr-workflow" @click="openWorkflow">查看工作流</a>
             </span>
           </div>
 
           <div class="attr-item">
             <span class="attr-label">优先级</span>
             <span class="attr-value-block">
-              <span class="priority-chip" :class="'pc-' + (priorityStatusColor || 'default')">
-                <component :is="SwapOutlined" class="pc-icon" />
-                <span class="pc-text">{{ priorityLabel || '—' }}</span>
+              <span class="priority-text" :style="{ color: priorityColorHex }">
+                <span class="priority-dot" :style="{ background: priorityColorHex }"></span>
+                <span class="priority-label">{{ priorityLabel || '—' }}</span>
               </span>
             </span>
           </div>
@@ -200,17 +215,6 @@
           </a-button>
           <a-button size="small" class="action-btn">取消</a-button>
           <a-button size="small" class="action-btn">暂停</a-button>
-          <a-dropdown>
-            <a-button size="small" class="action-btn">
-              同步任务处...
-            </a-button>
-            <template #overlay>
-              <a-menu>
-                <a-menu-item>同步到飞书</a-menu-item>
-                <a-menu-item>同步到 Jira</a-menu-item>
-              </a-menu>
-            </template>
-          </a-dropdown>
         </div>
         <div class="action-bar-right">
           <a-switch v-model:checked="onlyShowValued" size="small" />
@@ -280,8 +284,26 @@
                           <span class="kv-label-inner">{{ f.name }}</span>
                         </div>
                         <div class="kv-value">
-                          <UserAvatar v-if="isUserField(f)" :user="f.value" />
-                          <ValueWithBadge v-else :field="f" />
+                          <template v-if="editingFieldId === f.id">
+                            <FieldValueEditor
+                              :field="f"
+                              :issue-key="issueKey"
+                              @saved="onFieldSaved(f, $event)"
+                              @cancel="editingFieldId = null"
+                            />
+                          </template>
+                          <template v-else>
+                            <UserAvatar v-if="isUserField(f)" :user="f.value" />
+                            <ValueWithBadge v-else :field="f" />
+                            <span
+                              v-if="canEditField(f)"
+                              class="field-edit-icon"
+                              title="编辑"
+                              @click="editingFieldId = f.id"
+                            >
+                              <component :is="EditOutlined" />
+                            </span>
+                          </template>
                         </div>
                       </div>
                     </template>
@@ -300,8 +322,26 @@
                           <span class="kv-label-inner">{{ f.name }}</span>
                         </div>
                         <div class="kv-value">
-                          <UserAvatar v-if="isUserField(f)" :user="f.value" />
-                          <ValueWithBadge v-else :field="f" />
+                          <template v-if="editingFieldId === f.id">
+                            <FieldValueEditor
+                              :field="f"
+                              :issue-key="issueKey"
+                              @saved="onFieldSaved(f, $event)"
+                              @cancel="editingFieldId = null"
+                            />
+                          </template>
+                          <template v-else>
+                            <UserAvatar v-if="isUserField(f)" :user="f.value" />
+                            <ValueWithBadge v-else :field="f" />
+                            <span
+                              v-if="canEditField(f)"
+                              class="field-edit-icon"
+                              title="编辑"
+                              @click="editingFieldId = f.id"
+                            >
+                              <component :is="EditOutlined" />
+                            </span>
+                          </template>
                         </div>
                       </div>
                     </template>
@@ -311,7 +351,7 @@
             </a-collapse-panel>
           </a-collapse>
 
-          <!-- 研发活动（折叠板） -->
+          <!-- ========== 暂时注释：研发活动（折叠板） ==========
           <a-collapse
             v-model:activeKey="rdCollapseKeys"
             ghost
@@ -329,8 +369,50 @@
               </div>
             </a-collapse-panel>
           </a-collapse>
+          ========== /暂时注释：研发活动 ========== -->
 
-          <!-- 关联 OKR（折叠板） -->
+          <!-- 描述（折叠板，位于研发活动下方） -->
+          <a-collapse
+            v-if="!onlyShowValued ? true : descriptionFields.length > 0"
+            v-model:activeKey="descCollapseKeys"
+            ghost
+            :bordered="false"
+            class="panel-collapse"
+          >
+            <a-collapse-panel key="desc">
+              <template #header>
+                <div class="collapse-header-inner">
+                  <span class="pch-title">描述</span>
+                </div>
+              </template>
+              <div class="panel-card-body">
+                <template v-if="descriptionFields.length > 0">
+                  <div
+                    v-for="f in descriptionFields"
+                    :key="`desc-${f.id}-${richEditorVersion}`"
+                    class="desc-rich-wrap"
+                  >
+                    <Toolbar
+                      :editor="richEditorInstances[f.id] || null"
+                      :default-config="richToolbarConfig"
+                      mode="default"
+                      class="desc-rich-toolbar"
+                    />
+                    <Editor
+                      v-model="richTextModels[f.id]"
+                      :default-config="richEditorConfig"
+                      mode="default"
+                      class="desc-rich-editor"
+                      @onCreated="(editor: IDomEditor) => handleRichEditorCreated(f.id, editor)"
+                    />
+                  </div>
+                </template>
+                <MiniEmpty v-else text="还没有填写描述" />
+              </div>
+            </a-collapse-panel>
+          </a-collapse>
+
+          <!-- ========== 暂时注释：关联 OKR（折叠板） ==========
           <a-collapse
             v-model:activeKey="okrCollapseKeys"
             ghost
@@ -348,45 +430,9 @@
               </div>
             </a-collapse-panel>
           </a-collapse>
+          ========== /暂时注释：关联 OKR ========== -->
 
-          <!-- 描述（折叠板，移至最后） -->
-          <a-collapse
-            v-if="!onlyShowValued ? true : descriptionFields.length > 0"
-            v-model:activeKey="descCollapseKeys"
-            ghost
-            :bordered="false"
-            class="panel-collapse panel-collapse-last"
-          >
-            <a-collapse-panel key="desc">
-              <template #header>
-                <div class="collapse-header-inner">
-                  <span class="pch-title">描述</span>
-                </div>
-              </template>
-              <div class="panel-card-body">
-                <template v-if="descriptionFields.length > 0">
-                  <div v-for="(f, i) in descriptionFields" :key="i" class="desc-rich-wrap">
-                    <Toolbar
-                      v-if="false"
-                      :editor="null"
-                      :default-config="{}"
-                      mode="default"
-                    />
-                    <Editor
-                      v-model="richTextModels[f.id]"
-                      :default-config="richTextReadOnlyConfig"
-                      mode="default"
-                      class="desc-rich-editor"
-                      @onCreated="(editor: IDomEditor) => handleRichEditorCreated(f.id, editor)"
-                    />
-                  </div>
-                </template>
-                <MiniEmpty v-else text="还没有填写描述" />
-              </div>
-            </a-collapse-panel>
-          </a-collapse>
-
-          <!-- 附件（折叠板） -->
+          <!-- ========== 暂时注释：附件 / 父级工单 / 子级工单 / 同级工单 / 依赖关系 ==========
           <a-collapse
             v-model:activeKey="attachmentCollapseKeys"
             ghost
@@ -405,7 +451,6 @@
             </a-collapse-panel>
           </a-collapse>
 
-          <!-- 父级工单（折叠板） -->
           <a-collapse
             v-model:activeKey="parentCollapseKeys"
             ghost
@@ -424,7 +469,6 @@
             </a-collapse-panel>
           </a-collapse>
 
-          <!-- 子级工单（折叠板） -->
           <a-collapse
             v-model:activeKey="childCollapseKeys"
             ghost
@@ -443,7 +487,6 @@
             </a-collapse-panel>
           </a-collapse>
 
-          <!-- 同级工单（折叠板） -->
           <a-collapse
             v-model:activeKey="siblingCollapseKeys"
             ghost
@@ -462,7 +505,6 @@
             </a-collapse-panel>
           </a-collapse>
 
-          <!-- 依赖关系（折叠板） -->
           <a-collapse
             v-model:activeKey="dependencyCollapseKeys"
             ghost
@@ -480,8 +522,9 @@
               </div>
             </a-collapse-panel>
           </a-collapse>
+          ========== /暂时注释：附件等五个板块 ========== -->
 
-          <!-- 活动日志（折叠板） -->
+          <!-- 活动日志 -->
           <a-collapse
             v-model:activeKey="activityCollapseKeys"
             ghost
@@ -495,7 +538,25 @@
                 </div>
               </template>
               <div class="panel-card-body">
-                <MiniEmpty text="暂无活动日志" />
+                <a-tabs size="small" class="nn-activity-tabs">
+                  <a-tab-pane key="change" tab="变更记录">
+                    <a-timeline v-if="activityLogs.length" class="nn-activity-log">
+                      <a-timeline-item v-for="log in activityLogs" :key="String(log.id)">
+                        <div class="nn-activity-item">
+                          <div class="nn-activity-meta">
+                            <span class="nn-activity-name">{{ log.processName || '流程' }}</span>
+                            <span class="nn-activity-status">{{ statusText(log.status) }}</span>
+                          </div>
+                          <div class="nn-activity-node">节点：{{ log.nodeName || log.currentNodeName || '—' }}</div>
+                          <div class="nn-activity-time">
+                            <template v-if="log.operator">操作人：{{ log.operator }} · </template>{{ formatLogTime(log.createTime) }}
+                          </div>
+                        </div>
+                      </a-timeline-item>
+                    </a-timeline>
+                    <MiniEmpty v-else text="暂无变更记录" />
+                  </a-tab-pane>
+                </a-tabs>
               </div>
             </a-collapse-panel>
           </a-collapse>
@@ -526,12 +587,30 @@
                         <span class="kv-label-inner">{{ f.name }}</span>
                       </div>
                       <div class="kv-value">
-                        <div class="user-cell-pretty">
-                          <UserAvatar :user="f.value" :size="26" />
-                          <div class="ucp-share" title="转派给其他人">
-                            <component :is="ShareAltOutlined" />
+                        <template v-if="editingFieldId === f.id">
+                          <FieldValueEditor
+                            :field="f"
+                            :issue-key="issueKey"
+                            @saved="onFieldSaved(f, $event)"
+                            @cancel="editingFieldId = null"
+                          />
+                        </template>
+                        <template v-else>
+                          <div class="user-cell-pretty">
+                            <UserAvatar :user="f.value" :size="26" />
+                            <span
+                              v-if="canEditField(f)"
+                              class="field-edit-icon"
+                              title="编辑"
+                              @click="editingFieldId = f.id"
+                            >
+                              <component :is="EditOutlined" />
+                            </span>
+                            <div class="ucp-share" title="转派给其他人">
+                              <component :is="ShareAltOutlined" />
+                            </div>
                           </div>
-                        </div>
+                        </template>
                       </div>
                     </div>
                   </template>
@@ -555,7 +634,37 @@
                 </div>
               </template>
               <div class="panel-card-body">
-                <MiniEmpty text="暂无时间信息" />
+                <div v-if="filteredTimeFields.length > 0" class="kv-list">
+                  <template v-for="(f, i) in filteredTimeFields" :key="f.id">
+                    <div class="kv-row" :class="{ 'kv-row-alt': i % 2 === 1 }">
+                      <div class="kv-label">
+                        <span class="kv-label-inner">{{ f.name }}</span>
+                      </div>
+                      <div class="kv-value">
+                        <template v-if="editingFieldId === f.id">
+                          <FieldValueEditor
+                            :field="f"
+                            :issue-key="issueKey"
+                            @saved="onFieldSaved(f, $event)"
+                            @cancel="editingFieldId = null"
+                          />
+                        </template>
+                        <template v-else>
+                          {{ formatFieldValue(f) }}
+                          <span
+                            v-if="canEditField(f)"
+                            class="field-edit-icon"
+                            title="编辑"
+                            @click="editingFieldId = f.id"
+                          >
+                            <component :is="EditOutlined" />
+                          </span>
+                        </template>
+                      </div>
+                    </div>
+                  </template>
+                </div>
+                <MiniEmpty v-else text="暂无时间信息" />
               </div>
             </a-collapse-panel>
           </a-collapse>
@@ -565,12 +674,14 @@
       </main>
     </div>
   </div>
+
+  <WorkflowInstanceModal v-model:open="wfOpen" :issue-key="wfIssueKey" />
 </template>
 
 <script setup lang="ts">
-import { h, ref, computed, watch, reactive, nextTick, onMounted } from 'vue'
+import { h, ref, computed, watch, reactive, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute } from 'vue-router'
-import type { IDomEditor, IEditorConfig } from '@wangeditor/editor'
+import type { IDomEditor, IEditorConfig, IToolbarConfig } from '@wangeditor/editor'
 import { Editor, Toolbar } from '@wangeditor/editor-for-vue'
 import '@wangeditor/editor/dist/css/style.css'
 import {
@@ -579,15 +690,19 @@ import {
   LinkOutlined,
   ShareAltOutlined,
   CheckSquareFilled,
-  SwapOutlined,
   FileUnknownOutlined,
   DownOutlined,
   AppstoreOutlined,
   ExclamationCircleOutlined,
   CopyOutlined,
+  EditOutlined,
 } from '@ant-design/icons-vue'
-import { queryDetail } from '@/api/faiz'
-import type { DetailData, DetailField } from '@/types/faiz'
+import dayjs from 'dayjs'
+import { queryDetail, patchIssue, listWorkflowHistory } from '@/api/faiz'
+import { message } from 'ant-design-vue'
+import type { DetailData, DetailField, WorkflowHistory } from '@/types/faiz'
+import FieldValueEditor from '@/components/FieldValueEditor.vue'
+import WorkflowInstanceModal from '@/components/WorkflowInstanceModal.vue'
 
 // ============================================================
 // 子组件：MiniEmpty 小型空状态
@@ -635,7 +750,8 @@ const UserAvatar = {
       if (!v || typeof v !== 'object') return { name: '', id: '', firstLetter: '?', color: '#d9d9d9', textColor: '#595959' }
       const obj = v as Record<string, unknown>
       const name = String(obj.coAccount ?? obj.userCoAccount ?? obj.userEnName ?? obj.displayName ?? obj.name ?? '')
-      const idPart = obj.id || obj.userId || obj.userNo ? String(obj.id ?? obj.userId ?? obj.userNo ?? '') : ''
+      // 括号内容取用户工号 userNo
+      const idPart = obj.userNo ? String(obj.userNo) : ''
       const firstLetter = (name || '?').trim().charAt(0).toUpperCase()
       const avatar = String(obj.avatarUrl ?? obj.userAvatar ?? '')
       const palette = [
@@ -724,6 +840,22 @@ const UserAvatar = {
 // ============================================================
 // 子组件：ValueWithBadge 字段值 + 数字绿标
 // ============================================================
+
+// 枚举值头像取色板（无 iconUrl 时按名称/ID 稳定取色）
+const ENUM_AVATAR_PALETTE = [
+  'linear-gradient(135deg, #1677ff 0%, #4096ff 100%)',
+  'linear-gradient(135deg, #52c41a 0%, #73d13d 100%)',
+  'linear-gradient(135deg, #fa8c16 0%, #ffa940 100%)',
+  'linear-gradient(135deg, #722ed1 0%, #9254de 100%)',
+  'linear-gradient(135deg, #13c2c2 0%, #36cfc9 100%)',
+  'linear-gradient(135deg, #eb2f96 0%, #f759ab 100%)',
+]
+function hashStr(s: string): number {
+  let h = 0
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0
+  return h
+}
+
 const ValueWithBadge = {
   name: 'ValueWithBadge',
   props: {
@@ -746,6 +878,27 @@ const ValueWithBadge = {
       props.field.type.startsWith('SELECT_LIST_SINGLE') &&
       /^\d{5,}$/.test(badgeId.value),
     )
+    // 枚举值（下拉/级联等）带头像渲染：value 结构 { iconUrl, id, name } 或用户枚举 { avatarUrl/userAvatar, coAccount/userNo, ... }
+    const enumMetas = computed(() => {
+      const type = String(props.field.type ?? '')
+      if (!type.startsWith('SELECT_LIST') && !type.startsWith('CASCADER') && !type.startsWith('RADIO')) return []
+      const v = props.field.value
+      if (v == null) return []
+      const norm = (o: unknown): { name: string; avatar: string; id: string; color: string } | null => {
+        if (o == null || typeof o !== 'object') return null
+        const obj = o as Record<string, unknown>
+        const name = String(obj.name ?? obj.optionName ?? obj.coAccount ?? obj.userCoAccount ?? obj.userEnName ?? obj.displayName ?? '')
+        if (!name) return null
+        return {
+          name,
+          avatar: String(obj.avatarUrl ?? obj.userAvatar ?? obj.iconUrl ?? ''),
+          id: String(obj.id ?? obj.optionId ?? obj.userNo ?? ''),
+          color: typeof obj.color === 'string' ? obj.color : '',
+        }
+      }
+      const arr = Array.isArray(v) ? v.map(norm) : [norm(v)]
+      return arr.filter((x): x is NonNullable<typeof x> => !!x)
+    })
     return () => {
       const txt = displayValue.value
       const textSpan = h('span', {
@@ -756,18 +909,8 @@ const ValueWithBadge = {
           wordBreak: 'break-word',
         },
       }, txt)
-      if (shouldShowBadge.value) {
-        return h('div', {
-          style: {
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '6px',
-            maxWidth: '100%',
-            flexWrap: 'wrap',
-          },
-        }, [
-          textSpan,
-          h('span', {
+      const badgeSpan = shouldShowBadge.value
+        ? h('span', {
             style: {
               display: 'inline-flex',
               alignItems: 'center',
@@ -784,10 +927,39 @@ const ValueWithBadge = {
               letterSpacing: '0.2px',
               boxShadow: 'inset 0 -1px 0 rgba(0, 0, 0, 0.02)',
             },
-          }, badgeId.value),
-        ])
+          }, badgeId.value)
+        : null
+      const avatarSpans = enumMetas.value.map((m, idx) => {
+        const letter = (m.name || '?').trim().charAt(0).toUpperCase()
+        const bg = m.color || ENUM_AVATAR_PALETTE[hashStr(m.id || m.name) % ENUM_AVATAR_PALETTE.length]
+        return h('span', {
+          key: idx,
+          style: {
+            width: '18px',
+            height: '18px',
+            borderRadius: '50%',
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: '10px',
+            fontWeight: 600,
+            color: '#fff',
+            flex: '0 0 auto',
+            background: m.avatar ? `url("${m.avatar}") center / cover no-repeat` : bg,
+          },
+        }, m.avatar ? undefined : letter)
+      })
+      const rowStyle = {
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: '6px',
+        maxWidth: '100%',
+        flexWrap: 'wrap',
       }
-      return textSpan
+      if (!avatarSpans.length) {
+        return badgeSpan ? h('div', { style: rowStyle }, [textSpan, badgeSpan]) : textSpan
+      }
+      return h('div', { style: rowStyle }, [...avatarSpans, textSpan, ...(badgeSpan ? [badgeSpan] : [])])
     }
   },
 }
@@ -812,63 +984,152 @@ const siblingCollapseKeys = ref<string[]>([])
 const dependencyCollapseKeys = ref<string[]>([])
 const activityCollapseKeys = ref<string[]>(['activity'])
 const onlyShowValued = ref(true)
+/** 活动日志：该事项的任务历史记录 */
+const activityLogs = ref<WorkflowHistory[]>([])
 
-// ======================= 描述区富文本组件（WangEditor 只读） =======================
+// ======================= 工作流弹窗 =======================
+const wfOpen = ref(false)
+const wfIssueKey = ref('')
+function openWorkflow() {
+  wfIssueKey.value = issueKey.value || ''
+  wfOpen.value = true
+}
+
+// ======================= 描述区富文本组件（WangEditor 可编辑） =======================
 const richTextModels = reactive<Record<string, string>>({})
 const richEditorInstances = reactive<Record<string, IDomEditor | null>>({})
+const richEditorVersion = ref(0)
+const richSaving = reactive<Record<string, boolean>>({})
 
-const richTextReadOnlyConfig: Partial<IEditorConfig> = {
-  readOnly: true,
-  placeholder: '',
+const richToolbarConfig: Partial<IToolbarConfig> = {
+  toolbarKeys: [
+    'headerSelect',
+    'blockquote',
+    '|',
+    'bold',
+    'underline',
+    'italic',
+    'through',
+    'code',
+    '|',
+    'color',
+    'bgColor',
+    '|',
+    'bulletedList',
+    'numberedList',
+    '|',
+    'insertLink',
+    'insertImage',
+    '|',
+    'undo',
+    'redo',
+  ],
+}
+
+const richEditorConfig: Partial<IEditorConfig> = {
+  placeholder: '请输入描述…',
   scroll: false,
   MENU_CONF: {},
 }
 
 function handleRichEditorCreated(fieldId: string, editor: IDomEditor) {
+  // 防止同字段残留旧实例（正常流程下 key 重建已销毁，此处兜底）
+  const prev = richEditorInstances[fieldId]
+  if (prev && prev !== editor) {
+    prev.destroy()
+  }
   richEditorInstances[fieldId] = editor
+  // 失焦自动保存
+  editor.on('blur', () => saveRichText(fieldId))
 }
 
-// 监听 detailData 变化：把 description 的富文本字符串塞进 richTextModels
+/** 保存描述富文本：内容有变化才调用 patchIssue */
+async function saveRichText(fieldId: string) {
+  if (richSaving[fieldId]) return
+  const html = (richTextModels[fieldId] ?? '').trim()
+  const f = descriptionFields.value.find((x) => x.id === fieldId)
+  if (!f || !f.editable) return
+  const origin = typeof f.value === 'string' ? f.value.trim() : String(f.value ?? '')
+  if (html === origin) return
+  richSaving[fieldId] = true
+  try {
+    const res = await patchIssue(issueKey.value, [{ fieldId, fieldValue: html }])
+    if (res?.success) {
+      f.value = html
+      f.exportValue = html
+      message.success('描述已保存')
+    }
+  } catch {
+    // 保存失败静默处理
+  } finally {
+    richSaving[fieldId] = false
+  }
+}
+
+// 监听 detailData 变化：把 description 的富文本字符串塞进 richTextModels，
+// 版本号变化会强制重建 Editor，保证以最新内容初始化
 watch(
   () => detailData.value,
-  async (d) => {
-    // 清理旧实例
-    Object.values(richEditorInstances).forEach((inst) => {
-      if (inst && typeof inst.destroy === 'function') {
-        try {
-          inst.destroy()
-        } catch {
-          // noop
-        }
-      }
-    })
-    for (const k of Object.keys(richEditorInstances)) {
-      richEditorInstances[k] = null
-    }
+  (d) => {
     for (const k of Object.keys(richTextModels)) {
       delete richTextModels[k]
     }
-
+    destroyAllRichEditors()
     if (!d) return
-    const g = d.layoutGroup.find((x) => x.type === 'DESCRIPTION')
+    const g = (d.layoutGroup ?? []).find((x) => x && x.type === 'DESCRIPTION')
     if (!g) return
-    const data = g.fieldGroupStructure.data
-    const list = Array.isArray(data) ? (data as DetailField[]) : []
-    await nextTick()
+    const list = flattenGroupFields(g.fieldGroupStructure)
     list.forEach((f) => {
       richTextModels[f.id] = formatRichText(f.value)
     })
+    richEditorVersion.value++
   },
   { immediate: true },
 )
 
+/** 销毁全部富文本编辑器实例，并清空实例缓存 */
+function destroyAllRichEditors() {
+  for (const k of Object.keys(richEditorInstances)) {
+    const inst = richEditorInstances[k]
+    if (inst) {
+      inst.destroy()
+    }
+    richEditorInstances[k] = null
+  }
+}
+
+// 组件卸载时兜底销毁，避免编辑器/工具栏泄漏导致重复创建报错
+onBeforeUnmount(destroyAllRichEditors)
+
 // ======================= helpers to get specific known fields =======================
+
+// 过滤数组中的空元素（接口偶发返回 null 项，渲染前兜底）
+function notNull<T>(v: T | null | undefined): v is T {
+  return v != null
+}
+
+// 将 fieldGroupStructure 拍平为字段列表（兼容 COMMON_LIST 与 TAB_CONTAINER）
+function flattenGroupFields(s: {
+  type: string
+  data: DetailField[] | { tabItems: Array<{ title: string; sequence: number; issueFields: DetailField[] }> }
+} | null | undefined): DetailField[] {
+  if (!s) return []
+  if (s.type === 'COMMON_LIST') return ((s.data as DetailField[]) ?? []).filter(notNull)
+  if (s.type === 'TAB_CONTAINER') {
+    const d = s.data as { tabItems: Array<{ title: string; sequence: number; issueFields: DetailField[] }> }
+    const list: DetailField[] = []
+    if (!d) return list
+    d.tabItems?.forEach((t) => (t.issueFields ?? []).forEach((f) => f && list.push(f)))
+    return list
+  }
+  return []
+}
 
 const allSummaryFields = computed<DetailField[]>(() => {
   if (!detailData.value) return []
-  const g = detailData.value.layoutGroup.find((x) => x.type === 'SUMMARY')
-  if (!g || g.fieldGroupStructure.type !== 'COMMON_LIST') return []
-  return g.fieldGroupStructure.data as DetailField[]
+  const g = (detailData.value.layoutGroup ?? []).find((x) => x && x.type === 'SUBJECT')
+  if (!g) return []
+  return flattenGroupFields(g.fieldGroupStructure)
 })
 
 function findField(id: string): DetailField | undefined {
@@ -878,8 +1139,84 @@ function findField(id: string): DetailField | undefined {
 const heroSummary = computed<string>(() => {
   const f = findField('summary')
   if (!f) return ''
-  return String(f.exportValue ?? f.value ?? '')
+  // 用 || 而非 ??：exportValue 可能是空字符串 ''，此时应回退到 value
+  const raw = f.exportValue || f.value
+  return raw === null || raw === undefined ? '' : String(raw)
 })
+
+// ======================= 概要（summary）可编辑 =======================
+
+const summaryField = computed<DetailField | undefined>(() => findField('summary'))
+const editingSummary = ref(false)
+const summaryDraft = ref('')
+const summaryInputRef = ref<{ focus: () => void } | null>(null)
+
+function startEditSummary() {
+  if (!summaryField.value?.editable) return
+  summaryDraft.value = heroSummary.value
+  editingSummary.value = true
+  nextTick(() => summaryInputRef.value?.focus?.())
+}
+
+async function saveSummary() {
+  if (!editingSummary.value) return
+  editingSummary.value = false
+  const f = summaryField.value
+  if (!f) return
+  const val = (summaryDraft.value ?? '').trim()
+  if (val === heroSummary.value) return
+  try {
+    const res = await patchIssue(issueKey.value, [{ fieldId: 'summary', fieldValue: val }])
+    if (res?.success) {
+      // 本地同步，无需重新拉取详情
+      f.value = val
+      f.exportValue = val
+    }
+  } catch {
+    // 保存失败静默处理
+  }
+}
+
+/** 复制事项链接（域名/jira/browse/{issueKey}）到剪贴板 */
+async function copyIssueLink() {
+  const key = issueKey.value
+  if (!key) return
+  const link = `${window.location.origin}/jira/browse/${key}`
+  try {
+    await navigator.clipboard.writeText(link)
+    message.success('链接已复制')
+  } catch {}
+}
+
+// ======================= 字段内联编辑 =======================
+/** 当前处于编辑态的字段 id（同一时间只编辑一个字段） */
+const editingFieldId = ref<string | null>(null)
+
+/** 字段是否可编辑：editable 为 true 且非富文本（描述有独立编辑器） */
+function canEditField(f: DetailField): boolean {
+  if (!f) return false
+  return !!f.editable && String(f.type ?? '') !== 'RICH_TEXT'
+}
+
+/** 字段保存成功后：退出编辑态并重新拉取接口数据 */
+async function onFieldSaved(f: DetailField, payload: { value: unknown; exportValue: unknown }) {
+  f.value = payload.value
+  f.exportValue = payload.exportValue
+  editingFieldId.value = null
+  await refreshDetail()
+}
+
+/** 轻量刷新：重新请求详情数据，不重置折叠面板/标签页状态 */
+async function refreshDetail() {
+  try {
+    const res = await queryDetail({ key: issueKey.value })
+    if (res?.success && res.data) {
+      detailData.value = res.data
+    }
+  } catch {
+    // 静默失败，保持已有数据
+  }
+}
 
 const projectLabel = computed<string>(() => {
   const f = findField('project')
@@ -946,6 +1283,12 @@ const priorityStatusColor = computed(() => {
   }
   return ''
 })
+const priorityColorHex = computed(() => {
+  const c = priorityStatusColor.value
+  if (/^#[0-9a-fA-F]{6}$/.test(c)) return c
+  const map: Record<string, string> = { red: '#cf1322', orange: '#d46b08', yellow: '#d48806' }
+  return map[c] ?? '#595959'
+})
 
 // issue type
 const issueTypeField = computed(() => findField('issuetype'))
@@ -963,6 +1306,7 @@ const issueTypeLabel = computed(() => {
 const SUMMARY_EXCLUDED_IDS = new Set(['summary', 'status', 'priority', 'issuetype', 'project'])
 
 function isUserField(f: DetailField): boolean {
+  if (!f) return false
   const t = f.type || ''
   if (t === 'SELECT_USER_SINGLE' || t === 'SELECT_USER_MULTIPLE') return true
   if (f.id === 'assignee' || f.id === 'reporter' || f.id === 'creator') return true
@@ -970,7 +1314,7 @@ function isUserField(f: DetailField): boolean {
 }
 
 const rawSummaryGrid = computed<DetailField[]>(() =>
-  allSummaryFields.value.filter((f) => !SUMMARY_EXCLUDED_IDS.has(f.id) && !isUserField(f)),
+  allSummaryFields.value.filter((f) => f && !SUMMARY_EXCLUDED_IDS.has(f.id) && !isUserField(f)),
 )
 
 interface CustomFieldGroup {
@@ -988,9 +1332,11 @@ function mapTabTitle(title: string): string {
 const customFieldGroups = computed<CustomFieldGroup[]>(() => {
   if (!detailData.value) return []
   const groups: CustomFieldGroup[] = []
-  for (const g of detailData.value.layoutGroup) {
+  for (const g of (detailData.value.layoutGroup ?? [])) {
+    if (!g) continue
     if (g.type !== 'CUSTOM_FIELD') continue
     const s = g.fieldGroupStructure
+    if (!s) continue
     if (s.type === 'TAB_CONTAINER') {
       const d = s.data as { tabItems: Array<{ title: string; sequence: number; issueFields: DetailField[] }> }
       if (d?.tabItems && d.tabItems.length > 0) {
@@ -1003,7 +1349,7 @@ const customFieldGroups = computed<CustomFieldGroup[]>(() => {
         })
       }
     } else if (s.type === 'COMMON_LIST') {
-      groups.push({ structureType: 'COMMON_LIST', tabItems: [], fields: s.data as DetailField[] })
+      groups.push({ structureType: 'COMMON_LIST', tabItems: [], fields: ((s.data as DetailField[]) ?? []).filter(notNull) })
     }
   }
   return groups
@@ -1019,28 +1365,60 @@ const customFieldPlain = computed<CustomFieldGroup | null>(() =>
 
 const descriptionFields = computed<DetailField[]>(() => {
   if (!detailData.value) return []
-  const g = detailData.value.layoutGroup.find((x) => x.type === 'DESCRIPTION')
-  if (!g || g.fieldGroupStructure.type !== 'COMMON_LIST') return []
-  return g.fieldGroupStructure.data as DetailField[]
+  const g = (detailData.value.layoutGroup ?? []).find((x) => x && x.type === 'DESCRIPTION')
+  if (!g) return []
+  return flattenGroupFields(g.fieldGroupStructure)
 })
 
-// 人员字段：从 summary 中提取 assignee / reporter / creator / SELECT_USER
+// 人员字段：优先取独立的 PERSON 组（创建人/更新人），
+// 兼容旧结构回退 SUBJECT 组内 PERSON tab / summary 全字段过滤；再补充自定义字段中的用户字段
 const allUserFields = computed<DetailField[]>(() => {
-  const fromSummary = allSummaryFields.value.filter(isUserField)
+  const fromPerson: DetailField[] = []
+  const fromSummary: DetailField[] = []
+  if (detailData.value) {
+    const personGroup = (detailData.value.layoutGroup ?? []).find((x) => x && x.type === 'PERSON')
+    if (personGroup) {
+      fromPerson.push(...flattenGroupFields(personGroup.fieldGroupStructure).filter(isUserField))
+    } else {
+      const g = (detailData.value.layoutGroup ?? []).find((x) => x && x.type === 'SUBJECT')
+      const s = g?.fieldGroupStructure
+      if (s && s.type === 'TAB_CONTAINER') {
+        const d = s.data as { tabItems: Array<{ title: string; sequence: number; issueFields: DetailField[] }> }
+        const tab = d.tabItems?.find((t) => t.title === 'PERSON')
+        if (tab?.issueFields) fromPerson.push(...tab.issueFields.filter(isUserField))
+        else fromSummary.push(...allSummaryFields.value.filter(isUserField))
+      } else {
+        fromSummary.push(...allSummaryFields.value.filter(isUserField))
+      }
+    }
+  }
   const fromCustom: DetailField[] = []
   customFieldGroups.value.forEach((g) => {
-    g.tabItems?.forEach((t) => t.issueFields?.forEach((f) => isUserField(f) && fromCustom.push(f)))
-    g.fields?.forEach((f) => isUserField(f) && fromCustom.push(f))
+    g.tabItems?.forEach((t) => (t.issueFields ?? []).forEach((f) => f && isUserField(f) && fromCustom.push(f)))
+    g.fields?.forEach((f) => f && isUserField(f) && fromCustom.push(f))
   })
-  return [...fromSummary, ...fromCustom]
+  return [...fromPerson, ...fromSummary, ...fromCustom]
 })
 
 const filteredUserFields = computed(() => {
   return onlyShowValued.value ? allUserFields.value.filter(hasValue) : allUserFields.value
 })
 
+// 时间信息字段：取 TIME 组（计划开始/完成日期等）
+const allTimeFields = computed<DetailField[]>(() => {
+  if (!detailData.value) return []
+  const g = (detailData.value.layoutGroup ?? []).find((x) => x && x.type === 'TIME')
+  if (!g) return []
+  return flattenGroupFields(g.fieldGroupStructure)
+})
+
+const filteredTimeFields = computed(() => {
+  return onlyShowValued.value ? allTimeFields.value.filter(hasValue) : allTimeFields.value
+})
+
 // 仅展示有值字段过滤
 function hasValue(f: DetailField): boolean {
+  if (!f) return false
   const v = f.value
   if (v === null || v === undefined) return false
   if (typeof v === 'string' && v.trim() === '') return false
@@ -1052,8 +1430,8 @@ function hasValue(f: DetailField): boolean {
   return true
 }
 
-function filteredFields(fields: DetailField[]): DetailField[] {
-  const userFiltered = fields.filter((f) => !isUserField(f))
+function filteredFields(fields: DetailField[] | null | undefined): DetailField[] {
+  const userFiltered = (fields ?? []).filter((f) => f && !isUserField(f))
   return onlyShowValued.value ? userFiltered.filter(hasValue) : userFiltered
 }
 
@@ -1073,6 +1451,7 @@ async function fetchDetail() {
   notFound.value = false
   detailData.value = null
   activeTab.value = ''
+  activityLogs.value = []
   // 恢复折叠板默认展开状态
   teamCollapseKeys.value = ['team']
   descCollapseKeys.value = ['desc']
@@ -1086,6 +1465,7 @@ async function fetchDetail() {
   siblingCollapseKeys.value = []
   dependencyCollapseKeys.value = []
   activityCollapseKeys.value = ['activity']
+  fetchActivityLogs()
   try {
     const res = await queryDetail({ key: issueKey.value })
     if (res?.success && res.data) {
@@ -1103,6 +1483,28 @@ async function fetchDetail() {
   } finally {
     loading.value = false
   }
+}
+
+/** 加载活动日志（任务历史列表） */
+async function fetchActivityLogs() {
+  try {
+    const res = await listWorkflowHistory({ issueKey: issueKey.value, pageNum: 1, pageSize: 50 })
+    activityLogs.value = res?.data?.list ?? []
+  } catch {
+    activityLogs.value = []
+  }
+}
+
+/** 流程状态文案 */
+function statusText(s?: string): string {
+  if (!s) return '—'
+  const map: Record<string, string> = { RUNNING: '进行中', END: '已结束', CANCELED: '已撤销' }
+  return map[s] || s
+}
+
+/** 日志时间格式化 */
+function formatLogTime(t?: string): string {
+  return t ? dayjs(t).format('YYYY-MM-DD HH:mm') : '—'
 }
 
 onMounted(() => {
@@ -1128,6 +1530,21 @@ function formatFieldValue(field: DetailField): string {
     case 'SECURITY_FIELD':
     case 'SPRINT_FIELD':
       return formatObject(value)
+    case 'DATE_PICKER':
+    case 'TIME_PICKER': {
+      const fmt = type === 'TIME_PICKER' ? 'YYYY-MM-DD HH:mm:ss' : 'YYYY-MM-DD'
+      if (typeof value === 'string') {
+        try {
+          return dayjs(value).format(fmt)
+        } catch {
+          return value
+        }
+      }
+      if (value && typeof (value as { format?: unknown }).format === 'function') {
+        return (value as { format: (fmt: string) => string }).format(fmt)
+      }
+      return String(value)
+    }
     case 'SELECT_USER_SINGLE':
       return formatUser(value)
     case 'VIEW_WATCH_FIELD': {
@@ -1150,6 +1567,9 @@ function formatObject(v: unknown): string {
   if (typeof v === 'object') {
     const obj = v as Record<string, unknown>
     if (obj.optionName) return String(obj.optionName)
+    if (obj.coAccount || obj.userCoAccount || obj.userEnName || obj.displayName) {
+      return String(obj.coAccount ?? obj.userCoAccount ?? obj.userEnName ?? obj.displayName)
+    }
     if (obj.pname) return String(obj.pname)
     if (obj.key && obj.name) return `${obj.key} - ${obj.name}`
     if (obj.name) return String(obj.name)
@@ -1173,17 +1593,15 @@ function stripHtml(v: unknown): string {
 }
 
 function formatRichText(v: unknown): string {
-  if (!hasValue({ id: '', name: '', type: '', value: v } as DetailField)) {
-    return '<p style="color:#8c8c8c">暂无描述</p>'
-  }
   if (typeof v === 'string') {
     const s = v.trim()
-    if (!s) return '<p style="color:#8c8c8c">暂无描述</p>'
+    if (!s) return ''
     if (!s.includes('<')) {
       return `<p style="margin:0">${s.replace(/\n/g, '<br/>')}</p>`
     }
     return s
   }
+  if (v == null) return ''
   return String(v)
 }
 </script>
@@ -1404,6 +1822,45 @@ function formatRichText(v: unknown): string {
   display: -webkit-box;
   -webkit-line-clamp: 1;
   -webkit-box-orient: vertical;
+  cursor: text;
+  border-radius: 4px;
+  transition: background 0.2s, box-shadow 0.2s;
+}
+.dh-title:hover {
+  background: rgba(22, 119, 255, 0.06);
+  box-shadow: inset 0 0 0 1px rgba(22, 119, 255, 0.25);
+}
+.dh-title-empty {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 10px;
+  border: 1px dashed #d9d9d9;
+  border-radius: 6px;
+  cursor: text;
+  transition: border-color 0.2s, background 0.2s;
+}
+.dh-title-empty:hover {
+  border-color: #1677ff;
+  background: rgba(22, 119, 255, 0.04);
+}
+.dh-summary-label {
+  flex-shrink: 0;
+  font-size: 13px;
+  color: #8c8c8c;
+}
+.dh-summary-empty-tip {
+  font-size: 14px;
+  color: #bfbfbf;
+}
+.dh-title-edit {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  max-width: 100%;
+}
+.dh-summary-input {
+  max-width: 420px;
 }
 .dh-actions {
   display: inline-flex;
@@ -1437,7 +1894,7 @@ function formatRichText(v: unknown): string {
 }
 .attr-row-line {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr) repeat(3, minmax(0, 1fr));
   gap: 12px 14px;
   align-items: stretch;
 }
@@ -1493,6 +1950,8 @@ function formatRichText(v: unknown): string {
   border-radius: 11px !important;
   margin: 0 !important;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  min-width: 0;
+  flex-shrink: 1;
 }
 .attr-dot {
   width: 6px;
@@ -1512,47 +1971,20 @@ function formatRichText(v: unknown): string {
 }
 .attr-workflow:hover { opacity: 0.75; }
 
-/* Priority chip (渐变质感) */
-.priority-chip {
+/* Priority 圆点 + 文字（只改文字颜色） */
+.priority-text {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 2px 10px 2px 8px;
-  height: 22px;
-  border-radius: 11px;
-  font-size: 11.5px;
-  font-weight: 600;
-  border: 1px solid transparent;
-  background: #f5f5f5;
-  color: #595959;
-  transition: transform 0.15s;
+  gap: 5px;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1;
 }
-.priority-chip:hover { transform: translateY(-1px); }
-.pc-icon { font-size: 10px; opacity: 0.9; }
-.pc-text { line-height: 1; }
-
-.pc-red {
-  background: linear-gradient(135deg, #fff1f0 0%, #ffccc7 100%);
-  color: #cf1322;
-  border-color: #ffa39e;
-  box-shadow: 0 1px 2px rgba(245, 34, 45, 0.12);
-}
-.pc-orange {
-  background: linear-gradient(135deg, #fff7e6 0%, #ffd591 100%);
-  color: #d46b08;
-  border-color: #ffc069;
-  box-shadow: 0 1px 2px rgba(250, 140, 22, 0.12);
-}
-.pc-yellow {
-  background: linear-gradient(135deg, #feffe6 0%, #fff1b8 100%);
-  color: #d48806;
-  border-color: #ffe58f;
-  box-shadow: 0 1px 2px rgba(250, 173, 20, 0.12);
-}
-.pc-default {
-  background: linear-gradient(135deg, #fafafa 0%, #f0f0f0 100%);
-  color: #595959;
-  border-color: #d9d9d9;
+.priority-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
 }
 
 /* ============ Action bar ============ */
@@ -1704,7 +2136,7 @@ function formatRichText(v: unknown): string {
   justify-content: center;
   width: 16px !important;
   height: 16px !important;
-  margin-right: 8px !important;
+  margin-right: 2px !important;
   transition: transform 0.2s ease !important;
   color: #8c8c8c !important;
   font-size: 12px !important;
@@ -1723,7 +2155,7 @@ function formatRichText(v: unknown): string {
   border-left: 5px solid #8c8c8c;
   margin-left: 2px;
 }
-.panel-collapse :deep(.ant-collapse-item-active > .ant-collapse-header > .ant-collapse-arrow) {
+.panel-collapse :deep(.ant-collapse-item-active .ant-collapse-arrow) {
   transform: rotate(90deg) !important;
 }
 .panel-collapse :deep(.ant-collapse-content-box) {
@@ -1757,6 +2189,45 @@ function formatRichText(v: unknown): string {
 /* 卡片体 */
 .panel-card-body {
   padding: 14px 16px 16px;
+}
+
+/* ============ 活动日志 ============ */
+.nn-activity-log {
+  margin: 4px 0 0;
+  padding-left: 2px;
+}
+.nn-activity-item {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding-bottom: 2px;
+}
+.nn-activity-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.nn-activity-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: #1f2937;
+}
+.nn-activity-status {
+  font-size: 11px;
+  line-height: 1;
+  padding: 2px 6px;
+  border-radius: 8px;
+  background: #e6f4ff;
+  color: #1677ff;
+  white-space: nowrap;
+}
+.nn-activity-node {
+  font-size: 12px;
+  color: #6b7280;
+}
+.nn-activity-time {
+  font-size: 11px;
+  color: #9ca3af;
 }
 
 /* Tabs inside panel */
@@ -1844,12 +2315,26 @@ function formatRichText(v: unknown): string {
 
 /* User row */
 .user-row .kv-value { min-height: 28px; }
+/* 字段编辑 icon：hover 行时出现 */
+.field-edit-icon {
+  margin-left: 6px;
+  font-size: 13px;
+  color: #bfbfbf;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s, color 0.15s;
+  vertical-align: middle;
+}
+.kv-row:hover .field-edit-icon {
+  opacity: 1;
+  color: #1677ff;
+}
 .user-cell-pretty {
   display: inline-flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   width: 100%;
-  gap: 8px;
+  gap: 0;
 }
 .ucp-share {
   width: 24px;
@@ -1857,6 +2342,7 @@ function formatRichText(v: unknown): string {
   border-radius: 6px;
   display: inline-flex;
   align-items: center;
+  margin-left: auto;
   justify-content: center;
   color: #bfbfbf;
   cursor: pointer;
@@ -1869,29 +2355,33 @@ function formatRichText(v: unknown): string {
   background: #e6f4ff;
 }
 
-/* Description rich text（WangEditor 只读） */
+/* Description rich text（WangEditor 可编辑） */
 .desc-rich-wrap + .desc-rich-wrap {
   margin-top: 10px;
 }
+.desc-rich-wrap :deep(.w-e-toolbar) {
+  border: 1px solid #e8e8e8 !important;
+  border-bottom: none !important;
+  border-radius: 6px 6px 0 0 !important;
+  background: #fafafa !important;
+}
 .desc-rich-wrap :deep(.w-e-text-container) {
-  background: linear-gradient(180deg, #fbfcfe 0%, #f7f9fc 100%) !important;
-  border: 1px solid #eef2f7 !important;
-  border-left: 3px solid #52c41a !important;
-  border-radius: 8px !important;
-  padding: 14px 18px !important;
+  background: #fff !important;
+  border: 1px solid #e8e8e8 !important;
+  border-radius: 0 0 6px 6px !important;
+  padding: 10px 14px !important;
   font-size: 13.5px !important;
   line-height: 1.75 !important;
   color: #262626 !important;
   word-break: break-word !important;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9);
-  min-height: 300px !important;
+  min-height: 120px !important;
 }
 .desc-rich-wrap :deep(.w-e-scroll) {
   overflow-y: hidden !important;
-  min-height: 300px !important;
+  min-height: 120px !important;
 }
 .desc-rich-wrap :deep(.w-e-text-placeholder) {
-  display: none !important;
+  color: #bfbfbf !important;
 }
 .desc-rich-wrap :deep(p) { margin: 0 0 10px; }
 .desc-rich-wrap :deep(p:last-child) { margin-bottom: 0; }
@@ -1948,9 +2438,8 @@ function formatRichText(v: unknown): string {
   outline: none !important;
   box-shadow: none !important;
 }
-.desc-rich-wrap :deep(.w-e-toolbar),
-.desc-rich-wrap :deep(.w-e-bar-item-menu) {
-  display: none !important;
+.desc-rich-wrap :deep(.w-e-bar-item) {
+  transition: background 0.15s;
 }
 
 .footer-spacer { height: 28px; }

@@ -422,9 +422,16 @@ function buildOptionMapFromResponse(
   const result: Record<string, CustomFieldOptionItem[]> = {}
   if (!Array.isArray(list)) return result
   for (const bucket of list) {
-    // 新格式：fieldId + options.options
     const fieldId = String(bucket.fieldId ?? bucket.customFieldId ?? bucket.customId ?? '')
     if (!fieldId) continue
+    // 新格式：fieldId + options 直接为选项数组（label/value/children）
+    if (Array.isArray(bucket?.options) && bucket.options.length) {
+      result[fieldId] = bucket.options
+        .filter((x: any) => x != null)
+        .map((x: any, i: number) => mapLabelValueToOption(x, i))
+      continue
+    }
+    // 新格式：fieldId + options.options（options 为 { options: [...] } 包裹）
     const innerOpts = bucket?.options?.options
     if (Array.isArray(innerOpts) && innerOpts.length) {
       result[fieldId] = innerOpts
