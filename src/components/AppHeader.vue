@@ -192,7 +192,12 @@ function handleSelect(item: string) {
   closeSearchDropdown()
   handleSearch(item)
 }
-const username = '用户'
+/** 从 cookie 读取真实姓名，缺失时回退占位文案 */
+function getRealName(): string {
+  const match = document.cookie.match(new RegExp('(?:^| )_qj_realname=([^;]*)'))
+  return match ? decodeURIComponent(match[1]) || '用户' : '用户'
+}
+const username = ref(getRealName())
 const userInitials = 'S1'
 const orgLogo = '喝'
 const orgName = '喝科技'

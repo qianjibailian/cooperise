@@ -23,8 +23,7 @@ export function setAuthState(loggedIn: boolean) {
     setCookie(AUTH_TOKEN_KEY, 'mock_token_' + Date.now())
     setCookie(AUTH_USERNAME_KEY, 'mock_user')
   } else {
-    deleteCookie(AUTH_TOKEN_KEY)
-    deleteCookie(AUTH_USERNAME_KEY)
+    clearAllCookies()
   }
 }
 
@@ -34,17 +33,41 @@ function setCookie(name: string, value: string, days = 7) {
   document.cookie = name + '=' + value + '; expires=' + expires.toUTCString() + '; path=/'
 }
 
-function deleteCookie(name: string) {
-  const expired = '=; expires=Thu, 01 Jan 1970 00:00:00 GMT'
-  // 尝试多种 path / domain 组合，确保覆盖后端 Set-Cookie 可能使用的域
-  document.cookie = name + expired + '; path=/'
-  document.cookie = name + expired + '; path=/; domain=' + window.location.hostname
-  // 父域（如 .qianjisan.com）
-  const parts = window.location.hostname.split('.')
-  if (parts.length >= 2) {
-    const domain = '.' + parts.slice(-2).join('.')
-    document.cookie = name + expired + '; path=/; domain=' + domain
+/** 当前 hostname 及各级父域（含前导点），覆盖 .qianjisan.com 等场景 */
+function getAllDomains(): string[] {
+  const hosts = new Set<string>()
+  const host = window.location.hostname
+  if (!host || host === 'localhost' || /^(\d+\.){3}\d+$/.test(host)) {
+    return hosts.size ? [...hosts] : ['']
   }
+  const parts = host.split('.')
+  // 无点前缀的 hostname
+  hosts.add(host)
+  // 逐级父域（带前导点）：.a.b.qianjisan.com → .b.qianjisan.com → .qianjisan.com
+  for (let i = 1; i < parts.length; i++) {
+    hosts.add('.' + parts.slice(i).join('.'))
+  }
+  return [...hosts]
+}
+
+function deleteCookie(name: string) {
+  const expired = '=; expires=Thu, 01 Jan 1970 00:00:00 GMT; Max-Age=-99999999'
+  const paths = ['/', window.location.pathname || '/', '']
+  for (const domain of getAllDomains()) {
+    for (const path of paths) {
+      document.cookie = name + expired + '; path=' + path + (domain ? '; domain=' + domain : '')
+    }
+  }
+}
+
+/** 退出登录：清除当前域及父域（如 .qianjisan.com）下的全部 cookie */
+function clearAllCookies() {
+  const names: string[] = []
+  document.cookie.split(';').forEach((c) => {
+    const name = c.split('=')[0]?.trim()
+    if (name) names.push(name)
+  })
+  names.forEach((name) => deleteCookie(name))
 }
 
 export function useAuth() {
