@@ -765,7 +765,7 @@ import {
 } from '@ant-design/icons-vue'
 import { queryDetail, patchIssue, listWorkflowHistory } from '@/api/faiz'
 import { message } from 'ant-design-vue'
-import type { DetailData, DetailField, WorkflowHistory } from '@/types/faiz'
+import type { DetailData, DetailField, DetailLayoutGroup, WorkflowHistory } from '@/types/faiz'
 import { FIELD_TYPE } from '@/types/fieldType'
 import FieldValueEditor from '@/components/FieldValueEditor.vue'
 import WorkflowInstanceModal from '@/components/WorkflowInstanceModal.vue'
@@ -1069,6 +1069,8 @@ const richTextModels = reactive<Record<string, string>>({})
 const richEditorInstances = reactive<Record<string, IDomEditor | null>>({})
 const richEditorVersion = ref(0)
 const richSaving = reactive<Record<string, boolean>>({})
+/** 编辑器初始内容基线：判断是否有改动，避免回退取值时一失焦就误保存 */
+const richTextBaseline = reactive<Record<string, string>>({})
 
 const richToolbarConfig: Partial<IToolbarConfig> = {
   toolbarKeys: [
@@ -1118,14 +1120,14 @@ async function saveRichText(fieldId: string) {
   const html = (richTextModels[fieldId] ?? '').trim()
   const f = descriptionFields.value.find((x) => x.id === fieldId)
   if (!f || !f.editable) return
-  const origin = typeof f.value === 'string' ? f.value.trim() : String(f.value ?? '')
-  if (html === origin) return
+  if (html === (richTextBaseline[fieldId] ?? '').trim()) return
   richSaving[fieldId] = true
   try {
     const res = await patchIssue(props.issueKey, [{ fieldId, fieldValue: html }])
     if (res?.success) {
       f.value = html
       f.exportValue = html
+      richTextBaseline[fieldId] = html
       message.success('描述已保存')
     }
   } catch {
@@ -1142,14 +1144,19 @@ watch(
   (d) => {
     for (const k of Object.keys(richTextModels)) {
       delete richTextModels[k]
+      delete richTextBaseline[k]
     }
     destroyAllRichEditors()
     if (!d) return
     const g = (d.layoutGroup ?? []).find((x) => x && x.type === 'DESCRIPTION')
     if (!g) return
     const list = flattenGroupFields(g.fieldGroupStructure)
+    // DESCRIPTION 组自身无值时，回退取其他分组里同名「描述」字段的值
+    const fallback = findDescriptionValueElsewhere(d.layoutGroup ?? [])
     list.forEach((f) => {
-      richTextModels[f.id] = formatRichText(f.value)
+      const html = formatRichText(isBlankValue(f.value) ? fallback : f.value)
+      richTextModels[f.id] = html
+      richTextBaseline[f.id] = html
     })
     richEditorVersion.value++
   },
@@ -1385,8 +1392,39 @@ function isUserField(f: DetailField): boolean {
   return false
 }
 
+/** DESCRIPTION 分组中的字段 id：只在描述区展示，其他区域（主信息 / 自定义字段）统一排除 */
+const descriptionFieldIds = computed<Set<string>>(() => new Set(descriptionFields.value.map((f) => f.id)))
+
+function notDescriptionField(f: DetailField | null | undefined): f is DetailField {
+  if (!f || descriptionFieldIds.value.has(f.id)) return false
+  // 有描述区时，同名「描述」字段不在其他区域重复展示（值已回填到描述区）
+  return !(descriptionFieldIds.value.size > 0 && isDescriptionLike(f))
+}
+
+/** 是否为「描述」字段（DESCRIPTION 组外可能以自定义字段形式重复下发，按 id / 名称识别） */
+function isDescriptionLike(f: DetailField): boolean {
+  return f.id === 'description' || String(f.name ?? '').trim() === '描述'
+}
+
+function isBlankValue(v: unknown): boolean {
+  return v == null || (typeof v === 'string' && v.trim() === '')
+}
+
+/** 在 DESCRIPTION 以外的分组中查找「描述」字段的值（优先 exportValue） */
+function findDescriptionValueElsewhere(groups: DetailLayoutGroup[]): unknown {
+  for (const g of groups) {
+    if (!g || g.type === 'DESCRIPTION') continue
+    for (const f of flattenGroupFields(g.fieldGroupStructure)) {
+      if (!isDescriptionLike(f)) continue
+      const v = isBlankValue(f.exportValue) ? f.value : f.exportValue
+      if (!isBlankValue(v)) return v
+    }
+  }
+  return null
+}
+
 const rawSummaryGrid = computed<DetailField[]>(() =>
-  allSummaryFields.value.filter((f) => f && !SUMMARY_EXCLUDED_IDS.has(f.id) && !isUserField(f)),
+  allSummaryFields.value.filter((f) => notDescriptionField(f) && !SUMMARY_EXCLUDED_IDS.has(f.id) && !isUserField(f)),
 )
 
 interface CustomFieldGroup {
@@ -1416,12 +1454,12 @@ const customFieldGroups = computed<CustomFieldGroup[]>(() => {
           structureType: 'TAB_CONTAINER',
           tabItems: d.tabItems
             .filter((t) => t.title !== 'C端专用字段')
-            .map((t) => ({ ...t, title: mapTabTitle(t.title) })),
+            .map((t) => ({ ...t, title: mapTabTitle(t.title), issueFields: (t.issueFields ?? []).filter(notDescriptionField) })),
           fields: [],
         })
       }
     } else if (s.type === 'COMMON_LIST') {
-      groups.push({ structureType: 'COMMON_LIST', tabItems: [], fields: ((s.data as DetailField[]) ?? []).filter(notNull) })
+      groups.push({ structureType: 'COMMON_LIST', tabItems: [], fields: ((s.data as DetailField[]) ?? []).filter(notDescriptionField) })
     }
   }
   return groups

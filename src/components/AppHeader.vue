@@ -132,7 +132,7 @@ import {
 } from '@ant-design/icons-vue'
 import AppLogo from './AppLogo.vue'
 import { useAuth } from '@/utils/auth'
-import request from '@/utils/request'
+import { logout } from '@/api/faiz'
 
 defineProps<{
   drawerOpen?: boolean
@@ -230,7 +230,7 @@ function handleMenuSelect(key: string) {
 
 async function handleLogout() {
   try {
-    await request.post('/tianguan-api/auth/logout')
+    await logout()
   } catch (e) {
     console.warn('[Logout] 接口调用失败，继续执行登出流程:', e)
     return
@@ -238,10 +238,6 @@ async function handleLogout() {
 
   // 接口成功后清除 cookie
   auth.logout()
-
-  // 跳转到登录页
-  const loginUrl = import.meta.env.VITE_ACCOUNT_URL + '?oauth_callback=' + encodeURIComponent(window.location.href)
-  window.location.href = loginUrl
 }
 </script>
 

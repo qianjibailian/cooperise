@@ -64,7 +64,7 @@
                 <span class="section-title">我的视图</span>
                 <div class="section-header-actions">
                   <component :is="SearchOutlined" class="action-icon" />
-                  <component :is="PlusOutlined" class="action-icon" />
+                  <component :is="PlusOutlined" class="action-icon" title="新建视图 / 文件夹" @click="openCreateView" />
                 </div>
               </div>
               <a-menu
@@ -77,7 +77,7 @@
               >
                 <template v-for="(group, gIdx) in viewGroups" :key="`g-${gIdx}`">
                   <!-- 有 groupName → 可展开 sub-menu -->
-                  <a-sub-menu v-if="group.groupName && group.myViewList.length > 0" :key="viewGroupKey(group)">
+                  <a-sub-menu v-if="group.groupName" :key="viewGroupKey(group)">
                     <template #title>
                       <span class="view-item-content">
                         <component :is="FolderOutlined" />
@@ -86,19 +86,40 @@
                           <template v-if="typeof group.count === 'number'">({{ group.count }})</template>
                         </span>
                         <a-tag v-if="group.share" class="view-tag external">外</a-tag>
+                        <!-- 悬停文件夹时显示：新建视图 / 编辑 / 删除 -->
+                        <span class="folder-actions" @click.stop>
+                          <component :is="PlusOutlined" class="folder-action-icon" title="新建视图" @click.stop="openCreateInGroup(group)" />
+                          <component :is="EditOutlined" class="folder-action-icon" title="编辑" @click.stop="openRenameGroup(group)" />
+                          <component :is="DeleteOutlined" class="folder-action-icon danger" title="删除" @click.stop="confirmDeleteGroup(group)" />
+                        </span>
                       </span>
                     </template>
                     <a-menu-item
                       v-for="v in group.myViewList"
                       :key="viewItemKey(v)"
                       :data-menu-id="viewItemKey(v)"
+                      class="view-menu-item"
                     >
                       <span class="child-item">
                         <component :is="viewItemIcon(v)" class="child-primary-icon" />
                         <span class="child-text-truncate">{{ truncateViewName(v.filterName, 18) }}</span>
                         <component v-if="v.isCollect" :is="StarFilled" class="favorite-icon" />
                         <component v-if="v.isShare && v.sortId <= 1" :is="MoreOutlined" class="child-more-icon" />
+                        <!-- 悬停视图时显示：编辑 / 删除 -->
+                        <span class="view-actions" @click.stop>
+                          <component :is="EditOutlined" class="folder-action-icon" title="编辑" @click.stop="openEditView(v)" />
+                          <component :is="DeleteOutlined" class="folder-action-icon danger" title="删除" @click.stop="confirmDeleteView(v)" />
+                        </span>
                       </span>
+                    </a-menu-item>
+                    <!-- 空文件夹占位 -->
+                    <a-menu-item
+                      v-if="group.myViewList.length === 0"
+                      :key="`${viewGroupKey(group)}/__empty__`"
+                      disabled
+                      class="view-empty-item"
+                    >
+                      暂无视图
                     </a-menu-item>
                   </a-sub-menu>
 
@@ -108,11 +129,16 @@
                       v-for="v in group.myViewList"
                       :key="viewItemKey(v)"
                       :data-menu-id="viewItemKey(v)"
+                      class="view-menu-item"
                     >
                     <component :is="viewItemIcon(v)" />
-                    <span>
+                    <span class="view-name">
                       {{ truncateViewName(v.filterName, 14) }}
                       <template v-if="typeof v.myTodoTotalCount === 'number'">({{ v.myTodoTotalCount }})</template>
+                    </span>
+                    <span class="view-actions" @click.stop>
+                      <component :is="EditOutlined" class="folder-action-icon" title="编辑" @click.stop="openEditView(v)" />
+                      <component :is="DeleteOutlined" class="folder-action-icon danger" title="删除" @click.stop="confirmDeleteView(v)" />
                     </span>
                     </a-menu-item>
                   </template>
@@ -207,32 +233,22 @@
       </a-layout-content>
     </a-layout>
 
-    <!-- 登录态过期弹窗 -->
-    <a-modal
-      v-model:open="showLoginExpiredModal"
-      :closable="true"
-      :mask-closable="false"
-      :keyboard="false"
-      width="400px"
-      :style="{ top: '15%' }"
-      @cancel="handleRelogin"
-    >
-      <div class="login-expired-modal">
-        <InfoCircleOutlined class="login-expired-icon" />
-        <span class="login-expired-text">登录态已过期，请重新登录</span>
-      </div>
-      <template #footer>
-        <a-button type="primary" @click="handleRelogin">重新登录</a-button>
-      </template>
-    </a-modal>
-
     <!-- 新建弹窗：抽离为独立组件 -->
     <NewIssueFormModal v-model:open="showNewFormModal" @submitted="() => {}" />
+
+    <!-- 我的视图「+」：新建视图 / 文件夹 -->
+    <CreateViewModal
+      v-model:open="showCreateViewModal"
+      :action="createViewAction"
+      :group="createViewTargetGroup"
+      :view="createViewTargetView"
+      @created="fetchViewList(true)"
+    />
   </a-layout>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, watch } from 'vue'
 import {
   HomeOutlined,
   SettingOutlined,
@@ -250,19 +266,23 @@ import {
   BuildOutlined,
   DeploymentUnitOutlined,
   UserOutlined,
-  InfoCircleOutlined,
-  ExperimentOutlined,
-  RocketOutlined,
+  ProjectOutlined,
+  AlignLeftOutlined,
+  CalendarOutlined,
   ToolOutlined,
+  EditOutlined,
+  DeleteOutlined,
 } from '@ant-design/icons-vue'
 import { useRouter, useRoute } from 'vue-router'
 import AppHeader from '@/components/AppHeader.vue'
 import AppSideDrawer from '@/components/AppSideDrawer.vue'
 import NewIssueFormModal from '@/components/NewIssueFormModal.vue'
+import CreateViewModal from '@/components/CreateViewModal.vue'
 import WorkbenchPanel from './WorkbenchPanel.vue'
-import { useAuth } from '@/utils/auth'
 import { useViewStore } from '@/utils/view-store'
-import type { ViewItem } from '@/types/faiz'
+import type { ViewItem, ViewGroup } from '@/types/faiz'
+import { Modal, message } from 'ant-design-vue'
+import { deleteViewGroup, deleteView } from '@/api/faiz'
 
 const iconBarItems = [
   { key: 'workspace', icon: HomeOutlined, label: '工作台' },
@@ -272,7 +292,6 @@ const iconBarItems = [
 
 const router = useRouter()
 const route = useRoute()
-const { isLoggedIn, refresh: refreshAuth } = useAuth()
 
 const drawerOpen = ref(false)
 const sidebarCollapsed = ref(false)
@@ -295,12 +314,92 @@ const {
 } = useViewStore()
 const viewSubmenuOpenKeys = ref<string[]>([])
 
+// 我的视图「+」：新建视图 / 文件夹弹窗；文件夹悬停操作复用同一弹窗
+const showCreateViewModal = ref(false)
+const createViewAction = ref<'create' | 'createInGroup' | 'renameGroup' | 'editView'>('create')
+const createViewTargetGroup = ref<ViewGroup | null>(null)
+const createViewTargetView = ref<ViewItem | null>(null)
+
+function openEditView(v: ViewItem) {
+  createViewAction.value = 'editView'
+  createViewTargetView.value = v
+  showCreateViewModal.value = true
+}
+
+function confirmDeleteView(v: ViewItem) {
+  Modal.confirm({
+    title: `删除视图「${v.filterName}」？`,
+    content: '删除后无法恢复。',
+    okText: '删除',
+    okType: 'danger',
+    cancelText: '取消',
+    centered: true,
+    async onOk() {
+      try {
+        const res = await deleteView({ filterCode: v.filterCode })
+        if (res?.success) {
+          message.success('视图已删除')
+          // 删除的是当前打开的视图：回到我的事项
+          if (selectedViewKeys.value.includes(viewItemKey(v))) router.push('/workbench/todo')
+          fetchViewList(true)
+        } else {
+          message.error(res?.message || '删除失败')
+        }
+      } catch {
+        message.error('删除失败')
+      }
+    },
+  })
+}
+
+function openCreateView() {
+  createViewAction.value = 'create'
+  createViewTargetGroup.value = null
+  showCreateViewModal.value = true
+}
+
+function openCreateInGroup(group: ViewGroup) {
+  createViewAction.value = 'createInGroup'
+  createViewTargetGroup.value = group
+  showCreateViewModal.value = true
+}
+
+function openRenameGroup(group: ViewGroup) {
+  createViewAction.value = 'renameGroup'
+  createViewTargetGroup.value = group
+  showCreateViewModal.value = true
+}
+
+function confirmDeleteGroup(group: ViewGroup) {
+  Modal.confirm({
+    title: `删除文件夹「${group.groupName ?? ''}」？`,
+    content: group.myViewList.length > 0 ? `文件夹内有 ${group.myViewList.length} 个视图，删除后无法恢复。` : '删除后无法恢复。',
+    okText: '删除',
+    okType: 'danger',
+    cancelText: '取消',
+    centered: true,
+    async onOk() {
+      try {
+        const res = await deleteViewGroup({ groupCode: group.groupCode ?? '' })
+        if (res?.success) {
+          message.success('文件夹已删除')
+          fetchViewList(true)
+        } else {
+          message.error(res?.message || '删除失败')
+        }
+      } catch {
+        message.error('删除失败')
+      }
+    },
+  })
+}
+
 /** viewType → 默认图标组件（找不到更特殊映射时使用） */
 const VIEW_TYPE_ICON_MAP: Record<string, unknown> = {
   list: UnorderedListOutlined,
-  KAN_BAN: AppstoreOutlined,
-  gantt: RocketOutlined,
-  CALENDAR_VIEW: ExperimentOutlined,
+  KAN_BAN: ProjectOutlined,
+  gantt: AlignLeftOutlined,
+  CALENDAR_VIEW: CalendarOutlined,
 }
 
 /** 取单个视图项的图标（按 viewType 统一映射） */
@@ -316,7 +415,7 @@ function truncateViewName(name: string, max = 16) {
 // 加载完后计算 sub-menu 默认展开的分组
 function syncSubmenuOpenKeys() {
   viewSubmenuOpenKeys.value = viewGroups.value
-    .filter((g) => g.groupName && g.myViewList.length > 0)
+    .filter((g) => g.groupName)
     .map((g) => viewGroupKey(g))
 }
 watch(
@@ -325,9 +424,6 @@ watch(
   { deep: true, immediate: true }
 )
 
-// 登录态过期弹窗
-const showLoginExpiredModal = ref(false)
-
 // 新建表单弹窗
 const showNewFormModal = ref(false)
 
@@ -335,23 +431,14 @@ function handleNewFormOpen() {
   showNewFormModal.value = true
 }
 
-watch(isLoggedIn, (loggedIn) => {
-  showLoginExpiredModal.value = !loggedIn
-}, { immediate: true })
-
-onMounted(() => {
-  refreshAuth()
-  showLoginExpiredModal.value = !isLoggedIn.value
-  // 只有工作台路由才主动请求 /view/list；其它路由由 view-store 内部兜底 mock，不触发真实接口
-  if (route.path.startsWith('/workbench')) {
-    fetchViewList()
-  }
-})
-
-function handleRelogin() {
-  const loginUrl = import.meta.env.VITE_ACCOUNT_URL + '?oauth_callback=' + encodeURIComponent(window.location.href)
-  window.location.href = loginUrl
-}
+// 进入工作台路由时请求 /view/list（已加载过则走缓存）；其它路由不展示视图区，不请求
+watch(
+  () => route.path,
+  (path) => {
+    if (path.startsWith('/workbench')) fetchViewList()
+  },
+  { immediate: true },
+)
 
 const currentPath = computed(() => {
   if (route.path.startsWith('/users') || route.path.startsWith('/roles') || route.path.startsWith('/permissions') || route.path.startsWith('/departments')) {
@@ -651,6 +738,15 @@ function handleRemoteMenuClick(key: string) {
   display: none !important;
 }
 
+/* 我的视图：文件夹不显示右侧展开箭头，并收回为箭头预留的右侧空白 */
+.sidebar-menu :deep(.ant-menu-submenu-arrow) {
+  display: none;
+}
+
+.sidebar-menu :deep(.ant-menu-submenu > .ant-menu-submenu-title) {
+  padding-inline-end: 12px;
+}
+
 .side-panel-collapsed :deep(.ant-menu-submenu-title::after) {
   display: none !important;
 }
@@ -710,6 +806,109 @@ function handleRemoteMenuClick(key: string) {
 
 .action-icon:hover {
   color: #1890ff;
+}
+
+/* 文件夹悬停操作：默认隐藏，悬停文件夹标题时显示 */
+.folder-actions {
+  display: none;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  padding-left: 8px;
+  flex-shrink: 0;
+}
+
+/* 文件夹标题内容撑满，操作图标才能靠右（折叠态有 !important 规则覆盖） */
+.sidebar-menu :deep(.ant-menu-submenu-title > .ant-menu-title-content) {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+}
+
+.sidebar-menu :deep(.ant-menu-submenu-title:hover .folder-actions) {
+  display: inline-flex;
+}
+
+/* 视图悬停操作：与文件夹一致，默认隐藏，悬停视图项时显示 */
+.view-actions {
+  display: none;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  padding-left: 8px;
+  flex-shrink: 0;
+}
+
+.sidebar-menu :deep(.view-menu-item > .ant-menu-title-content) {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+}
+
+.sidebar-menu :deep(.view-menu-item .view-name) {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar-menu :deep(.view-menu-item:hover .view-actions) {
+  display: inline-flex;
+}
+
+/* 悬停操作按钮：Apple / Material 风格的圆角小按钮，悬停浅底高亮 */
+.folder-actions,
+.view-actions {
+  gap: 2px;
+  padding-left: 6px;
+  animation: hover-actions-fade-in 0.15s ease-out;
+}
+
+@keyframes hover-actions-fade-in {
+  from { opacity: 0; transform: translateX(2px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+.sidebar-menu :deep(.folder-action-icon.anticon) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  min-width: 22px;
+  /* 覆盖 antd 菜单 `.anticon + span` 的 10px 左间距，保证三个按钮间距一致 */
+  margin: 0 !important;
+  border-radius: 6px;
+  font-size: 13px;
+  line-height: 1;
+  color: #64748b;
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.sidebar-menu :deep(.folder-action-icon.anticon:hover) {
+  background: rgba(15, 23, 42, 0.06);
+  color: #0f172a;
+}
+
+.sidebar-menu :deep(.folder-action-icon.anticon:active) {
+  background: rgba(15, 23, 42, 0.1);
+}
+
+.sidebar-menu :deep(.folder-action-icon.anticon.danger) {
+  color: #ef4444;
+}
+
+.sidebar-menu :deep(.folder-action-icon.anticon.danger:hover) {
+  background: rgba(239, 68, 68, 0.1);
+  color: #dc2626;
+}
+
+.sidebar-menu :deep(.view-empty-item) {
+  color: #bfbfbf !important;
+  font-size: 12px;
+  cursor: default;
 }
 
 .panel-divider {
@@ -871,23 +1070,4 @@ function handleRemoteMenuClick(key: string) {
   width: 100%;
 }
 
-/* 登录态过期弹窗 */
-.login-expired-modal {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px 0;
-}
-
-.login-expired-icon {
-  font-size: 28px;
-  color: #faad14;
-  flex-shrink: 0;
-}
-
-.login-expired-text {
-  color: #0f172a;
-  font-size: 14px;
-  line-height: 1.6;
-}
 </style>

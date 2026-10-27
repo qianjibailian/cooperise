@@ -18,7 +18,10 @@ import SprintBoard from '@/pages/sprint-board/index.vue'
 import TestingCalendar from '@/pages/testing-calendar/index.vue'
 import MemberGantt from '@/pages/member-gantt/index.vue'
 import IssueDetail from '@/pages/issue-detail/index.vue'
+import Login from '@/pages/auth/Login.vue'
+import Register from '@/pages/auth/Register.vue'
 import { useViewStore } from '@/utils/view-store'
+import { useAuth } from '@/utils/auth'
 
 /** viewType → 渲染组件 & 标题映射 */
 const VIEW_TYPE_PAGE: Record<string, { component: unknown; title: string }> = {
@@ -60,6 +63,8 @@ const ViewEntry = defineComponent({
 })
 
 const routes: RouteRecordRaw[] = [
+  { path: '/login', component: Login, name: 'Login', meta: { title: '登录', public: true } },
+  { path: '/register', component: Register, name: 'Register', meta: { title: '注册', public: true } },
   {
     path: '/',
     component: Layout,
@@ -93,9 +98,24 @@ const routes: RouteRecordRaw[] = [
 export function setupRouter() {
   const isPoweredByQiankun = (window as unknown as { __POWERED_BY_QIANKUN__?: boolean }).__POWERED_BY_QIANKUN__
 
-  return createRouter({
+  const router = createRouter({
     history: isPoweredByQiankun ? createWebHashHistory() : createWebHistory('/'),
     routes,
   })
+
+  // 未登录访问业务页 → 登录页（带回跳地址）；已登录访问登录/注册页 → 首页
+  router.beforeEach((to) => {
+    const { isLoggedIn, refresh } = useAuth()
+    refresh()
+    if (to.meta.public) {
+      return isLoggedIn.value ? '/' : true
+    }
+    if (!isLoggedIn.value) {
+      return { name: 'Login', query: { redirect: to.fullPath } }
+    }
+    return true
+  })
+
+  return router
 }
 

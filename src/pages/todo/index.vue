@@ -633,20 +633,21 @@ function onShownDragEnd() {
 /** 将当前 shownFields 保存到 /filter/draft，成功后重新拉取 draft 刷新本地 */
 async function saveShownFields() {
   const d = draftFilter.value
-  if (!d) return
+  // 无草稿时也要保存（后端按 userNo + viewCode 创建草稿），与 handleFilterSave 保持一致
+  const userNo = d?.userNo ?? '10284941'
   // showFieldItemList 直接传字段 ID 字符串数组
   const showFieldItemList = shownFields.value.map(f => f.key)
   const newShowField = JSON.stringify({ showFieldItemList })
   try {
     const res = await updateFilterDraft({
-      id: d.id,
-      userNo: d.userNo,
+      id: d?.id,
+      userNo,
       viewCode: viewCode.value,
       showField: newShowField,
     })
     if (res?.success) {
       // 更新成功后重新拉取 draft
-      const fresh = await getFilterDraft(d.userNo, viewCode.value)
+      const fresh = await getFilterDraft(userNo, viewCode.value)
       if (fresh?.success && fresh.data) {
         draftFilter.value = fresh.data
       }

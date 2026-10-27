@@ -2,6 +2,13 @@ import { ref, readonly } from 'vue'
 
 const AUTH_TOKEN_KEY = '_qj_token'
 const AUTH_USERNAME_KEY = '_qj_username'
+const AUTH_REALNAME_KEY = '_qj_realname'
+
+export interface LoginInfo {
+  token: string
+  username: string
+  realName?: string
+}
 
 const isLoggedInRef = ref(checkLoginState())
 
@@ -17,20 +24,24 @@ function getCookie(name: string): string | null {
   return match ? decodeURIComponent(match[1]) : null
 }
 
-export function setAuthState(loggedIn: boolean) {
-  isLoggedInRef.value = loggedIn
-  if (loggedIn) {
-    setCookie(AUTH_TOKEN_KEY, 'mock_token_' + Date.now())
-    setCookie(AUTH_USERNAME_KEY, 'mock_user')
-  } else {
-    clearAllCookies()
-  }
+/** 登录成功：写入 token / 用户名 / 真实姓名 */
+export function setLoginInfo(info: LoginInfo) {
+  setCookie(AUTH_TOKEN_KEY, info.token)
+  setCookie(AUTH_USERNAME_KEY, info.username)
+  if (info.realName) setCookie(AUTH_REALNAME_KEY, info.realName)
+  isLoggedInRef.value = checkLoginState()
+}
+
+/** 清除登录态（主动退出或鉴权失效） */
+export function clearAuth() {
+  clearAllCookies()
+  isLoggedInRef.value = false
 }
 
 function setCookie(name: string, value: string, days = 7) {
   const expires = new Date()
   expires.setTime(expires.getTime() + days * 24 * 60 * 60 * 1000)
-  document.cookie = name + '=' + value + '; expires=' + expires.toUTCString() + '; path=/'
+  document.cookie = name + '=' + encodeURIComponent(value) + '; expires=' + expires.toUTCString() + '; path=/'
 }
 
 /** 当前 hostname 及各级父域（含前导点），覆盖 .qianjisan.com 等场景 */
@@ -74,7 +85,7 @@ export function useAuth() {
   return {
     isLoggedIn: readonly(isLoggedInRef),
     refresh: () => { isLoggedInRef.value = checkLoginState() },
-    login: () => setAuthState(true),
-    logout: () => setAuthState(false),
+    login: setLoginInfo,
+    logout: clearAuth,
   }
 }

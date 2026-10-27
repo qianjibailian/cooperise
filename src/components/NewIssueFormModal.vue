@@ -166,6 +166,7 @@
                             v-model="newFormData[field.id]"
                             :default-config="richEditorConfig"
                             mode="default"
+                            class="new-form-rich-editor"
                             style="height: 380px; overflow-y: auto"
                             @on-created="(editor: IDomEditor) => handleRichEditorCreated(field.id, editor)"
                           />
@@ -177,6 +178,50 @@
                       </div>
                     </a-form-item>
                   </a-form>
+                  <!-- 最后一个字段下方：新建入口 -->
+                  <div class="new-form-add-row">
+                    <a-dropdown
+                      v-model:open="addFieldDropdownOpen"
+                      :trigger="['click']"
+                      placement="topLeft"
+                      overlay-class-name="new-form-add-dropdown"
+                      @open-change="handleAddDropdownOpenChange"
+                    >
+                      <span class="new-form-add-trigger">
+                        <PlusOutlined />
+                        <span>新建</span>
+                      </span>
+                      <template #overlay>
+                        <div class="add-field-panel" @click.stop>
+                          <a-input
+                            v-model:value="addFieldKeyword"
+                            placeholder="搜索字段"
+                            allow-clear
+                            size="small"
+                            class="add-field-search"
+                          />
+                          <a-spin :spinning="availableFieldsLoading" size="small">
+                            <div class="add-field-list">
+                              <div
+                                v-for="f in addableFields"
+                                :key="f.fieldId"
+                                class="add-field-item"
+                                @click="handleAddField(f)"
+                              >
+                                <span class="add-field-name">{{ f.fieldName || f.fieldId }}</span>
+                                <span class="add-field-type">{{ formatTypeLabel(f.type) }}</span>
+                              </div>
+                              <a-empty
+                                v-if="!availableFieldsLoading && addableFields.length === 0"
+                                :image="Empty.PRESENTED_IMAGE_SIMPLE"
+                                description="暂无可添加字段"
+                              />
+                            </div>
+                          </a-spin>
+                        </div>
+                      </template>
+                    </a-dropdown>
+                  </div>
                 </div>
               </a-tab-pane>
             </a-tabs>
@@ -196,8 +241,10 @@ import dayjs from 'dayjs'
 import { Editor, Toolbar } from '@wangeditor/editor-for-vue'
 import type { IDomEditor, IEditorConfig } from '@wangeditor/editor'
 import '@wangeditor/editor/dist/css/style.css'
-import { createIssue, getAvailableFieldOptions, queryUsers, queryTemplates, getTemplate, getIssueCreateMeta, queryDetail, patchIssue } from '@/api/faiz'
-import { FIELD_TYPE, normalizeFieldType } from '@/types/fieldType'
+import { PlusOutlined } from '@ant-design/icons-vue'
+import { Empty } from 'ant-design-vue'
+import { createIssue, getAvailableFieldOptions, queryUsers, queryTemplates, getTemplate, getIssueCreateMeta, queryDetail, patchIssue, queryAvailableFieldList } from '@/api/faiz'
+import { FIELD_TYPE, normalizeFieldType, formatTypeLabel } from '@/types/fieldType'
 import type {
   CustomFieldOptionReq,
   CustomFieldOptionItem,
@@ -209,6 +256,7 @@ import type {
   UserItem,
   IssuePatchField,
   DetailLayoutGroup,
+  AvailableFieldItem,
 } from '@/types/faiz'
 
 interface Props {
@@ -944,6 +992,82 @@ function handleNewFormCancel() {
   visible.value = false
 }
 
+// ---- 表单末尾「新建」：下拉选择可用字段追加到当前 Tab ----
+const addFieldDropdownOpen = ref(false)
+const addFieldKeyword = ref('')
+const availableFieldsLoading = ref(false)
+const availableFieldsList = ref<AvailableFieldItem[]>([])
+
+/** 可添加字段：排除表单中已存在的字段，按关键词过滤 */
+const addableFields = computed(() => {
+  const existing = new Set(collectAllFields().map(f => String(f.id)))
+  const kw = addFieldKeyword.value.trim().toLowerCase()
+  return availableFieldsList.value.filter(f => {
+    if (existing.has(String(f.fieldId))) return false
+    if (kw && !`${f.fieldName ?? ''} ${f.fieldId ?? ''}`.toLowerCase().includes(kw)) return false
+    return true
+  })
+})
+
+/** 首次展开时拉取可用字段（/availableField/list），类型统一归一化 */
+async function loadAvailableFields() {
+  if (availableFieldsList.value.length > 0) return
+  availableFieldsLoading.value = true
+  try {
+    const res = await queryAvailableFieldList({ page: 1, pageSize: 999, searchKey: '' })
+    availableFieldsList.value = (res?.data?.list || []).map(f => ({ ...f, type: normalizeFieldType(f.type || f.filedType) }))
+  } catch {
+    availableFieldsList.value = []
+  } finally {
+    availableFieldsLoading.value = false
+  }
+}
+
+function handleAddDropdownOpenChange(open: boolean) {
+  if (!open) return
+  addFieldKeyword.value = ''
+  // eslint-disable-next-line @typescript-eslint/no-floating-promises
+  loadAvailableFields()
+}
+
+/** 选中字段：追加到当前激活 Tab 末尾，初始化值并补拉选项/成员数据 */
+function handleAddField(f: AvailableFieldItem) {
+  const field = {
+    id: String(f.fieldId),
+    name: f.fieldName || String(f.fieldId),
+    type: f.type || FIELD_TYPE.TEXT_BOX_SINGLE_LINE,
+    jiraType: null,
+    value: null,
+    editable: true,
+    required: false,
+    standard: !!f.isSystem,
+    sequence: 0,
+    frontPage: true,
+    description: '',
+    defaultvalue: null,
+    exportValue: null,
+    issueTemplateValue: null,
+    configSchema: f.configSchema ?? f.fieldValue ?? undefined,
+  }
+  if (!newFormTabs.value.length) {
+    newFormTabs.value = [{ title: '', sequence: 0, issueFields: [] }]
+    newFormActiveTab.value = ''
+  }
+  const tab = newFormTabs.value.find(t => t.title === newFormActiveTab.value) ?? newFormTabs.value[0]
+  field.sequence = tab.issueFields.length
+  tab.issueFields.push(field)
+  newFormData.value[field.id] = field.type === FIELD_TYPE.RICH_TEXT ? '' : null
+  addFieldDropdownOpen.value = false
+
+  if (OPTION_WIDGET_TYPE_SET.has(field.type)) {
+    // eslint-disable-next-line @typescript-eslint/no-floating-promises
+    loadCustomFieldOptions(NEW_FORM_DEFAULT_PROJECT_ID, newFormIssueTypeId.value, [{ issueFields: [field] }])
+  }
+  if (field.type === FIELD_TYPE.SELECT_USER_SINGLE || field.type === FIELD_TYPE.SELECT_USER_MULTI) {
+    handleMemberSearch(field.id, '')
+  }
+}
+
 /**
  * 根据 meta 收集所有字段（平铺到数组，保持 tab 内顺序）
  */
@@ -1168,6 +1292,9 @@ async function saveEditForm() {
 }
 
 .new-form-modal .ant-modal {
+  max-width: min(1280px, calc(100vw - 32px));
+  margin: 0 auto;
+  top: 0;
   padding-bottom: 0;
   box-shadow:
     0 1px 2px 0 rgba(15, 23, 42, 0.04),
@@ -1184,8 +1311,9 @@ async function saveEditForm() {
   display: flex;
   flex-direction: column;
   height: auto;
-  min-height: 420px;
+  min-height: min(420px, 90vh);
   max-height: 90vh;
+  max-height: 90dvh;
   border-radius: 20px;
   overflow: hidden;
   background: #ffffff;
@@ -1569,6 +1697,82 @@ async function saveEditForm() {
   background: transparent;
 }
 
+/* 表单末尾「新建」入口：靠最左侧 */
+.new-form-add-row {
+  padding: 4px 0;
+}
+
+.new-form-add-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 10px;
+  margin-left: -10px;
+  border-radius: 8px;
+  color: #2563eb;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.new-form-add-trigger:hover {
+  background: #eff6ff;
+}
+
+/* 「新建」下拉：字段选择面板（Teleport 到 body） */
+.add-field-panel {
+  width: 280px;
+  max-width: calc(100vw - 32px);
+  padding: 8px;
+  background: #ffffff;
+  border-radius: 10px;
+  box-shadow:
+    0 6px 16px 0 rgba(15, 23, 42, 0.08),
+    0 3px 6px -4px rgba(15, 23, 42, 0.12),
+    0 9px 28px 8px rgba(15, 23, 42, 0.05);
+}
+
+.add-field-search {
+  margin-bottom: 6px;
+}
+
+.add-field-list {
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+.add-field-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  color: #0f172a;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.add-field-item:hover {
+  background: #f1f5f9;
+}
+
+.add-field-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.add-field-type {
+  flex-shrink: 0;
+  font-size: 12px;
+  color: #94a3b8;
+}
+
 /* ====== 新建弹窗 - 水平表单布局样式 ====== */
 .form-item-required-mark {
   color: #ef4444;
@@ -1760,5 +1964,139 @@ async function saveEditForm() {
 .new-form-modal .ant-divider {
   border-top: 1px solid rgba(15, 23, 42, 0.08);
   margin: 0;
+}
+
+/* ========== 响应式适配：随视口宽度调整弹窗宽度与布局 ========== */
+@media (max-width: 1440px) {
+  .new-form-modal .ant-modal {
+    width: 72% !important;
+  }
+}
+
+@media (max-width: 1200px) {
+  .new-form-modal .ant-modal {
+    width: 85% !important;
+  }
+}
+
+@media (max-width: 992px) {
+  .new-form-modal .ant-modal {
+    width: calc(100vw - 32px) !important;
+  }
+
+  .new-form-modal .ant-form-item .ant-form-item-label {
+    width: 96px;
+    flex: 0 0 96px;
+  }
+}
+
+/* 窄屏：标题与模板选择上下排列，表单标签置于控件上方 */
+@media (max-width: 768px) {
+  .new-form-modal .ant-modal {
+    width: calc(100vw - 16px) !important;
+    max-width: calc(100vw - 16px);
+  }
+
+  .new-form-modal .ant-modal-content {
+    border-radius: 14px;
+  }
+
+  .new-form-modal .ant-modal-header {
+    padding: 14px 16px 8px;
+  }
+
+  .new-form-modal .ant-modal-close {
+    top: 14px;
+    right: 12px;
+  }
+
+  .new-form-title-bar {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    height: auto;
+    row-gap: 10px;
+  }
+
+  .new-form-title-side:first-child {
+    display: none;
+  }
+
+  .new-form-title-text {
+    line-height: 30px;
+  }
+
+  .new-form-title-side-right {
+    justify-content: flex-start;
+  }
+
+  .new-form-title-side-right:empty {
+    display: none;
+  }
+
+  .new-form-template-selector {
+    width: 100%;
+    margin-right: 0;
+  }
+
+  .new-form-template-select.ant-select {
+    flex: 1;
+    width: auto;
+  }
+
+  .new-form-modal .ant-modal-body {
+    padding: 4px 16px 0;
+  }
+
+  .new-form-modal .ant-modal-footer {
+    padding: 10px 16px;
+  }
+
+  .new-form-modal .ant-form-item .ant-row {
+    flex-direction: column;
+    flex-wrap: nowrap;
+  }
+
+  .new-form-modal .ant-form-item .ant-form-item-label {
+    width: 100%;
+    flex: 0 0 auto;
+    padding: 0 0 4px;
+    text-align: left;
+  }
+
+  .new-form-modal .ant-form-item .ant-form-item-label > label {
+    height: auto;
+  }
+
+  .new-form-modal .ant-form-item .ant-form-item-control {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .new-form-tabs-area .new-form-tabs .ant-tabs-tab {
+    padding: 8px 12px;
+  }
+
+  .tab-pane-scroll {
+    max-height: calc(90vh - 300px);
+    max-height: calc(90dvh - 300px);
+    padding-right: 4px;
+  }
+
+  .new-form-rich-editor {
+    height: 260px !important;
+  }
+}
+
+/* 矮屏（如笔记本 768px 高）：压缩滚动区以避免整体溢出 */
+@media (max-height: 720px) {
+  .tab-pane-scroll {
+    max-height: calc(90vh - 230px);
+    max-height: calc(90dvh - 230px);
+  }
+
+  .new-form-rich-editor {
+    height: 240px !important;
+  }
 }
 </style>

@@ -41,7 +41,7 @@
 import { useRoute } from 'vue-router'
 import { computed } from 'vue'
 
-const props = defineProps({
+defineProps({
   clickable: {
     type: Boolean,
     default: false
@@ -57,11 +57,8 @@ const isEnterprise = computed(() => {
   return route.path && route.path.startsWith('/self/enterprise')
 })
 
-const handleClick = () => {
-  if (props.clickable) {
-    window.open(import.meta.env.VITE_PORTAL_URL, '_blank')
-  }
-}
+// 点击 Logo 暂不做任何跳转
+const handleClick = () => {}
 </script>
 
 <style scoped>
