@@ -73,7 +73,7 @@
                 :selectedKeys="selectedViewKeys"
                 :openKeys="sidebarCollapsed ? [] : viewSubmenuOpenKeys"
                 @click="handleLocalMenuClick"
-                class="sidebar-menu"
+                class="sidebar-menu view-menu"
               >
                 <template v-for="(group, gIdx) in viewGroups" :key="`g-${gIdx}`">
                   <!-- 有 groupName → 可展开 sub-menu -->
@@ -81,10 +81,10 @@
                     <template #title>
                       <span class="view-item-content">
                         <component :is="FolderOutlined" />
-                        <span>
-                          {{ group.groupName }}
-                          <template v-if="typeof group.count === 'number'">({{ group.count }})</template>
-                        </span>
+                        <a-tooltip :title="group.groupName" placement="right" :mouse-enter-delay="0.4">
+                          <span class="name-ellipsis">{{ group.groupName }}</span>
+                        </a-tooltip>
+                        <span v-if="typeof group.count === 'number'" class="name-count">({{ group.count }})</span>
                         <a-tag v-if="group.share" class="view-tag external">外</a-tag>
                         <!-- 悬停文件夹时显示：新建视图 / 编辑 / 删除 -->
                         <span class="folder-actions" @click.stop>
@@ -101,8 +101,10 @@
                       class="view-menu-item"
                     >
                       <span class="child-item">
-                        <component :is="viewItemIcon(v)" class="child-primary-icon" />
-                        <span class="child-text-truncate">{{ truncateViewName(v.filterName, 18) }}</span>
+                        <ViewTypeIcon :type="v.viewType" class="child-primary-icon" />
+                        <a-tooltip :title="v.filterName" placement="right" :mouse-enter-delay="0.4">
+                          <span class="child-text-truncate name-ellipsis">{{ v.filterName }}</span>
+                        </a-tooltip>
                         <component v-if="v.isCollect" :is="StarFilled" class="favorite-icon" />
                         <component v-if="v.isShare && v.sortId <= 1" :is="MoreOutlined" class="child-more-icon" />
                         <!-- 悬停视图时显示：编辑 / 删除 -->
@@ -131,11 +133,11 @@
                       :data-menu-id="viewItemKey(v)"
                       class="view-menu-item"
                     >
-                    <component :is="viewItemIcon(v)" />
-                    <span class="view-name">
-                      {{ truncateViewName(v.filterName, 14) }}
-                      <template v-if="typeof v.myTodoTotalCount === 'number'">({{ v.myTodoTotalCount }})</template>
-                    </span>
+                    <ViewTypeIcon :type="v.viewType" />
+                    <a-tooltip :title="v.filterName" placement="right" :mouse-enter-delay="0.4">
+                      <span class="view-name name-ellipsis">{{ v.filterName }}</span>
+                    </a-tooltip>
+                    <span v-if="typeof v.myTodoTotalCount === 'number'" class="name-count">({{ v.myTodoTotalCount }})</span>
                     <span class="view-actions" @click.stop>
                       <component :is="EditOutlined" class="folder-action-icon" title="编辑" @click.stop="openEditView(v)" />
                       <component :is="DeleteOutlined" class="folder-action-icon danger" title="删除" @click.stop="confirmDeleteView(v)" />
@@ -266,9 +268,6 @@ import {
   BuildOutlined,
   DeploymentUnitOutlined,
   UserOutlined,
-  ProjectOutlined,
-  AlignLeftOutlined,
-  CalendarOutlined,
   ToolOutlined,
   EditOutlined,
   DeleteOutlined,
@@ -278,6 +277,7 @@ import AppHeader from '@/components/AppHeader.vue'
 import AppSideDrawer from '@/components/AppSideDrawer.vue'
 import NewIssueFormModal from '@/components/NewIssueFormModal.vue'
 import CreateViewModal from '@/components/CreateViewModal.vue'
+import ViewTypeIcon from '@/components/ViewTypeIcon.vue'
 import WorkbenchPanel from './WorkbenchPanel.vue'
 import { useViewStore } from '@/utils/view-store'
 import type { ViewItem, ViewGroup } from '@/types/faiz'
@@ -394,23 +394,6 @@ function confirmDeleteGroup(group: ViewGroup) {
   })
 }
 
-/** viewType → 默认图标组件（找不到更特殊映射时使用） */
-const VIEW_TYPE_ICON_MAP: Record<string, unknown> = {
-  list: UnorderedListOutlined,
-  KAN_BAN: ProjectOutlined,
-  gantt: AlignLeftOutlined,
-  CALENDAR_VIEW: CalendarOutlined,
-}
-
-/** 取单个视图项的图标（按 viewType 统一映射） */
-function viewItemIcon(v: ViewItem) {
-  return VIEW_TYPE_ICON_MAP[v.viewType] ?? AppstoreOutlined
-}
-
-/** 视图项名称截断：折叠态场景下保留的处理 */
-function truncateViewName(name: string, max = 16) {
-  return name.length > max ? name.slice(0, max - 3) + '...' : name
-}
 
 // 加载完后计算 sub-menu 默认展开的分组
 function syncSubmenuOpenKeys() {
@@ -808,9 +791,43 @@ function handleRemoteMenuClick(key: string) {
   color: #1890ff;
 }
 
-/* 文件夹悬停操作：默认隐藏，悬停文件夹标题时显示 */
+/* 文件夹 / 视图名称：按内容宽度、超长时收缩显示省略号，数量紧跟名称；标签、操作图标不被挤压 */
+.name-ellipsis {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.name-count {
+  flex-shrink: 0;
+  margin-left: 2px;
+  color: inherit;
+}
+
+.sidebar-menu :deep(.view-item-content),
+.sidebar-menu :deep(.child-item) {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.sidebar-menu :deep(.view-item-content .anticon + .name-ellipsis),
+.sidebar-menu :deep(.view-menu-item .anticon + .name-ellipsis) {
+  margin-inline-start: 10px;
+}
+
+.sidebar-menu :deep(.child-item > .anticon),
+.sidebar-menu :deep(.view-item-content > .anticon) {
+  flex-shrink: 0;
+}
+
+/* 文件夹悬停操作：始终占位（名称截断宽度不随悬停变化），默认透明，悬停文件夹标题时显示 */
 .folder-actions {
-  display: none;
+  display: inline-flex;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
   align-items: center;
   gap: 4px;
   margin-left: auto;
@@ -826,12 +843,16 @@ function handleRemoteMenuClick(key: string) {
 }
 
 .sidebar-menu :deep(.ant-menu-submenu-title:hover .folder-actions) {
-  display: inline-flex;
+  opacity: 1;
+  pointer-events: auto;
 }
 
-/* 视图悬停操作：与文件夹一致，默认隐藏，悬停视图项时显示 */
+/* 视图悬停操作：与文件夹一致，始终占位，默认透明，悬停视图项时显示 */
 .view-actions {
-  display: none;
+  display: inline-flex;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
   align-items: center;
   gap: 4px;
   margin-left: auto;
@@ -854,7 +875,8 @@ function handleRemoteMenuClick(key: string) {
 }
 
 .sidebar-menu :deep(.view-menu-item:hover .view-actions) {
-  display: inline-flex;
+  opacity: 1;
+  pointer-events: auto;
 }
 
 /* 悬停操作按钮：Apple / Material 风格的圆角小按钮，悬停浅底高亮 */
@@ -862,12 +884,6 @@ function handleRemoteMenuClick(key: string) {
 .view-actions {
   gap: 2px;
   padding-left: 6px;
-  animation: hover-actions-fade-in 0.15s ease-out;
-}
-
-@keyframes hover-actions-fade-in {
-  from { opacity: 0; transform: translateX(2px); }
-  to { opacity: 1; transform: translateX(0); }
 }
 
 .sidebar-menu :deep(.folder-action-icon.anticon) {
@@ -1042,6 +1058,16 @@ function handleRemoteMenuClick(key: string) {
   height: 32px;
   line-height: 32px;
   margin: 1px 8px;
+}
+
+/* 我的视图：文件夹 / 视图整体左移（覆盖 antd inline 缩进 24px / 48px），折叠态不受影响 */
+.side-panel:not(.side-panel-collapsed) .view-menu :deep(.ant-menu-item),
+.side-panel:not(.side-panel-collapsed) .view-menu :deep(.ant-menu-submenu-title) {
+  padding-left: 12px !important;
+}
+
+.side-panel:not(.side-panel-collapsed) .view-menu :deep(.ant-menu-sub .ant-menu-item) {
+  padding-left: 32px !important;
 }
 
 .main-layout {

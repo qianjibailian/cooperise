@@ -28,7 +28,7 @@
         <a-form-item label="视图类型" name="viewType">
           <a-radio-group v-model:value="form.viewType" class="cv-type-group">
             <a-radio-button v-for="t in viewTypeOptions" :key="t.value" :value="t.value">
-              <component :is="t.icon" />
+              <ViewTypeIcon :type="t.value" />
               <span>{{ t.label }}</span>
             </a-radio-button>
           </a-radio-group>
@@ -45,7 +45,8 @@
 import { ref, reactive, computed, watch } from 'vue'
 import { message } from 'ant-design-vue'
 import type { FormInstance } from 'ant-design-vue'
-import { UnorderedListOutlined, ProjectOutlined, AlignLeftOutlined, CalendarOutlined, FolderOutlined } from '@ant-design/icons-vue'
+import { FolderOutlined } from '@ant-design/icons-vue'
+import ViewTypeIcon from '@/components/ViewTypeIcon.vue'
 import { createView, createViewGroup, updateViewGroup, updateView } from '@/api/faiz'
 import type { ViewGroup, ViewItem } from '@/types/faiz'
 
@@ -81,10 +82,10 @@ const modeOptions = [
 
 /** 视图类型与侧边栏图标映射保持一致 */
 const viewTypeOptions = [
-  { value: 'list', label: '列表', icon: UnorderedListOutlined },
-  { value: 'KAN_BAN', label: '看板', icon: ProjectOutlined },
-  { value: 'gantt', label: '甘特', icon: AlignLeftOutlined },
-  { value: 'CALENDAR_VIEW', label: '日历', icon: CalendarOutlined },
+  { value: 'list', label: '列表' },
+  { value: 'KAN_BAN', label: '看板' },
+  { value: 'gantt', label: '甘特' },
+  { value: 'CALENDAR_VIEW', label: '日历' },
 ]
 
 const modalTitle = computed(() => {
