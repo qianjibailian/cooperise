@@ -7,6 +7,8 @@ import { getWorkflowNextNodes, changeWorkflowTaskStatus } from '@/api/faiz'
 const props = defineProps<{
   open: boolean
   issueKey: string
+  /** 当前事项的问题类型编码（如 TYPE10001），用于匹配工作流 */
+  issueTypeCode?: string
 }>()
 
 const emit = defineEmits<{
@@ -133,7 +135,7 @@ async function load() {
   activeNodeId.value = ''
   try {
     // 仅调下一节点接口：currentNodeName / nextNodes / taskId 均来自其返回
-    const res = await getWorkflowNextNodes(props.issueKey)
+    const res = await getWorkflowNextNodes(props.issueKey, props.issueTypeCode)
     const data = res?.data ?? null
     currentNodeName.value = String(data?.currentNodeName ?? '')
     rawNextNodes.value = Array.isArray(data?.nextNodes) ? (data.nextNodes as WorkflowNode[]) : []
@@ -146,7 +148,7 @@ async function load() {
 }
 
 watch(
-  () => [props.open, props.issueKey] as const,
+  () => [props.open, props.issueKey, props.issueTypeCode] as const,
   ([open, issueKey]) => {
     if (open && issueKey) load()
   }
@@ -156,7 +158,7 @@ watch(
 <template>
   <a-modal
     v-model:open="modalOpen"
-    :title="`流程推进 · ${props.issueKey}`"
+    :title="`状态变更 · ${props.issueKey}`"
     width="620px"
     :footer="null"
     class="wf-next-modal"

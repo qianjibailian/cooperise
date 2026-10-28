@@ -257,6 +257,7 @@ import { PlusOutlined } from '@ant-design/icons-vue'
 import { Empty, message } from 'ant-design-vue'
 import { createIssue, getAvailableFieldOptions, queryUsers, queryTemplates, getTemplate, getIssueCreateMeta, queryDetail, patchIssue, queryAvailableFieldList, getOrganizationTree, queryIssueTypes, type OrganizationNode } from '@/api/faiz'
 import OrgTreeSelect from '@/components/OrgTreeSelect.vue'
+import { getUserOrganizationId } from '@/utils/auth'
 import { FIELD_TYPE, normalizeFieldType, formatTypeLabel } from '@/types/fieldType'
 import type {
   CustomFieldOptionReq,
@@ -327,6 +328,11 @@ watch(visible, (val) => {
     destroyRichEditors()
   } else {
     loadNewFormOrgTree()
+    // 新建：组织默认带出当前登录用户所属组织（可手动修改）
+    if (!isEditMode.value) {
+      const orgId = getUserOrganizationId()
+      if (orgId != null) newFormOrganizationId.value = orgId
+    }
     loadIssueTypesByOrg()
   }
 })
@@ -358,7 +364,7 @@ const DEFAULT_ISSUE_TYPE_OPTIONS = [
   { value: '10003', label: '缺陷' },
   { value: '10004', label: '其他' },
 ]
-const issueTypeOptions = ref<{ value: string; label: string }[]>([...DEFAULT_ISSUE_TYPE_OPTIONS])
+const issueTypeOptions = ref<{ value: string; label: string; code?: string }[]>([...DEFAULT_ISSUE_TYPE_OPTIONS])
 const issueTypeLoading = ref(false)
 let issueTypeReqSeq = 0
 
@@ -376,7 +382,7 @@ async function loadIssueTypesByOrg() {
       organizationId: orgId != null && orgId !== '' ? Number(orgId) : undefined,
     })
     if (seq !== issueTypeReqSeq || !res?.success) return
-    issueTypeOptions.value = (res.data?.list || []).map(t => ({ value: String(t.id), label: t.issueTypeName }))
+    issueTypeOptions.value = (res.data?.list || []).map(t => ({ value: String(t.id), label: t.issueTypeName, code: t.issueTypeCode }))
   } catch {
     if (seq !== issueTypeReqSeq) return
     issueTypeOptions.value = [...DEFAULT_ISSUE_TYPE_OPTIONS]
@@ -1276,10 +1282,11 @@ function buildCreateIssuePayload(): CreateIssuePayload {
     })
   }
   // 3) 问题类型
+  // 问题类型提交编码（如 TYPE10001）；兜底选项无编码时退回提交 ID
   inputFields.push({
     id: 'issuetype',
     type: ISSUETYPE_FIELD_TYPE,
-    value: newFormIssueTypeId.value,
+    value: issueTypeOptions.value.find(o => o.value === newFormIssueTypeId.value)?.code || newFormIssueTypeId.value,
   })
 
   // 4) 其余字段（按 tab.sequence + tab 内顺序）

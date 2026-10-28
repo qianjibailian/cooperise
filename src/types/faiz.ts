@@ -743,9 +743,9 @@ export interface WorkflowBranch {
 export interface WorkflowNode {
   nodeId: string
   nodeName: string
-  /** 办理人类型：CREATOR（发起人）/ USER（指定用户） */
+  /** 经办人类型：CREATOR（发起人）/ POSITION（指定岗位） */
   assigneeType?: string
-  /** 办理人值：assigneeType=USER 时的用户账号 */
+  /** 经办人值：assigneeType=POSITION 时的岗位 ID，多个以英文逗号分隔 */
   assigneeValue?: string | null
   /** 对应事项状态 statusId */
   statusId?: string | null

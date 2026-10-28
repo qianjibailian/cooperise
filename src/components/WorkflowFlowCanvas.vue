@@ -1,33 +1,70 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import LogicFlow, { RectNode, RectNodeModel } from '@logicflow/core'
+import LogicFlow, { RectNode, RectNodeModel, h } from '@logicflow/core'
 import '@logicflow/core/dist/style/index.css'
 import { Control, MiniMap } from '@logicflow/extension'
 import '@logicflow/extension/es/style/index.css'
 import { message } from 'ant-design-vue'
 import { PlusOutlined, NodeIndexOutlined, DeleteOutlined, EditOutlined, LinkOutlined } from '@ant-design/icons-vue'
 import type { WorkflowNode } from '@/types/faiz'
-import { workflowToFlow, lfTextValue, genNodeId } from './workflow-flow-layout'
+import { workflowToFlow, lfTextValue, genNodeId, splitAssigneeIds, joinAssigneeIds } from './workflow-flow-layout'
 import type { WfProps, LFNode, LFEdge } from './workflow-flow-layout'
+import { wfEdgeRegister, WF_EDGE_TYPE, WF_ACTIVE_COLOR } from './workflow-flow-edge'
 
 // ==================== LogicFlow 自定义节点 ====================
+const NODE_W = 168
+const NODE_H = 56
+
 class WfNodeModel extends RectNodeModel {
   setAttributes() {
     const props = (this.properties || {}) as WfProps
-    this.width = 168
-    this.height = 54
-    this.radius = 10
-    this.fill = '#ffffff'
-    this.stroke = props.statusId ? '#1890ff' : '#d9d9d9'
-    this.strokeWidth = 2
-    // 文本坐标是绝对坐标（x/y 即节点中心），缺 x/y 时文本渲染到 undefined 坐标导致节点看起来没内容
+    this.width = NODE_W
+    this.height = NODE_H
+    this.radius = 8
+    // 文本坐标是绝对坐标（x/y 即节点中心），缺 x/y 时文本渲染到 undefined 坐标导致节点看起来没内容；
+    // 名称上移，下方留给经办人副标题
     this.text = {
-      value: props.nodeName || '未命名',
+      value: props.nodeName || '未配置状态',
       x: this.x,
-      y: this.y,
+      y: this.y - 8,
       draggable: false,
       editable: false,
     } as any
+  }
+  getNodeStyle() {
+    const style = super.getNodeStyle()
+    const configured = !!(this.properties as WfProps)?.statusId
+    const active = this.isSelected || this.isHovered
+    style.fill = configured ? '#ffffff' : '#fffbe6'
+    style.stroke = active ? WF_ACTIVE_COLOR : configured ? '#dcdce6' : '#ffc53d'
+    style.strokeWidth = this.isSelected ? 2 : 1.2
+    style.strokeDasharray = configured ? '' : '4 3'
+    return style
+  }
+  getTextStyle() {
+    const style = super.getTextStyle()
+    style.fontSize = 13
+    style.color = (this.properties as WfProps)?.statusId ? '#1f1f1f' : '#ad6800'
+    style.overflowMode = 'ellipsis'
+    ;(style as any).fontWeight = 500
+    ;(style as any).textWidth = NODE_W - 24
+    return style
+  }
+  getAnchorStyle(anchorInfo: any) {
+    const style = super.getAnchorStyle(anchorInfo)
+    style.r = 4
+    style.fill = '#ffffff'
+    style.stroke = WF_ACTIVE_COLOR
+    style.strokeWidth = 1.5
+    style.hover = { r: 6, fill: WF_ACTIVE_COLOR, stroke: WF_ACTIVE_COLOR }
+    return style
+  }
+  getOutlineStyle() {
+    const style = super.getOutlineStyle()
+    // 选中态已由边框变色体现，去掉默认的蓝色虚线外框
+    style.stroke = 'none'
+    style.hover = { ...(style.hover || {}), stroke: 'none' }
+    return style
   }
   // 只保留：左侧 target 锚点（入）、右侧 source 锚点（出），从右侧可拖出多条线到多个后续节点
   getDefaultAnchor() {
@@ -38,10 +75,32 @@ class WfNodeModel extends RectNodeModel {
     ]
   }
 }
-class WfNodeView extends RectNode {}
+
+/** 节点外观：圆角卡片 + 左侧色条 + 经办人副标题 */
+class WfNodeView extends RectNode {
+  getShape() {
+    const { model } = this.props as any
+    const { x, y, width, height, radius } = model
+    const style = model.getNodeStyle()
+    const p = (model.properties || {}) as WfProps
+    const configured = !!p.statusId
+    const left = x - width / 2
+    const top = y - height / 2
+    const sub = !configured
+      ? '双击配置状态'
+      : p.assigneeType === 'POSITION'
+        ? `经办人：${splitAssigneeIds(p.assigneeValue).length} 个岗位`
+        : '经办人：发起人'
+    return h('g', {}, [
+      h('rect', { ...style, x: left, y: top, rx: radius, ry: radius, width, height }),
+      h('rect', { x: left + 1, y: top + 10, width: 3, height: height - 20, rx: 1.5, fill: configured ? WF_ACTIVE_COLOR : '#faad14' }),
+      h('text', { x, y: y + 12, fill: '#8c8c8c', fontSize: 11, textAnchor: 'middle', dominantBaseline: 'middle' }, sub),
+    ])
+  }
+}
 
 // ==================== 双向转换 ====================
-const STEP_X = 340 // 手动添加后续节点时的水平偏移
+const STEP_X = NODE_W + 96 // 手动添加后续节点时的水平偏移（与自动布局列间距一致）
 
 /** LogicFlow graphData → WorkflowNode[]（多出边 = 多个后续节点，树形） */
 function flowToWorkflow(nodes: LFNode[], edges: LFEdge[]): WorkflowNode[] {
@@ -104,7 +163,11 @@ function flowToWorkflow(nodes: LFNode[], edges: LFEdge[]): WorkflowNode[] {
 }
 
 // ==================== 组件状态 ====================
-const props = defineProps<{ modelValue: WorkflowNode[] }>()
+const props = defineProps<{
+  modelValue: WorkflowNode[]
+  statusOptions: { value: string; label: string }[]
+  positionOptions: { value: string; label: string }[]
+}>()
 
 const containerRef = ref<HTMLDivElement>()
 const lfRef = ref<LogicFlow | null>(null)
@@ -138,12 +201,17 @@ function init() {
   if (!el || lfRef.value) return
   const lf = new LogicFlow({
     container: el,
-    grid: { size: 10, visible: false },
-    background: { backgroundColor: '#fbfbfd' },
+    grid: { size: 16, visible: true, type: 'dot', config: { color: '#d9dae3', thickness: 1 } },
+    background: { backgroundColor: '#f7f8fa' },
     plugins: [Control, MiniMap],
-    edgeType: 'polyline',
-  })
+    edgeType: WF_EDGE_TYPE,
+  } as any)
   lf.register({ type: 'wfNode', view: WfNodeView, model: WfNodeModel } as any)
+  lf.register(wfEdgeRegister as any)
+  lf.setTheme({
+    snapline: { stroke: WF_ACTIVE_COLOR, strokeWidth: 1 },
+    anchorLine: { stroke: WF_ACTIVE_COLOR, strokeWidth: 1.5, strokeDasharray: '4 3' },
+  } as any)
   lf.on('node:dblclick', onNodeDblClick)
   lf.on('node:contextmenu', onNodeCtxMenu)
   lf.on('edge:contextmenu', onEdgeCtxMenu)
@@ -224,9 +292,17 @@ function onNodeDblClick({ data }: { data: any }) {
   openNodeEdit(data)
 }
 
+/** 选择状态：节点名称直接取状态名称 */
+function handleEditStatusChange(v?: string) {
+  editForm.value.statusId = v ?? null
+  editForm.value.nodeName = props.statusOptions.find((o) => o.value === v)?.label ?? ''
+}
+
 function saveNodeEdit() {
   const lf = lfRef.value
   if (!lf || !editTarget.value) return
+  if (!editForm.value.statusId) return message.warning('请选择状态')
+  if (editForm.value.assigneeType === 'POSITION' && !editForm.value.assigneeValue) return message.warning('请选择岗位')
   // @logicflow/core@1.2.10 无 updateNodeData()，改用 updateText() + setProperties()
   lf.updateText(editTarget.value, editForm.value.nodeName || '未命名')
   lf.setProperties(editTarget.value, {
@@ -342,12 +418,12 @@ function ctxAddNextNode() {
   const newNode = lf.addNode({
     type: 'wfNode',
     x: baseX,
-    y: baseY + outs * 90,
+    y: baseY + outs * (NODE_H + 28),
     text: { value: '未命名' },
     properties: { nodeId: genNodeId(), nodeName: '', assigneeType: 'CREATOR', assigneeValue: null, statusId: null },
   } as any)
   lf.addEdge({
-    type: 'polyline',
+    type: WF_EDGE_TYPE,
     sourceNodeId: node.id,
     targetNodeId: newNode.id,
     text: { value: '' },
@@ -390,7 +466,7 @@ function confirmLinkNode() {
   const graph = lf.getGraphData() as { edges: LFEdge[] }
   const exists = graph.edges.some((e) => e.sourceNodeId === sid && e.targetNodeId === tid)
   lf.addEdge({
-    type: 'polyline',
+    type: WF_EDGE_TYPE,
     sourceNodeId: sid,
     targetNodeId: tid,
     text: { value: linkName.value.trim() },
@@ -482,9 +558,15 @@ defineExpose({
         <a-input v-model:value="edgeName" size="small" placeholder="如：已完成 / 取消，可留空" class="wf-edge-input" @change="updateEdgeName" />
         <a-button size="small" danger @click="deleteSelectedEdge"><DeleteOutlined /> 删除连线</a-button>
       </template>
-      <span v-else class="wf-canvas-tip">
-        右键节点/连线/空白弹出操作菜单 · 双击节点编辑属性 · 节点菜单可「链接指定节点」拖线分支或回退
-      </span>
+      <template v-else>
+        <span class="wf-canvas-tip">右键打开菜单 · 双击节点编辑 · 从节点右侧圆点拖线连接</span>
+        <span class="wf-legend">
+          <span class="wf-legend-item"><i class="wf-legend-node" />已配置</span>
+          <span class="wf-legend-item"><i class="wf-legend-node is-empty" />待配置</span>
+          <span class="wf-legend-item"><i class="wf-legend-line" />流转</span>
+          <span class="wf-legend-item"><i class="wf-legend-line is-back" />回退</span>
+        </span>
+      </template>
     </div>
 
     <div ref="containerRef" class="wf-canvas"></div>
@@ -549,20 +631,32 @@ defineExpose({
     <!-- 节点属性编辑 -->
     <a-modal v-model:open="editOpen" title="编辑节点" width="420px" :footer="null" destroy-on-close>
       <a-form :label-col="{ span: 6 }" :wrapper-col="{ span: 18 }">
-        <a-form-item label="节点名称" required>
-          <a-input v-model:value="editForm.nodeName" placeholder="如：待处理" />
+        <a-form-item label="状态" required>
+          <a-select
+            :value="editForm.statusId || undefined"
+            :options="statusOptions"
+            placeholder="选择该问题类型下的状态"
+            show-search
+            option-filter-prop="label"
+            @change="handleEditStatusChange"
+          />
         </a-form-item>
-        <a-form-item label="办理人">
-          <a-select v-model:value="editForm.assigneeType">
+        <a-form-item label="经办人">
+          <a-select v-model:value="editForm.assigneeType" @change="editForm.assigneeValue = null">
             <a-select-option value="CREATOR">发起人</a-select-option>
-            <a-select-option value="USER">指定用户</a-select-option>
+            <a-select-option value="POSITION">指定岗位</a-select-option>
           </a-select>
         </a-form-item>
-        <a-form-item v-if="editForm.assigneeType === 'USER'" label="用户账号">
-          <a-input v-model:value="editForm.assigneeValue" placeholder="用户账号" />
-        </a-form-item>
-        <a-form-item label="状态ID">
-          <a-input v-model:value="editForm.statusId" placeholder="对应事项状态ID，可留空" />
+        <a-form-item v-if="editForm.assigneeType === 'POSITION'" label="岗位" required>
+          <a-select
+            :value="splitAssigneeIds(editForm.assigneeValue)"
+            mode="multiple"
+            :options="positionOptions"
+            placeholder="选择经办岗位（可多选）"
+            show-search
+            option-filter-prop="label"
+            @change="(v: unknown) => (editForm.assigneeValue = joinAssigneeIds(v))"
+          />
         </a-form-item>
       </a-form>
       <div class="wf-edit-footer">
@@ -586,14 +680,47 @@ defineExpose({
   align-items: center;
   flex-wrap: wrap;
   gap: 8px;
-  padding: 8px 10px;
-  background: #fafafa;
-  border: 1px solid #f0f0f0;
+  padding: 6px 10px;
+  background: #fff;
+  border: 1px solid #ececf2;
   border-radius: 10px;
 }
 .wf-canvas-tip {
   font-size: 12px;
   color: #8c8c8c;
+}
+.wf-legend {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-left: auto;
+  font-size: 12px;
+  color: #595959;
+}
+.wf-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.wf-legend-node {
+  width: 14px;
+  height: 10px;
+  border: 1.2px solid #dcdce6;
+  border-left: 3px solid #722ed1;
+  border-radius: 3px;
+  background: #fff;
+}
+.wf-legend-node.is-empty {
+  border: 1.2px dashed #ffc53d;
+  border-left: 3px solid #faad14;
+  background: #fffbe6;
+}
+.wf-legend-line {
+  width: 18px;
+  border-top: 1.5px solid #a8adbd;
+}
+.wf-legend-line.is-back {
+  border-top: 1.5px dashed #fa8c16;
 }
 .wf-edge-label {
   font-size: 13px;
@@ -605,7 +732,7 @@ defineExpose({
 .wf-canvas {
   flex: 1;
   min-height: 360px;
-  border: 1px solid #e5e5ea;
+  border: 1px solid #ececf2;
   border-radius: 12px;
   overflow: hidden;
   position: relative;

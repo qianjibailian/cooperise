@@ -17,7 +17,6 @@ import Workflow from '../pages/workflow/index.vue'
 import Organization from '@/pages/organization/index.vue'
 import Positions from '@/pages/positions/index.vue'
 import IssueTypes from '@/pages/issue-type/index.vue'
-import IssueStatuses from '@/pages/issue-status/index.vue'
 import Profile from '@/pages/profile/index.vue'
 import Account from '@/pages/account/index.vue'
 import SprintBoard from '@/pages/sprint-board/index.vue'
@@ -101,7 +100,6 @@ const routes: RouteRecordRaw[] = [
       { path: 'admin/positions', component: Positions, name: 'AdminPositions', meta: { title: '岗位管理' } },
       { path: 'admin/organization', component: Organization, name: 'Organization', meta: { title: '组织管理' } },
       { path: 'admin/issue-type', component: IssueTypes, name: 'AdminIssueTypes', meta: { title: '问题类型' } },
-      { path: 'admin/issue-status', component: IssueStatuses, name: 'AdminIssueStatuses', meta: { title: '问题状态' } },
       { path: 'admin/system-field', component: SystemField, name: 'SystemField', meta: { title: '系统字段' } },
       { path: 'admin/template-list', component: TemplateList, name: 'TemplateList', meta: { title: '模板管理' } },
       { path: 'admin/workflow', component: Workflow, name: 'Workflow', meta: { title: '工作流' } },

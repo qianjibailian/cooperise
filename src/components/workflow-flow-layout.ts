@@ -28,6 +28,7 @@ export interface LFEdge {
   sourceNodeId: string
   targetNodeId: string
   text?: { value?: string } | string
+  properties?: { isBack?: boolean }
 }
 
 let idSeq = 0
@@ -76,13 +77,14 @@ export function mkLFNode(
   }
 }
 
-export function mkLFEdge(id: string, source: string, target: string, branchName: string): LFEdge {
+export function mkLFEdge(id: string, source: string, target: string, branchName: string, isBack = false): LFEdge {
   return {
     id,
-    type: 'polyline',
+    type: 'wfEdge',
     sourceNodeId: source,
     targetNodeId: target,
     text: branchName ? { value: branchName } : undefined,
+    properties: isBack ? { isBack: true } : undefined,
   }
 }
 
@@ -103,12 +105,13 @@ export function workflowToFlow(
   // 回退引用收集：{ 源节点画布id, 目标节点 nodeId }，布局完成后统一建回退边（不参与分层，避免环）
   const backRefs: { source: string; targetNodeId: string }[] = []
 
-  // 家族树布局常量：叶子横向排开、父节点居中于子树，分支自然展开不重叠
+  // 从左到右的树形布局（与节点左入 / 右出锚点一致）：层级沿 x 展开，叶子沿 y 排列，父节点垂直居中于子树
   const NODE_W = 168
-  const NODE_H = 54
-  const H_GAP = 88 // 叶子节点水平间距
-  const V_GAP = 118 // 层级垂直间距
-  const X0 = 300
+  const NODE_H = 56
+  const COL_GAP = 96 // 层级间水平间距（留出连线名称的位置）
+  const ROW_GAP = 28 // 叶子节点垂直间距
+  const TREE_GAP = 0.6 // 多棵独立流程树之间额外空出的行数
+  const X0 = 120
   const Y0 = 80
 
   interface TNode {
@@ -125,18 +128,17 @@ export function workflowToFlow(
     y: 0,
   })
 
-  // Reingold-Tilford 简化版：叶子占一个槽位，父节点水平居中于其子树
   let leafSeq = 0
   const layout = (tn: TNode, depth: number) => {
     const kids = tn.children
     if (!kids.length) {
-      tn.x = X0 + leafSeq * (NODE_W + H_GAP)
+      tn.y = Y0 + leafSeq * (NODE_H + ROW_GAP)
       leafSeq++
     } else {
       for (const k of kids) layout(k, depth + 1)
-      tn.x = (kids[0].x + kids[kids.length - 1].x) / 2
+      tn.y = (kids[0].y + kids[kids.length - 1].y) / 2
     }
-    tn.y = Y0 + depth * (NODE_H + V_GAP)
+    tn.x = X0 + depth * (NODE_W + COL_GAP)
   }
 
   // 放置节点 + 建正向边（回退边最后统一补）
@@ -158,13 +160,14 @@ export function workflowToFlow(
   for (const t of trees) {
     layout(t, 0)
     place(t.wf, t)
+    leafSeq += TREE_GAP
   }
 
   // 回退引用补边（目标节点必须已在画布中存在，否则忽略）
   for (const r of backRefs) {
     const target = lfIdByNodeId.get(r.targetNodeId)
     if (target && target !== r.source) {
-      edges.push(mkLFEdge(nid(), r.source, target, '回退'))
+      edges.push(mkLFEdge(nid(), r.source, target, '回退', true))
     }
   }
   return { nodes, edges }
@@ -188,4 +191,13 @@ export function normalizeLegacyNodes(list: WorkflowNode[]): WorkflowNode[] {
     return cleaned
   }
   return list.map((n) => walk(n))
+}
+
+/** 经办岗位多选：assigneeValue 以逗号分隔存储多个岗位 ID */
+export function splitAssigneeIds(v?: string | null): string[] {
+  return (v || '').split(',').map((s) => s.trim()).filter(Boolean)
+}
+export function joinAssigneeIds(ids?: unknown): string | null {
+  const list = Array.isArray(ids) ? ids.map((s) => String(s).trim()).filter(Boolean) : []
+  return list.length ? list.join(',') : null
 }

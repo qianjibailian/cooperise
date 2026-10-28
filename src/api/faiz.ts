@@ -330,8 +330,8 @@ export function getWorkflowInstance(id: number): Promise<Result<Record<string, a
   return request.get(`/workflow/instance/${id}`)
 }
 
-/** 查询下一节点（GET /workflow/next-nodes?issueKey=xxx），返回当前节点与下一步节点列表 */
-export function getWorkflowNextNodes(issueKey: string): Promise<
+/** 查询下一节点（GET /workflow/next-nodes?issueKey=xxx&issueTypeCode=TYPE10001），按事项问题类型编码匹配流程，返回当前节点与下一步节点列表 */
+export function getWorkflowNextNodes(issueKey: string, issueTypeCode?: string): Promise<
   Result<{
     currentNodeId?: string
     currentNodeName?: string
@@ -340,7 +340,7 @@ export function getWorkflowNextNodes(issueKey: string): Promise<
     nextNodes?: WorkflowNode[]
   }>
 > {
-  return request.get(`/workflow/next-nodes`, { params: { issueKey } })
+  return request.get(`/workflow/next-nodes`, { params: { issueKey, issueTypeCode: issueTypeCode || undefined } })
 }
 
 /** 撤销流程（POST /workflow/instance/{id}/cancel?operator=xxx） */
@@ -619,68 +619,6 @@ export function deletePosition(id: number): Promise<Result<void>> {
   return request.post(`/position/delete`, { id })
 }
 
-// ==================== 问题状态 ====================
-
-/** 状态分类：TODO 待处理 / IN_PROGRESS 进行中 / DONE 已完成 */
-export type IssueStatusCategory = 'TODO' | 'IN_PROGRESS' | 'DONE'
-
-export interface IssueStatusItem {
-  id: number
-  statusName: string
-  /** 状态编码，后端生成，业务唯一 */
-  statusCode?: string
-  category?: IssueStatusCategory
-  /** 颜色，如 #0A84FF */
-  color?: string
-  description?: string
-  /** 排序值，越小越靠前 */
-  sort?: number
-  /** 状态：0 停用 / 1 启用 */
-  status: number
-  /** 处于该状态的事项数 */
-  issueCount?: number
-  createdAt?: string
-}
-
-export interface IssueStatusQueryParams {
-  keyword?: string
-  status?: number
-  category?: IssueStatusCategory
-  page: number
-  pageSize: number
-}
-
-/** 新增 / 修改问题状态请求体（修改时 id 必填；编码由后端生成，不提交） */
-export interface IssueStatusSaveParams {
-  id?: number
-  statusName: string
-  category?: IssueStatusCategory
-  color?: string
-  description?: string
-  sort?: number
-  status: number
-}
-
-/** 问题状态分页列表（POST /issue-status/list） */
-export function queryIssueStatuses(data: IssueStatusQueryParams): Promise<Result<{ list: IssueStatusItem[]; total: number }>> {
-  return request.post(`/issue-status/list`, data)
-}
-
-/** 新增问题状态（POST /issue-status/create） */
-export function createIssueStatus(data: IssueStatusSaveParams): Promise<Result<IssueStatusItem>> {
-  return request.post(`/issue-status/create`, data)
-}
-
-/** 修改问题状态（POST /issue-status/update） */
-export function updateIssueStatus(data: IssueStatusSaveParams): Promise<Result<IssueStatusItem>> {
-  return request.post(`/issue-status/update`, data)
-}
-
-/** 删除问题状态（POST /issue-status/delete） */
-export function deleteIssueStatus(id: number): Promise<Result<void>> {
-  return request.post(`/issue-status/delete`, { id })
-}
-
 // ==================== 问题类型 ====================
 
 export interface IssueTypeItem {
@@ -704,6 +642,18 @@ export interface IssueTypeItem {
   /** 关联事项数 */
   issueCount?: number
   createdAt?: string
+}
+
+/** 问题类型下的状态（在问题状态抽屉中维护） */
+export interface IssueTypeStatus {
+  /** 状态 ID，新增时不传 */
+  id?: number
+  statusName: string
+  /** 状态编码，后端生成 */
+  statusCode?: string
+  color?: string
+  /** 排序值，按列表顺序 */
+  sort?: number
 }
 
 export interface IssueTypeQueryParams {
@@ -738,6 +688,16 @@ export function createIssueType(data: IssueTypeSaveParams): Promise<Result<Issue
 /** 修改问题类型（POST /issue-type/update） */
 export function updateIssueType(data: IssueTypeSaveParams): Promise<Result<IssueTypeItem>> {
   return request.post(`/issue-type/update`, data)
+}
+
+/** 问题类型下的状态列表（GET /issue-type/status/list?issueTypeId=xxx），按 sort 升序 */
+export function queryIssueTypeStatuses(issueTypeId: number): Promise<Result<IssueTypeStatus[]>> {
+  return request.get(`/issue-type/status/list`, { params: { issueTypeId } })
+}
+
+/** 保存问题类型下的状态（POST /issue-type/status/save）：整体提交，后端按 id 增改、缺失即删除 */
+export function saveIssueTypeStatuses(data: { issueTypeId: number; statuses: IssueTypeStatus[] }): Promise<Result<IssueTypeStatus[]>> {
+  return request.post(`/issue-type/status/save`, data)
 }
 
 /** 删除问题类型（POST /issue-type/delete） */

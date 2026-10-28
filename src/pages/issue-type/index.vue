@@ -38,7 +38,7 @@
         :loading="loading"
         :pagination="pagination"
         row-key="id"
-        :scroll="{ x: 1060 }"
+        :scroll="{ x: 1100 }"
         class="mgmt-table"
         @change="handleTableChange"
       >
@@ -79,6 +79,9 @@
             <div class="row-actions">
               <a-tooltip title="编辑">
                 <span class="row-action" @click="openEdit(record as IssueTypeItem)"><EditOutlined /></span>
+              </a-tooltip>
+              <a-tooltip title="问题状态">
+                <span class="row-action" @click="openStatusDrawer(record as IssueTypeItem)"><FlagOutlined /></span>
               </a-tooltip>
               <a-tooltip title="删除">
                 <span class="row-action danger" @click="confirmDelete(record as IssueTypeItem)"><DeleteOutlined /></span>
@@ -135,6 +138,65 @@
         </a-form-item>
       </a-form>
     </a-modal>
+
+    <!-- 问题状态维护 -->
+    <a-drawer
+      v-model:open="statusDrawerOpen"
+      :width="560"
+      destroy-on-close
+      class="status-drawer"
+    >
+      <template #title>
+        <div class="status-drawer-title">
+          <span class="type-avatar sm" :style="{ background: statusType?.color || DEFAULT_COLOR }"><TagsOutlined /></span>
+          <span>{{ statusType?.issueTypeName }} · 问题状态</span>
+        </div>
+      </template>
+      <a-spin :spinning="statusLoading">
+        <div class="status-drawer-hint">
+          按流转顺序排列，可上下调整。
+          <span v-if="statusIsDefault" class="status-default-tip">尚未配置，已预填默认状态</span>
+        </div>
+        <div class="status-editor">
+          <div v-for="(st, idx) in statusRows" :key="st._key" class="status-row">
+            <a-popover trigger="click" placement="bottomLeft" overlay-class-name="status-color-popover">
+              <template #content>
+                <div class="status-color-grid">
+                  <button
+                    v-for="c in STATUS_COLOR_OPTIONS"
+                    :key="c"
+                    type="button"
+                    :class="['color-swatch', { active: st.color === c }]"
+                    :style="{ background: c }"
+                    :aria-label="c"
+                    @click="st.color = c"
+                  >
+                    <CheckOutlined v-if="st.color === c" />
+                  </button>
+                </div>
+              </template>
+              <button type="button" class="status-color-btn" :aria-label="'选择颜色'">
+                <span class="status-dot lg" :style="{ background: st.color }" />
+              </button>
+            </a-popover>
+            <a-input v-model:value="st.statusName" placeholder="状态名称" :maxlength="20" class="status-name-input" />
+            <div class="status-row-actions">
+              <button type="button" class="status-icon-btn" :disabled="idx === 0" aria-label="上移" @click="moveStatus(idx, -1)"><ArrowUpOutlined /></button>
+              <button type="button" class="status-icon-btn" :disabled="idx === statusRows.length - 1" aria-label="下移" @click="moveStatus(idx, 1)"><ArrowDownOutlined /></button>
+              <button type="button" class="status-icon-btn danger" :disabled="statusRows.length <= 1" aria-label="删除" @click="removeStatus(idx)"><DeleteOutlined /></button>
+            </div>
+          </div>
+          <button type="button" class="status-add-btn" @click="addStatus"><PlusOutlined /> 添加状态</button>
+        </div>
+        <div v-if="statusError" class="status-error">{{ statusError }}</div>
+      </a-spin>
+      <template #footer>
+        <div class="status-drawer-footer">
+          <a-button @click="statusDrawerOpen = false">取消</a-button>
+          <a-button type="primary" :loading="statusSaving" :disabled="statusLoading" @click="saveStatuses">保存</a-button>
+        </div>
+      </template>
+    </a-drawer>
   </div>
 </template>
 
@@ -142,16 +204,42 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { Modal, type FormInstance, type TablePaginationConfig } from 'ant-design-vue'
 import type { Rule } from 'ant-design-vue/es/form'
-import { PlusOutlined, SearchOutlined, ReloadOutlined, EditOutlined, DeleteOutlined, TagsOutlined, ApartmentOutlined, CheckOutlined } from '@ant-design/icons-vue'
+import { PlusOutlined, SearchOutlined, ReloadOutlined, EditOutlined, DeleteOutlined, TagsOutlined, ApartmentOutlined, CheckOutlined, ArrowUpOutlined, ArrowDownOutlined, FlagOutlined } from '@ant-design/icons-vue'
 import {
   queryIssueTypes, createIssueType, updateIssueType, deleteIssueType, getOrganizationTree,
-  type IssueTypeItem, type IssueTypeSaveParams, type OrganizationNode,
+  queryIssueTypeStatuses, saveIssueTypeStatuses,
+  type IssueTypeItem, type IssueTypeSaveParams, type OrganizationNode, type IssueTypeStatus,
 } from '@/api/faiz'
 import OrgTreeSelect from '@/components/OrgTreeSelect.vue'
 
 /** 图标颜色候选（Apple 系统色） */
 const COLOR_OPTIONS = ['#0A84FF', '#5E5CE6', '#AF52DE', '#FF375F', '#FF3B30', '#FF9500', '#FFCC00', '#34C759', '#30B0C7', '#8E8E93']
 const DEFAULT_COLOR = COLOR_OPTIONS[0]
+
+/** 问题状态颜色 */
+const STATUS_COLOR_OPTIONS = ['#8E8E93', '#0A84FF', '#5E5CE6', '#AF52DE', '#FF9500', '#FFCC00', '#34C759', '#30B0C7', '#FF375F', '#FF3B30']
+
+/** 表单内的状态行（_key 仅用于列表渲染） */
+type StatusRow = IssueTypeStatus & { _key: number; color: string }
+let statusKeySeq = 0
+function toStatusRow(s: Partial<IssueTypeStatus>): StatusRow {
+  return {
+    id: s.id,
+    statusName: s.statusName ?? '',
+    statusCode: s.statusCode,
+    color: s.color || '#0A84FF',
+    sort: s.sort,
+    _key: ++statusKeySeq,
+  }
+}
+/** 新建问题类型时的默认状态 */
+function defaultStatuses(): StatusRow[] {
+  return [
+    toStatusRow({ statusName: '待处理', color: '#8E8E93' }),
+    toStatusRow({ statusName: '处理中', color: '#0A84FF' }),
+    toStatusRow({ statusName: '已完成', color: '#34C759' }),
+  ]
+}
 
 const STATUS_FILTERS = [
   { label: '全部', value: 'all' },
@@ -166,7 +254,7 @@ const columns = [
   { title: '描述', key: 'description', ellipsis: true },
   { title: '事项数', key: 'issueCount', width: 90 },
   { title: '启用', key: 'status', width: 80 },
-  { title: '操作', key: 'action', width: 100, fixed: 'right' as const },
+  { title: '操作', key: 'action', width: 130, fixed: 'right' as const },
 ]
 
 // ---- 列表 ----
@@ -279,6 +367,81 @@ const statusChecked = computed({
 const rules: Record<string, Rule[]> = {
   issueTypeName: [{ required: true, whitespace: true, message: '请输入问题类型名称' }],
   organizationId: [{ required: true, type: 'number', message: '请选择所属组织' }],
+}
+
+// ---- 问题状态抽屉 ----
+const statusDrawerOpen = ref(false)
+const statusType = ref<IssueTypeItem | null>(null)
+const statusRows = ref<StatusRow[]>([])
+const statusLoading = ref(false)
+const statusSaving = ref(false)
+const statusIsDefault = ref(false)
+const statusError = ref('')
+
+async function openStatusDrawer(r: IssueTypeItem) {
+  statusType.value = r
+  statusRows.value = []
+  statusIsDefault.value = false
+  statusError.value = ''
+  statusDrawerOpen.value = true
+  statusLoading.value = true
+  try {
+    const res = await queryIssueTypeStatuses(r.id)
+    const list = res?.success ? res.data || [] : []
+    statusRows.value = list.length ? list.map(toStatusRow) : defaultStatuses()
+    statusIsDefault.value = !list.length
+  } catch {
+    statusRows.value = defaultStatuses()
+    statusIsDefault.value = true
+  } finally {
+    statusLoading.value = false
+  }
+}
+
+function addStatus() {
+  statusRows.value.push(toStatusRow({ statusName: '' }))
+}
+function removeStatus(idx: number) {
+  statusRows.value.splice(idx, 1)
+}
+function moveStatus(idx: number, delta: number) {
+  const to = idx + delta
+  if (to < 0 || to >= statusRows.value.length) return
+  const [row] = statusRows.value.splice(idx, 1)
+  statusRows.value.splice(to, 0, row)
+}
+
+function validateStatuses(): string {
+  const names = statusRows.value.map(s => s.statusName.trim())
+  if (!names.length) return '请至少添加一个状态'
+  if (names.some(n => !n)) return '请填写所有状态名称'
+  if (new Set(names).size !== names.length) return '状态名称不能重复'
+  return ''
+}
+
+async function saveStatuses() {
+  if (!statusType.value) return
+  statusError.value = validateStatuses()
+  if (statusError.value) return
+  statusSaving.value = true
+  try {
+    const res = await saveIssueTypeStatuses({ issueTypeId: statusType.value.id, statuses: serializeStatuses(statusRows.value) })
+    if (res?.success) statusDrawerOpen.value = false
+  } catch {
+    // 请求层已统一提示
+  } finally {
+    statusSaving.value = false
+  }
+}
+
+/** 提交用：去掉渲染 key，按顺序写入 sort */
+function serializeStatuses(rows: Partial<IssueTypeStatus>[]): IssueTypeStatus[] {
+  return rows.map((s, i) => ({
+    id: s.id,
+    statusName: (s.statusName ?? '').trim(),
+    color: s.color,
+    sort: i + 1,
+  }))
 }
 
 function openCreate() {
@@ -548,6 +711,159 @@ onMounted(() => {
   border-radius: 6px;
 }
 
+
+
+
+.status-dot {
+  width: 6px;
+  height: 6px;
+  flex-shrink: 0;
+  border-radius: 50%;
+}
+
+.status-dot.lg {
+  width: 12px;
+  height: 12px;
+}
+
+
+.status-drawer-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.type-avatar.sm {
+  width: 24px;
+  height: 24px;
+  font-size: 12px;
+  border-radius: 7px;
+}
+
+.status-drawer-hint {
+  margin-bottom: 12px;
+  font-size: 12px;
+  line-height: 20px;
+  color: #8e8e93;
+}
+
+.status-default-tip {
+  margin-left: 6px;
+  padding: 0 6px;
+  color: #c93400;
+  background: #fff4e5;
+  border-radius: 6px;
+}
+
+.status-error {
+  margin-top: 8px;
+  font-size: 12px;
+  color: #ff3b30;
+}
+
+.status-drawer-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.status-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  background: #fafafc;
+  border: 1px solid #eef0f3;
+  border-radius: 12px;
+}
+
+.status-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.status-color-btn {
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  background: #fff;
+  border: 1px solid #e5e5ea;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+
+.status-color-btn:hover {
+  border-color: #c7c7cc;
+}
+
+.status-name-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.status-row-actions {
+  display: inline-flex;
+  flex-shrink: 0;
+  gap: 2px;
+}
+
+.status-icon-btn {
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  font-size: 12px;
+  color: #6e6e73;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.status-icon-btn:hover:not(:disabled) {
+  color: #1d1d1f;
+  background: #e9e9ee;
+}
+
+.status-icon-btn.danger:hover:not(:disabled) {
+  color: #ff3b30;
+  background: rgba(255, 59, 48, 0.1);
+}
+
+.status-icon-btn:disabled {
+  color: #d1d1d6;
+  cursor: not-allowed;
+}
+
+.status-add-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 32px;
+  font-size: 13px;
+  color: #0a84ff;
+  background: #fff;
+  border: 1px dashed #c7d8f5;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.status-add-btn:hover {
+  background: #f0f6ff;
+  border-color: #0a84ff;
+}
+
 .org-filter {
   width: 200px;
 }
@@ -620,5 +936,42 @@ onMounted(() => {
     flex: 1 1 100%;
     width: auto;
   }
+}
+</style>
+
+<style>
+.status-color-popover .ant-popover-inner {
+  padding: 10px;
+  border-radius: 12px;
+}
+
+.status-color-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 24px);
+  gap: 8px;
+}
+
+.status-color-grid .color-swatch {
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  font-size: 11px;
+  color: #fff;
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.06);
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+
+.status-color-grid .color-swatch:hover {
+  transform: scale(1.1);
+}
+
+.status-color-grid .color-swatch.active {
+  box-shadow: 0 0 0 2px #fff, 0 0 0 4px rgba(15, 23, 42, 0.18);
 }
 </style>

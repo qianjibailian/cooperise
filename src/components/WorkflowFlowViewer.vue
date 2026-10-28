@@ -11,6 +11,7 @@ import LogicFlow, { RectNode, RectNodeModel } from '@logicflow/core'
 import '@logicflow/core/dist/style/index.css'
 import type { WorkflowNode } from '@/types/faiz'
 import { workflowToFlow } from './workflow-flow-layout'
+import { wfEdgeRegister, WF_EDGE_TYPE } from './workflow-flow-edge'
 import type { WfFlowNodeState, WfProps } from './workflow-flow-layout'
 
 const props = withDefaults(
@@ -55,9 +56,13 @@ class ViewerNodeModel extends RectNodeModel {
       editable: false,
     } as any
   }
-  // 只读视图：不渲染锚点
+  // 与编辑画板一致：左入右出，连线水平进出节点（只读模式下锚点不显示）
   getDefaultAnchor() {
-    return []
+    const { x, y, width } = this
+    return [
+      { x: x - width / 2, y, id: 'target', type: 'target' },
+      { x: x + width / 2, y, id: 'source', type: 'source' },
+    ]
   }
 }
 class ViewerNodeView extends RectNode {}
@@ -86,10 +91,11 @@ onMounted(() => {
   const lf = new LogicFlow({
     container: el,
     grid: true,
-    edgeType: 'polyline',
+    edgeType: WF_EDGE_TYPE,
   } as any)
   lf.setSilentMode(true)
   lf.register({ type: 'wfNode', view: ViewerNodeView, model: ViewerNodeModel })
+  lf.register(wfEdgeRegister as any)
   lfRef.value = lf
   render()
   if (typeof ResizeObserver !== 'undefined') {

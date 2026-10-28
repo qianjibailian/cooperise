@@ -384,8 +384,8 @@
     <!-- 编辑弹窗：与顶部新建弹窗同一组件，传入 issueKey 进入编辑模式 -->
     <NewIssueFormModal v-model:open="editFormOpen" :issue-key="editIssueKey" @submitted="handleEditSubmitted" />
 
-    <!-- 流程推进弹窗：点击状态字段，展示当前节点的下一步节点 -->
-    <WorkflowNextStepModal v-model:open="wfModalOpen" :issue-key="wfCurrentIssueKey" @submit="handleWfSubmitted" />
+    <!-- 状态变更弹窗：点击状态字段，展示当前节点的下一步节点 -->
+    <WorkflowNextStepModal v-model:open="wfModalOpen" :issue-key="wfCurrentIssueKey" :issue-type-code="wfCurrentIssueTypeCode" @submit="handleWfSubmitted" />
   </div>
 </template>
 
@@ -428,16 +428,30 @@ function openDetail(issueKey: string) {
   detailDrawerOpen.value = true
 }
 
-// ---------- 流程推进弹窗（点击状态字段，展示当前节点的下一步节点） ----------
+// ---------- 状态变更弹窗（点击状态字段，展示当前节点的下一步节点） ----------
 const wfModalOpen = ref(false)
 const wfCurrentIssueKey = ref('')
+const wfCurrentIssueTypeCode = ref('')
 
-/** 点击状态字段：打开流程推进弹窗 */
+/** 点击状态字段：带上当前事项的问题类型编码，打开状态变更弹窗 */
 function openWorkflowModal(rec: IssueRecord) {
   const issueKey = String(rec.issueKey || '')
   if (!issueKey) return
   wfCurrentIssueKey.value = issueKey
+  wfCurrentIssueTypeCode.value = getIssueTypeCode(rec)
   wfModalOpen.value = true
+}
+
+/** 取问题类型编码（如 TYPE10001）：issuetype 字段值为编码字符串，或对象中的 issueTypeCode / code */
+function getIssueTypeCode(rec: IssueRecord): string {
+  const f = rec.issueField?.find(it => it.id === 'issuetype')
+  const v = f?.value
+  if (v == null || v === '') return ''
+  if (typeof v === 'object') {
+    const o = v as Record<string, unknown>
+    return String(o.issueTypeCode ?? o.code ?? o.value ?? '')
+  }
+  return String(v)
 }
 
 /** 概要列 Tooltip（单元格维度）：按行隔离状态，悬停整个单元格时若概要文本溢出则展示完整内容 */
@@ -1801,7 +1815,7 @@ function handleEditSubmitted() {
 /** 顶部新建弹窗提交成功后刷新列表 */
 onIssueCreated(() => fetchIssues())
 
-/** 流程推进（状态修改）提交成功后刷新列表 */
+/** 状态变更提交成功后刷新列表 */
 function handleWfSubmitted() {
   fetchIssues()
 }

@@ -235,10 +235,6 @@
                 <component :is="TagsOutlined" />
                 <span>问题类型</span>
               </a-menu-item>
-              <a-menu-item key="/admin/issue-status">
-                <component :is="FlagOutlined" />
-                <span>问题状态</span>
-              </a-menu-item>
               <a-menu-item key="/admin/system-field">
                 <component :is="AppstoreOutlined" />
                 <span>系统字段</span>
@@ -296,7 +292,6 @@ import {
   ApartmentOutlined,
   IdcardOutlined,
   TagsOutlined,
-  FlagOutlined,
   DeploymentUnitOutlined,
   UserOutlined,
   ToolOutlined,

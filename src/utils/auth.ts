@@ -26,6 +26,9 @@ export interface AuthUser {
   roleNames?: string[]
   positionId?: number
   positionName?: string | null
+  /** 所属组织（登录接口 / 个人中心返回） */
+  organizations?: { id: number; organizationName?: string; pathName?: string; status?: number }[]
+  organizationId?: number | string | null
   [key: string]: unknown
 }
 
@@ -215,6 +218,16 @@ function clearAllCookies() {
     if (name) names.push(name)
   })
   names.forEach((name) => deleteCookie(name))
+}
+
+/** 当前用户所属组织 ID：优先登录用户 organizations 中第一个启用的组织，兼容 organizationId 单值字段 */
+export function getUserOrganizationId(): number | string | undefined {
+  const user = userRef.value
+  const raw = loginRef.value as (StoredLogin & { organizations?: AuthUser['organizations']; organizationId?: number | string | null }) | null
+  const orgs = user?.organizations?.length ? user.organizations : raw?.organizations || []
+  const org = orgs.find((o) => o.status !== 0) ?? orgs[0]
+  const id = org?.id ?? user?.organizationId ?? raw?.organizationId
+  return id == null || String(id) === '' ? undefined : id
 }
 
 export function useAuth() {

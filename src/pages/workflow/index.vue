@@ -279,14 +279,20 @@
 
       <div class="fs-body">
         <!-- 画板模式：LogicFlow 可视化编辑 -->
-        <WorkflowFlowCanvas v-if="defMode === 'canvas'" ref="flowCanvasRef" :model-value="defForm.nodes" />
+        <WorkflowFlowCanvas v-if="defMode === 'canvas'" ref="flowCanvasRef" :model-value="defForm.nodes" :status-options="flowStatusOptions" :position-options="flowPositionOptions" />
 
         <!-- 列表模式：树形表单编辑，一个节点可延伸多个后续节点 -->
         <template v-else>
-          <div class="node-list">
-            <WorkflowNodeEditor v-for="(n, idx) in defForm.nodes" :key="idx" :node="n" :depth="0" @remove="removeNode(idx)" />
+          <div class="node-list-toolbar">
+            <span class="node-list-summary">共 {{ countNodes(defForm.nodes) }} 个节点</span>
+            <span class="node-list-legend"><i class="legend-bar" />已配置<i class="legend-bar is-empty" />待选择状态</span>
+            <a-button size="small" @click="toggleAllNodes(true)"><PlusSquareOutlined /> 全部展开</a-button>
+            <a-button size="small" @click="toggleAllNodes(false)"><MinusSquareOutlined /> 全部收起</a-button>
           </div>
-          <a-button type="dashed" block class="node-add" @click="addNode"><PlusOutlined /> 添加节点</a-button>
+          <div class="node-list">
+            <WorkflowNodeEditor v-for="(n, idx) in defForm.nodes" :key="idx" :node="n" :depth="0" :status-options="flowStatusOptions" :position-options="flowPositionOptions" :expand-signal="nodeExpandSignal" @remove="removeNode(idx)" @insert-after="insertNodeAfter(idx)" />
+          </div>
+          <a-button v-if="!defForm.nodes.length" type="dashed" size="small" class="node-add" @click="addNode"><PlusOutlined /> 添加节点</a-button>
         </template>
       </div>
 
@@ -306,7 +312,7 @@
         </a-form-item>
         <a-form-item label="问题类型" required>
           <a-select v-model:value="startForm.issueTypeId" placeholder="选择后按问题类型自动匹配启用流程" size="large">
-            <a-select-option v-for="opt in ISSUE_TYPE_OPTIONS" :key="opt.value" :value="opt.value">{{ opt.label }}</a-select-option>
+            <a-select-option v-for="opt in allIssueTypeOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</a-select-option>
           </a-select>
         </a-form-item>
         <a-form-item label="指定流程">
@@ -436,6 +442,8 @@ import {
   CheckOutlined,
   ThunderboltOutlined,
   DeleteOutlined,
+  PlusSquareOutlined,
+  MinusSquareOutlined,
 } from '@ant-design/icons-vue'
 import {
   listWorkflowDefinitions,
@@ -443,6 +451,8 @@ import {
   saveWorkflowDefinition,
   getOrganizationTree,
   queryIssueTypes,
+  queryIssueTypeStatuses,
+  queryPositions,
   type OrganizationNode,
   deleteWorkflowDefinition,
   getWorkflowDefinition,
@@ -499,13 +509,40 @@ function formatTime(v?: string | null): string {
 }
 
 // ==================== 流程定义 ====================
-// 问题类型（与新建单保持一致）
-const ISSUE_TYPE_OPTIONS = [
-  { value: '10001', label: '需求' },
-  { value: '10002', label: '任务' },
-  { value: '10003', label: '缺陷' },
-  { value: '10004', label: '其他' },
-]
+/** 问题类型选项：value 为问题类型编码 issueTypeCode（如 TYPE10001），id 为数字主键（查询状态用） */
+interface IssueTypeOption {
+  value: string
+  label: string
+  id: number
+}
+
+/** 接口问题类型 → 选项：value 取 issueTypeCode，缺失时退回 id */
+function toIssueTypeOption(t: { id: number; issueTypeName: string; issueTypeCode?: string }): IssueTypeOption {
+  return { value: t.issueTypeCode || String(t.id), label: t.issueTypeName, id: t.id }
+}
+
+/** 全部启用的问题类型（不限组织）：用于发起工作流、列表名称回显 */
+const allIssueTypeOptions = ref<IssueTypeOption[]>([])
+async function loadAllIssueTypes() {
+  try {
+    const res = await queryIssueTypes({ page: 1, pageSize: 999, status: 1 })
+    if (res?.success) allIssueTypeOptions.value = (res.data?.list || []).map(toIssueTypeOption)
+  } catch {
+    // 请求层已统一提示
+  }
+}
+
+/** 按编码（兼容历史数字 ID）查找问题类型选项 */
+function findIssueTypeOption(v?: string | number | null): IssueTypeOption | undefined {
+  if (v === undefined || v === null || v === '') return undefined
+  const key = String(v)
+  const lists = [defIssueTypeOptions.value, allIssueTypeOptions.value]
+  for (const list of lists) {
+    const opt = list.find((o) => o.value === key) || list.find((o) => String(o.id) === key)
+    if (opt) return opt
+  }
+  return undefined
+}
 
 interface PresetWorkflow {
   processName: string
@@ -515,7 +552,7 @@ interface PresetWorkflow {
 /** 预置工作流模板：问题类型 → 默认流程节点 */
 const PRESET_WORKFLOWS: Record<string, PresetWorkflow> = {
   // 任务：待处理 → 处理中 → 后续节点（已完成 / 取消 / 暂停）
-  '10002': {
+  任务: {
     processName: '任务流程',
     nodes: [
       { nodeId: 'task_pending', nodeName: '待处理' },
@@ -531,7 +568,7 @@ const PRESET_WORKFLOWS: Record<string, PresetWorkflow> = {
     ],
   },
   // 需求：待产品经理处理 → 待需求评审 → 待技术排期 → 开发中 → 已提测 → 测试中 → 待验收 → 待发布 → 已发布
-  '10001': {
+  需求: {
     processName: '需求流程',
     nodes: [
       { nodeId: 'demand_pm_pending', nodeName: '待产品经理处理' },
@@ -547,16 +584,15 @@ const PRESET_WORKFLOWS: Record<string, PresetWorkflow> = {
   },
 }
 
-/** 问题类型ID → 名称 */
+/** 问题类型编码 → 名称 */
 function issueTypeNameOf(v?: string | number | null): string {
   if (v === undefined || v === null || v === '') return '-'
-  const opt = defIssueTypeOptions.value.find((o) => o.value === String(v)) || ISSUE_TYPE_OPTIONS.find((o) => String(o.value) === String(v))
-  return opt ? opt.label : String(v)
+  return findIssueTypeOption(v)?.label ?? String(v)
 }
 
 // ---------- 流程绑定：组织 → 组织下的问题类型 ----------
 const defOrgTree = ref<OrganizationNode[]>([])
-const defIssueTypeOptions = ref<{ value: string; label: string }[]>([])
+const defIssueTypeOptions = ref<IssueTypeOption[]>([])
 const defIssueTypeLoading = ref(false)
 let defIssueTypeSeq = 0
 
@@ -580,7 +616,7 @@ async function loadDefIssueTypes(orgId?: number | string) {
   try {
     const res = await queryIssueTypes({ page: 1, pageSize: 999, status: 1, organizationId: Number(orgId) })
     if (seq !== defIssueTypeSeq) return
-    defIssueTypeOptions.value = res?.success ? (res.data?.list || []).map((t) => ({ value: String(t.id), label: t.issueTypeName })) : []
+    defIssueTypeOptions.value = res?.success ? (res.data?.list || []).map(toIssueTypeOption) : []
   } catch {
     if (seq === defIssueTypeSeq) defIssueTypeOptions.value = []
   } finally {
@@ -655,12 +691,54 @@ const defDetailLoading = ref(false)
 // ========== 流程设置弹窗：只编辑流程节点 ==========
 const flowSettingModal = reactive<{ open: boolean; processName: string }>({ open: false, processName: '' })
 const flowSettingSaving = ref(false)
+/** 流程绑定问题类型下的全部状态：节点直接选择状态，节点名称取状态名称 */
+const flowStatusOptions = ref<{ value: string; label: string }[]>([])
+
+/** 列表模式一键展开 / 收起：seq 自增触发各层节点同步 */
+const nodeExpandSignal = reactive({ open: false, seq: 0 })
+function toggleAllNodes(open: boolean) {
+  nodeExpandSignal.open = open
+  nodeExpandSignal.seq++
+}
+
+/** 经办岗位选项：启用的岗位，标签带组织路径便于区分同名岗位 */
+const flowPositionOptions = ref<{ value: string; label: string }[]>([])
+
+async function loadFlowPositions() {
+  try {
+    const res = await queryPositions({ page: 1, pageSize: 999, status: 1 })
+    if (res?.success) {
+      flowPositionOptions.value = (res.data?.list || []).map((p) => {
+        const org = p.organizationPathName || p.organizationName
+        return { value: String(p.id), label: org ? `${p.positionName}（${org}）` : p.positionName }
+      })
+    }
+  } catch {
+    // 错误提示由请求拦截器统一展示后端 message
+  }
+}
+
+async function loadFlowStatuses(issueType?: string | number | null) {
+  flowStatusOptions.value = []
+  if (issueType == null || issueType === '') return
+  // 流程绑定的是问题类型编码，状态接口需要数字 ID：先按编码换算，历史数据为数字 ID 时直接使用
+  if (!findIssueTypeOption(issueType)) await loadAllIssueTypes()
+  const id = findIssueTypeOption(issueType)?.id ?? Number(issueType)
+  if (!id || Number.isNaN(id)) return
+  try {
+    const res = await queryIssueTypeStatuses(id)
+    if (res?.success) flowStatusOptions.value = (res.data || []).map((s) => ({ value: String(s.id), label: s.statusName }))
+  } catch {
+    // 错误提示由请求拦截器统一展示后端 message
+  }
+}
 
 /** 打开"流程设置"：拉取最新详情并只展示节点编辑区 */
 async function openFlowSetting(record: WorkflowDefinition) {
   defMode.value = 'canvas'
   flowSettingModal.processName = record.processName || ''
   flowSettingModal.open = true
+  nodeExpandSignal.open = false
   if (record.id) {
     defDetailLoading.value = true
     try {
@@ -682,6 +760,11 @@ async function openFlowSetting(record: WorkflowDefinition) {
     remark: record.remark || '',
     nodes: record.nodes?.length ? normalizeLegacyNodes(record.nodes).map((n) => cloneNode(n)) : [emptyNode()],
   }
+  await Promise.all([loadFlowStatuses(record.issueTypeId), loadFlowPositions()])
+  // 历史数据保存的是数字 ID：保存流程设置时统一提交编码
+  const matchedType = findIssueTypeOption(defForm.value.issueTypeId)
+  if (matchedType) defForm.value.issueTypeId = matchedType.value
+  if (!flowStatusOptions.value.length) message.warning('该问题类型暂未配置状态，请先在「问题类型」中维护状态')
 }
 
 /** 保存流程设置：导出画布并提交节点（携带该流程的完整定义字段） */
@@ -690,7 +773,7 @@ async function saveFlowSetting() {
   const f = defForm.value
   if (!f.processKey.trim()) return message.warning('流程标识缺失，请重试')
   ensureNodeIds(f.nodes)
-  if (!f.nodes.some(nodeValid)) return message.warning('请至少配置一个节点名称')
+  if (!f.nodes.some(nodeValid)) return message.warning('请至少选择一个节点状态')
   flowSettingSaving.value = true
   try {
     const res = await deployWorkflowDefinition({
@@ -744,6 +827,9 @@ function emptyNode(): WorkflowNode {
 }
 function addNode() {
   defForm.value.nodes.push(emptyNode())
+}
+function insertNodeAfter(idx: number) {
+  defForm.value.nodes.splice(idx + 1, 0, emptyNode())
 }
 function removeNode(idx: number) {
   defForm.value.nodes.splice(idx, 1)
@@ -837,8 +923,13 @@ async function openDefModal(record?: WorkflowDefinition) {
   await loadDefIssueTypes(record.organizationId)
   // 历史数据的问题类型不在当前组织列表中：补一个选项，保证回显名称
   const curId = defForm.value.issueTypeId
-  if (curId != null && !defIssueTypeOptions.value.some((o) => o.value === String(curId))) {
-    defIssueTypeOptions.value = [...defIssueTypeOptions.value, { value: String(curId), label: defForm.value.issueTypeName || String(curId) }]
+  const matched = findIssueTypeOption(curId)
+  if (matched) defForm.value.issueTypeId = matched.value
+  else if (curId != null && curId !== '') {
+    defIssueTypeOptions.value = [
+      ...defIssueTypeOptions.value,
+      { value: String(curId), label: defForm.value.issueTypeName || String(curId), id: Number(curId) },
+    ]
   }
 }
 
@@ -854,8 +945,7 @@ function applyPresetTemplate() {
   if (!v) return message.warning('请先选择问题类型')
   // 问题类型来自接口，ID 与预置模板不一致时按名称匹配（需求 / 任务）
   const typeName = issueTypeNameOf(v)
-  const presetKey = PRESET_WORKFLOWS[String(v)] ? String(v) : ISSUE_TYPE_OPTIONS.find((o) => o.label === typeName)?.value
-  const preset = presetKey ? PRESET_WORKFLOWS[presetKey] : undefined
+  const preset = PRESET_WORKFLOWS[typeName]
   if (!preset) return message.info('该问题类型暂无预置模板，请手动配置节点')
   defForm.value.processName = preset.processName
   defForm.value.nodes = preset.nodes.map((n) => cloneNode(n))
@@ -994,6 +1084,7 @@ function openStartModal() {
   startForm.initiator = currentUser.value
   startForm.ccUsers = ''
   startModal.open = true
+  loadAllIssueTypes()
 }
 
 async function handleStartWorkflow() {
@@ -1426,6 +1517,7 @@ async function markRead(record: WorkflowCc) {
 }
 
 onMounted(() => {
+  loadAllIssueTypes()
   loadDefinitions()
 })
 </script>
@@ -1685,6 +1777,10 @@ onMounted(() => {
   flex-direction: column;
   gap: 8px;
   margin-bottom: 8px;
+  padding: 12px;
+  background: #f7f8fa;
+  border: 1px solid #ececf2;
+  border-radius: 12px;
 }
 .node-row {
   display: flex;
@@ -1705,6 +1801,40 @@ onMounted(() => {
 }
 .node-value {
   width: 130px;
+}
+.node-list-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  padding: 6px 10px;
+  background: #fff;
+  border: 1px solid #ececf2;
+  border-radius: 10px;
+}
+.node-list-summary {
+  font-size: 13px;
+  font-weight: 500;
+  color: #262626;
+}
+.node-list-legend {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-right: auto;
+  margin-left: 12px;
+  font-size: 12px;
+  color: #8c8c8c;
+}
+.legend-bar {
+  width: 3px;
+  height: 12px;
+  margin-left: 6px;
+  background: #722ed1;
+  border-radius: 2px;
+}
+.legend-bar.is-empty {
+  background: #faad14;
 }
 .node-status {
   width: 110px;
