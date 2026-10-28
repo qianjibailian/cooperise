@@ -152,7 +152,6 @@
                 {{ statusLabel }}
               </a-tag>
               <span v-else class="attr-empty">—</span>
-              <a v-if="statusLabel" class="attr-workflow" @click="openWorkflow">查看工作流</a>
             </span>
           </div>
 
@@ -540,21 +539,7 @@
               <div class="panel-card-body">
                 <a-tabs size="small" class="nn-activity-tabs">
                   <a-tab-pane key="change" tab="变更记录">
-                    <a-timeline v-if="activityLogs.length" class="nn-activity-log">
-                      <a-timeline-item v-for="log in activityLogs" :key="String(log.id)">
-                        <div class="nn-activity-item">
-                          <div class="nn-activity-meta">
-                            <span class="nn-activity-name">{{ log.processName || '流程' }}</span>
-                            <span class="nn-activity-status">{{ statusText(log.status) }}</span>
-                          </div>
-                          <div class="nn-activity-node">节点：{{ log.nodeName || log.currentNodeName || '—' }}</div>
-                          <div class="nn-activity-time">
-                            <template v-if="log.operator">操作人：{{ log.operator }} · </template>{{ formatLogTime(log.createTime) }}
-                          </div>
-                        </div>
-                      </a-timeline-item>
-                    </a-timeline>
-                    <MiniEmpty v-else text="暂无变更记录" />
+                    <MiniEmpty text="暂无变更记录" />
                   </a-tab-pane>
                 </a-tabs>
               </div>
@@ -674,8 +659,6 @@
       </main>
     </div>
   </div>
-
-  <WorkflowInstanceModal v-model:open="wfOpen" :issue-key="wfIssueKey" />
 </template>
 
 <script setup lang="ts">
@@ -698,11 +681,10 @@ import {
   EditOutlined,
 } from '@ant-design/icons-vue'
 import dayjs from 'dayjs'
-import { queryDetail, patchIssue, listWorkflowHistory } from '@/api/faiz'
+import { queryDetail, patchIssue } from '@/api/faiz'
 import { message } from 'ant-design-vue'
-import type { DetailData, DetailField, WorkflowHistory } from '@/types/faiz'
+import type { DetailData, DetailField } from '@/types/faiz'
 import FieldValueEditor from '@/components/FieldValueEditor.vue'
-import WorkflowInstanceModal from '@/components/WorkflowInstanceModal.vue'
 
 // ============================================================
 // 子组件：MiniEmpty 小型空状态
@@ -985,15 +967,6 @@ const dependencyCollapseKeys = ref<string[]>([])
 const activityCollapseKeys = ref<string[]>(['activity'])
 const onlyShowValued = ref(true)
 /** 活动日志：该事项的任务历史记录 */
-const activityLogs = ref<WorkflowHistory[]>([])
-
-// ======================= 工作流弹窗 =======================
-const wfOpen = ref(false)
-const wfIssueKey = ref('')
-function openWorkflow() {
-  wfIssueKey.value = issueKey.value || ''
-  wfOpen.value = true
-}
 
 // ======================= 描述区富文本组件（WangEditor 可编辑） =======================
 const richTextModels = reactive<Record<string, string>>({})
@@ -1235,36 +1208,19 @@ const statusLabel = computed(() => {
   }
   return ''
 })
-const statusCategory = computed(() => {
+/** 状态色：取后端下发的 statusColor（十六进制），无效值时回落默认蓝 */
+const statusHexColor = computed(() => {
   const v = statusValue.value
   if (typeof v === 'object' && v !== null) {
-    return String((v as Record<string, unknown>).statusCategory ?? '')
+    const c = (v as Record<string, unknown>).statusColor
+    if (typeof c === 'string' && /^#[0-9a-fA-F]{6}$/.test(c)) return c
   }
   return ''
 })
-const statusTagColor = computed(() => {
-  switch (statusCategory.value) {
-    case 'IN_PROGRESS':
-      return 'blue'
-    case 'DONE':
-      return 'green'
-    case 'TO_DO':
-    default:
-      return 'default'
-  }
-})
-const statusDotColor = computed(() => {
-  switch (statusCategory.value) {
-    case 'IN_PROGRESS':
-      return '#1677ff'
-    case 'DONE':
-      return '#52c41a'
-    case 'TO_DO':
-      return '#8c8c8c'
-    default:
-      return '#1677ff'
-  }
-})
+/** 状态标签颜色：a-tag color 直接吃十六进制，无有效值时用预设灰 */
+const statusTagColor = computed(() => statusHexColor.value || 'default')
+/** 状态圆点颜色（实际 CSS 色值） */
+const statusDotColor = computed(() => statusHexColor.value || '#1677ff')
 
 // priority
 const priorityField = computed(() => findField('priority'))
@@ -1451,7 +1407,6 @@ async function fetchDetail() {
   notFound.value = false
   detailData.value = null
   activeTab.value = ''
-  activityLogs.value = []
   // 恢复折叠板默认展开状态
   teamCollapseKeys.value = ['team']
   descCollapseKeys.value = ['desc']
@@ -1465,7 +1420,6 @@ async function fetchDetail() {
   siblingCollapseKeys.value = []
   dependencyCollapseKeys.value = []
   activityCollapseKeys.value = ['activity']
-  fetchActivityLogs()
   try {
     const res = await queryDetail({ key: issueKey.value })
     if (res?.success && res.data) {
@@ -1483,28 +1437,6 @@ async function fetchDetail() {
   } finally {
     loading.value = false
   }
-}
-
-/** 加载活动日志（任务历史列表） */
-async function fetchActivityLogs() {
-  try {
-    const res = await listWorkflowHistory({ issueKey: issueKey.value, pageNum: 1, pageSize: 50 })
-    activityLogs.value = res?.data?.list ?? []
-  } catch {
-    activityLogs.value = []
-  }
-}
-
-/** 流程状态文案 */
-function statusText(s?: string): string {
-  if (!s) return '—'
-  const map: Record<string, string> = { RUNNING: '进行中', END: '已结束', CANCELED: '已撤销' }
-  return map[s] || s
-}
-
-/** 日志时间格式化 */
-function formatLogTime(t?: string): string {
-  return t ? dayjs(t).format('YYYY-MM-DD HH:mm') : '—'
 }
 
 onMounted(() => {
@@ -1959,18 +1891,6 @@ function formatRichText(v: unknown): string {
   border-radius: 50%;
   box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.6);
 }
-.attr-workflow {
-  color: #1677ff;
-  font-size: 11.5px;
-  text-decoration: none;
-  cursor: pointer;
-  padding-left: 2px;
-  transition: opacity 0.15s;
-  white-space: nowrap;
-  flex-shrink: 0;
-}
-.attr-workflow:hover { opacity: 0.75; }
-
 /* Priority 圆点 + 文字（只改文字颜色） */
 .priority-text {
   display: inline-flex;

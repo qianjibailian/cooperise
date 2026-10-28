@@ -3,6 +3,7 @@ import { ref, reactive, computed, watch } from 'vue'
 import { message } from 'ant-design-vue'
 import type { WorkflowNode } from '@/types/faiz'
 import { getWorkflowNextNodes, changeWorkflowTaskStatus } from '@/api/faiz'
+import { getLoginUsername } from '@/utils/auth'
 
 const props = defineProps<{
   open: boolean
@@ -21,8 +22,8 @@ const modalOpen = computed({
   set: (v: boolean) => emit('update:open', v),
 })
 
-/** 当前操作人账号（与工作流页面一致的取值约定） */
-const operator = localStorage.getItem('wf_current_user') || '10284941'
+/** 当前操作人账号：取登录用户，兼容本地调试写入的 wf_current_user */
+const operator = getLoginUsername() || localStorage.getItem('wf_current_user') || '10284941'
 
 const loading = ref(false)
 const saving = ref(false)

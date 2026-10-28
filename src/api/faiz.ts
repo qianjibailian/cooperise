@@ -29,12 +29,7 @@ import type {
   FilterDraft,
   IssuePatchField,
   WorkflowDefinition,
-  WorkflowInstance,
-  WorkflowHistory,
   WorkflowNode,
-  WorkflowTask,
-  WorkflowCc,
-  WorkflowPageData,
 } from '@/types/faiz'
 
 // ==================== Template API ====================
@@ -289,47 +284,6 @@ export function updateWorkflowDefinitionStatus(id: number, status: number): Prom
   return request.post(`/workflow/definition/${id}/status`, null, { params: { status } })
 }
 
-/** 发起流程（POST /workflow/start）
- * 1) 传 issueTypeId：按问题类型自动匹配绑定该类型的启用流程，匹配不到回退通用流程
- * 2) 传 processKey：指定流程标识（优先级高于 issueTypeId）
- */
-export function startWorkflow(data: {
-  issueKey: string
-  initiator: string
-  /** 问题类型ID（推荐，自动匹配流程） */
-  issueTypeId?: string | number
-  /** 指定流程标识（可选，优先于 issueTypeId） */
-  processKey?: string
-  ccUsers?: string[]
-}): Promise<Result<WorkflowInstance>> {
-  return request.post(`/workflow/start`, data)
-}
-
-/** 流程实例分页（POST /workflow/instance/list） */
-export function listWorkflowInstances(data: {
-  status?: string
-  initiator?: string
-  issueKey?: string
-  pageNum: number
-  pageSize: number
-}): Promise<Result<WorkflowPageData<WorkflowInstance>>> {
-  return request.post(`/workflow/instance/list`, data)
-}
-
-/** 任务历史列表（POST /workflow/history/list），以事项单号为维度、按创建时间倒序 */
-export function listWorkflowHistory(data: {
-  issueKey: string
-  pageNum: number
-  pageSize: number
-}): Promise<Result<WorkflowPageData<WorkflowHistory>>> {
-  return request.post(`/workflow/history/list`, data)
-}
-
-/** 流程实例详情（GET /workflow/instance/{id}） */
-export function getWorkflowInstance(id: number): Promise<Result<Record<string, any>>> {
-  return request.get(`/workflow/instance/${id}`)
-}
-
 /** 查询下一节点（GET /workflow/next-nodes?issueKey=xxx&issueTypeCode=TYPE10001），按事项问题类型编码匹配流程，返回当前节点与下一步节点列表 */
 export function getWorkflowNextNodes(issueKey: string, issueTypeCode?: string): Promise<
   Result<{
@@ -341,56 +295,6 @@ export function getWorkflowNextNodes(issueKey: string, issueTypeCode?: string): 
   }>
 > {
   return request.get(`/workflow/next-nodes`, { params: { issueKey, issueTypeCode: issueTypeCode || undefined } })
-}
-
-/** 撤销流程（POST /workflow/instance/{id}/cancel?operator=xxx） */
-export function cancelWorkflowInstance(id: number, operator: string): Promise<Result<void>> {
-  return request.post(`/workflow/instance/${id}/cancel`, null, { params: { operator } })
-}
-
-/** 待办列表（POST /workflow/todo/list） */
-export function listWorkflowTodo(data: {
-  userNo: string
-  pageNum: number
-  pageSize: number
-}): Promise<Result<WorkflowPageData<WorkflowTask>>> {
-  return request.post(`/workflow/todo/list`, data)
-}
-
-/** 已办列表（POST /workflow/done/list） */
-export function listWorkflowDone(data: {
-  userNo: string
-  pageNum: number
-  pageSize: number
-}): Promise<Result<WorkflowPageData<WorkflowTask>>> {
-  return request.post(`/workflow/done/list`, data)
-}
-
-/** 审批通过（POST /workflow/task/approve） */
-export function approveWorkflowTask(data: {
-  taskId: number
-  operator: string
-  comment?: string
-}): Promise<Result<void>> {
-  return request.post(`/workflow/task/approve`, data)
-}
-
-/** 审批驳回（POST /workflow/task/reject） */
-export function rejectWorkflowTask(data: {
-  taskId: number
-  operator: string
-  comment?: string
-}): Promise<Result<void>> {
-  return request.post(`/workflow/task/reject`, data)
-}
-
-/** 转办（POST /workflow/task/transfer） */
-export function transferWorkflowTask(data: {
-  taskId: number
-  operator: string
-  assignee: string
-}): Promise<Result<void>> {
-  return request.post(`/workflow/task/transfer`, data)
 }
 
 /** 状态变更-完成（POST /workflow/task/change-status，reason 写入 wf_task_history.reason） */
@@ -408,21 +312,6 @@ export function changeWorkflowTaskStatus(data: {
   operator: string
 }): Promise<Result<void>> {
   return request.post(`/workflow/task/change-status`, data)
-}
-
-/** 抄送列表（POST /workflow/cc/list） */
-export function listWorkflowCc(data: {
-  userNo: string
-  status?: string
-  pageNum: number
-  pageSize: number
-}): Promise<Result<WorkflowPageData<WorkflowCc>>> {
-  return request.post(`/workflow/cc/list`, data)
-}
-
-/** 标记抄送已读（POST /workflow/cc/{id}/read） */
-export function markWorkflowCcRead(id: number): Promise<Result<void>> {
-  return request.post(`/workflow/cc/${id}/read`)
 }
 
 // ==================== Auth API ====================
