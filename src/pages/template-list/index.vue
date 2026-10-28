@@ -57,6 +57,7 @@
                   <a-menu-item key="preview"><EyeOutlined /> 预览</a-menu-item>
                   <a-menu-item key="edit"><EditOutlined /> 编辑</a-menu-item>
                   <a-menu-item key="copy"><CopyOutlined /> 创建副本</a-menu-item>
+                  <a-menu-item v-if="!tpl.isDefault" key="setDefault"><StarOutlined /> 设为默认</a-menu-item>
                   <a-menu-divider />
                   <a-menu-item key="delete" danger><DeleteOutlined /> 删除</a-menu-item>
                 </a-menu>
@@ -69,7 +70,10 @@
           <p class="card-desc">{{ tpl.description || '暂无描述' }}</p>
         </div>
         <div class="card-footer">
-          <a-tag :color="categoryTagColor(tpl.category)" class="card-tag">{{ categoryMap[tpl.category] || tpl.category }}</a-tag>
+          <div class="card-tags">
+            <a-tag :color="categoryTagColor(tpl.category)" class="card-tag">{{ categoryMap[tpl.category] || tpl.category }}</a-tag>
+            <a-tag v-if="tpl.isDefault" color="gold" class="card-tag card-tag-default"><StarFilled /> 默认</a-tag>
+          </div>
           <div class="card-meta">
             <span class="meta-item"><AppstoreOutlined /> {{ tpl.tabs?.length || 0 }} 个表单</span>
             <span class="meta-sep">·</span>
@@ -118,7 +122,7 @@
         <div class="edit-basic">
           <a-form :model="editForm" layout="vertical">
             <a-row :gutter="16">
-              <a-col :span="12">
+              <a-col :span="10">
                 <a-form-item label="模板名称" required>
                   <a-input v-model:value="editForm.templateName" placeholder="输入模板名称" size="large" />
                 </a-form-item>
@@ -130,12 +134,20 @@
                   </a-select>
                 </a-form-item>
               </a-col>
-              <a-col :span="6">
+              <a-col :span="4">
                 <a-form-item label="状态">
                   <a-switch v-model:checked="editForm.status" checked-children="启用" un-checked-children="停用" />
                 </a-form-item>
               </a-col>
+              <a-col :span="4">
+                <a-form-item label="默认模板">
+                  <a-switch v-model:checked="editForm.isDefault" checked-children="是" un-checked-children="否" />
+                </a-form-item>
+              </a-col>
             </a-row>
+            <div v-if="editForm.isDefault && replacedDefaultName" class="default-replace-hint">
+              每个问题类型只能有一个默认模板，保存后将替换当前默认模板「{{ replacedDefaultName }}」
+            </div>
             <a-form-item label="描述">
               <a-textarea v-model:value="editForm.description" placeholder="简要描述模板用途" :rows="2" />
             </a-form-item>
@@ -445,12 +457,12 @@
 
 <script setup lang="ts">
 import { ref, computed, reactive, onMounted, watch, nextTick } from 'vue'
-import { Modal } from 'ant-design-vue'
+import { Modal, message } from 'ant-design-vue'
 import {
   PlusOutlined, SearchOutlined, CloseCircleFilled, FormOutlined,
   EyeOutlined, EditOutlined, DeleteOutlined, CopyOutlined,
   MoreOutlined, AppstoreOutlined, InboxOutlined, CheckOutlined, ReloadOutlined,
-  HolderOutlined,
+  HolderOutlined, StarFilled, StarOutlined,
 } from '@ant-design/icons-vue'
 import type { AvailableFieldItem, EnumOptionItem } from '@/types/faiz'
 import { queryTemplates, getTemplate, createTemplate, updateTemplate, deleteTemplate, copyTemplate, queryAvailableFieldList } from '@/api/faiz'
@@ -471,6 +483,8 @@ interface Template {
   /** 前端内部使用的分类 key（requirement/task/bug/other），读写时双向映射到 issue_type */
   category: string
   status: boolean
+  /** 是否为该问题类型的默认模板（每个问题类型最多一个） */
+  isDefault: boolean
   tabs: TemplateTab[]
   createdAt: string
   updatedAt: string
@@ -938,8 +952,45 @@ function resetDrag() {
 }
 
 const editForm = reactive<{
-  id: string; templateName: string; description: string; category: string; status: boolean; tabs: TemplateTab[]; useTabs: boolean;
-}>({ id: '', templateName: '', description: '', category: 'requirement', status: true, tabs: [], useTabs: false })
+  id: string; templateName: string; description: string; category: string; status: boolean; isDefault: boolean; tabs: TemplateTab[]; useTabs: boolean;
+}>({ id: '', templateName: '', description: '', category: 'requirement', status: true, isDefault: false, tabs: [], useTabs: false })
+
+/** 同问题类型下除当前编辑模板外的其他默认模板（全量，不受分页/筛选影响） */
+const otherDefaultTemplates = ref<Template[]>([])
+const replacedDefaultName = computed(() => otherDefaultTemplates.value.map(t => t.templateName).join('」「'))
+// 打开弹窗 / 切换问题类型时刷新，用于提示「将替换的默认模板」
+watch(() => [showEditModal.value, editForm.category] as const, async ([open]) => {
+  if (open) otherDefaultTemplates.value = await findOtherDefaults(editForm.category, editForm.id)
+})
+
+/** 查询某问题类型下的默认模板（排除 exceptId） */
+async function findOtherDefaults(category: string, exceptId: string): Promise<Template[]> {
+  try {
+    const res = await queryTemplates({ page: 1, pageSize: 999 })
+    if (!res.success) return []
+    return (res.data.list || [])
+      .map(adaptBackendTemplate)
+      .filter(t => t.isDefault && t.category === category && t.id !== exceptId)
+  } catch {
+    return []
+  }
+}
+
+/** 模板详情 → 提交 payload（覆盖 isDefault） */
+function detailToPayload(detail: Template, isDefault: boolean) {
+  const anyMarked = (detail.tabs || []).some((x: any) => x.is_tab === true || x.is_tab === 'true' || x.is_tab === 1)
+  return serializeTemplatePayload({ ...detail, isDefault, useTabs: anyMarked || (detail.tabs || []).length > 1 })
+}
+
+/** 取消同问题类型下其他模板的默认状态，保证一个类型只有一个默认模板 */
+async function unsetOtherDefaults(category: string, exceptId: string) {
+  const others = await findOtherDefaults(category, exceptId)
+  await Promise.all(others.map(async (t) => {
+    const res = await getTemplate(Number(t.id))
+    const detail = res.success ? adaptBackendTemplate(res.data) : t
+    return updateTemplate(Number(t.id), detailToPayload(detail, false))
+  }))
+}
 
 /** 问题类型下拉：value=issueTypeId ↔ 内部 category 字符串双向映射 */
 const issueTypeValue = computed<number>({
@@ -1011,6 +1062,7 @@ function adaptBackendTemplate(t: any): Template {
     ...t,
     id: String(t.id),
     status: t.status === 1,
+    isDefault: t.isDefault === 1 || t.isDefault === true,
     category,
     issue_type,
     tabs: (t.tabs || []).map((tab: any) => ({
@@ -1033,6 +1085,7 @@ function serializeTemplatePayload(form: any) {
     description: form.description,
     issue_type,
     status: form.status ? 1 : 0,
+    isDefault: form.isDefault ? 1 : 0,
     tabs: (form.tabs || []).map((tab: any, idx: number) => ({
       name: tab.name ?? '',
       is_tab,
@@ -1168,7 +1221,7 @@ const onTabSwitch = (..._args: any[]) => {}
 function handleCreate() {
   isEdit.value = false
   Object.assign(editForm, {
-    id: '', templateName: '', description: '', category: 'requirement', status: true,
+    id: '', templateName: '', description: '', category: 'requirement', status: true, isDefault: false,
     tabs: [], useTabs: false,
   })
   activeEditTab.value = ''
@@ -1194,6 +1247,7 @@ function fillEditForm(record: Template) {
   editForm.description = record.description
   editForm.category = record.category
   editForm.status = record.status
+  editForm.isDefault = !!record.isDefault
   const tabList = (record.tabs || []).length
     ? JSON.parse(JSON.stringify(record.tabs))
     : []
@@ -1211,16 +1265,28 @@ function handleEditSubmit() {
   // Tab 模式下所有表单命名；单表单模式下 tabs 至少有 1 个（singleFormTab lazy 生成），不强制命名（空时不显示标题）
   editForm.tabs.forEach((t, i) => { if (!t.name?.trim()) t.name = editForm.useTabs ? `表单 ${i + 1}` : '' })
   const payload = serializeTemplatePayload(editForm)
-  if (isEdit.value) {
-    const tplId = Number(editForm.id)
-    updateTemplate(tplId, payload).then(() => {
-      loadTemplates(); showEditModal.value = false
-    }).catch(() => {})
-  } else {
-    createTemplate(payload).then(() => {
-      loadTemplates(); showEditModal.value = false
-    }).catch(() => {})
-  }
+  const save = isEdit.value ? updateTemplate(Number(editForm.id), payload) : createTemplate(payload)
+  save.then(async (res) => {
+    // 设为默认：取消同类型其他模板的默认状态
+    if (editForm.isDefault) {
+      const savedId = isEdit.value ? editForm.id : String((res?.data as any)?.id ?? '')
+      await unsetOtherDefaults(editForm.category, savedId).catch(() => {})
+    }
+    loadTemplates(); showEditModal.value = false
+  }).catch(() => {})
+}
+
+/** 卡片菜单「设为默认」：更新当前模板并取消同类型其他默认模板 */
+async function handleSetDefault(record: Template) {
+  try {
+    const res = await getTemplate(Number(record.id))
+    const detail = res.success ? adaptBackendTemplate(res.data) : record
+    const saved = await updateTemplate(Number(record.id), detailToPayload(detail, true))
+    if (!saved.success) return
+    await unsetOtherDefaults(detail.category, detail.id)
+    message.success(`已将「${record.templateName}」设为${categoryMap[detail.category] || ''}默认模板`)
+    loadTemplates()
+  } catch { /* 请求层已提示 */ }
 }
 
 function handleCopy(record: Template) {
@@ -1249,6 +1315,7 @@ function handleMenuClick({ key }: { key: string }, record: Template) {
     preview: () => handlePreview(record),
     edit: () => handleEdit(record),
     copy: () => handleCopy(record),
+    setDefault: () => handleSetDefault(record),
     delete: () => handleDelete(record),
   }
   map[key]?.()
@@ -1327,6 +1394,10 @@ onMounted(loadTemplates)
 .card-desc { font-size: 13px; color: #86868b; margin: 0; line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .card-footer { display: flex; align-items: center; justify-content: space-between; padding-top: 4px; }
 .card-tag { font-size: 12px; border-radius: 6px; line-height: 1; }
+.card-tags { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.card-tags .card-tag { margin-inline-end: 0; }
+.card-tag-default { display: inline-flex; align-items: center; gap: 3px; }
+.default-replace-hint { margin: -8px 0 12px; padding: 6px 10px; font-size: 12px; color: #ad6800; background: #fffbe6; border: 1px solid #ffe58f; border-radius: 6px; }
 .card-meta { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #aeaeb2; }
 .meta-item { display: flex; align-items: center; gap: 3px; }
 .meta-sep { color: #d1d1d6; }

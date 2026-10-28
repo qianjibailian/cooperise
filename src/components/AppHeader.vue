@@ -81,20 +81,35 @@
         placement="bottomRight"
         overlay-class-name="user-dropdown-popover"
       >
-        <div class="user-trigger" @click="toggleUserPopover">
-          <a-avatar :size="32" class="user-avatar">
-            <template #icon><UserOutlined /></template>
+        <div class="user-trigger" :class="{ active: userPopoverOpen }" @click="toggleUserPopover">
+          <a-avatar :size="30" :src="avatarSrc" class="user-avatar" :load-error="onAvatarError">
+            {{ userInitials }}
           </a-avatar>
           <span class="user-name">{{ username }}</span>
+          <DownOutlined class="user-caret" />
         </div>
         <template #content>
           <div class="user-panel">
             <div class="user-panel-header">
-              <div class="user-initials-avatar">{{ userInitials }}</div>
+              <a-avatar :size="48" :src="avatarSrc" class="user-panel-avatar" :load-error="onAvatarError">
+                {{ userInitials }}
+              </a-avatar>
+              <div class="user-panel-info">
+                <div class="user-panel-name" :title="username">
+                  {{ username }}
+                  <span v-if="user?.userEnName" class="user-panel-en">{{ user.userEnName }}</span>
+                </div>
+                <div v-if="user?.email" class="user-panel-email" :title="user.email">{{ user.email }}</div>
+                <div v-if="userTags.length" class="user-panel-tags">
+                  <span v-for="t in userTags" :key="t.text" :class="['user-panel-tag', t.kind]">{{ t.text }}</span>
+                </div>
+              </div>
             </div>
+            <div class="user-divider" />
 
             <div class="user-menu-list">
-              <div class="user-menu-text" @click="handleMenuSelect('settings')">个人设置</div>
+              <div class="user-menu-text" @click="handleMenuSelect('settings')">个人中心</div>
+              <div class="user-menu-text" @click="handleMenuSelect('account')">账户设置</div>
               <div class="user-menu-text" @click="handleMenuSelect('logout')">退出登录</div>
             </div>
 
@@ -103,7 +118,7 @@
             <div class="user-section-title">组织</div>
             <div class="user-org-card" @click="handleMenuSelect('switch')">
               <div class="user-org-logo">{{ orgLogo }}</div>
-              <div class="user-org-name">{{ orgName }}</div>
+              <div class="user-org-name" :title="orgName">{{ orgName }}</div>
               <div class="user-org-switch">切换 <RightOutlined /></div>
             </div>
 
@@ -118,21 +133,22 @@
 </template>
 
 <script setup lang="ts">
-import { ref, nextTick } from 'vue'
+import { ref, computed, nextTick, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 
 import {
   HomeOutlined,
   SearchOutlined,
-  UserOutlined,
   RightOutlined,
+  DownOutlined,
   PlusOutlined,
   DragOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
 } from '@ant-design/icons-vue'
 import AppLogo from './AppLogo.vue'
-import { useAuth } from '@/utils/auth'
-import { logout } from '@/api/faiz'
+import { useAuth, setAuthUser } from '@/utils/auth'
+import { logout, getCurrentUser } from '@/api/faiz'
 
 defineProps<{
   drawerOpen?: boolean
@@ -192,15 +208,45 @@ function handleSelect(item: string) {
   closeSearchDropdown()
   handleSearch(item)
 }
-/** 从 cookie 读取真实姓名，缺失时回退占位文案 */
-function getRealName(): string {
-  const match = document.cookie.match(new RegExp('(?:^| )_qj_realname=([^;]*)'))
-  return match ? decodeURIComponent(match[1]) || '用户' : '用户'
+/** 登录用户资料（登录接口 data.user / 个人中心同步），姓名缺失时回退占位文案 */
+const { realName, user } = useAuth()
+const username = computed(() => user.value?.realName || realName.value || '用户')
+const userInitials = computed(() => username.value.slice(-2).toUpperCase())
+const router = useRouter()
+
+/** 头像地址；加载失败后回退为姓名缩写 */
+const avatarFailed = ref(false)
+const avatarSrc = computed(() => (avatarFailed.value ? undefined : user.value?.avatarUrl || undefined))
+function onAvatarError() {
+  avatarFailed.value = true
+  return true
 }
-const username = ref(getRealName())
-const userInitials = 'S1'
-const orgLogo = '喝'
-const orgName = '喝科技'
+
+/** 岗位 / 角色标签 */
+const userTags = computed(() => {
+  const tags: { text: string; kind: string }[] = []
+  if (user.value?.positionName) tags.push({ text: user.value.positionName, kind: 'position' })
+  ;(user.value?.roleNames || []).forEach(r => tags.push({ text: r, kind: 'role' }))
+  return tags
+})
+
+/** 所属组织：取部门路径的第一段（公司），缺失时回退默认 */
+const orgName = computed(() => (user.value?.deptInfo || '').split('/')[0].trim() || '喝科技')
+const orgLogo = computed(() => orgName.value.slice(0, 1).toUpperCase())
+
+/** 老登录态没有本地用户资料：进入页面时补查一次 */
+onMounted(async () => {
+  if (user.value?.avatarUrl !== undefined || !auth.isLoggedIn.value) return
+  try {
+    const res = await getCurrentUser()
+    if (res?.success && res.data) {
+      const d = res.data
+      setAuthUser({ realName: d.realName, email: d.email, userEnName: d.userEnName, avatarUrl: d.avatarUrl ?? null, deptInfo: d.deptInfo })
+    }
+  } catch {
+    // 请求层已统一提示
+  }
+})
 
 function handleSearch(value?: string) {
   if (value || searchValue.value) {
@@ -217,13 +263,16 @@ function handleMenuSelect(key: string) {
       nextTick(handleLogout)
       break
     case 'settings':
-      console.log('个人设置')
+      router.push('/settings/profile')
+      break
+    case 'account':
+      router.push('/settings/account')
       break
     case 'switch':
       console.log('切换组织')
       break
     case 'admin':
-      console.log('管理后台')
+      router.push('/admin/users')
       break
   }
 }
@@ -375,24 +424,45 @@ async function handleLogout() {
 .user-trigger {
   display: flex;
   align-items: center;
+  gap: 8px;
+  height: 38px;
+  padding: 0 10px 0 4px;
   cursor: pointer;
-  padding: 4px 8px;
-  border-radius: 6px;
+  border-radius: 999px;
   transition: background 0.15s;
 }
 
-.user-trigger:hover {
-  background: #f5f5f5;
+.user-trigger:hover,
+.user-trigger.active {
+  background: #f5f5f7;
 }
 
 .user-avatar {
-  background: #1677ff;
+  flex-shrink: 0;
+  font-size: 12px;
+  font-weight: 600;
+  background: linear-gradient(135deg, #5e5ce6 0%, #0a84ff 100%);
+  box-shadow: 0 0 0 2px #fff, 0 0 0 3px rgba(15, 23, 42, 0.06);
 }
 
 .user-name {
-  margin-left: 8px;
+  max-width: 120px;
+  overflow: hidden;
   font-size: 14px;
-  color: #262626;
+  font-weight: 500;
+  color: #1d1d1f;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.user-caret {
+  font-size: 10px;
+  color: #8e8e93;
+  transition: transform 0.2s;
+}
+
+.user-trigger.active .user-caret {
+  transform: rotate(180deg);
 }
 </style>
 
@@ -491,28 +561,78 @@ async function handleLogout() {
 }
 
 .user-panel {
-  width: 240px;
+  width: 280px;
   padding: 12px 0;
 }
 
 .user-panel-header {
   display: flex;
-  justify-content: center;
-  padding: 16px 0 12px;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 16px 4px;
 }
 
-.user-initials-avatar {
-  width: 56px;
-  height: 56px;
-  border-radius: 50%;
-  background: linear-gradient(135deg, #FFD666 0%, #F5A623 100%);
-  color: #fff;
-  font-size: 20px;
+.user-panel-avatar {
+  flex-shrink: 0;
+  font-size: 16px;
   font-weight: 600;
+  background: linear-gradient(135deg, #5e5ce6 0%, #0a84ff 100%);
+  box-shadow: 0 2px 8px rgba(10, 132, 255, 0.25);
+}
+
+.user-panel-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.user-panel-name {
+  overflow: hidden;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 22px;
+  color: #1d1d1f;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.user-panel-en {
+  margin-left: 4px;
+  font-size: 12px;
+  font-weight: 400;
+  color: #8e8e93;
+}
+
+.user-panel-email {
+  overflow: hidden;
+  font-size: 12px;
+  line-height: 18px;
+  color: #6e6e73;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.user-panel-tags {
   display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 2px 8px rgba(245, 166, 35, 0.35);
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.user-panel-tag {
+  padding: 0 8px;
+  font-size: 11px;
+  line-height: 18px;
+  border-radius: 999px;
+}
+
+.user-panel-tag.position {
+  color: #c93400;
+  background: #fff4e5;
+}
+
+.user-panel-tag.role {
+  color: #5e5ce6;
+  background: #f0efff;
 }
 
 .user-menu-list {
@@ -577,6 +697,10 @@ async function handleLogout() {
 
 .user-org-name {
   flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
   font-size: 14px;
   font-weight: 500;
   color: #262626;

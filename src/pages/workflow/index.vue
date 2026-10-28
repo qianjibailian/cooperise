@@ -1,12 +1,8 @@
 <template>
   <div class="component-list-page">
-    <!-- 顶部：标题 + 当前用户 -->
+    <!-- 顶部：标题 -->
     <div class="wf-header">
       <div class="wf-title">工作流</div>
-      <div class="wf-user">
-        <span class="wf-user-label">当前用户</span>
-        <input v-model="currentUser" class="wf-user-input" placeholder="用户账号（userNo）" @blur="saveCurrentUser" />
-      </div>
     </div>
 
     <a-tabs v-model:activeKey="activeTab" class="wf-tabs" @change="handleTabChange">
@@ -24,7 +20,7 @@
             <button class="search-btn" @click="loadDefinitions()"><SearchOutlined /> 查询</button>
           </div>
           <div class="toolbar-actions">
-            <button class="create-btn" @click="openDefModal()"><PlusOutlined /><span>部署流程</span></button>
+            <button class="create-btn" @click="openDefModal()"><PlusOutlined /><span>新增流程</span></button>
           </div>
         </div>
 
@@ -42,6 +38,9 @@
               <template v-if="column.key === 'processKey'">
                 <span class="cell-strong">{{ record.processKey }}</span>
               </template>
+              <template v-else-if="column.key === 'organization'">
+                <span :title="record.organizationPathName || record.organizationName">{{ record.organizationPathName || record.organizationName || '-' }}</span>
+              </template>
               <template v-else-if="column.key === 'status'">
                 <a-tag :color="record.status === 1 ? 'green' : 'default'">{{ record.status === 1 ? '启用' : '停用' }}</a-tag>
               </template>
@@ -55,6 +54,10 @@
                     {{ record.status === 1 ? '停用' : '启用' }}
                   </a-button>
                   <a-button type="link" size="small" :loading="defDetailLoading" @click="openFlowSetting(record)"><SettingOutlined /> 设置流程</a-button>
+                  <!-- 仅停用的流程可删除 -->
+                  <a-tooltip :title="record.status === 1 ? '请先停用该流程再删除' : ''">
+                    <a-button type="link" size="small" danger :disabled="record.status === 1" @click="handleDeleteDef(record)"><DeleteOutlined /> 删除</a-button>
+                  </a-tooltip>
                 </a-space>
               </template>
             </template>
@@ -208,25 +211,39 @@
       </a-tab-pane>
     </a-tabs>
 
-    <!-- ============ 流程定义部署弹窗 ============ -->
-    <a-modal v-model:open="defModal.open" :title="defModal.isEdit ? '编辑流程' : '部署流程'" width="980px" :footer="null" destroy-on-close class="wf-modal">
+    <!-- ============ 流程信息弹窗：新增 / 编辑，只保存流程基本信息 ============ -->
+    <a-modal v-model:open="defModal.open" :title="defModal.isEdit ? '编辑流程' : '新增流程'" width="980px" :footer="null" destroy-on-close class="wf-modal">
       <a-form :model="defForm" layout="vertical">
-        <a-form-item label="流程标识 processKey" required>
-          <a-input v-model:value="defForm.processKey" placeholder="唯一标识，如 demand_approval" :disabled="defModal.isEdit" size="large" />
+        <!-- 流程标识由后端自动生成：新增不展示，编辑时只读置灰 -->
+        <a-form-item v-if="defModal.isEdit" label="流程标识 processKey">
+          <a-input v-model:value="defForm.processKey" disabled size="large" />
         </a-form-item>
         <a-form-item label="流程名称" required>
           <a-input v-model:value="defForm.processName" placeholder="输入流程名称" size="large" />
+        </a-form-item>
+        <a-form-item label="所属组织" required>
+          <OrgTreeSelect
+            v-model="defForm.organizationId"
+            :tree-data="defOrgTree"
+            placeholder="选择组织，问题类型按组织筛选"
+            @update:model-value="handleDefOrgChange"
+          />
         </a-form-item>
         <a-form-item label="绑定问题类型" required>
           <div class="issue-type-row">
             <a-select
               v-model:value="defForm.issueTypeId"
-              placeholder="选择该流程对应的问题类型"
+              :placeholder="defForm.organizationId ? '选择该组织下的问题类型' : '请先选择所属组织'"
+              :disabled="!defForm.organizationId"
+              :loading="defIssueTypeLoading"
               size="large"
               style="flex: 1"
               @change="handleIssueTypeChange"
             >
-              <a-select-option v-for="opt in ISSUE_TYPE_OPTIONS" :key="opt.value" :value="opt.value">{{ opt.label }}</a-select-option>
+              <a-select-option v-for="opt in defIssueTypeOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</a-select-option>
+              <template #notFoundContent>
+                <div class="issue-type-empty">该组织暂无可用问题类型，请先在「问题类型」中添加</div>
+              </template>
             </a-select>
             <a-button size="large" class="preset-btn" @click="applyPresetTemplate"><ThunderboltOutlined /> 应用预置模板</a-button>
           </div>
@@ -237,7 +254,7 @@
         </a-form-item>
         <div class="modal-footer">
           <a-button @click="defModal.open = false">取消</a-button>
-          <a-button type="primary" :loading="defSaving" @click="handleSaveDef">保存部署</a-button>
+          <a-button type="primary" :loading="defSaving" @click="handleSaveDef">保存</a-button>
         </div>
       </a-form>
     </a-modal>
@@ -403,7 +420,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
-import { message } from 'ant-design-vue'
+import { message, Modal } from 'ant-design-vue'
 import {
   SearchOutlined,
   CloseCircleFilled,
@@ -418,10 +435,16 @@ import {
   SwapOutlined,
   CheckOutlined,
   ThunderboltOutlined,
+  DeleteOutlined,
 } from '@ant-design/icons-vue'
 import {
   listWorkflowDefinitions,
   deployWorkflowDefinition,
+  saveWorkflowDefinition,
+  getOrganizationTree,
+  queryIssueTypes,
+  type OrganizationNode,
+  deleteWorkflowDefinition,
   getWorkflowDefinition,
   updateWorkflowDefinitionStatus,
   listWorkflowInstances,
@@ -445,17 +468,15 @@ import type {
 } from '@/types/faiz'
 import WorkflowFlowCanvas from '@/components/WorkflowFlowCanvas.vue'
 import WorkflowFlowViewer from '@/components/WorkflowFlowViewer.vue'
-import { normalizeLegacyNodes } from '@/components/workflow-flow-layout'
+import { normalizeLegacyNodes, genNodeId, ensureNodeIds } from '@/components/workflow-flow-layout'
 import type { WfFlowNodeState } from '@/components/workflow-flow-layout'
 import WorkflowNodeEditor from '@/components/WorkflowNodeEditor.vue'
+import OrgTreeSelect from '@/components/OrgTreeSelect.vue'
+import { getLoginUsername, useAuth } from '@/utils/auth'
 
-// ---------- 当前用户 ----------
-const currentUser = ref(localStorage.getItem('wf_current_user') || '10284941')
-function saveCurrentUser() {
-  const v = currentUser.value.trim() || '10284941'
-  currentUser.value = v
-  localStorage.setItem('wf_current_user', v)
-}
+// ---------- 当前用户：取登录用户（memberId / 工号），不再手动输入 ----------
+const { user: authUser } = useAuth()
+const currentUser = computed(() => authUser.value?.memberId || authUser.value?.coAccount || getLoginUsername())
 
 // ---------- Tabs ----------
 const activeTab = ref('definition')
@@ -529,8 +550,52 @@ const PRESET_WORKFLOWS: Record<string, PresetWorkflow> = {
 /** 问题类型ID → 名称 */
 function issueTypeNameOf(v?: string | number | null): string {
   if (v === undefined || v === null || v === '') return '-'
-  const opt = ISSUE_TYPE_OPTIONS.find((o) => String(o.value) === String(v))
+  const opt = defIssueTypeOptions.value.find((o) => o.value === String(v)) || ISSUE_TYPE_OPTIONS.find((o) => String(o.value) === String(v))
   return opt ? opt.label : String(v)
+}
+
+// ---------- 流程绑定：组织 → 组织下的问题类型 ----------
+const defOrgTree = ref<OrganizationNode[]>([])
+const defIssueTypeOptions = ref<{ value: string; label: string }[]>([])
+const defIssueTypeLoading = ref(false)
+let defIssueTypeSeq = 0
+
+async function loadDefOrgTree() {
+  try {
+    const res = await getOrganizationTree()
+    if (res?.success) defOrgTree.value = res.data || []
+  } catch {
+    // 请求层已统一提示
+  }
+}
+
+/** 拉取所选组织下启用的问题类型 */
+async function loadDefIssueTypes(orgId?: number | string) {
+  const seq = ++defIssueTypeSeq
+  if (orgId == null || orgId === '') {
+    defIssueTypeOptions.value = []
+    return
+  }
+  defIssueTypeLoading.value = true
+  try {
+    const res = await queryIssueTypes({ page: 1, pageSize: 999, status: 1, organizationId: Number(orgId) })
+    if (seq !== defIssueTypeSeq) return
+    defIssueTypeOptions.value = res?.success ? (res.data?.list || []).map((t) => ({ value: String(t.id), label: t.issueTypeName })) : []
+  } catch {
+    if (seq === defIssueTypeSeq) defIssueTypeOptions.value = []
+  } finally {
+    if (seq === defIssueTypeSeq) defIssueTypeLoading.value = false
+  }
+}
+
+/** 切换组织：重新加载问题类型，原选择不属于该组织则清空 */
+async function handleDefOrgChange(orgId?: number | string) {
+  await loadDefIssueTypes(orgId)
+  const cur = defForm.value.issueTypeId
+  if (cur != null && !defIssueTypeOptions.value.some((o) => o.value === String(cur))) {
+    defForm.value.issueTypeId = undefined
+    defForm.value.issueTypeName = ''
+  }
 }
 
 const defList = ref<WorkflowDefinition[]>([])
@@ -541,18 +606,19 @@ const defColumns = [
   { title: 'ID', dataIndex: 'id', key: 'id', width: 70 },
   { title: '流程标识', dataIndex: 'processKey', key: 'processKey' },
   { title: '流程名称', dataIndex: 'processName', key: 'processName' },
+  { title: '所属组织', key: 'organization', width: 160, ellipsis: true },
   {
     title: '问题类型',
     key: 'issueType',
     width: 110,
-    customRender: ({ record }: { record: WorkflowDefinition }) => issueTypeNameOf(record.issueTypeId ?? record.issueTypeName),
+    customRender: ({ record }: { record: WorkflowDefinition }) => record.issueTypeName || issueTypeNameOf(record.issueTypeId),
   },
   { title: '节点数', key: 'nodeCount', width: 80, customRender: ({ record }: { record: WorkflowDefinition }) => countNodes(record.nodes) },
   { title: '状态', dataIndex: 'status', key: 'status', width: 90 },
   { title: '备注', dataIndex: 'remark', key: 'remark', ellipsis: true },
   { title: '创建时间', dataIndex: 'createTime', key: 'createTime', width: 160 },
   { title: '更新时间', dataIndex: 'updateTime', key: 'updateTime', width: 160 },
-  { title: '操作', key: 'action', width: 150, fixed: 'right' },
+  { title: '操作', key: 'action', width: 300, fixed: 'right' },
 ]
 
 const filteredDefs = computed(() => {
@@ -574,15 +640,14 @@ async function loadDefinitions() {
   try {
     const res = await listWorkflowDefinitions()
     if (res.data) defList.value = Array.isArray(res.data) ? res.data : []
-    else message.warning(res.message || '加载失败')
   } catch {
-    message.error('加载流程定义失败')
+    // 错误提示由请求拦截器统一展示后端 message
   } finally {
     defLoading.value = false
   }
 }
 
-// 部署弹窗
+// 流程信息弹窗（新增 / 编辑）
 const defModal = reactive({ open: false, isEdit: false })
 const defSaving = ref(false)
 const defDetailLoading = ref(false)
@@ -602,7 +667,7 @@ async function openFlowSetting(record: WorkflowDefinition) {
       const res = await getWorkflowDefinition(record.id)
       if (res?.data) record = res.data
     } catch {
-      message.warning('加载流程定义详情失败，已使用本地数据')
+      // 错误提示由请求拦截器统一展示后端 message
     } finally {
       defDetailLoading.value = false
     }
@@ -611,6 +676,7 @@ async function openFlowSetting(record: WorkflowDefinition) {
     id: record.id,
     processKey: record.processKey,
     processName: record.processName || '',
+    organizationId: record.organizationId,
     issueTypeId: record.issueTypeId ?? record.issueTypeName ?? undefined,
     issueTypeName: record.issueTypeName || issueTypeNameOf(record.issueTypeId),
     remark: record.remark || '',
@@ -623,27 +689,26 @@ async function saveFlowSetting() {
   applyCanvasToForm()
   const f = defForm.value
   if (!f.processKey.trim()) return message.warning('流程标识缺失，请重试')
-  if (!f.nodes.some(nodeValid)) return message.warning('请至少配置一个完整节点（标识 + 名称）')
+  ensureNodeIds(f.nodes)
+  if (!f.nodes.some(nodeValid)) return message.warning('请至少配置一个节点名称')
   flowSettingSaving.value = true
   try {
     const res = await deployWorkflowDefinition({
       id: f.id,
       processKey: f.processKey.trim(),
       processName: f.processName.trim(),
+      organizationId: f.organizationId,
       issueTypeId: String(f.issueTypeId),
       issueTypeName: f.issueTypeName || issueTypeNameOf(f.issueTypeId),
       remark: f.remark || '',
       nodes: f.nodes.filter(nodeValid).map((n) => sanitizeNode(n)),
     })
     if (res?.data || res?.success) {
-      message.success('流程设置已保存')
       flowSettingModal.open = false
       loadDefinitions()
-    } else {
-      message.error(res?.message || '保存失败')
     }
   } catch {
-    message.error('保存失败')
+    // 错误提示由请求拦截器统一展示后端 message
   } finally {
     flowSettingSaving.value = false
   }
@@ -675,7 +740,7 @@ const defForm = ref<WorkflowDefinition & { nodes: WorkflowNode[] }>({
 })
 
 function emptyNode(): WorkflowNode {
-  return { nodeId: '', nodeName: '', assigneeType: 'CREATOR', assigneeValue: null, statusId: null }
+  return { nodeId: genNodeId(), nodeName: '', assigneeType: 'CREATOR', assigneeValue: null, statusId: null }
 }
 function addNode() {
   defForm.value.nodes.push(emptyNode())
@@ -738,12 +803,15 @@ async function openDefModal(record?: WorkflowDefinition) {
   defMode.value = 'canvas'
   if (!record) {
     defModal.isEdit = false
-    defForm.value = { processKey: '', processName: '', issueTypeId: undefined, issueTypeName: '', remark: '', nodes: [emptyNode()] }
+    defForm.value = { processKey: '', processName: '', organizationId: undefined, issueTypeId: undefined, issueTypeName: '', remark: '', nodes: [emptyNode()] }
+    defIssueTypeOptions.value = []
     defModal.open = true
+    loadDefOrgTree()
     return
   }
   defModal.isEdit = true
   defModal.open = true
+  loadDefOrgTree()
   // 编辑：先拉取服务端最新详情（GET /workflow/definition/{id}），失败回退列表缓存数据
   if (record.id) {
     defDetailLoading.value = true
@@ -751,7 +819,7 @@ async function openDefModal(record?: WorkflowDefinition) {
       const res = await getWorkflowDefinition(record.id)
       if (res?.data) record = res.data
     } catch {
-      message.warning('加载流程定义详情失败，已使用本地数据')
+      // 错误提示由请求拦截器统一展示后端 message
     } finally {
       defDetailLoading.value = false
     }
@@ -760,10 +828,17 @@ async function openDefModal(record?: WorkflowDefinition) {
     id: record.id,
     processKey: record.processKey,
     processName: record.processName || '',
-    issueTypeId: record.issueTypeId ?? record.issueTypeName ?? undefined,
+    organizationId: record.organizationId,
+    issueTypeId: record.issueTypeId != null ? String(record.issueTypeId) : undefined,
     issueTypeName: record.issueTypeName || issueTypeNameOf(record.issueTypeId),
     remark: record.remark || '',
     nodes: record.nodes?.length ? normalizeLegacyNodes(record.nodes).map((n) => cloneNode(n)) : [emptyNode()],
+  }
+  await loadDefIssueTypes(record.organizationId)
+  // 历史数据的问题类型不在当前组织列表中：补一个选项，保证回显名称
+  const curId = defForm.value.issueTypeId
+  if (curId != null && !defIssueTypeOptions.value.some((o) => o.value === String(curId))) {
+    defIssueTypeOptions.value = [...defIssueTypeOptions.value, { value: String(curId), label: defForm.value.issueTypeName || String(curId) }]
   }
 }
 
@@ -777,38 +852,40 @@ function handleIssueTypeChange() {
 function applyPresetTemplate() {
   const v = defForm.value.issueTypeId
   if (!v) return message.warning('请先选择问题类型')
-  const preset = PRESET_WORKFLOWS[String(v)]
+  // 问题类型来自接口，ID 与预置模板不一致时按名称匹配（需求 / 任务）
+  const typeName = issueTypeNameOf(v)
+  const presetKey = PRESET_WORKFLOWS[String(v)] ? String(v) : ISSUE_TYPE_OPTIONS.find((o) => o.label === typeName)?.value
+  const preset = presetKey ? PRESET_WORKFLOWS[presetKey] : undefined
   if (!preset) return message.info('该问题类型暂无预置模板，请手动配置节点')
   defForm.value.processName = preset.processName
   defForm.value.nodes = preset.nodes.map((n) => cloneNode(n))
-  message.success(`已应用「${issueTypeNameOf(v)}」预置模板`)
+  message.success(`已应用「${typeName}」预置模板`)
 }
 
 async function handleSaveDef() {
   const f = defForm.value
-  if (!f.processKey.trim()) return message.warning('请输入流程标识')
   if (!f.processName.trim()) return message.warning('请输入流程名称')
+  if (f.organizationId == null) return message.warning('请选择所属组织')
   if (!f.issueTypeId) return message.warning('请选择绑定的问题类型')
-  // 流程节点在"流程设置"弹窗中配置，此处不提交 nodes（避免覆盖已配置的节点）
+  // 只保存流程基本信息（独立接口，不部署）；流程节点在"流程设置"中配置
   defSaving.value = true
   try {
-    const res = await deployWorkflowDefinition({
+    const res = await saveWorkflowDefinition({
       id: f.id,
-      processKey: f.processKey.trim(),
+      // 新增时由后端生成流程标识，编辑时原样回传
+      processKey: defModal.isEdit ? f.processKey : undefined,
       processName: f.processName.trim(),
+      organizationId: Number(f.organizationId),
       issueTypeId: String(f.issueTypeId),
       issueTypeName: f.issueTypeName || issueTypeNameOf(f.issueTypeId),
       remark: f.remark || '',
     })
     if (res.success || res.data) {
-      message.success(defModal.isEdit ? '流程已更新' : '流程已部署')
       defModal.open = false
       loadDefinitions()
-    } else {
-      message.error(res.message || '部署失败')
     }
   } catch {
-    message.error('部署失败')
+    // 错误提示由请求拦截器统一展示后端 message
   } finally {
     defSaving.value = false
   }
@@ -819,14 +896,33 @@ async function toggleDefStatus(record: WorkflowDefinition) {
   try {
     const res = await updateWorkflowDefinitionStatus(Number(record.id), next)
     if (res.success || res.data !== undefined) {
-      message.success(next === 1 ? '已启用' : '已停用')
       loadDefinitions()
-    } else {
-      message.error(res.message || '操作失败')
     }
   } catch {
-    message.error('操作失败')
+    // 错误提示由请求拦截器统一展示后端 message
   }
+}
+
+/** 删除流程：仅停用状态可删除，二次确认 */
+function handleDeleteDef(record: WorkflowDefinition) {
+  if (record.status === 1) return message.warning('请先停用该流程再删除')
+  Modal.confirm({
+    title: `删除流程「${record.processName || record.processKey}」？`,
+    content: '删除后不可恢复。',
+    okText: '删除',
+    okType: 'danger',
+    cancelText: '取消',
+    async onOk() {
+      try {
+        const res = await deleteWorkflowDefinition(Number(record.id))
+        if (res?.success) {
+          loadDefinitions()
+        }
+      } catch {
+        // 错误提示由请求拦截器统一展示后端 message
+      }
+    },
+  })
 }
 
 // ==================== 实例监控 ====================
@@ -868,7 +964,7 @@ async function loadInstances() {
     insList.value = data?.list ?? []
     insTotal.value = data?.total ?? 0
   } catch {
-    message.error('加载实例失败')
+    // 错误提示由请求拦截器统一展示后端 message
   } finally {
     insLoading.value = false
   }
@@ -918,14 +1014,11 @@ async function handleStartWorkflow() {
         : undefined,
     })
     if (res.success || res.data) {
-      message.success('流程已发起')
       startModal.open = false
       loadInstances()
-    } else {
-      message.error(res.message || '发起失败')
     }
   } catch {
-    message.error('发起失败')
+    // 错误提示由请求拦截器统一展示后端 message
   } finally {
     startSaving.value = false
   }
@@ -1150,13 +1243,10 @@ async function handleCancelIns(record: WorkflowInstance) {
   try {
     const res = await cancelWorkflowInstance(Number(record.id), currentUser.value)
     if (res.success || res.data !== undefined) {
-      message.success('已撤销')
       loadInstances()
-    } else {
-      message.error(res.message || '撤销失败')
     }
   } catch {
-    message.error('撤销失败')
+    // 错误提示由请求拦截器统一展示后端 message
   }
 }
 
@@ -1184,7 +1274,7 @@ async function loadTodo() {
     todoList.value = data?.list ?? []
     todoTotal.value = data?.total ?? 0
   } catch {
-    message.error('加载待办失败')
+    // 错误提示由请求拦截器统一展示后端 message
   } finally {
     todoLoading.value = false
   }
@@ -1214,14 +1304,11 @@ async function handleApprove() {
     const payload = { taskId: Number(task.id), operator: currentUser.value, comment: approveComment.value.trim() || undefined }
     const res = approveModal.action === 'APPROVE' ? await approveWorkflowTask(payload) : await rejectWorkflowTask(payload)
     if (res.success || res.data !== undefined) {
-      message.success(approveModal.action === 'APPROVE' ? '已通过' : '已驳回')
       approveModal.open = false
       loadTodo()
-    } else {
-      message.error(res.message || '操作失败')
     }
   } catch {
-    message.error('操作失败')
+    // 错误提示由请求拦截器统一展示后端 message
   } finally {
     approveSaving.value = false
   }
@@ -1250,14 +1337,11 @@ async function handleTransfer() {
       assignee: transferAssignee.value.trim(),
     })
     if (res.success || res.data !== undefined) {
-      message.success('已转办')
       transferModal.open = false
       loadTodo()
-    } else {
-      message.error(res.message || '转办失败')
     }
   } catch {
-    message.error('转办失败')
+    // 错误提示由请求拦截器统一展示后端 message
   } finally {
     transferSaving.value = false
   }
@@ -1294,7 +1378,7 @@ async function loadDone() {
     doneList.value = data?.list ?? []
     doneTotal.value = data?.total ?? 0
   } catch {
-    message.error('加载已办失败')
+    // 错误提示由请求拦截器统一展示后端 message
   } finally {
     doneLoading.value = false
   }
@@ -1324,7 +1408,7 @@ async function loadCc() {
     ccList.value = data?.list ?? []
     ccTotal.value = data?.total ?? 0
   } catch {
-    message.error('加载抄送失败')
+    // 错误提示由请求拦截器统一展示后端 message
   } finally {
     ccLoading.value = false
   }
@@ -1334,13 +1418,10 @@ async function markRead(record: WorkflowCc) {
   try {
     const res = await markWorkflowCcRead(Number(record.id))
     if (res.success || res.data !== undefined) {
-      message.success('已标记')
       loadCc()
-    } else {
-      message.error(res.message || '操作失败')
     }
   } catch {
-    message.error('操作失败')
+    // 错误提示由请求拦截器统一展示后端 message
   }
 }
 
@@ -1367,28 +1448,12 @@ onMounted(() => {
   font-weight: 700;
   color: #1d1d1f;
 }
-.wf-user {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.wf-user-label {
-  font-size: 13px;
-  color: #86868b;
-}
-.wf-user-input {
-  width: 160px;
-  padding: 7px 12px;
-  border: 1px solid #e5e5ea;
-  border-radius: 10px;
-  font-size: 13px;
-  outline: none;
-  font-family: inherit;
-  transition: border-color 0.2s, box-shadow 0.2s;
-}
-.wf-user-input:focus {
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12);
+
+.issue-type-empty {
+  padding: 8px 4px;
+  font-size: 12px;
+  color: #8e8e93;
+  text-align: center;
 }
 
 .wf-tabs :deep(.ant-tabs-nav) {

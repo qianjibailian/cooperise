@@ -249,7 +249,7 @@
             v-model:value="editForm.displayScene"
             mode="multiple"
             :options="displaySceneOptions"
-            placeholder="选择展示场景（新建 / 编辑 / 详情）"
+            placeholder="选择展示场景（新建 / 编辑 / 详情 / 列表）"
             style="width: 100%"
           />
         </a-form-item>
@@ -418,7 +418,7 @@ interface FieldRow {
   supportOperator?: string[]
   configSchema?: string | null
   fieldValue?: string | null
-  /** 展示场景：CREATE（新建）/ EDIT（编辑）/ DETAIL（详情） */
+  /** 展示场景：CREATE（新建）/ EDIT（编辑）/ DETAIL（详情）/ LIST（列表） */
   displayScene?: string[]
   /** 系统字段特有：启用状态、创建人/更新人、创建/更新时间 */
   status?: boolean
@@ -500,6 +500,7 @@ const displaySceneOptions = [
   { value: 'CREATE', label: '新建' },
   { value: 'EDIT', label: '编辑' },
   { value: 'DETAIL', label: '详情' },
+  { value: 'LIST', label: '列表' },
 ]
 
 // 需要配置选项的类型 / 类型相关判定，均来自 @/types/fieldType 统一维护

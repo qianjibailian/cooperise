@@ -10,7 +10,6 @@
 
       <button type="submit" class="auth-btn" :disabled="loading">{{ loading ? '登录中…' : '登录' }}</button>
       <p class="auth-terms">继续即表示你同意<a>《服务协议》</a>和<a>《隐私政策》</a>。</p>
-      <p class="auth-switch">还没有账号？<router-link :to="{ name: 'Register', query: route.query }">立即注册</router-link></p>
     </form>
 
   </AuthLayout>
@@ -53,7 +52,13 @@ async function handleSubmit() {
 
     const data = res?.data as LoginResult | undefined
     if (data?.token) {
-      setLoginInfo({ token: data.token, username: data.username || email, realName: data.realName })
+      setLoginInfo({
+        token: data.token,
+        username: data.user?.email || data.username || email,
+        realName: data.user?.realName || data.realName,
+        user: data.user,
+        raw: data as unknown as Record<string, unknown>,
+      })
     } else {
       // 后端通过 Set-Cookie 写入登录态
       refresh()

@@ -14,12 +14,17 @@ import TemplateList from '@/pages/template-list/index.vue'
 import AvailableField from '../pages/available-field/index.vue'
 import SystemField from '../pages/system-field/index.vue'
 import Workflow from '../pages/workflow/index.vue'
+import Organization from '@/pages/organization/index.vue'
+import Positions from '@/pages/positions/index.vue'
+import IssueTypes from '@/pages/issue-type/index.vue'
+import IssueStatuses from '@/pages/issue-status/index.vue'
+import Profile from '@/pages/profile/index.vue'
+import Account from '@/pages/account/index.vue'
 import SprintBoard from '@/pages/sprint-board/index.vue'
 import TestingCalendar from '@/pages/testing-calendar/index.vue'
 import MemberGantt from '@/pages/member-gantt/index.vue'
 import IssueDetail from '@/pages/issue-detail/index.vue'
 import Login from '@/pages/auth/Login.vue'
-import Register from '@/pages/auth/Register.vue'
 import { useViewStore } from '@/utils/view-store'
 import { useAuth } from '@/utils/auth'
 
@@ -64,7 +69,8 @@ const ViewEntry = defineComponent({
 
 const routes: RouteRecordRaw[] = [
   { path: '/login', component: Login, name: 'Login', meta: { title: '登录', public: true } },
-  { path: '/register', component: Register, name: 'Register', meta: { title: '注册', public: true } },
+  // 注册功能已下线：旧链接统一回到登录页
+  { path: '/register', redirect: { name: 'Login' } },
   {
     path: '/',
     component: Layout,
@@ -85,10 +91,20 @@ const routes: RouteRecordRaw[] = [
       { path: 'roles', component: Roles, name: 'Roles', meta: { title: '角色管理' } },
       { path: 'permissions', component: Permissions, name: 'Permissions', meta: { title: '权限管理' } },
       { path: 'departments', component: Departments, name: 'Departments', meta: { title: '部门管理' } },
-      { path: 'settings/template-list', component: TemplateList, name: 'TemplateList', meta: { title: '模板列表' } },
+      { path: 'settings/template-list', redirect: '/admin/template-list' },
       { path: 'settings/available-field', component: AvailableField, name: 'AvailableField', meta: { title: '自定义字段' } },
-      { path: 'settings/workflow', component: Workflow, name: 'Workflow', meta: { title: '工作流' } },
+      { path: 'settings/workflow', redirect: '/admin/workflow' },
+      { path: 'settings/profile', component: Profile, name: 'Profile', meta: { title: '个人中心' } },
+      { path: 'settings/account', component: Account, name: 'Account', meta: { title: '账户设置' } },
+      { path: 'admin/users', component: Users, name: 'AdminUsers', meta: { title: '用户管理' } },
+      { path: 'admin/roles', component: Roles, name: 'AdminRoles', meta: { title: '角色管理' } },
+      { path: 'admin/positions', component: Positions, name: 'AdminPositions', meta: { title: '岗位管理' } },
+      { path: 'admin/organization', component: Organization, name: 'Organization', meta: { title: '组织管理' } },
+      { path: 'admin/issue-type', component: IssueTypes, name: 'AdminIssueTypes', meta: { title: '问题类型' } },
+      { path: 'admin/issue-status', component: IssueStatuses, name: 'AdminIssueStatuses', meta: { title: '问题状态' } },
       { path: 'admin/system-field', component: SystemField, name: 'SystemField', meta: { title: '系统字段' } },
+      { path: 'admin/template-list', component: TemplateList, name: 'TemplateList', meta: { title: '模板管理' } },
+      { path: 'admin/workflow', component: Workflow, name: 'Workflow', meta: { title: '工作流' } },
       { path: 'settings/:pathMatch(.*)*', component: EmptyContent, name: 'SettingsDynamic' },
       { path: ':pathMatch(.*)*', component: EmptyContent, name: 'NotFound' },
     ],
@@ -103,7 +119,7 @@ export function setupRouter() {
     routes,
   })
 
-  // 未登录访问业务页 → 登录页（带回跳地址）；已登录访问登录/注册页 → 首页
+  // 未登录访问业务页 → 登录页（带回跳地址）；已登录访问登录页 → 首页
   router.beforeEach((to) => {
     const { isLoggedIn, refresh } = useAuth()
     refresh()

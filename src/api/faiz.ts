@@ -11,6 +11,7 @@ import type {
   IssueCreateMetaResult,
   UserQueryPayload,
   UserListData,
+  UserItem,
   CustomFieldOptionReq,
   CustomFieldOptionResult,
   CreateIssuePayload,
@@ -257,6 +258,22 @@ export function deployWorkflowDefinition(data: Partial<WorkflowDefinition>): Pro
   return request.post(`/workflow/definition/deploy`, data)
 }
 
+/** 流程基本信息保存参数（新增不传 id；不含流程节点，与部署无关） */
+export type WorkflowDefinitionSaveParams = Pick<WorkflowDefinition, 'id' | 'processName' | 'organizationId' | 'issueTypeId' | 'issueTypeName' | 'remark'> & {
+  /** 流程标识：新增时由后端自动生成，不传；编辑时原样回传 */
+  processKey?: string
+}
+
+/** 保存流程基本信息：新增/编辑（POST /workflow/definition/save），只保存流程信息，不部署、不修改节点 */
+export function saveWorkflowDefinition(data: WorkflowDefinitionSaveParams): Promise<Result<WorkflowDefinition>> {
+  return request.post(`/workflow/definition/save`, data)
+}
+
+/** 删除流程定义（POST /workflow/definition/{id}/delete），仅停用状态可删除 */
+export function deleteWorkflowDefinition(id: number): Promise<Result<void>> {
+  return request.post(`/workflow/definition/${id}/delete`)
+}
+
 /** 流程定义列表（GET /workflow/definition/list） */
 export function listWorkflowDefinitions(): Promise<Result<WorkflowDefinition[]>> {
   return request.get(`/workflow/definition/list`)
@@ -415,15 +432,29 @@ export interface LoginParams {
   password: string
 }
 
-export interface RegisterParams {
-  email: string
-  password: string
-}
-
 export interface LoginResult {
   token: string
-  username: string
+  username?: string
   realName?: string
+  tokenType?: string
+  expiresIn?: number
+  /** 登录用户资料 */
+  user?: {
+    id: number
+    memberId?: string
+    coAccount?: string
+    realName?: string
+    email?: string
+    userEnName?: string
+    avatarUrl?: string | null
+    deptId?: string
+    deptInfo?: string | null
+    isActive?: number
+    roleIds?: number[]
+    roleNames?: string[]
+    positionId?: number
+    positionName?: string | null
+  }
 }
 
 /** 登录（POST /auth/login） */
@@ -431,12 +462,393 @@ export function login(data: LoginParams) {
   return request.post(`/auth/login`, data)
 }
 
-/** 注册（POST /auth/register） */
-export function register(data: RegisterParams) {
-  return request.post(`/auth/register`, data)
-}
-
 /** 退出登录（POST /auth/logout） */
 export function logout() {
   return request.post(`/auth/logout`)
+}
+
+// ==================== 用户管理 ====================
+
+/** 新增 / 修改用户请求体（修改时 id 必填） */
+export interface UserSaveParams {
+  id?: number
+  /** 姓名 */
+  realName: string
+  /** 工号：新增时由后端自动生成，前端不提交 */
+  coAccount?: string
+  email: string
+  userEnName?: string
+  /** 部门（组织）ID */
+  deptId?: string
+  /** 岗位 ID */
+  positionId?: number
+  /** 是否在职：1 在职 / 0 离职 */
+  isActive: number
+  /** 角色 ID 列表 */
+  roleIds?: number[]
+  /** 初始密码（仅新增） */
+  password?: string
+}
+
+/** 新增用户（POST /user/create） */
+export function createUser(data: UserSaveParams): Promise<Result<UserItem>> {
+  return request.post(`/user/create`, data)
+}
+
+/** 修改用户（POST /user/update） */
+export function updateUser(data: UserSaveParams): Promise<Result<UserItem>> {
+  return request.post(`/user/update`, data)
+}
+
+/** 删除用户（POST /user/delete） */
+export function deleteUser(id: number): Promise<Result<void>> {
+  return request.post(`/user/delete`, { id })
+}
+
+// ==================== 角色管理 ====================
+
+export interface RoleItem {
+  id: number
+  roleName: string
+  /** 角色编码，后端生成，业务唯一 */
+  roleCode?: string
+  description?: string
+  /** 排序值，越小越靠前 */
+  sort?: number
+  /** 状态：0 停用 / 1 启用 */
+  status: number
+  /** 关联用户数 */
+  userCount?: number
+  createdAt?: string
+}
+
+export interface RoleQueryParams {
+  keyword?: string
+  status?: number
+  page: number
+  pageSize: number
+}
+
+/** 新增 / 修改角色请求体（修改时 id 必填；角色编码由后端生成，不提交） */
+export interface RoleSaveParams {
+  id?: number
+  roleName: string
+  description?: string
+  sort?: number
+  status: number
+}
+
+/** 角色分页列表（POST /role/list） */
+export function queryRoles(data: RoleQueryParams): Promise<Result<{ list: RoleItem[]; total: number }>> {
+  return request.post(`/role/list`, data)
+}
+
+/** 新增角色（POST /role/create） */
+export function createRole(data: RoleSaveParams): Promise<Result<RoleItem>> {
+  return request.post(`/role/create`, data)
+}
+
+/** 修改角色（POST /role/update） */
+export function updateRole(data: RoleSaveParams): Promise<Result<RoleItem>> {
+  return request.post(`/role/update`, data)
+}
+
+/** 删除角色（POST /role/delete） */
+export function deleteRole(id: number): Promise<Result<void>> {
+  return request.post(`/role/delete`, { id })
+}
+
+// ==================== 岗位管理 ====================
+
+export interface PositionItem {
+  id: number
+  positionName: string
+  /** 岗位编码，后端生成，业务唯一 */
+  positionCode?: string
+  /** 所属组织 ID */
+  organizationId?: number
+  /** 所属组织名称（列表展示用） */
+  organizationName?: string
+  /** 所属组织路径名称，如 全球运营中心/C端产品部 */
+  organizationPathName?: string
+  description?: string
+  /** 排序值，越小越靠前 */
+  sort?: number
+  /** 状态：0 停用 / 1 启用 */
+  status: number
+  /** 关联用户数 */
+  userCount?: number
+  createdAt?: string
+}
+
+export interface PositionQueryParams {
+  keyword?: string
+  status?: number
+  organizationId?: number
+  page: number
+  pageSize: number
+}
+
+/** 新增 / 修改岗位请求体（修改时 id 必填；岗位编码由后端生成，不提交） */
+export interface PositionSaveParams {
+  id?: number
+  positionName: string
+  organizationId?: number
+  description?: string
+  sort?: number
+  status: number
+}
+
+/** 岗位分页列表（POST /position/list） */
+export function queryPositions(data: PositionQueryParams): Promise<Result<{ list: PositionItem[]; total: number }>> {
+  return request.post(`/position/list`, data)
+}
+
+/** 新增岗位（POST /position/create） */
+export function createPosition(data: PositionSaveParams): Promise<Result<PositionItem>> {
+  return request.post(`/position/create`, data)
+}
+
+/** 修改岗位（POST /position/update） */
+export function updatePosition(data: PositionSaveParams): Promise<Result<PositionItem>> {
+  return request.post(`/position/update`, data)
+}
+
+/** 删除岗位（POST /position/delete） */
+export function deletePosition(id: number): Promise<Result<void>> {
+  return request.post(`/position/delete`, { id })
+}
+
+// ==================== 问题状态 ====================
+
+/** 状态分类：TODO 待处理 / IN_PROGRESS 进行中 / DONE 已完成 */
+export type IssueStatusCategory = 'TODO' | 'IN_PROGRESS' | 'DONE'
+
+export interface IssueStatusItem {
+  id: number
+  statusName: string
+  /** 状态编码，后端生成，业务唯一 */
+  statusCode?: string
+  category?: IssueStatusCategory
+  /** 颜色，如 #0A84FF */
+  color?: string
+  description?: string
+  /** 排序值，越小越靠前 */
+  sort?: number
+  /** 状态：0 停用 / 1 启用 */
+  status: number
+  /** 处于该状态的事项数 */
+  issueCount?: number
+  createdAt?: string
+}
+
+export interface IssueStatusQueryParams {
+  keyword?: string
+  status?: number
+  category?: IssueStatusCategory
+  page: number
+  pageSize: number
+}
+
+/** 新增 / 修改问题状态请求体（修改时 id 必填；编码由后端生成，不提交） */
+export interface IssueStatusSaveParams {
+  id?: number
+  statusName: string
+  category?: IssueStatusCategory
+  color?: string
+  description?: string
+  sort?: number
+  status: number
+}
+
+/** 问题状态分页列表（POST /issue-status/list） */
+export function queryIssueStatuses(data: IssueStatusQueryParams): Promise<Result<{ list: IssueStatusItem[]; total: number }>> {
+  return request.post(`/issue-status/list`, data)
+}
+
+/** 新增问题状态（POST /issue-status/create） */
+export function createIssueStatus(data: IssueStatusSaveParams): Promise<Result<IssueStatusItem>> {
+  return request.post(`/issue-status/create`, data)
+}
+
+/** 修改问题状态（POST /issue-status/update） */
+export function updateIssueStatus(data: IssueStatusSaveParams): Promise<Result<IssueStatusItem>> {
+  return request.post(`/issue-status/update`, data)
+}
+
+/** 删除问题状态（POST /issue-status/delete） */
+export function deleteIssueStatus(id: number): Promise<Result<void>> {
+  return request.post(`/issue-status/delete`, { id })
+}
+
+// ==================== 问题类型 ====================
+
+export interface IssueTypeItem {
+  id: number
+  issueTypeName: string
+  /** 问题类型编码，后端生成，业务唯一 */
+  issueTypeCode?: string
+  /** 所属组织 ID */
+  organizationId?: number
+  /** 所属组织名称（列表展示用） */
+  organizationName?: string
+  /** 所属组织路径名称，如 全球运营中心/C端产品部 */
+  organizationPathName?: string
+  /** 图标颜色，如 #0A84FF */
+  color?: string
+  description?: string
+  /** 排序值，越小越靠前 */
+  sort?: number
+  /** 状态：0 停用 / 1 启用 */
+  status: number
+  /** 关联事项数 */
+  issueCount?: number
+  createdAt?: string
+}
+
+export interface IssueTypeQueryParams {
+  keyword?: string
+  status?: number
+  organizationId?: number
+  page: number
+  pageSize: number
+}
+
+/** 新增 / 修改问题类型请求体（修改时 id 必填；编码由后端生成，不提交） */
+export interface IssueTypeSaveParams {
+  id?: number
+  issueTypeName: string
+  organizationId?: number
+  color?: string
+  description?: string
+  sort?: number
+  status: number
+}
+
+/** 问题类型分页列表（POST /issue-type/list） */
+export function queryIssueTypes(data: IssueTypeQueryParams): Promise<Result<{ list: IssueTypeItem[]; total: number }>> {
+  return request.post(`/issue-type/list`, data)
+}
+
+/** 新增问题类型（POST /issue-type/create） */
+export function createIssueType(data: IssueTypeSaveParams): Promise<Result<IssueTypeItem>> {
+  return request.post(`/issue-type/create`, data)
+}
+
+/** 修改问题类型（POST /issue-type/update） */
+export function updateIssueType(data: IssueTypeSaveParams): Promise<Result<IssueTypeItem>> {
+  return request.post(`/issue-type/update`, data)
+}
+
+/** 删除问题类型（POST /issue-type/delete） */
+export function deleteIssueType(id: number): Promise<Result<void>> {
+  return request.post(`/issue-type/delete`, { id })
+}
+
+// ==================== 组织管理 ====================
+
+/** 组织节点（后端 OrganizationVO） */
+export interface OrganizationNode {
+  id: number
+  /** 组织编码（如 Jira 部门 ID），业务唯一 */
+  organizationCode?: string
+  /** 父组织 ID，0 表示顶级 */
+  parentId: number
+  organizationName: string
+  /** 组织层级，顶级 = 1 */
+  orgLevel?: number
+  /** 物化路径，如 /1/5/12 */
+  path?: string
+  /** 路径名称，如 全球运营中心/C端产品部 */
+  pathName?: string
+  /** 排序值，越小越靠前 */
+  sort?: number
+  /** 状态：0 停用 / 1 启用 */
+  status?: number
+  remark?: string
+  children?: OrganizationNode[]
+}
+
+/** 新增 / 修改组织请求体（修改时 id 必填） */
+export interface OrganizationSaveParams {
+  id?: number
+  organizationCode?: string
+  parentId: number
+  organizationName: string
+  sort?: number
+  status?: number
+  remark?: string
+}
+
+/** 组织树（POST /organization/list） */
+export function getOrganizationTree(): Promise<Result<OrganizationNode[]>> {
+  return request.post(`/organization/list`)
+}
+
+/** 新增组织（POST /organization/create） */
+export function createOrganization(data: OrganizationSaveParams): Promise<Result<OrganizationNode>> {
+  return request.post(`/organization/create`, data)
+}
+
+/** 修改组织（POST /organization/update） */
+export function updateOrganization(data: OrganizationSaveParams): Promise<Result<OrganizationNode>> {
+  return request.post(`/organization/update`, data)
+}
+
+/** 删除组织（POST /organization/delete，存在子组织时后端拒绝） */
+export function deleteOrganization(id: number): Promise<Result<void>> {
+  return request.post(`/organization/delete`, { id })
+}
+
+// ==================== 个人中心 / 账户设置 ====================
+
+/** 用户所属组织（GET /personal-center/info → organizations） */
+export interface ProfileOrganization {
+  id: number
+  organizationCode?: string
+  organizationName?: string
+  /** 组织路径名称，如 全球运营中心/C端产品部 */
+  pathName?: string
+  status?: number
+}
+
+/** 当前登录用户资料（GET /personal-center/info，对应后端 UserProfileVO） */
+export interface CurrentUserProfile {
+  id?: number
+  memberId?: string
+  /** 工号（后端自动生成） */
+  coAccount?: string
+  /** 姓名 */
+  realName?: string
+  /** 登录邮箱 */
+  email?: string
+  userEnName?: string
+  avatarUrl?: string
+  deptId?: string
+  /** 部门路径 */
+  deptInfo?: string
+  /** 实际归属部门 */
+  actualDept?: string
+  jiraUserKey?: string
+  /** 是否在职：1 在职 / 0 离职 */
+  isActive?: number
+  organizations?: ProfileOrganization[]
+}
+
+/** 获取当前用户资料（GET /personal-center/info） */
+export function getCurrentUser(): Promise<Result<CurrentUserProfile>> {
+  return request.get(`/personal-center/info`)
+}
+
+/** 个人中心可编辑字段 */
+export type PersonalCenterUpdate = Pick<CurrentUserProfile, 'realName' | 'userEnName' | 'email'>
+
+/** 更新个人资料（POST /personal-center/update） */
+export function updatePersonalCenter(data: PersonalCenterUpdate): Promise<Result<CurrentUserProfile>> {
+  return request.post(`/personal-center/update`, data)
+}
+
+/** 修改当前登录用户密码（POST /account-settings/change-password，新密码 6-32 位） */
+export function changePassword(data: { oldPassword: string; newPassword: string }): Promise<Result<void>> {
+  return request.post(`/account-settings/change-password`, data)
 }

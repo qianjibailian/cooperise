@@ -249,7 +249,8 @@ export interface FilterDraft {
 
 export interface UserQueryPayload {
   keyword: string
-  isActive: number
+  /** 是否在职：1 是 / 0 否，不传为不限 */
+  isActive?: number
   page: number
   pageSize: number
 }
@@ -275,6 +276,16 @@ export interface UserItem {
   /** 兼容部分接口返回的展示字段 */
   displayName?: string
   name?: string
+  /** 邮箱 */
+  email?: string
+  /** 姓名 */
+  realName?: string
+  /** 岗位 */
+  positionId?: number
+  positionName?: string
+  /** 已分配角色 */
+  roleIds?: number[]
+  roleNames?: string[]
 }
 
 export interface UserListData {
@@ -541,7 +552,7 @@ export interface AvailableFieldItem {
   fieldSource: string | null
   configSchema?: string
   fieldValue?: string | null
-  /** 展示场景：CREATE（新建）/ EDIT（编辑）/ DETAIL（详情） */
+  /** 展示场景：CREATE（新建）/ EDIT（编辑）/ DETAIL（详情）/ LIST（列表） */
   displayScene?: string[]
 }
 
@@ -588,7 +599,7 @@ export interface AvailableFieldSavePayload {
   fieldSource?: string
   configSchema?: string
   fieldValue?: string
-  /** 展示场景：CREATE（新建）/ EDIT（编辑）/ DETAIL（详情） */
+  /** 展示场景：CREATE（新建）/ EDIT（编辑）/ DETAIL（详情）/ LIST（列表） */
   displayScene?: string[]
 }
 
@@ -622,7 +633,7 @@ export interface SystemFieldItem {
   creator?: string
   updater?: string
   configSchema?: string
-  /** 展示场景：CREATE（新建）/ EDIT（编辑）/ DETAIL（详情） */
+  /** 展示场景：CREATE（新建）/ EDIT（编辑）/ DETAIL（详情）/ LIST（列表） */
   displayScene?: string[]
 }
 
@@ -651,7 +662,7 @@ export interface SystemFieldSavePayload {
   obsolete?: boolean
   fieldSource?: string
   configSchema?: string
-  /** 展示场景：CREATE（新建）/ EDIT（编辑）/ DETAIL（详情） */
+  /** 展示场景：CREATE（新建）/ EDIT（编辑）/ DETAIL（详情）/ LIST（列表） */
   displayScene?: string[]
 }
 
@@ -759,6 +770,11 @@ export interface WorkflowDefinition {
   issueTypeId?: string | number
   /** 问题类型名称 */
   issueTypeName?: string
+  /** 所属组织（问题类型归属的组织） */
+  organizationId?: number
+  organizationName?: string
+  /** 组织路径名称，如 SPEEDX/研发中心 */
+  organizationPathName?: string
   /** 节点列表 */
   nodes?: WorkflowNode[]
   remark?: string

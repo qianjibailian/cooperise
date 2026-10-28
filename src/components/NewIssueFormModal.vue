@@ -37,17 +37,29 @@
     </template>
     <a-spin :spinning="newFormLoading" class="new-form-spin">
       <div class="new-form-inner">
-        <!-- 上部固定区：问题类型（垂直居中于分割线上方） -->
+        <!-- 上部固定区：组织 + 问题类型（垂直居中于分割线上方） -->
         <div class="new-form-header">
           <a-form layout="horizontal" :label-width="120">
+            <a-form-item label="组织">
+              <OrgTreeSelect
+                v-model="newFormOrganizationId"
+                :tree-data="newFormOrgTree"
+                :disabled="isEditMode"
+              />
+            </a-form-item>
             <a-form-item label="问题类型">
               <a-select
                 v-model:value="newFormIssueTypeId"
                 style="width: 100%"
                 :disabled="isEditMode"
+                :loading="issueTypeLoading"
+                placeholder="请选择问题类型"
                 @change="onIssueTypeChanged"
               >
                 <a-select-option v-for="opt in issueTypeOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</a-select-option>
+                <template #notFoundContent>
+                  <div class="issue-type-empty">该组织暂无可用问题类型，请先在「问题类型」中添加</div>
+                </template>
               </a-select>
             </a-form-item>
           </a-form>
@@ -242,8 +254,9 @@ import { Editor, Toolbar } from '@wangeditor/editor-for-vue'
 import type { IDomEditor, IEditorConfig } from '@wangeditor/editor'
 import '@wangeditor/editor/dist/css/style.css'
 import { PlusOutlined } from '@ant-design/icons-vue'
-import { Empty } from 'ant-design-vue'
-import { createIssue, getAvailableFieldOptions, queryUsers, queryTemplates, getTemplate, getIssueCreateMeta, queryDetail, patchIssue, queryAvailableFieldList } from '@/api/faiz'
+import { Empty, message } from 'ant-design-vue'
+import { createIssue, getAvailableFieldOptions, queryUsers, queryTemplates, getTemplate, getIssueCreateMeta, queryDetail, patchIssue, queryAvailableFieldList, getOrganizationTree, queryIssueTypes, type OrganizationNode } from '@/api/faiz'
+import OrgTreeSelect from '@/components/OrgTreeSelect.vue'
 import { FIELD_TYPE, normalizeFieldType, formatTypeLabel } from '@/types/fieldType'
 import type {
   CustomFieldOptionReq,
@@ -312,8 +325,23 @@ watch(visible, (val) => {
   emit('update:open', val)
   if (!val) {
     destroyRichEditors()
+  } else {
+    loadNewFormOrgTree()
+    loadIssueTypesByOrg()
   }
 })
+
+// 组织：新建事项时选择所属组织（组织树每次打开刷新，保证与组织管理同步）
+const newFormOrganizationId = ref<number | string | undefined>()
+const newFormOrgTree = ref<OrganizationNode[]>([])
+async function loadNewFormOrgTree() {
+  try {
+    const res = await getOrganizationTree()
+    if (res?.success) newFormOrgTree.value = res.data || []
+  } catch {
+    // 请求层已统一提示
+  }
+}
 
 // 新建表单弹窗内部状态
 const newFormLoading = ref(false)
@@ -323,12 +351,50 @@ const newFormTabs = ref<{ title: string; sequence: number; issueFields: any[] }[
 const newFormActiveTab = ref('')
 const newFormIssueTypeId = ref('10002')
 const NEW_FORM_DEFAULT_PROJECT_ID = '18701'
-const issueTypeOptions = [
+/** 接口不可用时的兜底问题类型 */
+const DEFAULT_ISSUE_TYPE_OPTIONS = [
   { value: '10001', label: '需求' },
   { value: '10002', label: '任务' },
   { value: '10003', label: '缺陷' },
   { value: '10004', label: '其他' },
 ]
+const issueTypeOptions = ref<{ value: string; label: string }[]>([...DEFAULT_ISSUE_TYPE_OPTIONS])
+const issueTypeLoading = ref(false)
+let issueTypeReqSeq = 0
+
+/** 按所选组织拉取启用的问题类型；未选组织时拉取全部 */
+async function loadIssueTypesByOrg() {
+  if (isEditMode.value) return
+  const seq = ++issueTypeReqSeq
+  const orgId = newFormOrganizationId.value
+  issueTypeLoading.value = true
+  try {
+    const res = await queryIssueTypes({
+      page: 1,
+      pageSize: 999,
+      status: 1,
+      organizationId: orgId != null && orgId !== '' ? Number(orgId) : undefined,
+    })
+    if (seq !== issueTypeReqSeq || !res?.success) return
+    issueTypeOptions.value = (res.data?.list || []).map(t => ({ value: String(t.id), label: t.issueTypeName }))
+  } catch {
+    if (seq !== issueTypeReqSeq) return
+    issueTypeOptions.value = [...DEFAULT_ISSUE_TYPE_OPTIONS]
+  } finally {
+    if (seq === issueTypeReqSeq) issueTypeLoading.value = false
+  }
+  // 当前问题类型不属于该组织：切到第一个可选类型并重新渲染表单；无可选类型则清空
+  if (seq !== issueTypeReqSeq) return
+  const cur = newFormIssueTypeId.value
+  if (cur && issueTypeOptions.value.some(o => o.value === cur)) return
+  const first = issueTypeOptions.value[0]?.value
+  newFormIssueTypeId.value = first ?? ''
+  if (first) onIssueTypeChanged(first)
+}
+
+watch(newFormOrganizationId, () => {
+  if (visible.value) loadIssueTypesByOrg()
+})
 
 /** 模板下拉：本地缓存已启用模板详情（含解析后的 widgetData），供选中后直接使用 */
 const templateCache = reactive<Record<string, { issue_type_id?: number; tabs: { name: string; sequence: number; widgetData: any[] }[] }>>({})
@@ -1084,6 +1150,7 @@ function collectAllFields(): CreateMetaField[] {
  */
 const PROJECT_FIELD_TYPE = 'SELECT_LIST_SINGLE_PROJECT'
 const ISSUETYPE_FIELD_TYPE = 'SELECT_LIST_SINGLE_ISSUETYPE'
+const ORGANIZATION_FIELD_TYPE = 'SELECT_ORGANIZATION'
 
 /**
  * 判断字段是否为空（空字符串/空数组/null/undefined 视为空）
@@ -1200,15 +1267,23 @@ function buildCreateIssuePayload(): CreateIssuePayload {
     type: PROJECT_FIELD_TYPE,
     value: NEW_FORM_DEFAULT_PROJECT_ID,
   })
-  // 2) 问题类型
+  // 2) 组织（未选择时不提交）
+  if (newFormOrganizationId.value != null && newFormOrganizationId.value !== '') {
+    inputFields.push({
+      id: 'organization',
+      type: ORGANIZATION_FIELD_TYPE,
+      value: String(newFormOrganizationId.value),
+    })
+  }
+  // 3) 问题类型
   inputFields.push({
     id: 'issuetype',
     type: ISSUETYPE_FIELD_TYPE,
     value: newFormIssueTypeId.value,
   })
 
-  // 3) 其余字段（按 tab.sequence + tab 内顺序）
-  const seenIds = new Set<string>(['project', 'issuetype'])
+  // 4) 其余字段（按 tab.sequence + tab 内顺序）
+  const seenIds = new Set<string>(['project', 'organization', 'issuetype'])
   for (const field of allFields) {
     const id = String(field.id ?? '').trim()
     if (!id || seenIds.has(id)) continue
@@ -1226,6 +1301,10 @@ function buildCreateIssuePayload(): CreateIssuePayload {
 }
 
 async function handleNewFormSubmit() {
+  if (!isEditMode.value && !newFormIssueTypeId.value) {
+    message.warning('请选择问题类型')
+    return
+  }
   for (const tab of newFormTabs.value) {
     for (const f of tab.issueFields) {
       // 展示文本不参与必填校验
@@ -1540,6 +1619,7 @@ async function saveEditForm() {
   justify-content: flex-start;
   align-items: stretch;
   padding-top: 12px;
+  padding-bottom: 16px;
 }
 
 .new-form-header .ant-form,
@@ -1547,10 +1627,21 @@ async function saveEditForm() {
   margin-bottom: 0;
 }
 
+.new-form-header .ant-form-item + .ant-form-item {
+  margin-top: 12px;
+}
+
+.issue-type-empty {
+  padding: 8px 4px;
+  font-size: 12px;
+  color: #8e8e93;
+  text-align: center;
+}
+
 .new-form-divider.ant-divider {
   flex-shrink: 0;
   border-top: 1px solid rgba(15, 23, 42, 0.08);
-  margin: 0 0 20px;
+  margin: 0 0 24px;
 }
 
 /* ===== 第二段承载区：Tabs 外壳（不滚，传高度给 Tabs） ===== */

@@ -5,7 +5,7 @@ import axios, {
   AxiosRequestConfig
 } from 'axios'
 import { message } from 'ant-design-vue'
-import { clearAuth, useAuth } from '@/utils/auth'
+import { clearAuth, getToken, useAuth } from '@/utils/auth'
 
 // 本地开发走同源 /api，由 vite 代理转发到后端（去掉 /api），避免跨域
 const API_BASE_URL = import.meta.env.DEV ? '/api' : import.meta.env.VITE_API_DOMAIN
@@ -24,9 +24,9 @@ const request: CustomAxiosInstance = axios.create({
 
 request.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
-    const token = document.cookie.match(new RegExp('(?:^|; )_qj_token=([^;]*)'))
+    const token = getToken()
     if (token) {
-      config.headers.Authorization = `Bearer ${decodeURIComponent(token[1])}`
+      config.headers.Authorization = `Bearer ${token}`
     }
     return config
   },

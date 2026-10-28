@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue'
 import { PlusOutlined, ForkOutlined, DeleteOutlined } from '@ant-design/icons-vue'
 import type { WorkflowNode } from '@/types/faiz'
+import { genNodeId } from './workflow-flow-layout'
 // 递归组件：显式导入自身（官方推荐写法），避免依赖隐式文件名自引用导致 "Failed to resolve component"
 import WorkflowNodeEditor from './WorkflowNodeEditor.vue'
 
@@ -12,11 +13,11 @@ const emit = defineEmits<{ remove: [] }>()
 
 const expanded = ref(false)
 const nextList = computed(() => props.node.nextNodes ?? [])
-const isEmpty = computed(() => !props.node.nodeId && !props.node.nodeName)
+const isEmpty = computed(() => !props.node.nodeName)
 
 function addNext() {
   if (!props.node.nextNodes) props.node.nextNodes = []
-  props.node.nextNodes.push({ nodeId: '', nodeName: '', assigneeType: 'CREATOR', assigneeValue: null, statusId: null })
+  props.node.nextNodes.push({ nodeId: genNodeId(), nodeName: '', assigneeType: 'CREATOR', assigneeValue: null, statusId: null })
   expanded.value = true
 }
 
@@ -28,7 +29,6 @@ function removeNext(i: number) {
 <template>
   <div class="wne-wrap">
     <div class="node-row child-node-row" :class="{ 'is-empty-node': isEmpty }" :style="{ marginLeft: depth ? `${depth * 24}px` : '0' }">
-      <a-input v-model:value="node.nodeId" placeholder="节点标识" class="node-item node-key" />
       <a-input v-model:value="node.nodeName" placeholder="节点名称" class="node-item node-name" />
       <a-select v-model:value="node.assigneeType" class="node-item node-type" placeholder="办理人">
         <a-select-option value="CREATOR">发起人</a-select-option>

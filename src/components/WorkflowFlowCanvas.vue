@@ -7,7 +7,7 @@ import '@logicflow/extension/es/style/index.css'
 import { message } from 'ant-design-vue'
 import { PlusOutlined, NodeIndexOutlined, DeleteOutlined, EditOutlined, LinkOutlined } from '@ant-design/icons-vue'
 import type { WorkflowNode } from '@/types/faiz'
-import { workflowToFlow, lfTextValue } from './workflow-flow-layout'
+import { workflowToFlow, lfTextValue, genNodeId } from './workflow-flow-layout'
 import type { WfProps, LFNode, LFEdge } from './workflow-flow-layout'
 
 // ==================== LogicFlow 自定义节点 ====================
@@ -196,7 +196,13 @@ watch(() => props.modelValue, (v) => renderGraph(v || []), { deep: true })
 function exportNodes(): WorkflowNode[] {
   const lf = lfRef.value
   if (!lf) return props.modelValue || []
-  const data = lf.getGraphData() as { nodes: LFNode[]; edges: LFEdge[] }
+  let data = lf.getGraphData() as { nodes: LFNode[]; edges: LFEdge[] }
+  // 缺少标识的节点（历史数据）自动补齐并写回画布，保证多次导出标识稳定
+  const missing = (data.nodes ?? []).filter((n) => !(n.properties?.nodeId as string | undefined)?.trim())
+  if (missing.length) {
+    missing.forEach((n) => lf.setProperties(n.id, { ...(n.properties || {}), nodeId: genNodeId() } as any))
+    data = lf.getGraphData() as { nodes: LFNode[]; edges: LFEdge[] }
+  }
   return flowToWorkflow(data.nodes ?? [], data.edges ?? [])
 }
 
@@ -205,7 +211,7 @@ function openNodeEdit(data: any) {
   const p = (data?.properties ?? {}) as WfProps
   editTarget.value = data?.id ?? ''
   editForm.value = {
-    nodeId: p.nodeId ?? '',
+    nodeId: p.nodeId || genNodeId(),
     nodeName: p.nodeName ?? lfTextValue(data?.text) ?? '',
     assigneeType: p.assigneeType || 'CREATOR',
     assigneeValue: p.assigneeValue ?? null,
@@ -267,7 +273,7 @@ function addNodeAt(x: number, y: number) {
     x,
     y,
     text: { value: '未命名' },
-    properties: { nodeId: '', nodeName: '', assigneeType: 'CREATOR', assigneeValue: null, statusId: null },
+    properties: { nodeId: genNodeId(), nodeName: '', assigneeType: 'CREATOR', assigneeValue: null, statusId: null },
   } as any)
 }
 
@@ -338,7 +344,7 @@ function ctxAddNextNode() {
     x: baseX,
     y: baseY + outs * 90,
     text: { value: '未命名' },
-    properties: { nodeId: '', nodeName: '', assigneeType: 'CREATOR', assigneeValue: null, statusId: null },
+    properties: { nodeId: genNodeId(), nodeName: '', assigneeType: 'CREATOR', assigneeValue: null, statusId: null },
   } as any)
   lf.addEdge({
     type: 'polyline',
@@ -371,8 +377,7 @@ function ctxLinkNode() {
     .filter((n) => n.id !== sid)
     .map((n) => {
       const nm = (n.properties?.nodeName as string) || lfTextValue(n.text) || '未命名'
-      const pid = (n.properties?.nodeId as string) || ''
-      return { id: n.id, label: pid ? `${nm}（${pid}）` : nm }
+      return { id: n.id, label: nm }
     })
   linkModal.value = true
 }
@@ -544,9 +549,6 @@ defineExpose({
     <!-- 节点属性编辑 -->
     <a-modal v-model:open="editOpen" title="编辑节点" width="420px" :footer="null" destroy-on-close>
       <a-form :label-col="{ span: 6 }" :wrapper-col="{ span: 18 }">
-        <a-form-item label="节点标识" required>
-          <a-input v-model:value="editForm.nodeId" placeholder="唯一标识，如 task_pending" />
-        </a-form-item>
         <a-form-item label="节点名称" required>
           <a-input v-model:value="editForm.nodeName" placeholder="如：待处理" />
         </a-form-item>

@@ -189,18 +189,13 @@
               @click="handleLocalMenuClick"
               class="sidebar-menu"
             >
-              <a-menu-item key="/settings/template-list">
-                <component :is="UnorderedListOutlined" />
-                <span>模板管理</span>
-              </a-menu-item>
+              <!-- 自定义字段：暂时隐藏，路由 /settings/available-field 仍保留 -->
+              <!--
               <a-menu-item key="/settings/available-field">
                 <component :is="AppstoreOutlined" />
                 <span>自定义字段</span>
               </a-menu-item>
-              <a-menu-item key="/settings/workflow">
-                <component :is="DeploymentUnitOutlined" />
-                <span>工作流</span>
-              </a-menu-item>
+              -->
               <a-menu-item key="/settings/profile">
                 <component :is="UserOutlined" />
                 <span>个人中心</span>
@@ -220,9 +215,41 @@
               @click="handleLocalMenuClick"
               class="sidebar-menu"
             >
+              <a-menu-item key="/admin/users">
+                <component :is="UserOutlined" />
+                <span>用户管理</span>
+              </a-menu-item>
+              <a-menu-item key="/admin/roles">
+                <component :is="TeamOutlined" />
+                <span>角色管理</span>
+              </a-menu-item>
+              <a-menu-item key="/admin/positions">
+                <component :is="IdcardOutlined" />
+                <span>岗位管理</span>
+              </a-menu-item>
+              <a-menu-item key="/admin/organization">
+                <component :is="ApartmentOutlined" />
+                <span>组织管理</span>
+              </a-menu-item>
+              <a-menu-item key="/admin/issue-type">
+                <component :is="TagsOutlined" />
+                <span>问题类型</span>
+              </a-menu-item>
+              <a-menu-item key="/admin/issue-status">
+                <component :is="FlagOutlined" />
+                <span>问题状态</span>
+              </a-menu-item>
               <a-menu-item key="/admin/system-field">
                 <component :is="AppstoreOutlined" />
                 <span>系统字段</span>
+              </a-menu-item>
+              <a-menu-item key="/admin/template-list">
+                <component :is="UnorderedListOutlined" />
+                <span>模板管理</span>
+              </a-menu-item>
+              <a-menu-item key="/admin/workflow">
+                <component :is="DeploymentUnitOutlined" />
+                <span>工作流</span>
               </a-menu-item>
             </a-menu>
           </template>
@@ -236,7 +263,7 @@
     </a-layout>
 
     <!-- 新建弹窗：抽离为独立组件 -->
-    <NewIssueFormModal v-model:open="showNewFormModal" @submitted="() => {}" />
+    <NewIssueFormModal v-model:open="showNewFormModal" @submitted="notifyIssueCreated" />
 
     <!-- 我的视图「+」：新建视图 / 文件夹 -->
     <CreateViewModal
@@ -266,6 +293,10 @@ import {
   TeamOutlined,
   LockOutlined,
   BuildOutlined,
+  ApartmentOutlined,
+  IdcardOutlined,
+  TagsOutlined,
+  FlagOutlined,
   DeploymentUnitOutlined,
   UserOutlined,
   ToolOutlined,
@@ -276,6 +307,7 @@ import { useRouter, useRoute } from 'vue-router'
 import AppHeader from '@/components/AppHeader.vue'
 import AppSideDrawer from '@/components/AppSideDrawer.vue'
 import NewIssueFormModal from '@/components/NewIssueFormModal.vue'
+import { notifyIssueCreated } from '@/utils/issue-events'
 import CreateViewModal from '@/components/CreateViewModal.vue'
 import ViewTypeIcon from '@/components/ViewTypeIcon.vue'
 import WorkbenchPanel from './WorkbenchPanel.vue'
@@ -444,7 +476,7 @@ function handleSectionClick(key: string) {
   if (key === 'workspace') {
     router.push('/workbench/todo')
   } else if (key === 'settings') {
-    router.push('/settings/template-list')
+    router.push('/settings/profile')
   } else if (key === 'admin') {
     router.push('/admin/system-field')
   }

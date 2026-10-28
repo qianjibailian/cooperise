@@ -1,545 +1,482 @@
 <template>
-  <div class="roles-page">
-    <div class="page-header">
-      <div>
-        <h1 class="page-title">角色管理</h1>
-        <p class="page-subtitle">管理系统角色和权限分配</p>
-      </div>
-      <div class="header-actions">
-        <a-button type="primary" class="action-btn" @click="showModal = true">
-          <component :is="PlusOutlined" />
-          新增角色
-        </a-button>
-      </div>
-    </div>
+  <div class="mgmt-page">
+    <header class="mgmt-header">
+      <h2 class="mgmt-title">角色管理</h2>
+      <a-button type="primary" class="mgmt-create-btn" @click="openCreate">
+        <PlusOutlined /> 新增
+      </a-button>
+    </header>
 
-    <a-row :gutter="[16, 16]" class="stats-cards">
-      <a-col :xs="12" :sm="6">
-        <div class="mini-stat">
-          <span class="mini-stat-label">角色总数</span>
-          <span class="mini-stat-value">24</span>
-        </div>
-      </a-col>
-      <a-col :xs="12" :sm="6">
-        <div class="mini-stat">
-          <span class="mini-stat-label">启用角色</span>
-          <span class="mini-stat-value text-green">22</span>
-        </div>
-      </a-col>
-      <a-col :xs="12" :sm="6">
-        <div class="mini-stat">
-          <span class="mini-stat-label">禁用角色</span>
-          <span class="mini-stat-value text-red">2</span>
-        </div>
-      </a-col>
-      <a-col :xs="12" :sm="6">
-        <div class="mini-stat">
-          <span class="mini-stat-label">本月新增</span>
-          <span class="mini-stat-value text-blue">5</span>
-        </div>
-      </a-col>
-    </a-row>
-
-    <a-card class="table-card" :bordered="false">
-      <div class="table-toolbar">
-        <div class="toolbar-left">
-          <a-input-search
-            v-model:value="searchValue"
-            placeholder="搜索角色名称或编码"
-            class="search-input"
-            allow-clear
-          />
-          <a-select v-model:value="filterStatus" class="filter-select" placeholder="状态">
-            <a-select-option value="">全部状态</a-select-option>
-            <a-select-option value="1">启用</a-select-option>
-            <a-select-option value="0">禁用</a-select-option>
-          </a-select>
-        </div>
-        <div class="toolbar-right">
-          <a-button class="icon-only-btn">
-            <component :is="ReloadOutlined" />
-          </a-button>
-          <a-button class="icon-only-btn">
-            <component :is="SettingOutlined" />
-          </a-button>
-        </div>
+    <section class="mgmt-card">
+      <div class="mgmt-toolbar">
+        <a-input
+          v-model:value="keyword"
+          placeholder="搜索角色名称 / 编码"
+          allow-clear
+          class="mgmt-search"
+          @press-enter="handleSearch"
+          @change="onKeywordChange"
+        >
+          <template #prefix><SearchOutlined class="mgmt-search-icon" /></template>
+        </a-input>
+        <a-segmented v-model:value="statusFilter" :options="STATUS_FILTERS" @change="handleSearch" />
+        <a-tooltip title="刷新">
+          <button class="mgmt-icon-btn" :disabled="loading" @click="loadRoles"><ReloadOutlined /></button>
+        </a-tooltip>
       </div>
 
       <a-table
         :columns="columns"
-        :data-source="filteredRoles"
+        :data-source="roles"
+        :loading="loading"
         :pagination="pagination"
         row-key="id"
-        class="roles-table"
-      />
-    </a-card>
+        :scroll="{ x: 860 }"
+        class="mgmt-table"
+        @change="handleTableChange"
+      >
+        <template #bodyCell="{ column, record }">
+          <template v-if="column.key === 'role'">
+            <div class="role-cell">
+              <span class="role-avatar"><TeamOutlined /></span>
+              <span class="role-name">{{ record.roleName }}</span>
+            </div>
+          </template>
+          <template v-else-if="column.key === 'roleCode'">
+            <span v-if="record.roleCode" class="code-chip">{{ record.roleCode }}</span>
+            <span v-else class="text-muted">-</span>
+          </template>
+          <template v-else-if="column.key === 'description'">
+            <a-tooltip :title="record.description" placement="topLeft">
+              <span class="ellipsis text-muted">{{ record.description || '-' }}</span>
+            </a-tooltip>
+          </template>
+          <template v-else-if="column.key === 'userCount'">
+            <span class="text-muted">{{ record.userCount ?? '-' }}</span>
+          </template>
+          <template v-else-if="column.key === 'status'">
+            <a-switch
+              size="small"
+              :checked="record.status === 1"
+              :loading="togglingId === record.id"
+              @change="(v: boolean) => toggleStatus(record as RoleItem, v)"
+            />
+          </template>
+          <template v-else-if="column.key === 'action'">
+            <div class="row-actions">
+              <a-tooltip title="编辑">
+                <span class="row-action" @click="openEdit(record as RoleItem)"><EditOutlined /></span>
+              </a-tooltip>
+              <a-tooltip title="删除">
+                <span class="row-action danger" @click="confirmDelete(record as RoleItem)"><DeleteOutlined /></span>
+              </a-tooltip>
+            </div>
+          </template>
+        </template>
+      </a-table>
+    </section>
 
+    <!-- 新增 / 编辑 -->
     <a-modal
-      v-model:open="showModal"
-      :title="isEdit ? '编辑角色' : '新增角色'"
-      :footer="null"
-      :width="520"
-      class="role-modal"
+      v-model:open="modalOpen"
+      :title="editingId ? '编辑角色' : '新增角色'"
+      :width="480"
+      centered
+      destroy-on-close
+      :ok-text="editingId ? '保存' : '创建'"
+      cancel-text="取消"
+      :confirm-loading="saving"
+      @ok="handleSubmit"
     >
-      <a-form :model="form" layout="vertical" class="role-form">
-        <a-row :gutter="16">
-          <a-col :span="12">
-            <a-form-item label="角色名称">
-              <a-input v-model:value="form.name" placeholder="请输入角色名称" />
-            </a-form-item>
-          </a-col>
-          <a-col :span="12">
-            <a-form-item label="角色编码">
-              <a-input v-model:value="form.code" placeholder="请输入角色编码" />
-            </a-form-item>
-          </a-col>
-        </a-row>
-        <a-form-item label="角色描述">
-          <a-textarea v-model:value="form.description" :rows="3" placeholder="请输入角色描述" />
+      <a-form ref="formRef" :model="form" :rules="rules" layout="vertical">
+        <a-form-item label="角色名称" name="roleName">
+          <a-input v-model:value="form.roleName" placeholder="如 项目管理员" :maxlength="32" />
         </a-form-item>
-        <a-row :gutter="16">
-          <a-col :span="12">
-            <a-form-item label="排序">
-              <a-input-number v-model:value="form.sortOrder" style="width: 100%" />
-            </a-form-item>
-          </a-col>
-          <a-col :span="12">
-            <a-form-item label="状态">
-              <a-select v-model:value="form.status" placeholder="请选择状态" style="width: 100%">
-                <a-select-option :value="1">启用</a-select-option>
-                <a-select-option :value="0">禁用</a-select-option>
-              </a-select>
-            </a-form-item>
-          </a-col>
-        </a-row>
-        <div class="form-footer">
-          <a-button @click="showModal = false">取消</a-button>
-          <a-button type="primary" @click="handleSubmit">确认</a-button>
-        </div>
+        <a-form-item label="描述" name="description">
+          <a-textarea v-model:value="form.description" placeholder="选填" :rows="2" :maxlength="200" />
+        </a-form-item>
+        <a-form-item label="状态" name="status">
+          <a-switch v-model:checked="statusChecked" checked-children="启用" un-checked-children="停用" />
+        </a-form-item>
       </a-form>
-    </a-modal>
-
-    <a-modal
-      v-model:open="showPermModal"
-      title="分配权限"
-      :footer="null"
-      :width="520"
-      class="perm-modal"
-    >
-      <a-tree
-        checkable
-        :tree-data="permissionTree"
-        :checked-keys="checkedPerms"
-        @check="onPermCheck"
-        class="perm-tree"
-      />
-      <div class="form-footer">
-        <a-button @click="showPermModal = false">取消</a-button>
-        <a-button type="primary" @click="handlePermSubmit">确认</a-button>
-      </div>
     </a-modal>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, h } from 'vue'
-import {
-  PlusOutlined,
-  ReloadOutlined,
-  SettingOutlined,
-  TeamOutlined,
-} from '@ant-design/icons-vue'
+import { computed, onMounted, reactive, ref } from 'vue'
+import { Modal, type FormInstance, type TablePaginationConfig } from 'ant-design-vue'
+import type { Rule } from 'ant-design-vue/es/form'
+import { PlusOutlined, SearchOutlined, ReloadOutlined, EditOutlined, DeleteOutlined, TeamOutlined } from '@ant-design/icons-vue'
+import { queryRoles, createRole, updateRole, deleteRole, type RoleItem, type RoleSaveParams } from '@/api/faiz'
 
-interface Role {
-  id: number
-  name: string
-  code: string
-  description: string
-  status: number
-  sortOrder: number
-  createdAt: string
-}
-
-const searchValue = ref('')
-const filterStatus = ref('')
-const showModal = ref(false)
-const showPermModal = ref(false)
-const isEdit = ref(false)
-
-const columns = [
-  {
-    title: '角色名称',
-    dataIndex: 'name',
-    key: 'name',
-    width: 240,
-    customRender: ({ record }: { record: Role }) => {
-      return h('div', { class: 'name-cell' }, [
-        h('div', { class: 'role-avatar' }, [
-          h(TeamOutlined)
-        ]),
-        h('div', { class: 'role-info' }, [
-          h('span', { class: 'role-name' }, record.name),
-          h('span', { class: 'role-code' }, record.code)
-        ])
-      ])
-    }
-  },
-  { title: '描述', dataIndex: 'description', key: 'description' },
-  { title: '排序', dataIndex: 'sortOrder', key: 'sortOrder', width: 80 },
-  {
-    title: '状态',
-    dataIndex: 'status',
-    key: 'status',
-    width: 100,
-    customRender: ({ record }: { record: Role }) => {
-      return h('a-tag', {
-        color: record.status === 1 ? 'success' : 'default',
-        class: 'status-tag'
-      }, () => record.status === 1 ? '启用' : '禁用')
-    }
-  },
-  { title: '创建时间', dataIndex: 'createdAt', key: 'createdAt', width: 160 },
-  {
-    title: '操作',
-    key: 'action',
-    width: 240,
-    fixed: 'right',
-    customRender: ({ record }: { record: Role }) => {
-      return h('a-space', { size: 'small' }, () => [
-        h('a-button', { type: 'link', size: 'small', onClick: () => editRole(record) }, () => '编辑'),
-        h('a-button', { type: 'link', size: 'small', onClick: () => assignPermissions(record) }, () => '分配权限'),
-        h('a-button', {
-          type: 'link',
-          size: 'small',
-          danger: record.status === 1,
-          onClick: () => toggleStatus(record)
-        }, () => record.status === 1 ? '禁用' : '启用')
-      ])
-    }
-  },
+const STATUS_FILTERS = [
+  { label: '全部', value: 'all' },
+  { label: '启用', value: '1' },
+  { label: '停用', value: '0' },
 ]
 
-const roles = ref<Role[]>([
-  { id: 1, name: '超级管理员', code: 'admin', description: '拥有系统所有权限', status: 1, sortOrder: 0, createdAt: '2024-01-01 10:00:00' },
-  { id: 2, name: '普通用户', code: 'user', description: '普通用户权限', status: 1, sortOrder: 1, createdAt: '2024-01-02 10:00:00' },
-  { id: 3, name: '产品经理', code: 'pm', description: '产品管理相关权限', status: 1, sortOrder: 2, createdAt: '2024-01-03 10:00:00' },
-  { id: 4, name: '开发人员', code: 'developer', description: '开发相关权限', status: 1, sortOrder: 3, createdAt: '2024-01-04 10:00:00' },
-  { id: 5, name: '测试人员', code: 'tester', description: '测试相关权限', status: 0, sortOrder: 4, createdAt: '2024-01-05 10:00:00' },
-])
+const columns = [
+  { title: '角色', key: 'role', width: 200, fixed: 'left' as const },
+  { title: '编码', key: 'roleCode', width: 180 },
+  { title: '描述', key: 'description', ellipsis: true },
+  { title: '用户数', key: 'userCount', width: 90 },
+  { title: '启用', key: 'status', width: 80 },
+  { title: '操作', key: 'action', width: 100, fixed: 'right' as const },
+]
 
-const filteredRoles = computed(() => {
-  return roles.value.filter(role => {
-    const matchSearch = !searchValue.value ||
-      role.name.toLowerCase().includes(searchValue.value.toLowerCase()) ||
-      role.code.toLowerCase().includes(searchValue.value.toLowerCase())
-    const matchStatus = !filterStatus.value || String(role.status) === filterStatus.value
-    return matchSearch && matchStatus
-  })
-})
+// ---- 列表 ----
+const loading = ref(false)
+const roles = ref<RoleItem[]>([])
+const keyword = ref('')
+const statusFilter = ref('all')
+const page = ref(1)
+const pageSize = ref(20)
+const total = ref(0)
 
-const pagination = ref({
-  current: 1,
-  pageSize: 10,
-  total: 24,
+const pagination = computed<TablePaginationConfig>(() => ({
+  current: page.value,
+  pageSize: pageSize.value,
+  total: total.value,
   showSizeChanger: true,
-  showQuickJumper: true,
-  showTotal: (total: number) => `共 ${total} 条`,
-})
+  showTotal: (t: number) => `共 ${t} 个角色`,
+}))
 
-const form = reactive({
-  name: '',
-  code: '',
+async function loadRoles() {
+  loading.value = true
+  try {
+    const res = await queryRoles({
+      keyword: keyword.value.trim() || undefined,
+      status: statusFilter.value === 'all' ? undefined : Number(statusFilter.value),
+      page: page.value,
+      pageSize: pageSize.value,
+    })
+    if (res?.success) {
+      roles.value = res.data?.list || []
+      total.value = Number(res.data?.total || 0)
+    }
+  } catch {
+    // 请求层已统一提示
+  } finally {
+    loading.value = false
+  }
+}
+
+function handleSearch() {
+  page.value = 1
+  loadRoles()
+}
+
+/** 清空搜索框时立即刷新 */
+function onKeywordChange() {
+  if (!keyword.value) handleSearch()
+}
+
+function handleTableChange(p: TablePaginationConfig) {
+  page.value = p.current || 1
+  pageSize.value = p.pageSize || 20
+  loadRoles()
+}
+
+/** 列表内快捷启用 / 停用 */
+const togglingId = ref<number | null>(null)
+async function toggleStatus(r: RoleItem, checked: boolean) {
+  togglingId.value = r.id
+  try {
+    const res = await updateRole({
+      id: r.id,
+      roleName: r.roleName,
+      description: r.description,
+      sort: r.sort,
+      status: checked ? 1 : 0,
+    })
+    if (res?.success) r.status = checked ? 1 : 0
+  } catch {
+    // 请求层已统一提示
+  } finally {
+    togglingId.value = null
+  }
+}
+
+// ---- 新增 / 编辑 ----
+const modalOpen = ref(false)
+const saving = ref(false)
+const editingId = ref<number | null>(null)
+const formRef = ref<FormInstance>()
+const emptyForm = (): Required<Omit<RoleSaveParams, 'id'>> => ({
+  roleName: '',
   description: '',
-  sortOrder: 0,
+  sort: 0,
   status: 1,
 })
+const form = reactive(emptyForm())
+const statusChecked = computed({
+  get: () => form.status === 1,
+  set: (v: boolean) => { form.status = v ? 1 : 0 },
+})
 
-const permissionTree = ref([
-  {
-    title: '系统管理',
-    key: '1',
-    children: [
-      { title: '用户管理', key: '2' },
-      { title: '角色管理', key: '3' },
-      { title: '权限管理', key: '4' },
-    ],
-  },
-])
-
-const checkedPerms = ref<string[]>(['1', '2'])
-
-function editRole(record: Role) {
-  isEdit.value = true
-  form.name = record.name
-  form.code = record.code
-  form.description = record.description
-  form.sortOrder = record.sortOrder
-  form.status = record.status
-  showModal.value = true
+const rules: Record<string, Rule[]> = {
+  roleName: [{ required: true, whitespace: true, message: '请输入角色名称' }],
 }
 
-function assignPermissions(record: Role) {
-  console.log('分配权限:', record.name)
-  showPermModal.value = true
+function openCreate() {
+  editingId.value = null
+  Object.assign(form, emptyForm())
+  modalOpen.value = true
 }
 
-function toggleStatus(record: Role) {
-  console.log('切换状态:', record.name, record.status)
+function openEdit(r: RoleItem) {
+  editingId.value = r.id
+  Object.assign(form, {
+    roleName: r.roleName ?? '',
+    description: r.description ?? '',
+    sort: r.sort ?? 0,
+    status: r.status ?? 1,
+  })
+  modalOpen.value = true
 }
 
-function onPermCheck(checkedKeys: string[], _info: unknown) {
-  checkedPerms.value = checkedKeys
+async function handleSubmit() {
+  try {
+    await formRef.value?.validate()
+  } catch {
+    return
+  }
+  saving.value = true
+  try {
+    const payload: RoleSaveParams = {
+      ...form,
+      roleName: form.roleName.trim(),
+      description: form.description.trim() || undefined,
+      sort: editingId.value ? form.sort : undefined,
+    }
+    const res = editingId.value
+      ? await updateRole({ ...payload, id: editingId.value })
+      : await createRole(payload)
+    if (res?.success) {
+      modalOpen.value = false
+      if (!editingId.value) page.value = 1
+      loadRoles()
+    }
+  } catch {
+    // 请求层已统一提示
+  } finally {
+    saving.value = false
+  }
 }
 
-function handleSubmit() {
-  console.log('提交:', form)
-  showModal.value = false
+// ---- 删除 ----
+function confirmDelete(r: RoleItem) {
+  Modal.confirm({
+    title: `删除角色「${r.roleName}」？`,
+    content: r.userCount ? `该角色下有 ${r.userCount} 个用户，删除后这些用户将失去该角色。` : '删除后不可恢复。',
+    okText: '删除',
+    okType: 'danger',
+    cancelText: '取消',
+    centered: true,
+    async onOk() {
+      try {
+        const res = await deleteRole(r.id)
+        if (res?.success) {
+          if (roles.value.length === 1 && page.value > 1) page.value--
+          loadRoles()
+        }
+      } catch {
+        // 请求层已统一提示
+      }
+    },
+  })
 }
 
-function handlePermSubmit() {
-  console.log('权限分配:', checkedPerms.value)
-  showPermModal.value = false
-}
+onMounted(loadRoles)
 </script>
 
 <style scoped>
-.roles-page {
-  padding: 0;
+.mgmt-page {
+  padding: 20px 24px 32px;
 }
 
-.page-header {
+.mgmt-header {
   display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 24px;
-  flex-wrap: wrap;
-  gap: 16px;
-}
-
-.page-title {
-  font-size: 24px;
-  font-weight: 700;
-  color: #1f2937;
-  margin: 0 0 4px 0;
-  letter-spacing: -0.5px;
-}
-
-.page-subtitle {
-  font-size: 14px;
-  color: #6b7280;
-  margin: 0;
-}
-
-.header-actions {
-  display: flex;
-  gap: 12px;
-}
-
-.action-btn {
-  border-radius: 10px;
-  height: 40px;
-  padding: 0 20px;
-  font-weight: 500;
-}
-
-.stats-cards {
-  margin-bottom: 20px;
-}
-
-.mini-stat {
-  background: #fff;
-  border-radius: 12px;
-  padding: 20px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-}
-
-.mini-stat-label {
-  font-size: 13px;
-  color: #6b7280;
-}
-
-.mini-stat-value {
-  font-size: 24px;
-  font-weight: 700;
-  color: #1f2937;
-}
-
-.text-green {
-  color: #10b981;
-}
-
-.text-red {
-  color: #ef4444;
-}
-
-.text-blue {
-  color: #374151;
-}
-
-.table-card {
-  border-radius: 16px;
-  overflow: hidden;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-}
-
-.table-card :deep(.ant-card-body) {
-  padding: 0;
-}
-
-.table-toolbar {
-  display: flex;
-  justify-content: space-between;
   align-items: center;
-  padding: 20px 24px;
-  border-bottom: 1px solid #f3f4f6;
-  flex-wrap: wrap;
-  gap: 12px;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
 }
 
-.toolbar-left {
-  display: flex;
-  gap: 12px;
-  flex-wrap: wrap;
+.mgmt-title {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.2px;
+  color: #1d1d1f;
 }
 
-.toolbar-right {
-  display: flex;
-  gap: 8px;
-}
-
-.search-input {
-  width: 280px;
-}
-
-.search-input :deep(.ant-input-affix-wrapper) {
+.mgmt-create-btn {
+  height: 36px;
+  padding: 0 16px;
   border-radius: 10px;
+  font-weight: 500;
+  box-shadow: 0 2px 8px rgba(10, 132, 255, 0.24);
 }
 
-.filter-select {
-  width: 140px;
+.mgmt-card {
+  background: #fff;
+  border: 1px solid #eef0f3;
+  border-radius: 16px;
+  padding: 16px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
 }
 
-.filter-select :deep(.ant-select-selector) {
-  border-radius: 10px !important;
-}
-
-.icon-only-btn {
-  width: 40px;
-  height: 40px;
-  border-radius: 10px;
+.mgmt-toolbar {
   display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.mgmt-search {
+  width: 300px;
+  height: 34px;
+  border-radius: 10px;
+  background: #f5f5f7;
+  border-color: transparent;
+}
+
+.mgmt-search:hover,
+.mgmt-search:focus-within {
+  background: #fff;
+  border-color: #d2d2d7;
+}
+
+.mgmt-search :deep(.ant-input) {
+  background: transparent;
+}
+
+.mgmt-search-icon {
+  color: #aeaeb2;
+}
+
+.mgmt-icon-btn {
+  margin-left: auto;
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
+  color: #6e6e73;
+  background: transparent;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background 0.15s;
 }
 
-.roles-table {
-  padding: 0 24px 24px;
+.mgmt-icon-btn:hover:not(:disabled) {
+  background: #f2f2f5;
 }
 
-.roles-table :deep(.ant-table-thead > tr > th) {
-  background: #f9fafb;
-  color: #6b7280;
-  font-weight: 600;
+.mgmt-table :deep(.ant-table-thead > tr > th) {
+  font-size: 12px;
+  font-weight: 500;
+  color: #86868b;
+  background: #fafafc;
+}
+
+.mgmt-table :deep(.ant-table-tbody > tr > td) {
   font-size: 13px;
-  border-bottom: 1px solid #e5e7eb;
 }
 
-.roles-table :deep(.ant-table-tbody > tr > td) {
-  border-bottom: 1px solid #f3f4f6;
-  padding: 16px 12px;
-}
-
-.roles-table :deep(.ant-table-tbody > tr:hover > td) {
-  background: #f9fafb;
-}
-
-.name-cell {
+.role-cell {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
+  min-width: 0;
 }
 
 .role-avatar {
-  width: 40px;
-  height: 40px;
-  background: linear-gradient(135deg, #4b5563 0%, #9ca3af 100%);
-  border-radius: 10px;
-  display: flex;
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
+  border-radius: 8px;
   color: #fff;
-  font-size: 18px;
-  flex-shrink: 0;
-}
-
-.role-info {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
+  background: #5e5ce6;
 }
 
 .role-name {
-  font-size: 14px;
-  font-weight: 600;
-  color: #1f2937;
-}
-
-.role-code {
-  font-size: 12px;
-  color: #9ca3af;
-  font-family: 'SF Mono', Monaco, monospace;
-}
-
-.status-tag {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.role-modal :deep(.ant-modal-content),
-.perm-modal :deep(.ant-modal-content) {
-  border-radius: 16px;
-}
-
-.role-modal :deep(.ant-modal-header),
-.perm-modal :deep(.ant-modal-header) {
-  padding: 24px 24px 16px;
-  border-bottom: 1px solid #f3f4f6;
-}
-
-.role-modal :deep(.ant-modal-title),
-.perm-modal :deep(.ant-modal-title) {
-  font-size: 18px;
-  font-weight: 600;
-}
-
-.role-modal :deep(.ant-modal-body),
-.perm-modal :deep(.ant-modal-body) {
-  padding: 24px;
-}
-
-.role-form :deep(.ant-form-item-label > label) {
   font-weight: 500;
-  color: #374151;
+  color: #1d1d1f;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.perm-tree {
-  padding: 16px;
-  background: #f9fafb;
-  border-radius: 12px;
-  max-height: 400px;
-  overflow-y: auto;
+.code-chip {
+  padding: 1px 6px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  color: #6e6e73;
+  background: #f2f2f5;
+  border-radius: 6px;
 }
 
-.form-footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: 12px;
-  margin-top: 24px;
-  padding-top: 24px;
-  border-top: 1px solid #f3f4f6;
+.text-muted {
+  color: #6e6e73;
+}
+
+.ellipsis {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.row-actions {
+  display: inline-flex;
+  gap: 2px;
+}
+
+.row-action {
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  color: #6e6e73;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.row-action:hover {
+  color: #1d1d1f;
+  background: #e9e9ee;
+}
+
+.row-action.danger {
+  color: #ff453a;
+}
+
+.row-action.danger:hover {
+  color: #ff3b30;
+  background: rgba(255, 59, 48, 0.1);
+}
+
+@media (max-width: 768px) {
+  .mgmt-page {
+    padding: 16px;
+  }
+
+  .mgmt-toolbar {
+    flex-wrap: wrap;
+  }
+
+  .mgmt-search {
+    flex: 1 1 100%;
+    width: auto;
+  }
 }
 </style>

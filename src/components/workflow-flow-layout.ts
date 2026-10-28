@@ -33,6 +33,20 @@ export interface LFEdge {
 let idSeq = 0
 export const nid = () => `lf_${++idSeq}`
 
+/** 自动生成流程节点标识（前端不再手填），如 node_k3f9x2ab */
+export function genNodeId(): string {
+  return `node_${Date.now().toString(36).slice(-4)}${Math.random().toString(36).slice(2, 6)}`
+}
+
+/** 递归补齐缺失的节点标识（含后续节点），已有标识保持不变 */
+export function ensureNodeIds(list: WorkflowNode[]): WorkflowNode[] {
+  list.forEach((n) => {
+    if (!n.nodeId?.trim()) n.nodeId = genNodeId()
+    if (n.nextNodes?.length) ensureNodeIds(n.nextNodes)
+  })
+  return list
+}
+
 export function lfTextValue(text?: { value?: string } | string): string {
   if (!text) return ''
   return typeof text === 'string' ? text : (text.value ?? '')

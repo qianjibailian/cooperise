@@ -416,6 +416,7 @@ import WorkflowNextStepModal from '@/components/WorkflowNextStepModal.vue'
 import FilterPanel from '@/components/FilterPanel.vue'
 import SortPanel from '@/components/SortPanel.vue'
 import NewIssueFormModal from '@/components/NewIssueFormModal.vue'
+import { onIssueCreated } from '@/utils/issue-events'
 import { FIELD_TYPE } from '@/types/fieldType'
 
 // 详情抽屉
@@ -1796,6 +1797,9 @@ const editIssueKey = ref('')
 function handleEditSubmitted() {
   fetchIssues()
 }
+
+/** 顶部新建弹窗提交成功后刷新列表 */
+onIssueCreated(() => fetchIssues())
 
 /** 流程推进（状态修改）提交成功后刷新列表 */
 function handleWfSubmitted() {
