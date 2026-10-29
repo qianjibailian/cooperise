@@ -79,7 +79,6 @@
                 <span class="org-node-name">{{ node.organizationName }}</span>
               </a-tooltip>
               <span v-if="isCompanyNode(node)" class="org-node-company">公司</span>
-              <span v-if="node.issueKeyPrefix" class="org-node-code" title="事项标识">{{ node.issueKeyPrefix }}</span>
               <span v-if="node.status === 0" class="org-node-badge">已停用</span>
               <span v-if="node.children?.length" class="org-node-count">{{ node.children.length }} 个子组织</span>
               <span class="org-node-actions" @click.stop>
@@ -140,14 +139,6 @@
         <!-- 组织编码由后端生成：新增时不填，编辑时只读展示 -->
         <a-form-item v-if="editingCode" :label="isCompanyForm ? '公司编码' : '组织编码'">
           <a-input :value="editingCode" disabled />
-        </a-form-item>
-        <a-form-item label="事项标识" name="issueKeyPrefix" extra="1~4 位大写字母，用作事项单号前缀，如 UG">
-          <a-input
-            :value="form.issueKeyPrefix"
-            placeholder="如 UG"
-            :maxlength="4"
-            @update:value="(v: string) => (form.issueKeyPrefix = v.toUpperCase().replace(/[^A-Z]/g, ''))"
-          />
         </a-form-item>
         <a-form-item label="状态" name="status">
           <a-switch v-model:checked="statusChecked" checked-children="启用" un-checked-children="停用" />
@@ -260,7 +251,7 @@ const filteredTree = computed<OrganizationNode[]>(() => {
   const kw = keyword.value.trim().toLowerCase()
   if (!kw) return treeData.value
   const match = (n: OrganizationNode) =>
-    `${n.organizationName ?? ''} ${n.issueKeyPrefix ?? ''}`.toLowerCase().includes(kw)
+    (n.organizationName ?? '').toLowerCase().includes(kw)
   const filter = (nodes: OrganizationNode[]): OrganizationNode[] =>
     nodes.reduce<OrganizationNode[]>((acc, n) => {
       if (match(n)) {
@@ -391,10 +382,10 @@ const modalOpen = ref(false)
 const saving = ref(false)
 const editingId = ref<number | null>(null)
 const formRef = ref<FormInstance>()
-const form = reactive<Required<Omit<OrganizationSaveParams, 'id' | 'organizationCode'>>>({
+// 事项标识已移到空间（问题单号前缀取空间标识），组织不再维护
+const form = reactive<Required<Omit<OrganizationSaveParams, 'id' | 'organizationCode' | 'issueKeyPrefix'>>>({
   parentId: ROOT_ID,
   organizationName: '',
-  issueKeyPrefix: '',
   sort: 0,
   status: 1,
   remark: '',
@@ -425,10 +416,6 @@ const rules = computed<Record<string, Rule[]>>(() => ({
     },
   }],
   organizationName: [{ required: true, whitespace: true, message: isCompanyForm.value ? '请输入公司名称' : '请输入组织名称' }],
-  issueKeyPrefix: [
-    { required: true, message: '请输入事项标识' },
-    { pattern: /^[A-Z]{1,4}$/, message: '事项标识为 1~4 位大写字母' },
-  ],
 }))
 
 /** 上级组织候选：公司及其下属组织（部门必须挂在某个公司下）；编辑时排除自身及其子孙，避免成环 */
@@ -454,7 +441,6 @@ function openCreate(parent: OrganizationNode | null) {
   Object.assign(form, {
     parentId: parent?.id ?? ROOT_ID,
     organizationName: '',
-    issueKeyPrefix: '',
     sort: 0,
     status: 1,
     remark: '',
@@ -469,7 +455,6 @@ function openEdit(node: OrganizationNode) {
   Object.assign(form, {
     parentId: node.parentId ?? ROOT_ID,
     organizationName: node.organizationName ?? '',
-    issueKeyPrefix: node.issueKeyPrefix ?? '',
     sort: node.sort ?? 0,
     status: node.status ?? 1,
     remark: node.remark ?? '',
@@ -488,7 +473,6 @@ async function handleSubmit() {
     const payload: OrganizationSaveParams = {
       ...form,
       organizationName: form.organizationName.trim(),
-      issueKeyPrefix: form.issueKeyPrefix.trim(),
       remark: form.remark.trim() || undefined,
     }
     // 排序由拖动维护：新增时排到同级最后，编辑时保留原排序
@@ -849,15 +833,6 @@ onMounted(loadTree)
   color: #1d1d1f;
 }
 
-.org-node-code {
-  flex-shrink: 0;
-  padding: 1px 6px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 11px;
-  color: #6e6e73;
-  background: #f2f2f5;
-  border-radius: 6px;
-}
 
 .org-node-company {
   flex-shrink: 0;
@@ -989,7 +964,6 @@ onMounted(loadTree)
     width: auto;
   }
 
-  .org-node-code,
   .org-node-count {
     display: none;
   }

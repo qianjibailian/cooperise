@@ -33,41 +33,97 @@ request.interceptors.request.use(
   (error) => Promise.reject(error)
 )
 
-/** 鉴权失效：清除登录态，由路由守卫跳转登录页；只提示一次 */
-function handleUnauthorized() {
-  if (useAuth().isLoggedIn.value) {
-    message.warning('登录已失效，请重新登录')
+/** 统一的失败信息：HTTP 非 2xx / 网络异常 / 业务 401 均包装成该结构后 reject，调用方 catch 到的都是它 */
+export interface ApiError {
+  success: false
+  /** 业务码（后端 Result.code），缺失时取 HTTP 状态码；网络异常为 0 */
+  code: number
+  /** HTTP 状态码；未收到响应时为 0 */
+  status: number
+  /** 已展示给用户的提示文案 */
+  message: string
+  /** 后端返回的 data（如参数校验失败的字段明细） */
+  data: unknown
+}
+
+/** HTTP 状态码 → 兜底文案（后端未返回 message 时使用） */
+const STATUS_MESSAGES: Record<number, string> = {
+  400: '请求参数错误',
+  401: '未登录或登录已失效，请重新登录',
+  403: '没有权限执行该操作',
+  404: '请求的资源不存在',
+  405: '请求方法不被允许',
+  408: '请求超时，请稍后重试',
+  409: '数据已被修改，请刷新后重试',
+  413: '请求内容过大',
+  429: '请求过于频繁，请稍后再试',
+  500: '服务器内部错误，请稍后重试',
+  502: '网关错误，请稍后重试',
+  503: '服务暂不可用，请稍后重试',
+  504: '网关超时，请稍后重试',
+}
+
+/** 同一文案在提示期间只展示一条（并发请求同时失败时不刷屏） */
+function showError(text: string) {
+  message.error({ content: text, key: `req-err:${text}` })
+}
+
+/** axios 错误 / 业务 401 响应 → ApiError */
+function toApiError(error: any): ApiError {
+  const res = error?.response
+  const body = res?.data && typeof res.data === 'object' ? res.data : undefined
+  const status = Number(res?.status) || 0
+  const backendMsg = typeof body?.message === 'string' ? body.message.trim() : ''
+  let text = backendMsg
+  if (!text) {
+    if (status) text = STATUS_MESSAGES[status] || (status >= 500 ? STATUS_MESSAGES[500] : `请求失败（${status}）`)
+    else if (error?.code === 'ECONNABORTED' || /timeout/i.test(String(error?.message))) text = '请求超时，请稍后重试'
+    else if (error?.code === 'ERR_CANCELED') text = '请求已取消'
+    else text = '网络异常，请检查网络后重试'
   }
-  clearAuth()
+  return { success: false, code: Number(body?.code) || status, status, message: text, data: body?.data ?? null }
+}
+
+/**
+ * 401：已登录时视为登录态失效 → 清除登录态（由路由守卫跳转登录页），提示一次；
+ * 未登录时（如登录接口账号密码错误）→ 原样展示后端返回的失败原因
+ */
+function handleUnauthorized(err: ApiError) {
+  if (useAuth().isLoggedIn.value) {
+    message.warning({ content: '登录已失效，请重新登录', key: 'req-unauthorized' })
+    clearAuth()
+  } else {
+    showError(err.message)
+  }
 }
 
 request.interceptors.response.use(
   (response: AxiosResponse) => {
     const data = response.data
     if (data && typeof data === 'object' && Number(data.code) === 401) {
-      handleUnauthorized()
-      return Promise.reject(data)
+      const err = toApiError({ response })
+      handleUnauthorized(err)
+      return Promise.reject(err)
     }
     // 统一全局提示：HTTP 2xx 且业务 success=true → message.success(接口 message)；其余 → message.error
     if (data && typeof data === 'object' && 'success' in data) {
       if (data.success === true) {
         if (data.message) message.success(data.message)
       } else {
-        message.error(data.message || '请求失败')
+        showError(data.message || '请求失败')
       }
     }
     return data
   },
   (error) => {
-    if (error?.response?.status === 401) {
-      handleUnauthorized()
-      return Promise.reject(error)
+    const err = toApiError(error)
+    if (err.status === 401 || err.code === 401) {
+      handleUnauthorized(err)
+      return Promise.reject(err)
     }
-    console.error('request error:', error)
-    message.error(
-      error?.response?.data?.message || error?.message || '网络异常，请稍后重试',
-    )
-    return Promise.reject(error)
+    console.error('request error:', err.status, err.message, error)
+    if (err.status !== 0 || error?.code !== 'ERR_CANCELED') showError(err.message)
+    return Promise.reject(err)
   }
 )
 
