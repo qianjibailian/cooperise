@@ -38,15 +38,30 @@
     </template>
     <a-spin :spinning="newFormLoading" class="new-form-spin">
       <div class="new-form-inner">
-        <!-- 上部固定区：组织 + 问题类型（垂直居中于分割线上方） -->
+        <!-- 上部固定区：空间 + 问题类型（垂直居中于分割线上方） -->
         <div class="new-form-header">
           <a-form layout="horizontal" :label-width="120">
-            <a-form-item label="组织">
-              <OrgTreeSelect
-                v-model="newFormOrganizationId"
-                :tree-data="newFormOrgTree"
+            <a-form-item label="空间">
+              <a-select
+                v-model:value="newFormSpaceId"
+                style="width: 100%"
                 :disabled="isEditMode"
-              />
+                :loading="spaceLoading"
+                show-search
+                :filter-option="filterSpaceOption"
+                placeholder="请选择空间"
+              >
+                <a-select-option v-for="sp in spaceOptions" :key="sp.id" :value="sp.id" :label="`${sp.spaceName} ${sp.spaceCode}`">
+                  <span class="space-option">
+                    <span class="space-option-icon" :style="{ background: sp.color || '#0A84FF' }">{{ spaceAvatarText(sp.spaceName) }}</span>
+                    <span class="space-option-name">{{ sp.spaceName }}</span>
+                    <span class="space-option-key">{{ sp.spaceCode }}</span>
+                  </span>
+                </a-select-option>
+                <template #notFoundContent>
+                  <div class="issue-type-empty">暂无可用空间，请先在「空间」中创建</div>
+                </template>
+              </a-select>
             </a-form-item>
             <a-form-item label="问题类型">
               <a-select
@@ -57,9 +72,14 @@
                 placeholder="请选择问题类型"
                 @change="onIssueTypeChanged"
               >
-                <a-select-option v-for="opt in issueTypeOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</a-select-option>
+                <a-select-option v-for="opt in issueTypeOptions" :key="opt.value" :value="opt.value">
+                  <span class="it-option">
+                    <span class="it-option-icon" :style="{ background: opt.color || '#8c8c8c' }"><component :is="issueTypeIconOf(opt.iconUri)" /></span>
+                    <span class="it-option-name">{{ opt.label }}</span>
+                  </span>
+                </a-select-option>
                 <template #notFoundContent>
-                  <div class="issue-type-empty">该组织暂无可用问题类型，请先在「问题类型」中添加</div>
+                  <div class="issue-type-empty">该空间所属组织暂无可用问题类型，请先在「问题类型」中添加</div>
                 </template>
               </a-select>
             </a-form-item>
@@ -256,10 +276,8 @@ import type { IDomEditor, IEditorConfig } from '@wangeditor/editor'
 import '@wangeditor/editor/dist/css/style.css'
 import { PlusOutlined } from '@ant-design/icons-vue'
 import { Empty, message } from 'ant-design-vue'
-import { createIssue, getAvailableFieldOptions, queryUsers, queryTemplates, getTemplate, getIssueCreateMeta, queryDetail, patchIssue, queryAvailableFieldList, getOrganizationTree, queryIssueTypes, type OrganizationNode } from '@/api/faiz'
-import OrgTreeSelect from '@/components/OrgTreeSelect.vue'
-import { getUserOrganizationId } from '@/utils/auth'
-import { findOrgCode } from '@/utils/orgTree'
+import { createIssue, getAvailableFieldOptions, queryUsers, queryTemplates, getTemplate, getIssueCreateMeta, queryDetail, patchIssue, queryAvailableFieldList, querySpaceOptions, queryIssueTypes, type SpaceItem } from '@/api/faiz'
+import { issueTypeIconOf } from '@/utils/issueTypeIcons'
 import { FIELD_TYPE, normalizeFieldType, formatTypeLabel } from '@/types/fieldType'
 import type {
   CustomFieldOptionReq,
@@ -327,39 +345,53 @@ watch(visible, (val) => {
   if (!val) {
     destroyRichEditors()
   } else {
-    loadNewFormOrgTree()
-    // 新建：组织默认带出当前登录用户所属组织（可手动修改）
-    if (!isEditMode.value) {
-      const orgId = getUserOrganizationId()
-      if (orgId != null) newFormOrganizationId.value = orgId
-    }
+    loadSpaceOptions()
     loadIssueTypesByOrg()
   }
 })
 
-// 组织：新建事项时选择所属组织（组织树每次打开刷新，保证与组织管理同步）
-const newFormOrganizationId = ref<number | string | undefined>()
-const newFormOrgTree = ref<OrganizationNode[]>([])
-/** 组织树加载中的请求：查询表单元数据前需等待，以便取到组织编码 */
-let orgTreeLoading: Promise<void> | null = null
-function loadNewFormOrgTree() {
-  orgTreeLoading = (async () => {
+// 空间：新建事项时选择所属空间（每次打开刷新，保证与空间管理同步）；
+// 问题类型 / 表单元数据 / 提交的组织均取所选空间的所属组织
+const LAST_SPACE_KEY = 'cooperise:newIssue:lastSpaceId'
+const newFormSpaceId = ref<number | undefined>()
+const spaceOptions = ref<SpaceItem[]>([])
+const spaceLoading = ref(false)
+/** 空间列表加载中的请求：查询表单元数据前需等待，以便取到空间的组织编码 */
+let spaceLoadingReq: Promise<void> | null = null
+function loadSpaceOptions() {
+  spaceLoadingReq = (async () => {
+    spaceLoading.value = true
     try {
-      const res = await getOrganizationTree()
-      if (res?.success) newFormOrgTree.value = res.data || []
+      const res = await querySpaceOptions()
+      if (!res?.success) return
+      spaceOptions.value = res.data || []
+      // 新建：默认带出上次使用的空间，失效时取第一个
+      if (!isEditMode.value && !spaceOptions.value.some(sp => sp.id === newFormSpaceId.value)) {
+        let last: number | undefined
+        try { last = Number(localStorage.getItem(LAST_SPACE_KEY)) || undefined } catch { /* 存储不可用 */ }
+        newFormSpaceId.value = spaceOptions.value.find(sp => sp.id === last)?.id ?? spaceOptions.value[0]?.id
+      }
     } catch {
       // 请求层已统一提示
+    } finally {
+      spaceLoading.value = false
     }
   })()
-  return orgTreeLoading
+  return spaceLoadingReq
+}
+const currentSpace = computed(() => spaceOptions.value.find(sp => sp.id === newFormSpaceId.value))
+function spaceAvatarText(name?: string) {
+  const t = (name || '').trim()
+  return /^[a-zA-Z]/.test(t) ? t.slice(0, 2).toUpperCase() : t.slice(0, 1)
+}
+function filterSpaceOption(input: string, option: any) {
+  return String(option?.label ?? '').toLowerCase().includes(input.trim().toLowerCase())
 }
 
-/** 当前所选组织的编码（未选择或查不到时为 undefined） */
+/** 当前所选空间的所属组织编码（未选择或空间未关联组织时为 undefined） */
 async function currentOrgCode(): Promise<string | undefined> {
-  const orgId = newFormOrganizationId.value
-  if (orgId == null || orgId === '') return undefined
-  if (orgTreeLoading) await orgTreeLoading
-  return findOrgCode(newFormOrgTree.value, orgId)
+  if (spaceLoadingReq) await spaceLoadingReq
+  return currentSpace.value?.organizationCode || undefined
 }
 
 // 新建表单弹窗内部状态
@@ -377,11 +409,11 @@ const DEFAULT_ISSUE_TYPE_OPTIONS = [
   { value: '10003', label: '缺陷' },
   { value: '10004', label: '其他' },
 ]
-const issueTypeOptions = ref<{ value: string; label: string; code?: string }[]>([...DEFAULT_ISSUE_TYPE_OPTIONS])
+const issueTypeOptions = ref<{ value: string; label: string; code?: string; color?: string; iconUri?: string | null }[]>([...DEFAULT_ISSUE_TYPE_OPTIONS])
 const issueTypeLoading = ref(false)
 let issueTypeReqSeq = 0
 
-/** 按所选组织拉取启用的问题类型；未选组织时拉取全部 */
+/** 按所选空间的所属组织拉取启用的问题类型；空间未关联组织时拉取全部 */
 async function loadIssueTypesByOrg() {
   if (isEditMode.value) return
   const seq = ++issueTypeReqSeq
@@ -396,7 +428,7 @@ async function loadIssueTypesByOrg() {
       organizationCode,
     })
     if (seq !== issueTypeReqSeq || !res?.success) return
-    issueTypeOptions.value = (res.data?.list || []).map(t => ({ value: String(t.id), label: t.issueTypeName, code: t.issueTypeCode }))
+    issueTypeOptions.value = (res.data?.list || []).map(t => ({ value: String(t.id), label: t.issueTypeName, code: t.issueTypeCode, color: t.color, iconUri: t.iconUri }))
   } catch {
     if (seq !== issueTypeReqSeq) return
     issueTypeOptions.value = [...DEFAULT_ISSUE_TYPE_OPTIONS]
@@ -450,7 +482,10 @@ function currentIssueTypeCode(): string {
   return issueTypeOptions.value.find(o => o.value === newFormIssueTypeId.value)?.code || newFormIssueTypeId.value
 }
 
-watch(newFormOrganizationId, () => {
+watch(newFormSpaceId, (val) => {
+  if (val != null && !isEditMode.value) {
+    try { localStorage.setItem(LAST_SPACE_KEY, String(val)) } catch { /* 存储不可用 */ }
+  }
   if (visible.value) loadIssueTypesByOrg()
 })
 
@@ -1343,12 +1378,14 @@ function buildCreateIssuePayload(): CreateIssuePayload {
   const allFields = collectAllFields()
   const inputFields: CreateIssueInputField[] = []
 
-  // 1) 组织：提交组织编码 organizationCode（未选择时不提交；树中查不到编码时退回提交 ID）
-  if (newFormOrganizationId.value != null && newFormOrganizationId.value !== '') {
+  // 1) 组织：提交所选空间的所属组织编码（空间未关联组织时不提交）
+  // TODO 后端支持空间字段后，在此追加 { id: 'space', value: spaceCode }
+  const orgCode = currentSpace.value?.organizationCode
+  if (orgCode) {
     inputFields.push({
       id: 'organization',
       type: ORGANIZATION_FIELD_TYPE,
-      value: findOrgCode(newFormOrgTree.value, newFormOrganizationId.value) || String(newFormOrganizationId.value),
+      value: orgCode,
     })
   }
   // 2) 问题类型
@@ -1434,6 +1471,15 @@ async function saveEditForm() {
 </script>
 
 <style>
+/* 空间下拉：颜色头像 + 名称 + 标识 */
+.space-option { display: inline-flex; align-items: center; gap: 8px; max-width: 100%; vertical-align: middle; }
+.space-option-icon { width: 20px; height: 20px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 6px; font-size: 11px; font-weight: 600; color: #fff; }
+.space-option-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.space-option-key { flex-shrink: 0; padding: 0 5px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11px; line-height: 18px; color: #6e6e73; background: #f2f2f5; border-radius: 5px; }
+/* 问题类型下拉：颜色图标 + 名称 */
+.it-option { display: inline-flex; align-items: center; gap: 8px; max-width: 100%; vertical-align: middle; }
+.it-option-icon { width: 20px; height: 20px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 6px; font-size: 12px; color: #fff; }
+.it-option-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* Modal 样式需要写在非 scoped 块中，因为 Ant Design Modal 通过 Teleport 渲染到 body */
 
 /* ========== 苹果 × Google 融合主题色 ========== */

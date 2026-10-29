@@ -39,6 +39,10 @@ export interface TemplateQueryRequest {
   status?: number
   /** 按问题类型筛选：问题类型编码（如 TYPE10001） */
   issueTypeCode?: string
+  /** 按所属组织筛选：组织编码 */
+  organizationCode?: string
+  /** 按所属空间筛选：空间编码 */
+  spaceCode?: string
 }
 
 /** 模板分页查询结果（对应后端 TemplatePageVO） */
@@ -260,6 +264,8 @@ export interface UserQueryPayload {
 export interface UserItem {
   id?: number
   userNo: string
+  /** 用户编号（新接口 UserVO.memberId），空间负责人等按此关联 */
+  memberId?: string
   /** 账号/姓名（新接口），旧接口字段为 userCoAccount */
   coAccount?: string
   userCoAccount?: string
@@ -786,6 +792,9 @@ export interface WorkflowDefinition {
   organizationName?: string
   /** 组织路径名称，如 SPEEDX/研发中心 */
   organizationPathName?: string
+  /** 所属空间编码 / 名称 */
+  spaceCode?: string
+  spaceName?: string
   /** 节点列表 */
   nodes?: WorkflowNode[]
   remark?: string

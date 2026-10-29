@@ -1,7 +1,7 @@
 <template>
-  <div class="mgmt-page">
+  <div :class="['mgmt-page', { embedded: !!props.spaceCode }]">
     <header class="mgmt-header">
-      <h2 class="mgmt-title">问题类型</h2>
+      <h2 class="mgmt-title">{{ props.spaceCode ? '' : '问题类型' }}</h2>
       <a-button type="primary" class="mgmt-create-btn" @click="openCreate">
         <PlusOutlined /> 新增
       </a-button>
@@ -19,13 +19,6 @@
         >
           <template #prefix><SearchOutlined class="mgmt-search-icon" /></template>
         </a-input>
-        <OrgTreeSelect
-          v-model="orgFilter"
-          :tree-data="orgTree"
-          placeholder="全部组织"
-          class="org-filter"
-          @update:model-value="handleSearch"
-        />
         <a-segmented v-model:value="statusFilter" :options="STATUS_FILTERS" @change="handleSearch" />
         <a-tooltip title="刷新">
           <button class="mgmt-icon-btn" :disabled="loading" @click="loadIssueTypes"><ReloadOutlined /></button>
@@ -33,12 +26,12 @@
       </div>
 
       <a-table
-        :columns="columns"
+        :columns="visibleColumns"
         :data-source="issueTypes"
         :loading="loading"
         :pagination="pagination"
         row-key="id"
-        :scroll="{ x: 1100 }"
+        :scroll="{ x: 1300 }"
         class="mgmt-table"
         @change="handleTableChange"
       >
@@ -53,11 +46,8 @@
             <span v-if="record.issueTypeCode" class="code-chip">{{ record.issueTypeCode }}</span>
             <span v-else class="text-muted">-</span>
           </template>
-          <template v-else-if="column.key === 'organization'">
-            <span v-if="!record.organizationName" class="text-muted">-</span>
-            <a-tooltip v-else :title="record.organizationPathName || record.organizationName" placement="topLeft" :mouse-enter-delay="0.3">
-              <span class="org-chip"><ApartmentOutlined /><span class="ellipsis">{{ record.organizationName }}</span></span>
-            </a-tooltip>
+          <template v-else-if="column.key === 'space'">
+            <SpaceTag :code="record.spaceCode" :name="record.spaceName" />
           </template>
           <template v-else-if="column.key === 'description'">
             <a-tooltip :title="record.description" placement="topLeft">
@@ -108,8 +98,9 @@
         <a-form-item label="问题类型名称" name="issueTypeName">
           <a-input v-model:value="form.issueTypeName" placeholder="如 需求 / 缺陷" :maxlength="32" />
         </a-form-item>
-        <a-form-item label="所属组织" name="organizationId">
-          <OrgTreeSelect v-model="form.organizationId" :tree-data="orgTree" />
+        <!-- 空间内管理时空间固定为当前空间，不再选择 -->
+        <a-form-item v-if="!props.spaceCode" label="所属空间" name="spaceCode">
+          <SpaceSelect v-model="form.spaceCode" size="middle" />
         </a-form-item>
         <a-form-item label="图标" name="iconUri">
           <div class="icon-options">
@@ -219,14 +210,15 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { Modal, type FormInstance, type TablePaginationConfig } from 'ant-design-vue'
 import type { Rule } from 'ant-design-vue/es/form'
-import { PlusOutlined, SearchOutlined, ReloadOutlined, EditOutlined, DeleteOutlined, ApartmentOutlined, CheckOutlined, ArrowUpOutlined, ArrowDownOutlined, FlagOutlined } from '@ant-design/icons-vue'
+import { PlusOutlined, SearchOutlined, ReloadOutlined, EditOutlined, DeleteOutlined, CheckOutlined, ArrowUpOutlined, ArrowDownOutlined, FlagOutlined } from '@ant-design/icons-vue'
 import {
-  queryIssueTypes, createIssueType, updateIssueType, deleteIssueType, getOrganizationTree,
+  queryIssueTypes, createIssueType, updateIssueType, deleteIssueType,
   queryIssueTypeStatuses, saveIssueTypeStatuses,
-  type IssueTypeItem, type IssueTypeSaveParams, type OrganizationNode, type IssueTypeStatus,
+  type IssueTypeItem, type IssueTypeSaveParams, type IssueTypeStatus,
 } from '@/api/faiz'
-import OrgTreeSelect from '@/components/OrgTreeSelect.vue'
-import { findOrgCode, findOrgIdByCode } from '@/utils/orgTree'
+import SpaceSelect from '@/components/SpaceSelect.vue'
+import SpaceTag from '@/components/SpaceTag.vue'
+import { useSpaces } from '@/utils/space-store'
 import { ISSUE_TYPE_ICONS, DEFAULT_ISSUE_TYPE_ICON, issueTypeIconOf } from '@/utils/issueTypeIcons'
 
 /** 图标颜色候选（Apple 系统色） */
@@ -267,30 +259,24 @@ const STATUS_FILTERS = [
 const columns = [
   { title: '问题类型', key: 'issueType', width: 200, fixed: 'left' as const },
   { title: '编码', key: 'issueTypeCode', width: 160 },
-  { title: '所属组织', key: 'organization', width: 200 },
+  { title: '所属空间', key: 'space', width: 200 },
   { title: '描述', key: 'description', ellipsis: true },
   { title: '事项数', key: 'issueCount', width: 90 },
   { title: '启用', key: 'status', width: 80 },
   { title: '操作', key: 'action', width: 130, fixed: 'right' as const },
 ]
 
+const { spaceNameOf, orgCodeOfSpace } = useSpaces()
+
+/** 在空间内管理（空间首页嵌入）时传入：列表只看该空间，新增 / 编辑固定归属该空间 */
+const props = defineProps<{ spaceCode?: string }>()
+const visibleColumns = computed(() => props.spaceCode ? columns.filter(c => c.key !== 'space') : columns)
+
 // ---- 列表 ----
 const loading = ref(false)
 const issueTypes = ref<IssueTypeItem[]>([])
 const keyword = ref('')
 const statusFilter = ref('all')
-const orgFilter = ref<number | undefined>()
-
-// ---- 组织树（筛选 / 表单共用） ----
-const orgTree = ref<OrganizationNode[]>([])
-async function loadOrgTree() {
-  try {
-    const res = await getOrganizationTree()
-    if (res?.success) orgTree.value = res.data || []
-  } catch {
-    // 请求层已统一提示
-  }
-}
 const page = ref(1)
 const pageSize = ref(20)
 const total = ref(0)
@@ -309,12 +295,14 @@ async function loadIssueTypes() {
     const res = await queryIssueTypes({
       keyword: keyword.value.trim() || undefined,
       status: statusFilter.value === 'all' ? undefined : Number(statusFilter.value),
-      organizationCode: findOrgCode(orgTree.value, orgFilter.value),
+      spaceCode: props.spaceCode,
       page: page.value,
       pageSize: pageSize.value,
     })
     if (res?.success) {
-      issueTypes.value = res.data?.list || []
+      const list = res.data?.list || []
+      // 后端按 spaceCode 筛选就绪前兜底：只排除明确属于其他空间的数据，未关联空间的历史数据照常展示
+      issueTypes.value = props.spaceCode ? list.filter(t => !t.spaceCode || t.spaceCode === props.spaceCode) : list
       total.value = Number(res.data?.total || 0)
     }
   } catch {
@@ -348,7 +336,9 @@ async function toggleStatus(r: IssueTypeItem, checked: boolean) {
     const res = await updateIssueType({
       id: r.id,
       issueTypeName: r.issueTypeName,
-      organizationCode: r.organizationCode ?? findOrgCode(orgTree.value, r.organizationId),
+      organizationCode: r.organizationCode ?? await orgCodeOfSpace(r.spaceCode),
+      spaceCode: r.spaceCode,
+      spaceName: r.spaceName || spaceNameOf(r.spaceCode) || undefined,
       color: r.color,
       iconUri: r.iconUri,
       description: r.description,
@@ -368,10 +358,12 @@ const modalOpen = ref(false)
 const saving = ref(false)
 const editingId = ref<number | null>(null)
 const formRef = ref<FormInstance>()
-/** 表单内组织用 ID 选择（组织树），提交时换算成组织编码 */
-const emptyForm = (): Omit<IssueTypeSaveParams, 'id' | 'organizationCode'> & { organizationId?: number; description: string; sort: number } => ({
+/** 编辑中记录的原组织编码：所属空间未关联组织时兜底 */
+const editingOrgCode = ref<string | undefined>()
+/** 不单独选组织：提交时取所属空间的组织编码 */
+const emptyForm = (): Omit<IssueTypeSaveParams, 'id' | 'organizationCode'> & { description: string; sort: number } => ({
   issueTypeName: '',
-  organizationId: undefined,
+  spaceCode: undefined as string | undefined,
   color: DEFAULT_COLOR,
   iconUri: DEFAULT_ISSUE_TYPE_ICON as string | null,
   description: '',
@@ -386,7 +378,7 @@ const statusChecked = computed({
 
 const rules: Record<string, Rule[]> = {
   issueTypeName: [{ required: true, whitespace: true, message: '请输入问题类型名称' }],
-  organizationId: [{ required: true, type: 'number', message: '请选择所属组织' }],
+  spaceCode: [{ required: true, message: '请选择所属空间' }],
 }
 
 // ---- 问题状态抽屉 ----
@@ -466,15 +458,16 @@ function serializeStatuses(rows: Partial<IssueTypeStatus>[]): IssueTypeStatus[] 
 
 function openCreate() {
   editingId.value = null
-  Object.assign(form, emptyForm())
+  Object.assign(form, emptyForm(), { spaceCode: props.spaceCode })
   modalOpen.value = true
 }
 
 function openEdit(r: IssueTypeItem) {
   editingId.value = r.id
+  editingOrgCode.value = r.organizationCode
   Object.assign(form, {
     issueTypeName: r.issueTypeName ?? '',
-    organizationId: r.organizationId ?? findOrgIdByCode(orgTree.value, r.organizationCode),
+    spaceCode: r.spaceCode || props.spaceCode,
     color: r.color || DEFAULT_COLOR,
     iconUri: r.iconUri || DEFAULT_ISSUE_TYPE_ICON,
     description: r.description ?? '',
@@ -492,12 +485,13 @@ async function handleSubmit() {
   }
   saving.value = true
   try {
-    const { organizationId, ...rest } = form
     const payload: IssueTypeSaveParams = {
-      ...rest,
-      organizationCode: findOrgCode(orgTree.value, organizationId),
+      ...form,
+      organizationCode: (await orgCodeOfSpace(form.spaceCode)) ?? (editingId.value ? editingOrgCode.value : undefined),
+      spaceName: spaceNameOf(form.spaceCode) || undefined,
       issueTypeName: form.issueTypeName.trim(),
-      description: form.description.trim() || undefined,
+      // 始终提交描述（清空时传空串），否则后端无法清空已有描述
+      description: form.description.trim(),
       sort: editingId.value ? form.sort : undefined,
     }
     const res = editingId.value
@@ -540,13 +534,22 @@ function confirmDelete(r: IssueTypeItem) {
 
 onMounted(() => {
   loadIssueTypes()
-  loadOrgTree()
 })
 </script>
 
 <style scoped>
 .mgmt-page {
   padding: 20px 24px 32px;
+}
+
+.mgmt-page.embedded {
+  padding: 0;
+}
+
+.mgmt-page.embedded .mgmt-card {
+  padding: 0;
+  border: none;
+  box-shadow: none;
 }
 
 .mgmt-header {
@@ -918,26 +921,8 @@ onMounted(() => {
   border-color: #0a84ff;
 }
 
-.org-filter {
-  width: 200px;
-}
 
-.org-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  max-width: 100%;
-  height: 24px;
-  padding: 0 8px;
-  font-size: 12px;
-  color: #30b0c7;
-  background: #e8f7fa;
-  border-radius: 999px;
-}
 
-.org-chip .ellipsis {
-  color: #1d1d1f;
-}
 
 .ellipsis {
   display: block;

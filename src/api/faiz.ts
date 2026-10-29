@@ -284,7 +284,7 @@ export function deployWorkflowDefinition(data: Partial<WorkflowDefinition>): Pro
 }
 
 /** 流程基本信息保存参数（新增不传 id；不含流程节点，与部署无关） */
-export type WorkflowDefinitionSaveParams = Pick<WorkflowDefinition, 'id' | 'processName' | 'organizationCode' | 'issueTypeCode' | 'issueTypeName' | 'remark'> & {
+export type WorkflowDefinitionSaveParams = Pick<WorkflowDefinition, 'id' | 'processName' | 'organizationCode' | 'spaceCode' | 'spaceName' | 'issueTypeCode' | 'issueTypeName' | 'remark'> & {
   /** 流程标识：新增时由后端自动生成，不传；编辑时原样回传 */
   processKey?: string
 }
@@ -601,6 +601,9 @@ export interface IssueTypeItem {
   organizationName?: string
   /** 所属组织路径名称，如 全球运营中心/C端产品部 */
   organizationPathName?: string
+  /** 所属空间编码 / 名称 */
+  spaceCode?: string
+  spaceName?: string
   /** 图标颜色，如 #0A84FF */
   color?: string
   /** 类型图标 key（见 utils/issueTypeIcons），如 bug */
@@ -632,6 +635,8 @@ export interface IssueTypeQueryParams {
   status?: number
   /** 按组织编码筛选 */
   organizationCode?: string
+  /** 按空间编码筛选 */
+  spaceCode?: string
   page: number
   pageSize: number
 }
@@ -642,6 +647,9 @@ export interface IssueTypeSaveParams {
   issueTypeName: string
   /** 所属组织编码 */
   organizationCode?: string
+  /** 所属空间编码 / 名称 */
+  spaceCode?: string
+  spaceName?: string
   color?: string
   /** 类型图标 key */
   iconUri?: string | null
@@ -678,6 +686,95 @@ export function saveIssueTypeStatuses(data: { issueTypeCode: string; statuses: I
 /** 删除问题类型（POST /issue-type/delete） */
 export function deleteIssueType(id: number): Promise<Result<void>> {
   return request.post(`/issue-type/delete`, { id })
+}
+
+// ==================== 空间管理 ====================
+
+/** 空间（后端 SpaceVO） */
+export interface SpaceItem {
+  id: number
+  /** 空间编码（后端生成，十位数字），业务关联（问题类型 / 模板 / 工作流）用 */
+  spaceCode: string
+  spaceName: string
+  /** 空间标识：1~5 位大写字母，用作问题单号前缀（如 RD → RD-000042） */
+  spaceKey?: string
+  /** 所属组织 */
+  organizationId?: number
+  organizationCode?: string
+  organizationName?: string
+  /** 组织路径名称，如 全球运营中心/C端产品部 */
+  organizationPathName?: string
+  /** 负责人用户编号（memberId） */
+  ownerMemberId?: string
+  /** 负责人姓名（无姓名时取英文名） */
+  ownerName?: string
+  /** 图标颜色，如 #0A84FF */
+  color?: string
+  description?: string
+  /** 排序值，越小越靠前 */
+  sort?: number
+  /** 状态：0 停用 / 1 启用 */
+  status: number
+  createTime?: string
+  updateTime?: string
+}
+
+export interface SpaceQueryParams {
+  /** 空间名称 / 编码 */
+  keyword?: string
+  status?: number
+  /** 按组织筛选（含下级组织）：organizationId 优先 */
+  organizationId?: number
+  organizationCode?: string
+  page: number
+  pageSize: number
+}
+
+/** 新增 / 修改空间请求体（修改时 id 必填；编码由后端生成，不提交） */
+export interface SpaceSaveParams {
+  id?: number
+  spaceName: string
+  /** 空间标识：1~5 位大写字母，问题单号前缀 */
+  spaceKey: string
+  /** 所属组织：organizationId 与 organizationCode 二选一，ID 优先 */
+  organizationId?: number
+  organizationCode?: string
+  /** 负责人用户编号（memberId），空表示不设负责人 */
+  ownerMemberId?: string
+  color?: string
+  description?: string
+  sort?: number
+  status: number
+}
+
+/** 空间分页列表（POST /space/list，按组织筛选时含下级组织的空间） */
+export function querySpaces(data: SpaceQueryParams): Promise<Result<{ list: SpaceItem[]; total: number }>> {
+  return request.post(`/space/list`, data)
+}
+
+/** 组织下可选空间（POST /space/options，仅启用；不传组织时返回全部启用空间） */
+export function querySpaceOptions(data?: { organizationId?: number; organizationCode?: string }): Promise<Result<SpaceItem[]>> {
+  return request.post(`/space/options`, data ?? {})
+}
+
+/** 空间详情（POST /space/detail） */
+export function getSpaceDetail(id: number): Promise<Result<SpaceItem>> {
+  return request.post(`/space/detail`, { id })
+}
+
+/** 新增空间（POST /space/create，编码后端自动生成） */
+export function createSpace(data: SpaceSaveParams): Promise<Result<SpaceItem>> {
+  return request.post(`/space/create`, data)
+}
+
+/** 修改空间（POST /space/update） */
+export function updateSpace(data: SpaceSaveParams): Promise<Result<SpaceItem>> {
+  return request.post(`/space/update`, data)
+}
+
+/** 删除空间（POST /space/delete，软删除） */
+export function deleteSpace(id: number): Promise<Result<void>> {
+  return request.post(`/space/delete`, { id })
 }
 
 // ==================== 组织管理 ====================

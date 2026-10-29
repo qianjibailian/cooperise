@@ -231,22 +231,11 @@
                 <component :is="ApartmentOutlined" />
                 <span>组织管理</span>
               </a-menu-item>
-              <a-menu-item key="/admin/issue-type">
-                <component :is="TagsOutlined" />
-                <span>问题类型</span>
-              </a-menu-item>
               <a-menu-item key="/admin/system-field">
                 <component :is="AppstoreOutlined" />
                 <span>系统字段</span>
               </a-menu-item>
-              <a-menu-item key="/admin/template-list">
-                <component :is="UnorderedListOutlined" />
-                <span>模板管理</span>
-              </a-menu-item>
-              <a-menu-item key="/admin/workflow">
-                <component :is="DeploymentUnitOutlined" />
-                <span>工作流</span>
-              </a-menu-item>
+              <!-- 问题类型 / 模板管理 / 工作流 已移入空间（空间首页 Tab），路由 /admin/* 仍保留 -->
             </a-menu>
           </template>
         </div>
@@ -284,15 +273,12 @@ import {
   FolderOutlined,
   StarFilled,
   AppstoreOutlined,
-  UnorderedListOutlined,
   MoreOutlined,
   TeamOutlined,
   LockOutlined,
   BuildOutlined,
   ApartmentOutlined,
   IdcardOutlined,
-  TagsOutlined,
-  DeploymentUnitOutlined,
   UserOutlined,
   ToolOutlined,
   EditOutlined,
@@ -313,6 +299,7 @@ import { deleteViewGroup, deleteView } from '@/api/faiz'
 
 const iconBarItems = [
   { key: 'workspace', icon: HomeOutlined, label: '工作台' },
+  { key: 'space', icon: AppstoreOutlined, label: '空间' },
   { key: 'settings', icon: SettingOutlined, label: '设置' },
   { key: 'admin', icon: ToolOutlined, label: '管理后台' },
 ]
@@ -455,6 +442,10 @@ const currentPath = computed(() => {
     activeSection.value = 'system'
     return route.path
   }
+  if (route.path.startsWith('/space')) {
+    activeSection.value = 'space'
+    return route.path
+  }
   if (route.path.startsWith('/settings')) {
     activeSection.value = 'settings'
     return route.path
@@ -470,6 +461,8 @@ function handleSectionClick(key: string) {
   activeSection.value = key
   if (key === 'workspace') {
     router.push('/workbench/todo')
+  } else if (key === 'space') {
+    router.push('/space')
   } else if (key === 'settings') {
     router.push('/settings/profile')
   } else if (key === 'admin') {

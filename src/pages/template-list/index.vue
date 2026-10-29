@@ -1,27 +1,38 @@
 <template>
-  <div class="template-list-page">
-    <!-- 搜索与操作栏 -->
+  <div :class="['template-list-page', { embedded: !!props.spaceCode }]">
+    <!-- 筛选与操作栏：问题类型 / 组织 / 模板名称 -->
     <div class="toolbar">
-      <div class="search-box">
-        <SearchOutlined class="search-icon" />
-        <input v-model="searchValue" class="search-input" placeholder="搜索模板…" @keyup.enter="handleQuery" />
-        <div v-if="searchValue" class="search-clear" @click="clearSearch">
-          <CloseCircleFilled />
+      <div class="filter-bar">
+        <div class="filter-field">
+          <span class="filter-label">问题类型</span>
+          <a-select
+            v-model:value="tabIssueType"
+            :options="issueTypeFilterOptions"
+            placeholder="全部"
+            :loading="filterIssueTypeLoading"
+            allow-clear
+            show-search
+            option-filter-prop="label"
+            class="filter-ctrl"
+            @change="handleQuery"
+          />
         </div>
-      </div>
-      <button class="search-btn" @click="handleQuery"><SearchOutlined /> 查询</button>
-      <div class="toolbar-actions">
-        <div class="filter-group">
-          <button
-            v-for="f in filters" :key="f.value"
-            :class="['filter-chip', { active: filterStatus === f.value }]"
-            @click="onFilterStatusClick(f.value)"
-          >{{ f.label }}</button>
+        <div class="filter-field">
+          <span class="filter-label">模板名称</span>
+          <a-input
+            v-model:value="searchValue"
+            placeholder="输入模板名称"
+            allow-clear
+            class="filter-ctrl"
+            @press-enter="handleQuery"
+          />
         </div>
-        <button class="create-btn" @click="handleCreate">
-          <PlusOutlined /><span>新建模板</span>
-        </button>
+        <a-button type="primary" @click="handleQuery">查询</a-button>
+        <a-button @click="resetFilters">重置</a-button>
       </div>
+      <button class="create-btn" @click="handleCreate">
+        <PlusOutlined /><span>新建模板</span>
+      </button>
     </div>
 
     <!-- 统计行 -->
@@ -33,64 +44,74 @@
       <div class="stat-item"><span class="stat-value stat-blue">{{ totalTabs }}</span><span class="stat-label">表单配置</span></div>
     </div>
 
-    <!-- Tab 导航 -->
-    <div class="tab-nav">
-      <button v-for="tab in TAB_NAV_OPTIONS" :key="tab.value"
-        :class="['tab-item', { active: tabCategory === tab.value }]"
-        @click="tabCategory = tab.value"
-      >{{ tab.label }}</button>
-    </div>
-
-    <!-- 卡片列表 -->
-    <div v-if="filteredTemplates.length > 0" class="card-grid">
-      <div v-for="tpl in filteredTemplates" :key="tpl.id"
-        :class="['template-card', { disabled: !tpl.status }]"
-        @click="handleEdit(tpl)">
-        <div class="card-header">
-          <div :class="['card-icon', categoryClass(tpl.category)]"><FormOutlined /></div>
-          <div class="card-header-right">
-            <span :class="['status-dot', tpl.status ? 'on' : 'off']" />
-            <a-dropdown trigger="click" @click.stop>
-              <button class="card-more" @click.stop><MoreOutlined /></button>
-              <template #overlay>
-                <a-menu @click="handleMenuClick($event, tpl)">
-                  <a-menu-item key="preview"><EyeOutlined /> 预览</a-menu-item>
-                  <a-menu-item key="edit"><EditOutlined /> 编辑</a-menu-item>
-                  <a-menu-item key="copy"><CopyOutlined /> 创建副本</a-menu-item>
-                  <a-menu-item v-if="!tpl.isDefault" key="setDefault"><StarOutlined /> 设为默认</a-menu-item>
-                  <a-menu-divider />
-                  <a-menu-item key="delete" danger><DeleteOutlined /> 删除</a-menu-item>
-                </a-menu>
-              </template>
-            </a-dropdown>
+    <!-- 模板列表 -->
+    <div class="table-card">
+      <a-table
+        :columns="visibleColumns"
+        :data-source="filteredTemplates"
+        :loading="loading"
+        :pagination="false"
+        row-key="id"
+        size="middle"
+        class="tpl-table"
+        :row-class-name="(r: Template) => (r.status ? '' : 'row-disabled')"
+      >
+        <template #bodyCell="{ column, record }">
+          <template v-if="column.key === 'templateName'">
+            <div class="tpl-name-cell">
+              <span class="tpl-icon" :style="{ background: issueTypeColorOf(record.issueTypeCode) }"><FormOutlined /></span>
+              <div class="tpl-name-text">
+                <a class="tpl-name" @click="handleEdit(record as Template)">{{ record.templateName }}</a>
+                <div class="tpl-desc" :title="record.description">{{ record.description || '暂无描述' }}</div>
+              </div>
+              <a-tag v-if="record.isDefault" color="gold" class="tpl-default-tag"><StarFilled /> 默认</a-tag>
+            </div>
+          </template>
+          <template v-else-if="column.key === 'issueType'">
+            <a-tag v-if="record.issueTypeCode" :color="issueTypeColorOf(record.issueTypeCode)" class="tpl-tag">{{ issueTypeNameOf(record as Template) }}</a-tag>
+            <span v-else class="tpl-muted">-</span>
+          </template>
+          <template v-else-if="column.key === 'space'">
+            <SpaceTag :code="record.spaceCode" :name="record.spaceName" />
+          </template>
+          <template v-else-if="column.key === 'tabs'">
+            {{ record.tabs?.length || 0 }}
+          </template>
+          <template v-else-if="column.key === 'status'">
+            <span :class="['tpl-status', record.status ? 'on' : 'off']">{{ record.status ? '已启用' : '已停用' }}</span>
+          </template>
+          <template v-else-if="column.key === 'updatedAt'">
+            <span class="tpl-muted" :title="record.updatedAt">{{ relativeTime(record.updatedAt) }}</span>
+          </template>
+          <template v-else-if="column.key === 'actions'">
+            <div class="tpl-actions">
+              <a @click="handlePreview(record as Template)">预览</a>
+              <a @click="handleEdit(record as Template)">编辑</a>
+              <a-dropdown trigger="click">
+                <a class="tpl-more"><MoreOutlined /></a>
+                <template #overlay>
+                  <a-menu @click="handleMenuClick($event, record as Template)">
+                    <a-menu-item key="copy"><CopyOutlined /> 创建副本</a-menu-item>
+                    <a-menu-item v-if="!record.isDefault" key="setDefault"><StarOutlined /> 设为默认</a-menu-item>
+                    <a-menu-divider />
+                    <a-menu-item key="delete" danger><DeleteOutlined /> 删除</a-menu-item>
+                  </a-menu>
+                </template>
+              </a-dropdown>
+            </div>
+          </template>
+        </template>
+        <template #emptyText>
+          <div class="empty-state">
+            <div class="empty-icon-box"><InboxOutlined class="empty-icon" /></div>
+            <h3 class="empty-title">{{ hasFilter ? '未找到匹配的模板' : '还没有模板' }}</h3>
+            <p class="empty-desc">{{ hasFilter ? '尝试更换筛选条件' : '创建第一个模板，开始构建你的表单' }}</p>
+            <button v-if="!hasFilter" class="create-btn-empty" @click="handleCreate">
+              <PlusOutlined /> 新建模板
+            </button>
           </div>
-        </div>
-        <div class="card-body">
-          <h3 class="card-title">{{ tpl.templateName }}</h3>
-          <p class="card-desc">{{ tpl.description || '暂无描述' }}</p>
-        </div>
-        <div class="card-footer">
-          <div class="card-tags">
-            <a-tag :color="categoryTagColor(tpl.category)" class="card-tag">{{ categoryMap[tpl.category] || tpl.category }}</a-tag>
-            <a-tag v-if="tpl.isDefault" color="gold" class="card-tag card-tag-default"><StarFilled /> 默认</a-tag>
-          </div>
-          <div class="card-meta">
-            <span class="meta-item"><AppstoreOutlined /> {{ tpl.tabs?.length || 0 }} 个表单</span>
-            <span class="meta-sep">·</span>
-            <span class="meta-item meta-time">{{ relativeTime(tpl.updatedAt) }}</span>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- 空状态 -->
-    <div v-else class="empty-state">
-      <div class="empty-icon-box"><InboxOutlined class="empty-icon" /></div>
-      <h3 class="empty-title">{{ searchValue || filterStatus ? '未找到匹配的模板' : '还没有模板' }}</h3>
-      <p class="empty-desc">{{ searchValue || filterStatus ? '尝试更换搜索条件或筛选' : '创建第一个模板，开始构建你的表单' }}</p>
-      <button v-if="!searchValue && !filterStatus" class="create-btn-empty" @click="handleCreate">
-        <PlusOutlined /> 新建模板
-      </button>
+        </template>
+      </a-table>
     </div>
 
     <!-- 分页 -->
@@ -101,7 +122,7 @@
         :total="totalCount"
         :show-size-changer="true"
         :show-quick-jumper="true"
-        :page-size-options="['12', '24', '48', '96']"
+        :page-size-options="['10', '20', '50', '100']"
         :show-total="(t: number) => `共 ${t} 条`"
         @change="handlePageChange"
         @showSizeChange="handleSizeChange"
@@ -122,16 +143,27 @@
         <div class="edit-basic">
           <a-form :model="editForm" layout="vertical">
             <a-row :gutter="16">
-              <a-col :span="10">
+              <a-col :span="8">
                 <a-form-item label="模板名称" required>
                   <a-input v-model:value="editForm.templateName" placeholder="输入模板名称" size="large" />
                 </a-form-item>
               </a-col>
-              <a-col :span="6">
-                <a-form-item label="问题类型">
-                  <a-select v-model:value="issueTypeValue" placeholder="选择" size="large">
-                    <a-select-option v-for="t in ISSUE_TYPE_OPTIONS" :key="t.issueTypeId" :value="t.issueTypeId">{{ t.issueTypeName }}</a-select-option>
-                  </a-select>
+              <a-col :span="8">
+                <a-form-item label="问题类型" required>
+                  <a-select
+                    v-model:value="editForm.issueTypeCode"
+                    :placeholder="editForm.spaceCode ? '选择该空间下的问题类型' : '请先选择所属空间'"
+                    :disabled="!editForm.spaceCode"
+                    :loading="editIssueTypeLoading"
+                    :options="editIssueTypeOptions"
+                    size="large"
+                  />
+                </a-form-item>
+              </a-col>
+              <!-- 空间内管理时空间固定为当前空间，不再选择 -->
+              <a-col v-if="!props.spaceCode" :span="8">
+                <a-form-item label="所属空间" required>
+                  <SpaceSelect v-model="editForm.spaceCode" @update:model-value="onEditSpaceChange" />
                 </a-form-item>
               </a-col>
               <a-col :span="4">
@@ -456,18 +488,22 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, reactive, onMounted, watch, nextTick } from 'vue'
+import { ref, computed, reactive, onMounted, watch, nextTick, h } from 'vue'
 import { Modal, message } from 'ant-design-vue'
 import {
   PlusOutlined, SearchOutlined, CloseCircleFilled, FormOutlined,
-  EyeOutlined, EditOutlined, DeleteOutlined, CopyOutlined,
-  MoreOutlined, AppstoreOutlined, InboxOutlined, CheckOutlined, ReloadOutlined,
+  DeleteOutlined, CopyOutlined,
+  MoreOutlined, InboxOutlined, CheckOutlined, ReloadOutlined,
   HolderOutlined, StarFilled, StarOutlined,
 } from '@ant-design/icons-vue'
 import type { AvailableFieldItem, EnumOptionItem } from '@/types/faiz'
-import { queryTemplates, getTemplate, createTemplate, updateTemplate, deleteTemplate, copyTemplate, queryAvailableFieldList } from '@/api/faiz'
+import { queryTemplates, getTemplate, createTemplate, updateTemplate, deleteTemplate, copyTemplate, queryAvailableFieldList, queryIssueTypes, type IssueTypeItem } from '@/api/faiz'
+import SpaceSelect from '@/components/SpaceSelect.vue'
+import SpaceTag from '@/components/SpaceTag.vue'
+import { useSpaces } from '@/utils/space-store'
 import { FIELD_TYPE, normalizeFieldType } from '@/types/fieldType'
 import TemplatePreviewModal from '@/components/TemplatePreviewModal.vue'
+import { issueTypeIconOf } from '@/utils/issueTypeIcons'
 
 // ---- 类型 ----
 interface TemplateTab {
@@ -480,47 +516,91 @@ interface Template {
   id: string
   templateName: string
   description: string
-  /** 前端内部使用的分类 key（requirement/task/bug/other），读写时双向映射到 issue_type */
-  category: string
+  /** 问题类型编码（如 TYPE10001），来自 /issue-type/list */
+  issueTypeCode: string
+  issueTypeName?: string
+  /** 所属组织编码 */
+  organizationCode?: string
+  organizationName?: string
+  /** 组织路径名称，如 SPEEDX/研发中心（tooltip 展示） */
+  organizationPathName?: string
+  /** 所属空间编码 / 名称 */
+  spaceCode?: string
+  spaceName?: string
   status: boolean
   /** 是否为该问题类型的默认模板（每个问题类型最多一个） */
   isDefault: boolean
   tabs: TemplateTab[]
   createdAt: string
   updatedAt: string
-  /** 后端返回的原始 issue_type（详情回填、列表展示时透传） */
-  issue_type?: { issue_type_id: number; issue_type_name: string } | null
 }
 
-/** 问题类型常量（下拉 value=issueTypeId, label=issueTypeName；同时承载分类 value/label；保存时提交 issueTypeCode） */
-const ISSUE_TYPE_OPTIONS = [
-  { issueTypeId: 10001, issueTypeCode: 'TYPE10001', issueTypeName: '需求', value: 'requirement', label: '需求' },
-  { issueTypeId: 10002, issueTypeCode: 'TYPE10002', issueTypeName: '任务', value: 'task', label: '任务' },
-  { issueTypeId: 10003, issueTypeCode: 'TYPE10003', issueTypeName: '缺陷', value: 'bug', label: '缺陷' },
-  { issueTypeId: 10004, issueTypeCode: 'TYPE10004', issueTypeName: '其他', value: 'other', label: '其他' },
-]
-/** Tab 导航选项（含「全部」） */
-const TAB_NAV_OPTIONS = [{ label: '全部', value: '' }, ...ISSUE_TYPE_OPTIONS]
-const filters = [
-  { label: '全部', value: '' },
-  { label: '已启用', value: '1' },
-  { label: '已停用', value: '0' },
-]
-const categoryMap: Record<string, string> = ISSUE_TYPE_OPTIONS
-  .reduce((acc, t) => { acc[t.value] = t.label; return acc }, {} as Record<string, string>)
-const ISSUE_TYPE_ID_TO_CATEGORY: Record<number, string> = ISSUE_TYPE_OPTIONS
-  .reduce((acc, t) => { acc[t.issueTypeId] = t.value; return acc }, {} as Record<number, string>)
-const categoryColors: Record<string, { bg: string; tag: string }> = {
-  requirement: { bg: 'icon-blue', tag: 'blue' },
-  task: { bg: 'icon-green', tag: 'green' },
-  bug: { bg: 'icon-orange', tag: 'orange' },
-  other: { bg: 'icon-purple', tag: 'purple' },
+const { spaceNameOf, findSpace, orgCodeOfSpace } = useSpaces()
+
+/** 在空间内管理（空间首页嵌入）时传入：列表只看该空间，新建 / 编辑固定归属该空间 */
+const props = defineProps<{ spaceCode?: string }>()
+
+/**
+ * 空间下启用的问题类型（筛选 / 编辑弹窗共用）：
+ * 按 spaceCode 查询；后端按空间筛选就绪前，同时按空间所属组织查询，并排除明确属于其他空间的类型
+ */
+async function querySpaceIssueTypes(spaceCode?: string): Promise<IssueTypeItem[]> {
+  const res = await queryIssueTypes({ page: 1, pageSize: 999, status: 1, spaceCode, organizationCode: await orgCodeOfSpace(spaceCode) })
+  const list = res?.success ? res.data?.list || [] : []
+  return spaceCode ? list.filter(t => !t.spaceCode || t.spaceCode === spaceCode) : list
+}
+
+/** 全部启用的问题类型（卡片颜色 / 名称、Tab 导航用） */
+const allIssueTypes = ref<IssueTypeItem[]>([])
+async function loadAllIssueTypes() {
+  try {
+    const res = await queryIssueTypes({ page: 1, pageSize: 999, status: 1 })
+    if (res?.success) allIssueTypes.value = res.data?.list || []
+  } catch { /* 请求层已提示 */ }
+}
+
+/** 历史模板只存了 issueTypeId（如 10001），按 TYPE{id} 规则换算成编码 */
+function legacyTypeCode(id?: number | string | null): string {
+  return id == null || id === '' ? '' : `TYPE${id}`
+}
+function issueTypeMetaOf(code?: string) {
+  if (!code) return undefined
+  return allIssueTypes.value.find(t => t.issueTypeCode === code) || editIssueTypes.value.find(t => t.issueTypeCode === code)
+}
+function issueTypeColorOf(code?: string) {
+  return issueTypeMetaOf(code)?.color || '#8c8c8c'
+}
+function issueTypeNameOf(tpl: Template) {
+  return issueTypeMetaOf(tpl.issueTypeCode)?.issueTypeName || tpl.issueTypeName || tpl.issueTypeCode
+}
+// ---- 列表筛选：问题类型（空间内只列该空间的问题类型） ----
+const filterIssueTypes = ref<IssueTypeItem[]>([])
+const filterIssueTypeLoading = ref(false)
+async function loadFilterIssueTypes() {
+  filterIssueTypeLoading.value = true
+  try {
+    filterIssueTypes.value = await querySpaceIssueTypes(props.spaceCode)
+  } catch { /* 请求层已提示 */ } finally {
+    filterIssueTypeLoading.value = false
+  }
+}
+const issueTypeFilterOptions = computed(() =>
+  filterIssueTypes.value
+    .filter(t => t.issueTypeCode)
+    .map(t => ({ value: t.issueTypeCode as string, label: t.issueTypeName })),
+)
+const hasFilter = computed(() => !!(searchValue.value.trim() || tabIssueType.value))
+/** 重置筛选条件并查询 */
+function resetFilters() {
+  tabIssueType.value = undefined
+  searchValue.value = ''
+  handleQuery()
 }
 
 // ---- 状态 ----
 const searchValue = ref('')
-const filterStatus = ref('')
-const tabCategory = ref('')
+/** 列表问题类型筛选（问题类型编码） */
+const tabIssueType = ref<string>()
 const showEditModal = ref(false)
 const showPreviewModal = ref(false)
 const isEdit = ref(false)
@@ -952,25 +1032,75 @@ function resetDrag() {
 }
 
 const editForm = reactive<{
-  id: string; templateName: string; description: string; category: string; status: boolean; isDefault: boolean; tabs: TemplateTab[]; useTabs: boolean;
-}>({ id: '', templateName: '', description: '', category: 'requirement', status: true, isDefault: false, tabs: [], useTabs: false })
+  id: string; templateName: string; description: string
+  /** 原组织编码：提交时优先取所属空间的组织，空间未关联组织时用它兜底 */
+  organizationCode?: string
+  /** 所属空间编码 */
+  spaceCode?: string
+  issueTypeCode?: string; issueTypeName?: string
+  status: boolean; isDefault: boolean; tabs: TemplateTab[]; useTabs: boolean;
+}>({ id: '', templateName: '', description: '', status: true, isDefault: false, tabs: [], useTabs: false })
+
+// ---- 编辑弹窗：所属空间下的问题类型 ----
+const editIssueTypes = ref<IssueTypeItem[]>([])
+const editIssueTypeLoading = ref(false)
+let editIssueTypeSeq = 0
+/** 问题类型选项：颜色图标 + 名称（与问题类型页一致） */
+function issueTypeOptionLabel(name: string, color?: string, iconUri?: string | null) {
+  return h('span', { class: 'it-option' }, [
+    h('span', { class: 'it-option-icon', style: { background: color || '#8c8c8c' } }, [h(issueTypeIconOf(iconUri))]),
+    h('span', { class: 'it-option-name' }, name),
+  ])
+}
+const editIssueTypeOptions = computed(() => {
+  const opts = editIssueTypes.value
+    .filter(t => t.issueTypeCode)
+    .map(t => ({ value: t.issueTypeCode as string, label: issueTypeOptionLabel(t.issueTypeName, t.color, t.iconUri) }))
+  // 回填的问题类型不在当前组织列表中（历史数据）：补一个选项保证回显
+  const cur = editForm.issueTypeCode
+  if (cur && !opts.some(o => o.value === cur)) {
+    const meta = issueTypeMetaOf(cur)
+    opts.unshift({ value: cur, label: issueTypeOptionLabel(meta?.issueTypeName || editForm.issueTypeName || cur, meta?.color, meta?.iconUri) })
+  }
+  return opts
+})
+async function loadEditIssueTypes(spaceCode?: string) {
+  const seq = ++editIssueTypeSeq
+  editIssueTypes.value = []
+  if (!spaceCode) return
+  editIssueTypeLoading.value = true
+  try {
+    const list = await querySpaceIssueTypes(spaceCode)
+    if (seq === editIssueTypeSeq) editIssueTypes.value = list
+  } catch { /* 请求层已提示 */ } finally {
+    if (seq === editIssueTypeSeq) editIssueTypeLoading.value = false
+  }
+}
+/** 切换所属空间（独立页面时可选）：重新拉取问题类型，原问题类型不属于新空间时清空 */
+async function onEditSpaceChange(spaceCode?: string) {
+  await loadEditIssueTypes(spaceCode)
+  if (editForm.issueTypeCode && !editIssueTypes.value.some(t => t.issueTypeCode === editForm.issueTypeCode)) {
+    editForm.issueTypeCode = undefined
+  }
+}
 
 /** 同问题类型下除当前编辑模板外的其他默认模板（全量，不受分页/筛选影响） */
 const otherDefaultTemplates = ref<Template[]>([])
 const replacedDefaultName = computed(() => otherDefaultTemplates.value.map(t => t.templateName).join('」「'))
 // 打开弹窗 / 切换问题类型时刷新，用于提示「将替换的默认模板」
-watch(() => [showEditModal.value, editForm.category] as const, async ([open]) => {
-  if (open) otherDefaultTemplates.value = await findOtherDefaults(editForm.category, editForm.id)
+watch(() => [showEditModal.value, editForm.issueTypeCode] as const, async ([open]) => {
+  if (open) otherDefaultTemplates.value = await findOtherDefaults(editForm.issueTypeCode, editForm.id)
 })
 
 /** 查询某问题类型下的默认模板（排除 exceptId） */
-async function findOtherDefaults(category: string, exceptId: string): Promise<Template[]> {
+async function findOtherDefaults(issueTypeCode: string | undefined, exceptId: string): Promise<Template[]> {
+  if (!issueTypeCode) return []
   try {
     const res = await queryTemplates({ page: 1, pageSize: 999 })
     if (!res.success) return []
     return (res.data.list || [])
       .map(adaptBackendTemplate)
-      .filter(t => t.isDefault && t.category === category && t.id !== exceptId)
+      .filter(t => t.isDefault && t.issueTypeCode === issueTypeCode && t.id !== exceptId)
   } catch {
     return []
   }
@@ -983,24 +1113,14 @@ function detailToPayload(detail: Template, isDefault: boolean) {
 }
 
 /** 取消同问题类型下其他模板的默认状态，保证一个类型只有一个默认模板 */
-async function unsetOtherDefaults(category: string, exceptId: string) {
-  const others = await findOtherDefaults(category, exceptId)
+async function unsetOtherDefaults(issueTypeCode: string | undefined, exceptId: string) {
+  const others = await findOtherDefaults(issueTypeCode, exceptId)
   await Promise.all(others.map(async (t) => {
     const res = await getTemplate(Number(t.id))
     const detail = res.success ? adaptBackendTemplate(res.data) : t
     return updateTemplate(Number(t.id), detailToPayload(detail, false))
   }))
 }
-
-/** 问题类型下拉：value=issueTypeId ↔ 内部 category 字符串双向映射 */
-const issueTypeValue = computed<number>({
-  get() {
-    return ISSUE_TYPE_OPTIONS.find(t => t.value === editForm.category)?.issueTypeId ?? 10004
-  },
-  set(val: number) {
-    editForm.category = ISSUE_TYPE_ID_TO_CATEGORY[val] || 'other'
-  },
-})
 
 /** 单表单模式：取 tabs[0] 作为唯一表单，tabs 不存在则补一个默认值；响应式地与 tabs 联动 */
 const singleFormTab = computed<TemplateTab>({
@@ -1017,8 +1137,6 @@ const singleFormTab = computed<TemplateTab>({
 })
 
 // ---- 工具函数 ----
-function categoryClass(cat: string) { return categoryColors[cat]?.bg || 'icon-blue' }
-function categoryTagColor(cat: string) { return categoryColors[cat]?.tag || 'blue' }
 function generateId() { return 't_' + Date.now().toString(36) + '_' + Math.random().toString(36).substring(2, 6) }
 
 function countWidgets(widgets: any[]): number {
@@ -1042,31 +1160,30 @@ function relativeTime(dateStr: string): string {
 }
 
 // ---- 计算属性 ----
-// 关键词/状态筛选已由服务端分页查询处理；此处仅做问题类型（tabCategory）的当前页内过滤
+// 关键词/状态/组织筛选由服务端分页查询处理；此处仅做问题类型（tabIssueType）的当前页内过滤
 const filteredTemplates = computed(() =>
-  templates.value.filter(t => !tabCategory.value || t.category === tabCategory.value)
+  templates.value.filter(t => !tabIssueType.value || t.issueTypeCode === tabIssueType.value)
 )
 const enabledCount = ref(0)
 const totalTabs = ref(0)
 
 // ---- 数据适配 ----
 function adaptBackendTemplate(t: any): Template {
-  // 兼容两种后端结构：flat（实体直出 issueTypeId/issueTypeName）与嵌套（issue_type.issue_type_id）
-  // 优先按 issueTypeCode 识别问题类型，兼容历史数据中的 issueTypeId
-  const byCode = t.issueTypeCode ? ISSUE_TYPE_OPTIONS.find(o => o.issueTypeCode === t.issueTypeCode) : undefined
-  const issueTypeId: number | undefined = byCode?.issueTypeId ?? t.issueTypeId ?? t.issue_type?.issue_type_id
+  // 问题类型以 issueTypeCode 为准；历史数据只有 issueTypeId（flat 或嵌套 issue_type.issue_type_id）时按 TYPE{id} 换算
+  const issueTypeCode: string = t.issueTypeCode || legacyTypeCode(t.issueTypeId ?? t.issue_type?.issue_type_id)
   const issueTypeName: string | undefined = t.issueTypeName ?? t.issue_type?.issue_type_name
-  const category = (issueTypeId && ISSUE_TYPE_ID_TO_CATEGORY[issueTypeId]) || t.category || 'other'
-  const issue_type = issueTypeId
-    ? { issue_type_id: issueTypeId, issue_type_name: issueTypeName ?? ISSUE_TYPE_OPTIONS.find(o => o.issueTypeId === issueTypeId)?.issueTypeName ?? '' }
-    : (t.issue_type ?? null)
   return {
     ...t,
     id: String(t.id),
     status: t.status === 1,
     isDefault: t.isDefault === 1 || t.isDefault === true,
-    category,
-    issue_type,
+    issueTypeCode,
+    issueTypeName,
+    organizationCode: t.organizationCode || undefined,
+    organizationName: t.organizationName || undefined,
+    organizationPathName: t.organizationPathName || undefined,
+    spaceCode: t.spaceCode || undefined,
+    spaceName: t.spaceName || undefined,
     tabs: (t.tabs || []).map((tab: any) => ({
       ...tab,
       id: String(tab.id),
@@ -1077,14 +1194,17 @@ function adaptBackendTemplate(t: any): Template {
 }
 
 function serializeTemplatePayload(form: any) {
-  // 问题类型提交编码 issueTypeCode（如 TYPE10001），不再提交 issueTypeId
-  const found = ISSUE_TYPE_OPTIONS.find(t => t.value === form.category) ?? ISSUE_TYPE_OPTIONS[ISSUE_TYPE_OPTIONS.length - 1]
+  // 提交组织编码 + 问题类型编码（均来自后端数据，不再写死）
   const is_tab = !!form.useTabs
   return {
     templateName: form.templateName,
     description: form.description,
-    issueTypeCode: found.issueTypeCode,
-    issueTypeName: found.issueTypeName,
+    // 不单独选组织：取所属空间的组织，空间未关联组织时用原组织兜底
+    organizationCode: findSpace(form.spaceCode)?.organizationCode || form.organizationCode || undefined,
+    spaceCode: form.spaceCode || undefined,
+    spaceName: spaceNameOf(form.spaceCode) || form.spaceName || undefined,
+    issueTypeCode: form.issueTypeCode,
+    issueTypeName: issueTypeMetaOf(form.issueTypeCode)?.issueTypeName ?? form.issueTypeName,
     status: form.status ? 1 : 0,
     isDefault: form.isDefault ? 1 : 0,
     tabs: (form.tabs || []).map((tab: any, idx: number) => ({
@@ -1138,8 +1258,20 @@ function normalizeWidgets(ws: any): any[] {
 
 // ---- 持久化 ----
 const loading = ref(false)
+
+/** 模板列表列 */
+const columns = [
+  { title: '模板名称', key: 'templateName', ellipsis: true },
+  { title: '问题类型', key: 'issueType', width: 140 },
+  { title: '所属空间', key: 'space', width: 200 },
+  { title: '表单数', key: 'tabs', width: 90, align: 'center' as const },
+  { title: '状态', key: 'status', width: 100 },
+  { title: '更新时间', key: 'updatedAt', width: 120 },
+  { title: '操作', key: 'actions', width: 150 },
+]
+const visibleColumns = computed(() => props.spaceCode ? columns.filter(c => c.key !== 'space') : columns)
 const page = ref(1)
-const pageSize = ref(12)
+const pageSize = ref(10)
 const totalCount = ref(0)
 
 async function loadTemplates() {
@@ -1149,10 +1281,13 @@ async function loadTemplates() {
       page: page.value,
       pageSize: pageSize.value,
       keyword: searchValue.value.trim() || undefined,
-      status: filterStatus.value === '' ? undefined : Number(filterStatus.value),
+      issueTypeCode: tabIssueType.value || undefined,
+      spaceCode: props.spaceCode,
     })
     if (res.success) {
-      templates.value = (res.data.list || []).map(adaptBackendTemplate)
+      const list = (res.data.list || []).map(adaptBackendTemplate)
+      // 后端按 spaceCode 筛选就绪前兜底：只排除明确属于其他空间的数据，未关联空间的历史数据照常展示
+      templates.value = props.spaceCode ? list.filter(t => !t.spaceCode || t.spaceCode === props.spaceCode) : list
       totalCount.value = res.data.total || 0
       enabledCount.value = res.data.enabledCount || 0
       totalTabs.value = res.data.totalTabs || 0
@@ -1179,19 +1314,6 @@ function handleSizeChange(_cur: number, size: number) {
 function handleQuery() {
   page.value = 1
   loadTemplates()
-}
-
-/** 清空搜索关键词并重新查询 */
-function clearSearch() {
-  searchValue.value = ''
-  handleQuery()
-}
-
-/** 状态筛选切换：重置到第一页后查询 */
-function onFilterStatusClick(val: string) {
-  if (filterStatus.value === val) return
-  filterStatus.value = val
-  handleQuery()
 }
 
 
@@ -1222,9 +1344,13 @@ const onTabSwitch = (..._args: any[]) => {}
 function handleCreate() {
   isEdit.value = false
   Object.assign(editForm, {
-    id: '', templateName: '', description: '', category: 'requirement', status: true, isDefault: false,
+    id: '', templateName: '', description: '', status: true, isDefault: false,
     tabs: [], useTabs: false,
+    // 新建：所属空间默认为当前空间，问题类型默认带出列表当前筛选
+    organizationCode: undefined, spaceCode: props.spaceCode,
+    issueTypeCode: tabIssueType.value || undefined, issueTypeName: undefined,
   })
+  loadEditIssueTypes(props.spaceCode)
   activeEditTab.value = ''
   syncTabMaps()
   showEditModal.value = true
@@ -1242,11 +1368,16 @@ async function handleEdit(record: Template) {
   }
 }
 
-function fillEditForm(record: Template) {
+async function fillEditForm(record: Template) {
   editForm.id = record.id
   editForm.templateName = record.templateName
   editForm.description = record.description
-  editForm.category = record.category
+  editForm.issueTypeCode = record.issueTypeCode || undefined
+  editForm.issueTypeName = record.issueTypeName
+  editForm.spaceCode = record.spaceCode || props.spaceCode
+  // 原组织编码仅作提交兜底；模板未带组织时用问题类型所属组织
+  editForm.organizationCode = record.organizationCode ?? issueTypeMetaOf(record.issueTypeCode)?.organizationCode
+  loadEditIssueTypes(editForm.spaceCode)
   editForm.status = record.status
   editForm.isDefault = !!record.isDefault
   const tabList = (record.tabs || []).length
@@ -1262,7 +1393,9 @@ function fillEditForm(record: Template) {
 }
 
 function handleEditSubmit() {
-  if (!editForm.templateName.trim()) return
+  if (!editForm.templateName.trim()) return message.warning('请输入模板名称')
+  if (!editForm.issueTypeCode) return message.warning('请选择问题类型')
+  if (!editForm.spaceCode) return message.warning('请选择所属空间')
   // Tab 模式下所有表单命名；单表单模式下 tabs 至少有 1 个（singleFormTab lazy 生成），不强制命名（空时不显示标题）
   editForm.tabs.forEach((t, i) => { if (!t.name?.trim()) t.name = editForm.useTabs ? `表单 ${i + 1}` : '' })
   const payload = serializeTemplatePayload(editForm)
@@ -1271,7 +1404,7 @@ function handleEditSubmit() {
     // 设为默认：取消同类型其他模板的默认状态
     if (editForm.isDefault) {
       const savedId = isEdit.value ? editForm.id : String((res?.data as any)?.id ?? '')
-      await unsetOtherDefaults(editForm.category, savedId).catch(() => {})
+      await unsetOtherDefaults(editForm.issueTypeCode, savedId).catch(() => {})
     }
     loadTemplates(); showEditModal.value = false
   }).catch(() => {})
@@ -1284,8 +1417,8 @@ async function handleSetDefault(record: Template) {
     const detail = res.success ? adaptBackendTemplate(res.data) : record
     const saved = await updateTemplate(Number(record.id), detailToPayload(detail, true))
     if (!saved.success) return
-    await unsetOtherDefaults(detail.category, detail.id)
-    message.success(`已将「${record.templateName}」设为${categoryMap[detail.category] || ''}默认模板`)
+    await unsetOtherDefaults(detail.issueTypeCode, detail.id)
+    message.success(`已将「${record.templateName}」设为${issueTypeNameOf(detail) || ''}默认模板`)
     loadTemplates()
   } catch { /* 请求层已提示 */ }
 }
@@ -1328,7 +1461,11 @@ function handlePreview(record: Template) {
   showPreviewModal.value = true
 }
 
-onMounted(loadTemplates)
+onMounted(() => {
+  loadFilterIssueTypes()
+  loadAllIssueTypes()
+  loadTemplates()
+})
 </script>
 
 <style scoped>
@@ -1336,23 +1473,14 @@ onMounted(loadTemplates)
   padding: 0 24px;
   font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, sans-serif;
 }
+.template-list-page.embedded { padding: 0; }
 
 /* ---- toolbar ---- */
-.toolbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 20px; flex-wrap: wrap; }
-.search-box { flex: 1; min-width: 260px; position: relative; display: flex; align-items: center; background: #f5f5f7; border-radius: 14px; transition: background 0.2s, box-shadow 0.2s; }
-.search-box:focus-within { background: #fff; box-shadow: 0 0 0 3px rgba(59,130,246,.15); }
-.search-icon { font-size: 16px; color: #86868b; margin-left: 14px; flex-shrink: 0; }
-.search-input { flex: 1; border: none; background: transparent; padding: 11px 12px 11px 10px; font-size: 15px; color: #1d1d1f; outline: none; font-family: inherit; }
-.search-input::placeholder { color: #aeaeb2; }
-.search-clear { padding: 0 12px; cursor: pointer; color: #aeaeb2; font-size: 16px; display: flex; align-items: center; }
-.search-clear:hover { color: #6e6e73; }
-.search-btn { display: inline-flex; align-items: center; gap: 6px; border: none; background: #3b82f6; color: #fff; padding: 9px 18px; border-radius: 10px; font-size: 14px; font-weight: 500; cursor: pointer; transition: background 0.2s; font-family: inherit; white-space: nowrap; }
-.search-btn:hover { background: #2563eb; }
-.toolbar-actions { display: flex; align-items: center; gap: 12px; }
-.filter-group { display: flex; background: #f5f5f7; border-radius: 10px; padding: 3px; gap: 2px; }
-.filter-chip { border: none; background: transparent; padding: 7px 16px; border-radius: 8px; font-size: 13px; font-weight: 500; color: #6e6e73; cursor: pointer; transition: all 0.2s; font-family: inherit; white-space: nowrap; }
-.filter-chip.active { background: #fff; color: #1d1d1f; box-shadow: 0 1px 3px rgba(0,0,0,.06); }
-.filter-chip:hover:not(.active) { color: #1d1d1f; }
+.toolbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 20px; }
+.filter-bar { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.filter-field { display: flex; align-items: center; gap: 8px; }
+.filter-label { font-size: 13px; color: #6e6e73; white-space: nowrap; }
+.filter-ctrl { width: 200px; }
 .create-btn { display: flex; align-items: center; gap: 6px; padding: 10px 20px; border: none; background: #1d1d1f; color: #fff; border-radius: 12px; font-size: 14px; font-weight: 600; cursor: pointer; font-family: inherit; transition: all 0.2s; white-space: nowrap; }
 .create-btn:hover { background: #333; transform: scale(1.02); }
 .create-btn:active { transform: scale(0.98); }
@@ -1367,44 +1495,33 @@ onMounted(loadTemplates)
 .stat-divider { width: 1px; height: 20px; background: #e5e5ea; }
 
 /* ---- tab nav ---- */
-.tab-nav { display: flex; align-items: center; gap: 2px; margin-bottom: 28px; padding: 4px; background: #f5f5f7; border-radius: 14px; width: fit-content; }
-.tab-item { border: none; background: transparent; padding: 9px 22px; border-radius: 11px; font-size: 14px; font-weight: 500; color: #6e6e73; cursor: pointer; transition: all 0.25s; font-family: inherit; white-space: nowrap; }
-.tab-item.active { background: #fff; color: #1d1d1f; box-shadow: 0 1px 3px rgba(0,0,0,.08); font-weight: 600; }
-.tab-item:hover:not(.active) { color: #1d1d1f; }
 
-/* ---- card grid ---- */
-.card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px; width: 100%; }
-.template-card { background: #fff; border-radius: 18px; padding: 22px; cursor: pointer; border: 1.5px solid transparent; box-shadow: 0 1px 3px rgba(0,0,0,.04); transition: all 0.25s cubic-bezier(.4,0,.2,1); display: flex; flex-direction: column; gap: 14px; }
-.template-card:hover { border-color: #e5e5ea; box-shadow: 0 8px 24px rgba(0,0,0,.08); transform: translateY(-2px); }
-.template-card.disabled { opacity: 0.6; }
-.template-card.disabled:hover { opacity: 0.75; }
-.card-header { display: flex; align-items: flex-start; justify-content: space-between; }
-.card-icon { width: 44px; height: 44px; border-radius: 13px; display: flex; align-items: center; justify-content: center; font-size: 20px; color: #fff; flex-shrink: 0; }
-.icon-blue { background: linear-gradient(135deg, #3b82f6, #2563eb); }
-.icon-green { background: linear-gradient(135deg, #10b981, #059669); }
-.icon-orange { background: linear-gradient(135deg, #f97316, #ea580c); }
-.icon-purple { background: linear-gradient(135deg, #8b5cf6, #7c3aed); }
-.card-header-right { display: flex; align-items: center; gap: 8px; }
-.status-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
-.status-dot.on { background: #34c759; box-shadow: 0 0 0 3px rgba(52,199,89,.2); }
-.status-dot.off { background: #aeaeb2; }
-.card-more { width: 32px; height: 32px; border-radius: 10px; border: none; background: transparent; cursor: pointer; display: flex; align-items: center; justify-content: center; color: #aeaeb2; font-size: 16px; transition: all 0.15s; }
-.card-more:hover { background: #f5f5f7; color: #1d1d1f; }
-.card-body { flex: 1; }
-.card-title { font-size: 16px; font-weight: 600; color: #1d1d1f; margin: 0 0 4px; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; }
-.card-desc { font-size: 13px; color: #86868b; margin: 0; line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-.card-footer { display: flex; align-items: center; justify-content: space-between; padding-top: 4px; }
-.card-tag { font-size: 12px; border-radius: 6px; line-height: 1; }
-.card-tags { display: flex; align-items: center; gap: 4px; min-width: 0; }
-.card-tags .card-tag { margin-inline-end: 0; }
-.card-tag-default { display: inline-flex; align-items: center; gap: 3px; }
 .default-replace-hint { margin: -8px 0 12px; padding: 6px 10px; font-size: 12px; color: #ad6800; background: #fffbe6; border: 1px solid #ffe58f; border-radius: 6px; }
-.card-meta { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #aeaeb2; }
-.meta-item { display: flex; align-items: center; gap: 3px; }
-.meta-sep { color: #d1d1d6; }
+
+/* ---- table ---- */
+.table-card { background: #fff; border-radius: 14px; padding: 4px 4px 0; box-shadow: 0 1px 3px rgba(0,0,0,.04); }
+.tpl-table :deep(.ant-table-thead > tr > th) { font-size: 12px; font-weight: 500; color: #86868b; background: #fafafc; }
+.tpl-table :deep(.row-disabled) { opacity: 0.6; }
+.tpl-name-cell { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.tpl-icon { width: 32px; height: 32px; border-radius: 9px; display: flex; align-items: center; justify-content: center; font-size: 15px; color: #fff; flex-shrink: 0; }
+.tpl-name-text { min-width: 0; flex: 1; }
+.tpl-name { display: block; font-size: 14px; font-weight: 500; color: #1d1d1f; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tpl-name:hover { color: #1677ff; }
+.tpl-desc { font-size: 12px; color: #86868b; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tpl-default-tag { display: inline-flex; align-items: center; gap: 3px; flex-shrink: 0; margin-inline-end: 0; }
+.tpl-tag { margin-inline-end: 0; }
+.tpl-muted { color: #aeaeb2; }
+.tpl-status { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; }
+.tpl-status::before { content: ''; width: 6px; height: 6px; border-radius: 50%; }
+.tpl-status.on { color: #1d1d1f; }
+.tpl-status.on::before { background: #34c759; }
+.tpl-status.off { color: #86868b; }
+.tpl-status.off::before { background: #aeaeb2; }
+.tpl-actions { display: flex; align-items: center; gap: 14px; }
+.tpl-more { color: #86868b; }
 
 /* ---- empty state ---- */
-.empty-state { display: flex; flex-direction: column; align-items: center; padding: 80px 20px; text-align: center; }
+.empty-state { display: flex; flex-direction: column; align-items: center; padding: 48px 20px; text-align: center; }
 .empty-icon-box { width: 80px; height: 80px; border-radius: 22px; background: #f5f5f7; display: flex; align-items: center; justify-content: center; margin-bottom: 20px; }
 .empty-icon { font-size: 36px; color: #aeaeb2; }
 .empty-title { font-size: 18px; font-weight: 600; color: #1d1d1f; margin: 0 0 6px; }
@@ -1606,4 +1723,11 @@ onMounted(loadTemplates)
 .field-right { flex-shrink: 0; display: inline-flex; align-items: center; gap: 6px; }
 
 .modal-footer { display: flex; justify-content: flex-end; padding-top: 20px; border-top: 1px solid #f5f5f7; }
+</style>
+
+<style>
+/* 问题类型下拉选项（h() 渲染且弹层挂在 body，需非 scoped） */
+.it-option { display: inline-flex; align-items: center; gap: 8px; max-width: 100%; vertical-align: middle; }
+.it-option-icon { width: 20px; height: 20px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 6px; font-size: 12px; color: #fff; }
+.it-option-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 </style>

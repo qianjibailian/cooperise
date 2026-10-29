@@ -1,7 +1,7 @@
 <template>
-  <div class="component-list-page">
-    <!-- 顶部：标题 -->
-    <div class="wf-header">
+  <div :class="['component-list-page', { embedded: !!props.spaceCode }]">
+    <!-- 顶部：标题（空间内嵌入时由空间首页 Tab 承担标题） -->
+    <div v-if="!props.spaceCode" class="wf-header">
       <div class="wf-title">工作流</div>
     </div>
 
@@ -26,7 +26,7 @@
 
         <div class="table-wrapper">
           <a-table
-            :columns="defColumns"
+            :columns="visibleDefColumns"
             :data-source="filteredDefs"
             :loading="defLoading"
             :pagination="false"
@@ -38,8 +38,8 @@
               <template v-if="column.key === 'processKey'">
                 <span class="cell-strong">{{ record.processKey }}</span>
               </template>
-              <template v-else-if="column.key === 'organization'">
-                <span :title="record.organizationPathName || record.organizationName">{{ record.organizationPathName || record.organizationName || '-' }}</span>
+              <template v-else-if="column.key === 'space'">
+                <SpaceTag :code="record.spaceCode" :name="record.spaceName" />
               </template>
               <template v-else-if="column.key === 'status'">
                 <a-tag :color="record.status === 1 ? 'green' : 'default'">{{ record.status === 1 ? '启用' : '停用' }}</a-tag>
@@ -77,20 +77,16 @@
         <a-form-item label="流程名称" required>
           <a-input v-model:value="defForm.processName" placeholder="输入流程名称" size="large" />
         </a-form-item>
-        <a-form-item label="所属组织" required>
-          <OrgTreeSelect
-            v-model="defForm.organizationId"
-            :tree-data="defOrgTree"
-            placeholder="选择组织，问题类型按组织筛选"
-            @update:model-value="handleDefOrgChange"
-          />
+        <!-- 空间内管理时空间固定为当前空间，不再选择 -->
+        <a-form-item v-if="!props.spaceCode" label="所属空间" required>
+          <SpaceSelect v-model="defForm.spaceCode" @update:model-value="handleDefSpaceChange" />
         </a-form-item>
         <a-form-item label="绑定问题类型" required>
           <div class="issue-type-row">
             <a-select
               v-model:value="defForm.issueTypeId"
-              :placeholder="defForm.organizationId ? '选择该组织下的问题类型' : '请先选择所属组织'"
-              :disabled="!defForm.organizationId"
+              :placeholder="defForm.spaceCode ? '选择该空间下的问题类型' : '请先选择所属空间'"
+              :disabled="!defForm.spaceCode"
               :loading="defIssueTypeLoading"
               size="large"
               style="flex: 1"
@@ -160,11 +156,9 @@ import {
   listWorkflowDefinitions,
   deployWorkflowDefinition,
   saveWorkflowDefinition,
-  getOrganizationTree,
   queryIssueTypes,
   queryIssueTypeStatuses,
   queryPositions,
-  type OrganizationNode,
   deleteWorkflowDefinition,
   getWorkflowDefinition,
   updateWorkflowDefinitionStatus,
@@ -175,8 +169,9 @@ import type {
 } from '@/types/faiz'
 import WorkflowFlowCanvas from '@/components/WorkflowFlowCanvas.vue'
 import { normalizeLegacyNodes, genNodeId, ensureNodeIds } from '@/components/workflow-flow-layout'
-import OrgTreeSelect from '@/components/OrgTreeSelect.vue'
-import { findOrgCode, findOrgIdByCode } from '@/utils/orgTree'
+import SpaceSelect from '@/components/SpaceSelect.vue'
+import SpaceTag from '@/components/SpaceTag.vue'
+import { useSpaces } from '@/utils/space-store'
 
 // ---------- Tabs ----------
 const activeTab = ref('definition')
@@ -275,40 +270,34 @@ function issueTypeNameOf(v?: string | number | null): string {
   return findIssueTypeOption(v)?.label ?? String(v)
 }
 
-// ---------- 流程绑定：组织 → 组织下的问题类型 ----------
-const defOrgTree = ref<OrganizationNode[]>([])
+const { spaceNameOf, orgCodeOfSpace } = useSpaces()
+
+/** 在空间内管理（空间首页嵌入）时传入：列表只看该空间，新增 / 编辑固定归属该空间 */
+const props = defineProps<{ spaceCode?: string }>()
+
+// ---------- 流程绑定：空间 → 空间下的问题类型（不单独选组织，组织取所属空间的组织） ----------
 const defIssueTypeOptions = ref<IssueTypeOption[]>([])
 const defIssueTypeLoading = ref(false)
 let defIssueTypeSeq = 0
 
-/** 组织树加载中的请求：按组织查询问题类型、回填组织前需等待，以便换算组织编码 / ID */
-let defOrgTreeLoading: Promise<void> | null = null
-function loadDefOrgTree() {
-  defOrgTreeLoading = (async () => {
-    try {
-      const res = await getOrganizationTree()
-      if (res?.success) defOrgTree.value = res.data || []
-    } catch {
-      // 请求层已统一提示
-    }
-  })()
-  return defOrgTreeLoading
-}
-
-/** 拉取所选组织下启用的问题类型 */
-async function loadDefIssueTypes(orgId?: number | string) {
+/**
+ * 拉取所属空间下启用的问题类型：按 spaceCode 查询；
+ * 后端按空间筛选就绪前，同时按空间所属组织查询，并排除明确属于其他空间的类型
+ */
+async function loadDefIssueTypes(spaceCode?: string) {
   const seq = ++defIssueTypeSeq
-  if (orgId == null || orgId === '') {
+  if (!spaceCode) {
     defIssueTypeOptions.value = []
     return
   }
   defIssueTypeLoading.value = true
   try {
-    if (defOrgTreeLoading) await defOrgTreeLoading
+    const organizationCode = await orgCodeOfSpace(spaceCode)
     if (seq !== defIssueTypeSeq) return
-    const res = await queryIssueTypes({ page: 1, pageSize: 999, status: 1, organizationCode: findOrgCode(defOrgTree.value, orgId) })
+    const res = await queryIssueTypes({ page: 1, pageSize: 999, status: 1, spaceCode, organizationCode })
     if (seq !== defIssueTypeSeq) return
-    defIssueTypeOptions.value = res?.success ? (res.data?.list || []).map(toIssueTypeOption) : []
+    const list = res?.success ? res.data?.list || [] : []
+    defIssueTypeOptions.value = list.filter((t) => !t.spaceCode || t.spaceCode === spaceCode).map(toIssueTypeOption)
   } catch {
     if (seq === defIssueTypeSeq) defIssueTypeOptions.value = []
   } finally {
@@ -316,9 +305,9 @@ async function loadDefIssueTypes(orgId?: number | string) {
   }
 }
 
-/** 切换组织：重新加载问题类型，原选择不属于该组织则清空 */
-async function handleDefOrgChange(orgId?: number | string) {
-  await loadDefIssueTypes(orgId)
+/** 切换所属空间（独立页面时可选）：重新加载问题类型，原选择不属于该空间则清空 */
+async function handleDefSpaceChange(spaceCode?: string) {
+  await loadDefIssueTypes(spaceCode)
   const cur = defForm.value.issueTypeId
   if (cur != null && !defIssueTypeOptions.value.some((o) => o.value === String(cur))) {
     defForm.value.issueTypeId = undefined
@@ -334,7 +323,7 @@ const defColumns = [
   { title: 'ID', dataIndex: 'id', key: 'id', width: 70 },
   { title: '流程标识', dataIndex: 'processKey', key: 'processKey' },
   { title: '流程名称', dataIndex: 'processName', key: 'processName' },
-  { title: '所属组织', key: 'organization', width: 160, ellipsis: true },
+  { title: '所属空间', key: 'space', width: 180 },
   {
     title: '问题类型',
     key: 'issueType',
@@ -349,10 +338,14 @@ const defColumns = [
   { title: '操作', key: 'action', width: 300, fixed: 'right' },
 ]
 
+const visibleDefColumns = computed(() => props.spaceCode ? defColumns.filter((c) => c.key !== 'space') : defColumns)
+
 const filteredDefs = computed(() => {
   const kw = defKeyword.value.trim().toLowerCase()
-  if (!kw) return defList.value
-  return defList.value.filter((d) => {
+  // 列表接口不支持筛选：空间内排除明确属于其他空间的流程，未关联空间的历史流程照常展示
+  const list = props.spaceCode ? defList.value.filter((d) => !d.spaceCode || d.spaceCode === props.spaceCode) : defList.value
+  if (!kw) return list
+  return list.filter((d) => {
     const typeName = issueTypeNameOf(d.issueTypeId ?? d.issueTypeName).toLowerCase()
     return (
       (d.processKey || '').toLowerCase().includes(kw) ||
@@ -469,8 +462,9 @@ async function openFlowSetting(record: WorkflowDefinition) {
     id: record.id,
     processKey: record.processKey,
     processName: record.processName || '',
-    organizationId: record.organizationId ?? findOrgIdByCode(defOrgTree.value, record.organizationCode),
     organizationCode: record.organizationCode,
+    spaceCode: record.spaceCode || props.spaceCode,
+    spaceName: record.spaceName || undefined,
     issueTypeId: record.issueTypeCode ?? record.issueTypeId ?? record.issueTypeName ?? undefined,
     issueTypeName: record.issueTypeName || issueTypeNameOf(record.issueTypeId),
     remark: record.remark || '',
@@ -497,7 +491,10 @@ async function saveFlowSetting() {
       id: f.id,
       processKey: f.processKey.trim(),
       processName: f.processName.trim(),
-      organizationCode: findOrgCode(defOrgTree.value, f.organizationId) ?? f.organizationCode,
+      // 不单独选组织：取所属空间的组织，空间未关联组织时用原组织兜底
+      organizationCode: (await orgCodeOfSpace(f.spaceCode)) ?? f.organizationCode,
+      spaceCode: f.spaceCode || undefined,
+      spaceName: spaceNameOf(f.spaceCode) || f.spaceName || undefined,
       issueTypeCode: String(f.issueTypeId),
       issueTypeName: f.issueTypeName || issueTypeNameOf(f.issueTypeId),
       remark: f.remark || '',
@@ -587,15 +584,14 @@ function countNodes(nodes?: WorkflowNode[]): number {
 async function openDefModal(record?: WorkflowDefinition) {
   if (!record) {
     defModal.isEdit = false
-    defForm.value = { processKey: '', processName: '', organizationId: undefined, issueTypeId: undefined, issueTypeName: '', remark: '', nodes: [emptyNode()] }
+    defForm.value = { processKey: '', processName: '', spaceCode: props.spaceCode, issueTypeId: undefined, issueTypeName: '', remark: '', nodes: [emptyNode()] }
     defIssueTypeOptions.value = []
     defModal.open = true
-    loadDefOrgTree()
+    loadDefIssueTypes(props.spaceCode)
     return
   }
   defModal.isEdit = true
   defModal.open = true
-  loadDefOrgTree()
   // 编辑：先拉取服务端最新详情（GET /workflow/definition/{id}），失败回退列表缓存数据
   if (record.id) {
     defDetailLoading.value = true
@@ -608,19 +604,19 @@ async function openDefModal(record?: WorkflowDefinition) {
       defDetailLoading.value = false
     }
   }
-  if (defOrgTreeLoading) await defOrgTreeLoading
   defForm.value = {
     id: record.id,
     processKey: record.processKey,
     processName: record.processName || '',
-    organizationId: record.organizationId ?? findOrgIdByCode(defOrgTree.value, record.organizationCode),
     organizationCode: record.organizationCode,
+    spaceCode: record.spaceCode || props.spaceCode,
+    spaceName: record.spaceName || undefined,
     issueTypeId: record.issueTypeCode ?? (record.issueTypeId != null ? String(record.issueTypeId) : undefined),
     issueTypeName: record.issueTypeName || issueTypeNameOf(record.issueTypeId),
     remark: record.remark || '',
     nodes: record.nodes?.length ? normalizeLegacyNodes(record.nodes).map((n) => cloneNode(n)) : [emptyNode()],
   }
-  await loadDefIssueTypes(defForm.value.organizationId)
+  await loadDefIssueTypes(defForm.value.spaceCode)
   // 历史数据的问题类型不在当前组织列表中：补一个选项，保证回显名称
   const curId = defForm.value.issueTypeId
   const matched = findIssueTypeOption(curId)
@@ -655,7 +651,7 @@ function applyPresetTemplate() {
 async function handleSaveDef() {
   const f = defForm.value
   if (!f.processName.trim()) return message.warning('请输入流程名称')
-  if (f.organizationId == null) return message.warning('请选择所属组织')
+  if (!f.spaceCode) return message.warning('请选择所属空间')
   if (!f.issueTypeId) return message.warning('请选择绑定的问题类型')
   // 只保存流程基本信息（独立接口，不部署）；流程节点在"流程设置"中配置
   defSaving.value = true
@@ -665,7 +661,10 @@ async function handleSaveDef() {
       // 新增时由后端生成流程标识，编辑时原样回传
       processKey: defModal.isEdit ? f.processKey : undefined,
       processName: f.processName.trim(),
-      organizationCode: findOrgCode(defOrgTree.value, f.organizationId) ?? f.organizationCode,
+      // 不单独选组织：取所属空间的组织，空间未关联组织时用原组织兜底
+      organizationCode: (await orgCodeOfSpace(f.spaceCode)) ?? f.organizationCode,
+      spaceCode: f.spaceCode || undefined,
+      spaceName: spaceNameOf(f.spaceCode) || f.spaceName || undefined,
       issueTypeCode: String(f.issueTypeId),
       issueTypeName: f.issueTypeName || issueTypeNameOf(f.issueTypeId),
       remark: f.remark || '',
@@ -725,6 +724,10 @@ onMounted(() => {
 .component-list-page {
   padding: 0 24px;
   font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, sans-serif;
+}
+
+.component-list-page.embedded {
+  padding: 0;
 }
 
 .wf-header {

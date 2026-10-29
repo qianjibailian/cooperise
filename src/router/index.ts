@@ -18,6 +18,8 @@ import Organization from '@/pages/organization/index.vue'
 import Positions from '@/pages/positions/index.vue'
 import IssueTypes from '@/pages/issue-type/index.vue'
 import Profile from '@/pages/profile/index.vue'
+import Space from '@/pages/space/index.vue'
+import SpaceHome from '@/pages/space/home.vue'
 import Account from '@/pages/account/index.vue'
 import SprintBoard from '@/pages/sprint-board/index.vue'
 import TestingCalendar from '@/pages/testing-calendar/index.vue'
@@ -93,6 +95,9 @@ const routes: RouteRecordRaw[] = [
       { path: 'settings/template-list', redirect: '/admin/template-list' },
       { path: 'settings/available-field', component: AvailableField, name: 'AvailableField', meta: { title: '自定义字段' } },
       { path: 'settings/workflow', redirect: '/admin/workflow' },
+      { path: 'space', component: Space, name: 'Space', meta: { title: '空间' } },
+      { path: 'space/:spaceCode', component: SpaceHome, name: 'SpaceHome', meta: { title: '空间' } },
+      { path: 'settings/space', redirect: '/space' },
       { path: 'settings/profile', component: Profile, name: 'Profile', meta: { title: '个人中心' } },
       { path: 'settings/account', component: Account, name: 'Account', meta: { title: '账户设置' } },
       { path: 'admin/users', component: Users, name: 'AdminUsers', meta: { title: '用户管理' } },
