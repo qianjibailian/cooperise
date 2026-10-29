@@ -95,8 +95,38 @@ export function patchIssue(id: string | number, fields: IssuePatchField[]): Prom
 }
 
 /** 新建事项表单元数据（POST /issue/queryCreateMeta） */
-export function getIssueCreateMeta(data: { projectId: string; issueTypeId: string }): Promise<IssueCreateMetaResult> {
+export function getIssueCreateMeta(data: { organizationCode?: string; issueTypeCode: string }): Promise<IssueCreateMetaResult> {
   return request.post(`/issue/queryCreateMeta`, data)
+}
+
+/** 模糊搜索事项结果项（POST /issue/fuzzy-query → list） */
+export interface FuzzyIssueItem {
+  id?: number
+  issueKey: string
+  summary?: string
+  issueTypeCode?: string
+  issueTypeName?: string
+  issueTypeColor?: string
+  projectId?: string
+  statusId?: string
+  /** 当前所在工作流节点 nodeId */
+  statusNode?: string
+  statusCode?: string
+  statusName?: string
+  statusColor?: string
+  createTime?: string
+  updateTime?: string
+  deleteTime?: string | null
+  /** 创建人：JSON 字符串，如 {"memberId":"000001","coAccount":"系统管理员","avatarUrl":"..."} */
+  creator?: string
+  updater?: string
+}
+
+/** 模糊搜索事项（POST /issue/fuzzy-query）：issueKey / summary 均为模糊匹配，同时传时为「且」；pageSize 最大 10 */
+export function fuzzyQueryIssues(data: { issueKey?: string; summary?: string; page?: number; pageSize?: number }): Promise<
+  Result<{ list: FuzzyIssueItem[]; total: number; currentPage?: number; pageSize?: number; pageCount?: number }>
+> {
+  return request.post(`/issue/fuzzy-query`, data)
 }
 
 /** 查询事项详情（POST /issue/queryDetail） */
@@ -254,7 +284,7 @@ export function deployWorkflowDefinition(data: Partial<WorkflowDefinition>): Pro
 }
 
 /** 流程基本信息保存参数（新增不传 id；不含流程节点，与部署无关） */
-export type WorkflowDefinitionSaveParams = Pick<WorkflowDefinition, 'id' | 'processName' | 'organizationId' | 'issueTypeId' | 'issueTypeName' | 'remark'> & {
+export type WorkflowDefinitionSaveParams = Pick<WorkflowDefinition, 'id' | 'processName' | 'organizationCode' | 'issueTypeCode' | 'issueTypeName' | 'remark'> & {
   /** 流程标识：新增时由后端自动生成，不传；编辑时原样回传 */
   processKey?: string
 }
@@ -284,17 +314,61 @@ export function updateWorkflowDefinitionStatus(id: number, status: number): Prom
   return request.post(`/workflow/definition/${id}/status`, null, { params: { status } })
 }
 
-/** 查询下一节点（GET /workflow/next-nodes?issueKey=xxx&issueTypeCode=TYPE10001），按事项问题类型编码匹配流程，返回当前节点与下一步节点列表 */
-export function getWorkflowNextNodes(issueKey: string, issueTypeCode?: string): Promise<
-  Result<{
-    currentNodeId?: string
-    currentNodeName?: string
-    /** 当前流转任务 id（若后端返回，用于状态变更） */
-    taskId?: number | string
-    nextNodes?: WorkflowNode[]
-  }>
-> {
-  return request.get(`/workflow/next-nodes`, { params: { issueKey, issueTypeCode: issueTypeCode || undefined } })
+/** 下一节点精简信息（GET /workflow/next-nodes → nextNodes） */
+export interface WorkflowNextNode {
+  nodeId: string
+  nodeName: string
+  /** 流转到该节点时写入事项的状态编码 */
+  statusCode?: string
+  /** 入口线名称，回退目标固定为「回退」 */
+  branchName?: string
+  /** 是否回退目标（来自当前节点 backToNodeIds） */
+  isBack?: boolean
+  assigneeType?: string
+  assigneeValue?: string | null
+}
+
+/** 下一节点查询结果：单号 → 事项问题类型 + 当前状态编码 → 启用流程 → 当前节点的后续 / 回退节点 */
+export interface WorkflowNextNodesResult {
+  issueKey?: string
+  issueTypeCode?: string
+  issueTypeName?: string
+  currentStatusId?: string
+  currentStatusName?: string
+  processDefinitionId?: number
+  processKey?: string
+  processName?: string
+  currentNodeId?: string
+  currentNodeName?: string
+  nextNodes?: WorkflowNextNode[]
+  /** 未命中说明：无匹配流程 / 流程未配置节点 / 当前状态未匹配到节点 / 当前节点已是末节点 */
+  reason?: string
+}
+
+/** 查询事项可选下一节点（GET /workflow/next-nodes?issueKey=xxx），后端按单号自行匹配问题类型与流程 */
+export function getWorkflowNextNodes(issueKey: string): Promise<Result<WorkflowNextNodesResult>> {
+  return request.get(`/workflow/next-nodes`, { params: { issueKey } })
+}
+
+/** 事项关联的工作流：所有节点（绑定时的流程快照）+ 当前节点 */
+export interface IssueWorkflow {
+  issueKey?: string
+  processDefinitionId?: number
+  processKey?: string
+  processName?: string
+  currentNodeId?: string
+  currentNodeName?: string
+  currentStatusCode?: string
+  /** 当前节点是否已是末节点 */
+  finished?: boolean
+  nodes?: WorkflowNode[]
+  createTime?: string
+  updateTime?: string
+}
+
+/** 查询事项关联的工作流（GET /workflow/issue?issueKey=xxx） */
+export function getIssueWorkflow(issueKey: string): Promise<Result<IssueWorkflow | null>> {
+  return request.get(`/workflow/issue`, { params: { issueKey } })
 }
 
 /** 状态变更-完成（POST /workflow/task/change-status，reason 写入 wf_task_history.reason） */
@@ -305,7 +379,7 @@ export function changeWorkflowTaskStatus(data: {
   taskId?: number
   /** 目标节点：传 nodeId 或节点名均可 */
   targetStatus: string
-  /** 目标状态 id（issue 表 status 字段，供后端在同一个事务内同步更新） */
+  /** 目标状态编码（可选）：不传时后端取目标节点的状态编码 */
   statusId?: string
   reason?: string
   comment?: string
@@ -456,6 +530,8 @@ export interface PositionItem {
   positionCode?: string
   /** 所属组织 ID */
   organizationId?: number
+  /** 所属组织编码 */
+  organizationCode?: string
   /** 所属组织名称（列表展示用） */
   organizationName?: string
   /** 所属组织路径名称，如 全球运营中心/C端产品部 */
@@ -473,7 +549,8 @@ export interface PositionItem {
 export interface PositionQueryParams {
   keyword?: string
   status?: number
-  organizationId?: number
+  /** 按组织编码筛选 */
+  organizationCode?: string
   page: number
   pageSize: number
 }
@@ -482,7 +559,8 @@ export interface PositionQueryParams {
 export interface PositionSaveParams {
   id?: number
   positionName: string
-  organizationId?: number
+  /** 所属组织编码 */
+  organizationCode?: string
   description?: string
   sort?: number
   status: number
@@ -517,12 +595,16 @@ export interface IssueTypeItem {
   issueTypeCode?: string
   /** 所属组织 ID */
   organizationId?: number
+  /** 所属组织编码 */
+  organizationCode?: string
   /** 所属组织名称（列表展示用） */
   organizationName?: string
   /** 所属组织路径名称，如 全球运营中心/C端产品部 */
   organizationPathName?: string
   /** 图标颜色，如 #0A84FF */
   color?: string
+  /** 类型图标 key（见 utils/issueTypeIcons），如 bug */
+  iconUri?: string | null
   description?: string
   /** 排序值，越小越靠前 */
   sort?: number
@@ -548,7 +630,8 @@ export interface IssueTypeStatus {
 export interface IssueTypeQueryParams {
   keyword?: string
   status?: number
-  organizationId?: number
+  /** 按组织编码筛选 */
+  organizationCode?: string
   page: number
   pageSize: number
 }
@@ -557,8 +640,11 @@ export interface IssueTypeQueryParams {
 export interface IssueTypeSaveParams {
   id?: number
   issueTypeName: string
-  organizationId?: number
+  /** 所属组织编码 */
+  organizationCode?: string
   color?: string
+  /** 类型图标 key */
+  iconUri?: string | null
   description?: string
   sort?: number
   status: number
@@ -579,13 +665,13 @@ export function updateIssueType(data: IssueTypeSaveParams): Promise<Result<Issue
   return request.post(`/issue-type/update`, data)
 }
 
-/** 问题类型下的状态列表（GET /issue-type/status/list?issueTypeId=xxx），按 sort 升序 */
-export function queryIssueTypeStatuses(issueTypeId: number): Promise<Result<IssueTypeStatus[]>> {
-  return request.get(`/issue-type/status/list`, { params: { issueTypeId } })
+/** 问题类型下的状态列表（GET /issue-type/status/list?issueTypeCode=xxx），按 sort 升序 */
+export function queryIssueTypeStatuses(issueTypeCode: string): Promise<Result<IssueTypeStatus[]>> {
+  return request.get(`/issue-type/status/list`, { params: { issueTypeCode } })
 }
 
 /** 保存问题类型下的状态（POST /issue-type/status/save）：整体提交，后端按 id 增改、缺失即删除 */
-export function saveIssueTypeStatuses(data: { issueTypeId: number; statuses: IssueTypeStatus[] }): Promise<Result<IssueTypeStatus[]>> {
+export function saveIssueTypeStatuses(data: { issueTypeCode: string; statuses: IssueTypeStatus[] }): Promise<Result<IssueTypeStatus[]>> {
   return request.post(`/issue-type/status/save`, data)
 }
 
@@ -599,8 +685,10 @@ export function deleteIssueType(id: number): Promise<Result<void>> {
 /** 组织节点（后端 OrganizationVO） */
 export interface OrganizationNode {
   id: number
-  /** 组织编码（如 Jira 部门 ID），业务唯一 */
+  /** 组织编码（后端自动生成），业务唯一 */
   organizationCode?: string
+  /** 事项标识：1~4 位大写字母，用作事项单号前缀（如 UG → UG-000042） */
+  issueKeyPrefix?: string
   /** 父组织 ID，0 表示顶级 */
   parentId: number
   organizationName: string
@@ -621,7 +709,10 @@ export interface OrganizationNode {
 /** 新增 / 修改组织请求体（修改时 id 必填） */
 export interface OrganizationSaveParams {
   id?: number
+  /** 组织编码由后端生成，前端不再提交 */
   organizationCode?: string
+  /** 事项标识：1~4 位大写字母 */
+  issueKeyPrefix?: string
   parentId: number
   organizationName: string
   sort?: number

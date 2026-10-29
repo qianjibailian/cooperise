@@ -129,6 +129,7 @@ import {
   type PositionItem, type PositionSaveParams, type OrganizationNode,
 } from '@/api/faiz'
 import OrgTreeSelect from '@/components/OrgTreeSelect.vue'
+import { findOrgCode, findOrgIdByCode } from '@/utils/orgTree'
 
 const STATUS_FILTERS = [
   { label: '全部', value: 'all' },
@@ -181,7 +182,7 @@ async function loadPositions() {
     const res = await queryPositions({
       keyword: keyword.value.trim() || undefined,
       status: statusFilter.value === 'all' ? undefined : Number(statusFilter.value),
-      organizationId: orgFilter.value,
+      organizationCode: findOrgCode(orgTree.value, orgFilter.value),
       page: page.value,
       pageSize: pageSize.value,
     })
@@ -220,7 +221,7 @@ async function toggleStatus(r: PositionItem, checked: boolean) {
     const res = await updatePosition({
       id: r.id,
       positionName: r.positionName,
-      organizationId: r.organizationId,
+      organizationCode: r.organizationCode ?? findOrgCode(orgTree.value, r.organizationId),
       description: r.description,
       sort: r.sort,
       status: checked ? 1 : 0,
@@ -238,7 +239,8 @@ const modalOpen = ref(false)
 const saving = ref(false)
 const editingId = ref<number | null>(null)
 const formRef = ref<FormInstance>()
-const emptyForm = (): Omit<PositionSaveParams, 'id'> & { description: string; sort: number } => ({
+/** 表单内组织用 ID 选择（组织树），提交时换算成组织编码 */
+const emptyForm = (): Omit<PositionSaveParams, 'id' | 'organizationCode'> & { organizationId?: number; description: string; sort: number } => ({
   positionName: '',
   organizationId: undefined,
   description: '',
@@ -265,7 +267,7 @@ function openEdit(r: PositionItem) {
   editingId.value = r.id
   Object.assign(form, {
     positionName: r.positionName ?? '',
-    organizationId: r.organizationId,
+    organizationId: r.organizationId ?? findOrgIdByCode(orgTree.value, r.organizationCode),
     description: r.description ?? '',
     sort: r.sort ?? 0,
     status: r.status ?? 1,
@@ -281,8 +283,10 @@ async function handleSubmit() {
   }
   saving.value = true
   try {
+    const { organizationId, ...rest } = form
     const payload: PositionSaveParams = {
-      ...form,
+      ...rest,
+      organizationCode: findOrgCode(orgTree.value, organizationId),
       positionName: form.positionName.trim(),
       description: form.description.trim() || undefined,
       sort: editingId.value ? form.sort : undefined,

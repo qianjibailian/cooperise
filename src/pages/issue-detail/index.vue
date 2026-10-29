@@ -370,7 +370,7 @@
           </a-collapse>
           ========== /暂时注释：研发活动 ========== -->
 
-          <!-- 描述（折叠板，位于研发活动下方） -->
+          <!-- 描述（折叠板） -->
           <a-collapse
             v-if="!onlyShowValued ? true : descriptionFields.length > 0"
             v-model:activeKey="descCollapseKeys"
@@ -389,24 +389,67 @@
                   <div
                     v-for="f in descriptionFields"
                     :key="`desc-${f.id}-${richEditorVersion}`"
-                    class="desc-rich-wrap"
+                    :class="['desc-rich-wrap', { 'is-editing': richEditing[f.id] }]"
                   >
-                    <Toolbar
-                      :editor="richEditorInstances[f.id] || null"
-                      :default-config="richToolbarConfig"
-                      mode="default"
-                      class="desc-rich-toolbar"
-                    />
-                    <Editor
-                      v-model="richTextModels[f.id]"
-                      :default-config="richEditorConfig"
-                      mode="default"
-                      class="desc-rich-editor"
-                      @onCreated="(editor: IDomEditor) => handleRichEditorCreated(f.id, editor)"
-                    />
+                    <!-- 编辑 / 保存 / 取消 -->
+                    <div v-if="f.editable" class="desc-rich-actions">
+                      <a-tooltip v-if="!richEditing[f.id]" title="编辑描述">
+                        <a-button type="text" size="small" class="desc-act-btn" @click="startRichEdit(f.id)"><EditOutlined /></a-button>
+                      </a-tooltip>
+                      <template v-else>
+                        <a-tooltip title="取消">
+                          <a-button type="text" size="small" class="desc-act-btn" :disabled="richSaving[f.id]" @click="cancelRichEdit(f.id)"><CloseOutlined /></a-button>
+                        </a-tooltip>
+                        <a-tooltip title="保存">
+                          <a-button type="text" size="small" class="desc-act-btn is-save" :loading="richSaving[f.id]" @click="saveRichText(f.id)">
+                            <CheckOutlined v-if="!richSaving[f.id]" />
+                          </a-button>
+                        </a-tooltip>
+                      </template>
+                    </div>
+                    <!-- 编辑态：富文本编辑器 -->
+                    <template v-if="richEditing[f.id]">
+                      <Toolbar
+                        :editor="richEditorInstances[f.id] || null"
+                        :default-config="richToolbarConfig"
+                        mode="default"
+                        class="desc-rich-toolbar"
+                      />
+                      <Editor
+                        v-model="richTextModels[f.id]"
+                        :default-config="richEditorConfig"
+                        mode="default"
+                        class="desc-rich-editor"
+                        @onCreated="(editor: IDomEditor) => handleRichEditorCreated(f.id, editor)"
+                      />
+                    </template>
+                    <!-- 非编辑态：只读渲染，双击进入编辑 -->
+                    <div v-else class="desc-rich-view" @dblclick="f.editable && startRichEdit(f.id)">
+                      <div v-if="hasRichContent(richTextModels[f.id])" class="desc-rich-html" v-html="sanitizeHtml(richTextModels[f.id])" />
+                      <span v-else class="desc-rich-empty">暂无描述{{ f.editable ? '，点击右上角编辑' : '' }}</span>
+                    </div>
                   </div>
                 </template>
                 <MiniEmpty v-else text="还没有填写描述" />
+              </div>
+            </a-collapse-panel>
+          </a-collapse>
+
+          <!-- 研发活动（折叠板，位于描述下方）：需求文档 / 应用名称 / 代码分支 / 测试计划 / 缺陷管理 / 线上故障 -->
+          <a-collapse
+            v-model:activeKey="rdCollapseKeys"
+            ghost
+            :bordered="false"
+            class="panel-collapse"
+          >
+            <a-collapse-panel key="rd">
+              <template #header>
+                <div class="collapse-header-inner">
+                  <span class="pch-title">研发活动</span>
+                </div>
+              </template>
+              <div class="panel-card-body">
+                <IssueRdActivity :issue-key="issueKey" />
               </div>
             </a-collapse-panel>
           </a-collapse>
@@ -679,12 +722,16 @@ import {
   ExclamationCircleOutlined,
   CopyOutlined,
   EditOutlined,
+  CheckOutlined,
+  CloseOutlined,
 } from '@ant-design/icons-vue'
 import dayjs from 'dayjs'
 import { queryDetail, patchIssue } from '@/api/faiz'
 import { message } from 'ant-design-vue'
-import type { DetailData, DetailField } from '@/types/faiz'
+import type { DetailData, DetailField, DetailLayoutGroup } from '@/types/faiz'
 import FieldValueEditor from '@/components/FieldValueEditor.vue'
+import { sanitizeHtml } from '@/utils/sanitizeHtml'
+import IssueRdActivity from '@/components/IssueRdActivity.vue'
 
 // ============================================================
 // 子组件：MiniEmpty 小型空状态
@@ -956,7 +1003,7 @@ const activeTab = ref<string>('')
 const teamCollapseKeys = ref<string[]>(['team'])
 const descCollapseKeys = ref<string[]>(['desc'])
 const userCollapseKeys = ref<string[]>(['user'])
-const rdCollapseKeys = ref<string[]>([])
+const rdCollapseKeys = ref<string[]>(['rd'])
 const okrCollapseKeys = ref<string[]>([])
 const timeCollapseKeys = ref<string[]>(['time'])
 const attachmentCollapseKeys = ref<string[]>(['attachment'])
@@ -973,6 +1020,8 @@ const richTextModels = reactive<Record<string, string>>({})
 const richEditorInstances = reactive<Record<string, IDomEditor | null>>({})
 const richEditorVersion = ref(0)
 const richSaving = reactive<Record<string, boolean>>({})
+/** 富文本上次保存的内容：判断是否有改动、取消编辑时恢复 */
+const richTextBaseline = reactive<Record<string, string>>({})
 
 const richToolbarConfig: Partial<IToolbarConfig> = {
   toolbarKeys: [
@@ -1012,24 +1061,51 @@ function handleRichEditorCreated(fieldId: string, editor: IDomEditor) {
     prev.destroy()
   }
   richEditorInstances[fieldId] = editor
-  // 失焦自动保存
-  editor.on('blur', () => saveRichText(fieldId))
 }
 
-/** 保存描述富文本：内容有变化才调用 patchIssue */
+// ---------- 描述编辑态：默认只读，点击编辑进入，保存 / 取消退出 ----------
+const richEditing = reactive<Record<string, boolean>>({})
+
+function startRichEdit(fieldId: string) {
+  richEditing[fieldId] = true
+}
+
+/** 退出编辑：先销毁编辑器实例，再卸载编辑器 DOM */
+function stopRichEdit(fieldId: string) {
+  const inst = richEditorInstances[fieldId]
+  if (inst) inst.destroy()
+  richEditorInstances[fieldId] = null
+  richEditing[fieldId] = false
+}
+
+/** 取消：内容恢复为上次保存的值 */
+function cancelRichEdit(fieldId: string) {
+  richTextModels[fieldId] = richTextBaseline[fieldId] ?? ''
+  stopRichEdit(fieldId)
+}
+
+/** 富文本是否有实际内容（空段落 / 纯空白视为无内容，图片算有内容） */
+function hasRichContent(html?: string): boolean {
+  if (!html) return false
+  if (/<img\b/i.test(html)) return true
+  return html.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').trim() !== ''
+}
+
+/** 保存描述富文本：有改动才调用 patchIssue，保存成功或无改动时退出编辑 */
 async function saveRichText(fieldId: string) {
   if (richSaving[fieldId]) return
   const html = (richTextModels[fieldId] ?? '').trim()
   const f = descriptionFields.value.find((x) => x.id === fieldId)
   if (!f || !f.editable) return
-  const origin = typeof f.value === 'string' ? f.value.trim() : String(f.value ?? '')
-  if (html === origin) return
+  if (html === (richTextBaseline[fieldId] ?? '').trim()) return stopRichEdit(fieldId)
   richSaving[fieldId] = true
   try {
     const res = await patchIssue(issueKey.value, [{ fieldId, fieldValue: html }])
     if (res?.success) {
       f.value = html
       f.exportValue = html
+      richTextBaseline[fieldId] = html
+      stopRichEdit(fieldId)
       message.success('描述已保存')
     }
   } catch {
@@ -1046,14 +1122,20 @@ watch(
   (d) => {
     for (const k of Object.keys(richTextModels)) {
       delete richTextModels[k]
+      delete richTextBaseline[k]
+      delete richEditing[k]
     }
     destroyAllRichEditors()
     if (!d) return
     const g = (d.layoutGroup ?? []).find((x) => x && x.type === 'DESCRIPTION')
     if (!g) return
     const list = flattenGroupFields(g.fieldGroupStructure)
+    // DESCRIPTION 组自身无值时，回退取其他分组里同名「描述」字段的值
+    const fallback = findDescriptionValueElsewhere(d.layoutGroup ?? [])
     list.forEach((f) => {
-      richTextModels[f.id] = formatRichText(f.value)
+      const html = formatRichText(isBlankValue(f.value) ? fallback : f.value)
+      richTextModels[f.id] = html
+      richTextBaseline[f.id] = html
     })
     richEditorVersion.value++
   },
@@ -1269,8 +1351,39 @@ function isUserField(f: DetailField): boolean {
   return false
 }
 
+/** DESCRIPTION 分组中的字段 id：只在描述区展示，其他区域（主信息 / 自定义字段）统一排除 */
+const descriptionFieldIds = computed<Set<string>>(() => new Set(descriptionFields.value.map((f) => f.id)))
+
+function notDescriptionField(f: DetailField | null | undefined): f is DetailField {
+  if (!f || descriptionFieldIds.value.has(f.id)) return false
+  // 有描述区时，同名「描述」字段不在其他区域重复展示（值已回填到描述区）
+  return !(descriptionFieldIds.value.size > 0 && isDescriptionLike(f))
+}
+
+/** 是否为「描述」字段（DESCRIPTION 组外可能以自定义字段形式重复下发，按 id / 名称识别） */
+function isDescriptionLike(f: DetailField): boolean {
+  return f.id === 'description' || String(f.name ?? '').trim() === '描述'
+}
+
+function isBlankValue(v: unknown): boolean {
+  return v == null || (typeof v === 'string' && v.trim() === '')
+}
+
+/** 在 DESCRIPTION 以外的分组中查找「描述」字段的值（优先 exportValue） */
+function findDescriptionValueElsewhere(groups: DetailLayoutGroup[]): unknown {
+  for (const g of groups) {
+    if (!g || g.type === 'DESCRIPTION') continue
+    for (const f of flattenGroupFields(g.fieldGroupStructure)) {
+      if (!isDescriptionLike(f)) continue
+      const v = isBlankValue(f.exportValue) ? f.value : f.exportValue
+      if (!isBlankValue(v)) return v
+    }
+  }
+  return null
+}
+
 const rawSummaryGrid = computed<DetailField[]>(() =>
-  allSummaryFields.value.filter((f) => f && !SUMMARY_EXCLUDED_IDS.has(f.id) && !isUserField(f)),
+  allSummaryFields.value.filter((f) => notDescriptionField(f) && !SUMMARY_EXCLUDED_IDS.has(f.id) && !isUserField(f)),
 )
 
 interface CustomFieldGroup {
@@ -1300,12 +1413,12 @@ const customFieldGroups = computed<CustomFieldGroup[]>(() => {
           structureType: 'TAB_CONTAINER',
           tabItems: d.tabItems
             .filter((t) => t.title !== 'C端专用字段')
-            .map((t) => ({ ...t, title: mapTabTitle(t.title) })),
+            .map((t) => ({ ...t, title: mapTabTitle(t.title), issueFields: (t.issueFields ?? []).filter(notDescriptionField) })),
           fields: [],
         })
       }
     } else if (s.type === 'COMMON_LIST') {
-      groups.push({ structureType: 'COMMON_LIST', tabItems: [], fields: ((s.data as DetailField[]) ?? []).filter(notNull) })
+      groups.push({ structureType: 'COMMON_LIST', tabItems: [], fields: ((s.data as DetailField[]) ?? []).filter(notDescriptionField) })
     }
   }
   return groups
@@ -1411,7 +1524,7 @@ async function fetchDetail() {
   teamCollapseKeys.value = ['team']
   descCollapseKeys.value = ['desc']
   userCollapseKeys.value = ['user']
-  rdCollapseKeys.value = []
+  rdCollapseKeys.value = ['rd']
   okrCollapseKeys.value = []
   timeCollapseKeys.value = ['time']
   attachmentCollapseKeys.value = ['attachment']
@@ -2276,6 +2389,55 @@ function formatRichText(v: unknown): string {
 }
 
 /* Description rich text（WangEditor 可编辑） */
+.desc-rich-wrap {
+  position: relative;
+}
+.desc-rich-actions {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  z-index: 2;
+  display: flex;
+  gap: 2px;
+}
+.desc-act-btn {
+  color: #8c8c8c;
+}
+.desc-act-btn:hover {
+  color: #1677ff;
+}
+.desc-act-btn.is-save {
+  color: #1677ff;
+}
+/* 编辑态：按钮放在工具栏上方，避免遮挡工具栏按钮 */
+.desc-rich-wrap.is-editing {
+  padding-top: 30px;
+}
+.desc-rich-wrap.is-editing .desc-rich-actions {
+  top: 0;
+  right: 0;
+}
+.desc-rich-view {
+  min-height: 44px;
+  padding: 10px 44px 10px 14px;
+  font-size: 13.5px;
+  line-height: 1.75;
+  color: #262626;
+  word-break: break-word;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  transition: border-color 0.15s, background 0.15s;
+}
+.desc-rich-view:hover {
+  background: #fafafa;
+  border-color: #f0f0f0;
+}
+.desc-rich-html :deep(img) {
+  max-width: 100%;
+}
+.desc-rich-empty {
+  color: #bfbfbf;
+}
 .desc-rich-wrap + .desc-rich-wrap {
   margin-top: 10px;
 }

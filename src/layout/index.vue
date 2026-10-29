@@ -4,7 +4,7 @@
       :drawer-open="drawerOpen"
       :sidebar-collapsed="sidebarCollapsed"
       :hide-sidebar-toggle="isNonWorkbenchRoute"
-      search-placeholder="搜索事项单号或者概要"
+      search-placeholder="搜索问题单号或者概要"
       @menu-click="handleMenuClick"
       @workspace-click="handleWorkspaceClick"
       @create-click="handleNewFormOpen"
@@ -273,7 +273,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import {
   HomeOutlined,
   SettingOutlined,
@@ -473,7 +473,7 @@ function handleSectionClick(key: string) {
   } else if (key === 'settings') {
     router.push('/settings/profile')
   } else if (key === 'admin') {
-    router.push('/admin/system-field')
+    router.push('/admin/users')
   }
 }
 
@@ -534,11 +534,27 @@ function handleRemoteMenuClick(key: string) {
   }
   router.push(path)
 }
+
+// ---------- 窄屏兼容：页面横向滚动时，fixed 的顶栏 / 侧栏跟随平移 ----------
+function syncScrollX() {
+  document.documentElement.style.setProperty('--app-scroll-x', `${window.scrollX}px`)
+}
+onMounted(() => {
+  syncScrollX()
+  window.addEventListener('scroll', syncScrollX, { passive: true })
+  window.addEventListener('resize', syncScrollX)
+})
+onBeforeUnmount(() => {
+  window.removeEventListener('scroll', syncScrollX)
+  window.removeEventListener('resize', syncScrollX)
+  document.documentElement.style.removeProperty('--app-scroll-x')
+})
 </script>
 
 <style scoped>
 .layout-container {
   height: 100%;
+  min-width: var(--app-min-width);
   background: #fafafa;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
 }
@@ -554,6 +570,7 @@ function handleRemoteMenuClick(key: string) {
   display: flex;
   flex-direction: column;
   box-shadow: 1px 0 3px rgba(0, 0, 0, 0.04);
+  transform: translateX(calc(-1 * var(--app-scroll-x, 0px)));
 }
 
 .sider-inner {

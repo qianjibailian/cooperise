@@ -8,7 +8,7 @@ export interface WfProps {
   nodeName?: string
   assigneeType?: string
   assigneeValue?: string | null
-  statusId?: string | null
+  statusCode?: string | null
   /** 节点运行状态（仅只读展示视图使用） */
   state?: WfFlowNodeState
 }
@@ -71,7 +71,7 @@ export function mkLFNode(
       nodeName: n.nodeName || '',
       assigneeType: n.assigneeType || 'CREATOR',
       assigneeValue: n.assigneeValue ?? null,
-      statusId: n.statusId ?? null,
+      statusCode: n.statusCode ?? null,
       state: state ?? 'pending',
     },
   }

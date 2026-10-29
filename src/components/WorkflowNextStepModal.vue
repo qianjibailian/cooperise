@@ -1,15 +1,13 @@
 <script setup lang="ts">
 import { ref, reactive, computed, watch } from 'vue'
 import { message } from 'ant-design-vue'
-import type { WorkflowNode } from '@/types/faiz'
-import { getWorkflowNextNodes, changeWorkflowTaskStatus } from '@/api/faiz'
+import { RollbackOutlined } from '@ant-design/icons-vue'
+import { getWorkflowNextNodes, changeWorkflowTaskStatus, type WorkflowNextNode } from '@/api/faiz'
 import { getLoginUsername } from '@/utils/auth'
 
 const props = defineProps<{
   open: boolean
   issueKey: string
-  /** 当前事项的问题类型编码（如 TYPE10001），用于匹配工作流 */
-  issueTypeCode?: string
 }>()
 
 const emit = defineEmits<{
@@ -28,8 +26,9 @@ const operator = getLoginUsername() || localStorage.getItem('wf_current_user') |
 const loading = ref(false)
 const saving = ref(false)
 const currentNodeName = ref('')
-const rawNextNodes = ref<WorkflowNode[]>([])
-const taskId = ref<number | undefined>(undefined)
+const rawNextNodes = ref<WorkflowNextNode[]>([])
+/** 无下一节点时后端给出的说明（无匹配流程 / 当前已是末节点等） */
+const emptyReason = ref('')
 
 /** 当前节点：接口返回的 currentNodeName */
 const currentNode = computed<{ nodeName: string } | null>(() => {
@@ -37,8 +36,13 @@ const currentNode = computed<{ nodeName: string } | null>(() => {
   return name ? { nodeName: name } : null
 })
 
-/** 下一步节点：接口直接返回的 nextNodes */
-const nextNodes = computed<WorkflowNode[]>(() => rawNextNodes.value)
+/** 下一步节点：接口返回的 nextNodes（正向后续节点 + 回退节点） */
+const nextNodes = computed<WorkflowNextNode[]>(() => rawNextNodes.value)
+
+/** 是否回退节点：后端 isBack 标记 */
+function isBackNode(n: WorkflowNextNode): boolean {
+  return !!n.isBack
+}
 
 /** 每个下一步节点的表单数据（按节点 id 隔离：评论（富文本） / 原因） */
 interface NextForm {
@@ -81,9 +85,8 @@ async function handleSave() {
   try {
     const res = await changeWorkflowTaskStatus({
       issueKey: props.issueKey,
-      ...(taskId.value != null ? { taskId: taskId.value } : {}),
       targetStatus: node.nodeId,
-      ...(node.statusId ? { statusId: node.statusId } : {}),
+      ...(node.statusCode ? { statusId: node.statusCode } : {}),
       ...(reason ? { reason } : {}),
       ...(comment ? { comment } : {}),
       operator,
@@ -92,7 +95,7 @@ async function handleSave() {
       emit('submit', {
         nodeId: node.nodeId,
         nodeName: node.nodeName || node.nodeId,
-        statusId: node.statusId || node.nodeId,
+        statusId: node.statusCode || node.nodeId,
       })
       modalOpen.value = false
     } else {
@@ -132,15 +135,15 @@ async function load() {
   loading.value = true
   currentNodeName.value = ''
   rawNextNodes.value = []
-  taskId.value = undefined
+  emptyReason.value = ''
   activeNodeId.value = ''
   try {
-    // 仅调下一节点接口：currentNodeName / nextNodes / taskId 均来自其返回
-    const res = await getWorkflowNextNodes(props.issueKey, props.issueTypeCode)
+    // 后端按单号匹配问题类型、流程与当前节点，返回正向后续节点 + 回退节点
+    const res = await getWorkflowNextNodes(props.issueKey)
     const data = res?.data ?? null
-    currentNodeName.value = String(data?.currentNodeName ?? '')
-    rawNextNodes.value = Array.isArray(data?.nextNodes) ? (data.nextNodes as WorkflowNode[]) : []
-    taskId.value = data?.taskId != null ? Number(data.taskId) : undefined
+    currentNodeName.value = String(data?.currentNodeName || data?.currentStatusName || '')
+    rawNextNodes.value = Array.isArray(data?.nextNodes) ? data.nextNodes : []
+    emptyReason.value = String(data?.reason ?? '')
   } catch {
     // 忽略：加载失败仅展示空态
   } finally {
@@ -149,7 +152,7 @@ async function load() {
 }
 
 watch(
-  () => [props.open, props.issueKey, props.issueTypeCode] as const,
+  () => [props.open, props.issueKey] as const,
   ([open, issueKey]) => {
     if (open && issueKey) load()
   }
@@ -180,15 +183,18 @@ watch(
             size="small"
             class="nn-tabs"
           >
-            <a-tab-pane
-              v-for="n in nextNodes"
-              :key="n.nodeId"
-              :tab="n.nodeName || n.nodeId"
-            >
+            <a-tab-pane v-for="n in nextNodes" :key="n.nodeId">
+              <template #tab>
+                <span class="nn-tab">
+                  {{ n.nodeName || n.nodeId }}
+                  <span v-if="isBackNode(n)" class="nn-back-tag"><RollbackOutlined /> 回退</span>
+                </span>
+              </template>
               <div class="nn-form">
                 <div class="nn-form-head">
                   <span class="nn-form-node">{{ n.nodeName || n.nodeId }}</span>
-                  <a-tag v-if="n.branchName" size="small" color="blue">{{ n.branchName }}</a-tag>
+                  <a-tag v-if="isBackNode(n)" color="orange"><RollbackOutlined /> 回退</a-tag>
+                  <a-tag v-else-if="n.branchName" color="blue">{{ n.branchName }}</a-tag>
                 </div>
 
                 <div class="nn-form-item">
@@ -228,9 +234,9 @@ watch(
             </a-tab-pane>
           </a-tabs>
         </template>
-        <a-empty v-else description="当前节点暂无下一步节点" style="padding: 24px 0" />
+        <a-empty v-else :description="emptyReason || '当前节点暂无下一步节点'" style="padding: 24px 0" />
       </template>
-      <a-empty v-else-if="!loading" description="该单号暂无运行中的流程" style="padding: 32px 0" />
+      <a-empty v-else-if="!loading" :description="emptyReason || '该单号暂无关联的工作流'" style="padding: 32px 0" />
     </a-spin>
   </a-modal>
 </template>
@@ -279,6 +285,24 @@ watch(
 }
 .nn-tabs :deep(.ant-tabs-tab-active) {
   font-weight: 600;
+}
+.nn-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.nn-back-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 5px;
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 18px;
+  color: #d46b08;
+  background: #fff7e6;
+  border: 1px solid #ffd591;
+  border-radius: 4px;
 }
 .nn-form {
   padding: 2px 4px 0 8px;

@@ -21,6 +21,7 @@
             <FilterPanel
               v-model:visible="filterPanelVisible"
               v-model="filterConditions"
+              v-model:logic="filterLogic"
               @save="handleFilterSave"
             />
           </template>
@@ -241,7 +242,11 @@
                   <span class="priority-dot" :style="{ background: getPriorityTextColor(record) }"></span>
                   {{ getCellValue(record, String(column.dataIndex)) }}
                 </span>
-                <a-tag v-else-if="column.dataIndex === 'issuetype'">{{ getCellValue(record, String(column.dataIndex)) }}</a-tag>
+                <a-tag
+                  v-else-if="column.dataIndex === 'issuetype'"
+                  class="issuetype-tag"
+                  :style="getIssueTypeTagStyle(record)"
+                ><component :is="issueTypeIconOf(getIssueTypeIconUri(record))" class="issuetype-icon" />{{ getCellValue(record, String(column.dataIndex)) }}</a-tag>
                 <div v-else-if="isUserField(record, String(column.dataIndex))" class="user-cell">
                   <a-avatar
                     :src="getUserAvatar(record, String(column.dataIndex))"
@@ -384,7 +389,7 @@
     <!-- 编辑弹窗：与顶部新建弹窗同一组件，传入 issueKey 进入编辑模式 -->
     <NewIssueFormModal v-model:open="editFormOpen" :issue-key="editIssueKey" @submitted="handleEditSubmitted" />
     <!-- 状态变更弹窗：点击状态列打开，展示当前节点与下一步节点 -->
-    <WorkflowNextStepModal v-model:open="wfModalOpen" :issue-key="wfCurrentIssueKey" :issue-type-code="wfCurrentIssueTypeCode" @submit="handleWfSubmitted" />
+    <WorkflowNextStepModal v-model:open="wfModalOpen" :issue-key="wfCurrentIssueKey" @submit="handleWfSubmitted" />
   </div>
 </template>
 
@@ -409,14 +414,16 @@ import dayjs from 'dayjs'
 import type { Dayjs } from 'dayjs'
 import { message } from 'ant-design-vue'
 import { getIssues, queryAvailableFieldList, getFilterDraft, updateFilterDraft, patchIssue, getAvailableFieldOptions, queryUsers } from '@/api/faiz'
-import type { IssueRecord, IssueQueryPayload, ChildConditionGroup, SortItem, FilterDraft, GlobalFilter, CustomFieldOptionItem, UserItem } from '@/types/faiz'
+import type { IssueRecord, IssueQueryPayload, SortItem, FilterDraft, GlobalFilter, CustomFieldOptionItem, UserItem } from '@/types/faiz'
 import IssueDetailDrawer from '@/components/IssueDetailDrawer.vue'
 import WorkflowNextStepModal from '@/components/WorkflowNextStepModal.vue'
 import FilterPanel from '@/components/FilterPanel.vue'
+import { buildGlobalFilter, parseGlobalFilter, defaultConditions, isConditionComplete, type FilterCondition, type FilterLogic } from '@/utils/issueFilter'
 import SortPanel from '@/components/SortPanel.vue'
 import NewIssueFormModal from '@/components/NewIssueFormModal.vue'
 import { onIssueCreated } from '@/utils/issue-events'
 import { FIELD_TYPE } from '@/types/fieldType'
+import { issueTypeIconOf } from '@/utils/issueTypeIcons'
 
 // 详情抽屉
 const detailDrawerOpen = ref(false)
@@ -663,12 +670,12 @@ function onShownFieldUncheck(item: FieldOption) {
 
 // 筛选面板
 const filterPanelVisible = ref(false)
-const filterConditions = ref<Array<{ logic: string; field: string; operator: string; value: string }>>([
-  { logic: '且', field: 'assignee', operator: '属于', value: '当前用户' },
-  { logic: '且', field: 'status', operator: '属于', value: '所有未结束状态' },
-])
+/** 全局筛选条件（草稿有则回填，否则用默认：经办人=当前用户 + 未结束状态） */
+const filterConditions = ref<FilterCondition[]>(defaultConditions())
+const filterLogic = ref<FilterLogic>('AND')
 
-const filterDisplayCount = computed(() => filterConditions.value.length)
+/** 生效的条件数（不完整的条件不提交，也不计数） */
+const filterDisplayCount = computed(() => filterConditions.value.filter(isConditionComplete).length)
 
 // 排序 / 分组 / 分层 / 视图状态
 const sortPanelVisible = ref(false)
@@ -681,75 +688,11 @@ const isSortDesc = computed(() => sortItemList.value[0]?.sortTypeCode === 'DESC'
 // 视图编码（请求 /filter/draft 时的视图标识；issue/query 入参取接口返回的 data.viewCode）
 const viewCode = ref('MY_TODO21941')
 
-// 值映射：页面文案 → 后端枚举
-const VALUE_MAP: Record<string, string> = {
-  '当前用户': 'CURRENT_USER',
-  '所有未结束状态': 'ALL_NOT_DONE',
-  '已完成': 'DONE',
-  '高': 'HIGH',
-  '中': 'MEDIUM',
-  '低': 'LOW',
-}
-// 操作符映射：中文 → 后端枚举
-const OPERATOR_MAP: Record<string, string> = {
-  '属于': 'BELONG',
-  '等于': 'EQUAL',
-  '不等于': 'NOT_EQUAL',
-  '包含': 'CONTAIN',
-  '不包含': 'NOT_CONTAIN',
-  '大于': 'GREATER_THAN',
-  '小于': 'LESS_THAN',
-}
-/** 把 filterConditions 转换为后端 globalFilter.childConditionGroupList */
-function buildChildConditionGroups(): ChildConditionGroup[] {
-  return filterConditions.value.map((c) => {
-    const mappedValue = VALUE_MAP[c.value] ?? c.value
-    const isCurrentUser = c.field === 'assignee' && c.value === '当前用户'
-    return {
-      isGroupModule: false,
-      condition: {
-        conditionValueList: [
-          {
-            value: mappedValue,
-            userSpecialIdentifier: isCurrentUser ? 'CURRENT_USER' : '',
-            timeOperationDirectionTypeCode: null,
-            timeFormatTypeCode: null,
-            comparedField: null,
-          },
-        ],
-        field: { id: c.field, datasourceId: 0 },
-        operationType: OPERATOR_MAP[c.operator] ?? c.operator,
-        conditionGroup: null,
-        dateScopeType: null,
-        comparedTypeCode: null,
-        disable: null,
-        includeObsolete: null,
-      },
-    }
-  })
-}
 
 /** 保存全局筛选到草稿（PUT /filter/draft） */
 async function handleFilterSave() {
   const d = draftFilter.value
-  const globalFilter: GlobalFilter = {
-    filter: {
-      logicType: 'AND',
-      isGroupModule: true,
-      condition: null,
-      disable: null,
-      includeObsolete: null,
-      isPass: null,
-      associatedConditions: [],
-      matchAllLinks: false,
-      isDevActivity: null,
-      isSprintBlock: null,
-      isVersionBlock: null,
-      isCustomColumnBlock: null,
-      childConditionGroupList: buildChildConditionGroups(),
-    },
-    isOnlyShowAssociation: false,
-  }
+  const globalFilter = buildGlobalFilter(filterConditions.value, filterLogic.value)
   try {
     const userNo = d?.userNo ?? '10284941'
     const res = await updateFilterDraft({
@@ -757,6 +700,7 @@ async function handleFilterSave() {
       userNo,
       viewCode: viewCode.value,
       globalFilter: JSON.stringify(globalFilter),
+      sort: JSON.stringify({ sortItemList: sortItemList.value }),
     })
     if (res?.success) {
       // 保存成功后重新拉取草稿并刷新列表
@@ -779,34 +723,57 @@ function safeParse<T>(str: string | null | undefined, fallback: T): T {
   try { return JSON.parse(str) as T } catch { return fallback }
 }
 
-/** 构建完整查询入参（全部取自 /filter/draft 返回值，page/pageSize 用本地状态） */
+/**
+ * 构建完整查询入参：
+ * - globalFilter：筛选面板当前条件（buildGlobalFilter）
+ * - sort：排序面板当前排序项
+ * - 其余（分组 / 分层 / 显示字段 / 视图）取自 /filter/draft，page/pageSize 用本地状态
+ */
 function buildQueryPayload(): IssueQueryPayload {
   const d = draftFilter.value
+  const globalFilter = buildGlobalFilter(filterConditions.value, filterLogic.value)
+  const sort = { sortItemList: sortItemList.value }
   if (!d) {
     return {
-      globalFilter: { filter: { logicType: 'AND', isGroupModule: false, condition: null, disable: null, includeObsolete: null, isPass: null, associatedConditions: [], matchAllLinks: false, isDevActivity: null, isSprintBlock: null, isVersionBlock: null, isCustomColumnBlock: null, childConditionGroupList: [] }, isOnlyShowAssociation: false },
+      globalFilter,
       group: { groupItemList: [], isFollowPreviousGroup: true },
       layered: { layeredItemList: [], layerType: 'FLAT' },
       page: currentPage.value,
       pageSize: pageSize.value,
       showField: { showFieldItemList: [] },
-      sort: { sortItemList: [] },
+      sort,
       viewCode: viewCode.value,
       needShowGroupValues: [],
       referencedFilter: { filter: null },
     }
   }
   return {
-    globalFilter: safeParse(d.globalFilter, { filter: null, isOnlyShowAssociation: false }),
+    globalFilter,
     group: safeParse(d.group, { groupItemList: [], isFollowPreviousGroup: true }),
     layered: safeParse(d.layered, { layeredItemList: [], layerType: 'FLAT' }),
     page: currentPage.value,
     pageSize: pageSize.value,
     showField: safeParse(d.showField, { showFieldItemList: [] }),
-    sort: safeParse(d.sort, { sortItemList: [] }),
+    sort,
     viewCode: d.viewCode ?? viewCode.value,
     needShowGroupValues: safeParse(d.needShowGroupValues, []),
     referencedFilter: safeParse(d.referencedFilter, { filter: null }),
+  }
+}
+
+/** 草稿回填：已保存过的筛选条件 / 逻辑 / 排序覆盖默认值 */
+function restoreFromDraft(d: FilterDraft) {
+  const gf = safeParse<GlobalFilter | null>(d.globalFilter, null)
+  if (gf?.filter) {
+    const { conditions, logic } = parseGlobalFilter(gf)
+    filterConditions.value = conditions
+    filterLogic.value = logic
+  }
+  const sort = safeParse<{ sortItemList?: SortItem[] } | null>(d.sort, null)
+  // 与当前值不同才回填，否则 watch 不触发，restoringSort 会误吞下一次用户修改
+  if (Array.isArray(sort?.sortItemList) && JSON.stringify(sort.sortItemList) !== JSON.stringify(sortItemList.value)) {
+    restoringSort = true
+    sortItemList.value = sort.sortItemList
   }
 }
 
@@ -1419,7 +1386,7 @@ async function fetchEnumOptions(
       fieldId,
       type: kind,
       projectId: '',
-      issueTypeId: '',
+      issueTypeCode: '',
       issueKey: getIssueKey(rec),
       page: 1,
       pageSize: 100,
@@ -1692,27 +1659,13 @@ function getIssueKey(rec: IssueRecord): string {
 // ---------- 状态列：点击状态打开流程状态变更弹窗 ----------
 const wfModalOpen = ref(false)
 const wfCurrentIssueKey = ref('')
-const wfCurrentIssueTypeCode = ref('')
 
-/** 点击状态字段：带上当前事项的问题类型编码，打开状态变更弹窗 */
+/** 点击状态字段：打开状态变更弹窗（后端按单号匹配流程） */
 function openWorkflowModal(rec: IssueRecord) {
   const issueKey = String(rec.issueKey || '')
   if (!issueKey) return
   wfCurrentIssueKey.value = issueKey
-  wfCurrentIssueTypeCode.value = getIssueTypeCode(rec)
   wfModalOpen.value = true
-}
-
-/** 取问题类型编码（如 TYPE10001）：issuetype 字段值为编码字符串，或对象中的 issueTypeCode / code */
-function getIssueTypeCode(rec: IssueRecord): string {
-  const f = rec.issueField?.find(it => it.id === 'issuetype')
-  const v = f?.value
-  if (v == null || v === '') return ''
-  if (typeof v === 'object') {
-    const o = v as Record<string, unknown>
-    return String(o.issueTypeCode ?? o.code ?? o.value ?? '')
-  }
-  return String(v)
 }
 
 /** 工作流提交成功：刷新列表 */
@@ -1741,6 +1694,21 @@ function getPriorityId(rec: IssueRecord): string {
 function statusColor(s: string) {
   const map: Record<string, string> = { '1': 'default', '2': 'processing', '3': 'success' }
   return map[s] ?? 'default'
+}
+
+/** 问题类型图标 key（issuetype.value.iconUri） */
+function getIssueTypeIconUri(rec: IssueRecord): string | undefined {
+  const v = rec.issueField?.find(it => it.id === 'issuetype')?.value
+  const icon = v != null && typeof v === 'object' ? (v as Record<string, unknown>).iconUri : undefined
+  return typeof icon === 'string' ? icon : undefined
+}
+
+/** 问题类型标签样式：取后端下发的 issueTypeColor（十六进制），浅色底 + 同色描边与文字；无有效值时用默认样式 */
+function getIssueTypeTagStyle(rec: IssueRecord): Record<string, string> | undefined {
+  const v = rec.issueField?.find(it => it.id === 'issuetype')?.value
+  const c = v != null && typeof v === 'object' ? (v as Record<string, unknown>).issueTypeColor : undefined
+  if (typeof c !== 'string' || !/^#[0-9a-fA-F]{6}$/.test(c)) return undefined
+  return { color: c, background: `${c}1a`, borderColor: `${c}59` }
 }
 
 /** status 标签颜色：优先用后端下发的 statusColor（十六进制），兜底按 id 映射预设色 */
@@ -1831,10 +1799,14 @@ function handleEditSubmitted() {
 onIssueCreated(() => fetchIssues())
 
 // 筛选面板关闭时，若条件有变化则重新查询
-let filterSnapshot = JSON.stringify(filterConditions.value)
+/** 只比较会提交的内容（完整条件 + 逻辑），未填完的条件不触发查询 */
+function filterSignature() {
+  return JSON.stringify(buildGlobalFilter(filterConditions.value, filterLogic.value))
+}
+let filterSnapshot = filterSignature()
 watch(filterPanelVisible, (open) => {
   if (!open) {
-    const current = JSON.stringify(filterConditions.value)
+    const current = filterSignature()
     if (current !== filterSnapshot) {
       filterSnapshot = current
       currentPage.value = 1
@@ -1855,8 +1827,13 @@ watch(settingDrawerOpen, (open) => {
   }
 })
 
-// 排序变化时重新查询
+// 排序变化时重新查询（草稿回填排序时跳过，由初始化统一查询）
+let restoringSort = false
 watch(sortItemList, () => {
+  if (restoringSort) {
+    restoringSort = false
+    return
+  }
   currentPage.value = 1
   fetchIssues()
 }, { deep: true })
@@ -1874,12 +1851,13 @@ onMounted(async () => {
       draftFilter.value = res.data
       currentPage.value = res.data.page || 1
       pageSize.value = res.data.pageSize || 50
+      restoreFromDraft(res.data)
     }
-  } catch { /* 草稿获取失败时走兜底空筛选 */ }
+  } catch { /* 草稿获取失败时走默认筛选 */ }
   // 再加载字段配置（shownFields 从 draft 的 showField 解析）
   await fetchAvailableFields()
   shownFieldsSnapshot = JSON.stringify(shownFields.value)
-  filterSnapshot = JSON.stringify(filterConditions.value)
+  filterSnapshot = filterSignature()
   fetchIssues()
   // 测量表格容器尺寸（scroll.y 需在 DOM 渲染后计算）
   bindTableResizeObserver()
@@ -2241,6 +2219,13 @@ onBeforeUnmount(() => {
 }
 
 /* 状态列：点击打开流程状态变更弹窗 */
+.issuetype-tag {
+  margin-inline-end: 0;
+  font-weight: 500;
+}
+.issuetype-icon {
+  margin-right: 4px;
+}
 .status-cell-clickable {
   cursor: pointer;
 }

@@ -37,7 +37,29 @@ html, body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* ========== 弹窗 / 抽屉窄屏兼容：不随视口压缩，放不下时出现滚动条 ========== */
+/* 弹窗：去掉 antd 默认的 max-width: calc(100vw - 32px)，超宽时由 .ant-modal-wrap 横向滚动 */
+.ant-modal {
+  max-width: none;
+}
+.ant-modal-wrap {
+  overflow: auto;
+}
+/* 抽屉：宽度最多占满视口，内容保持 --drawer-min-width，不够时抽屉内横向滚动 */
+.ant-drawer-content-wrapper {
+  max-width: 100vw;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+.ant-drawer-content {
+  min-width: var(--drawer-min-width, 0px);
+}
+
 :root {
+  /* 系统最小宽度：窗口更窄时不再压缩布局，改为出现横向滚动条 */
+  --app-min-width: 1280px;
+  /* 页面横向滚动距离（由 layout 同步），供 fixed 定位的顶栏 / 侧栏跟随滚动 */
+  --app-scroll-x: 0px;
   --ant-font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
 }
 </style>

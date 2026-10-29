@@ -45,7 +45,7 @@
         <template #bodyCell="{ column, record }">
           <template v-if="column.key === 'issueType'">
             <div class="type-cell">
-              <span class="type-avatar" :style="{ background: record.color || DEFAULT_COLOR }"><TagsOutlined /></span>
+              <span class="type-avatar" :style="{ background: record.color || DEFAULT_COLOR }"><component :is="issueTypeIconOf(record.iconUri)" /></span>
               <span class="type-name">{{ record.issueTypeName }}</span>
             </div>
           </template>
@@ -111,6 +111,21 @@
         <a-form-item label="所属组织" name="organizationId">
           <OrgTreeSelect v-model="form.organizationId" :tree-data="orgTree" />
         </a-form-item>
+        <a-form-item label="图标" name="iconUri">
+          <div class="icon-options">
+            <a-tooltip v-for="it in ISSUE_TYPE_ICONS" :key="it.key" :title="it.label">
+              <button
+                type="button"
+                :class="['icon-option', { active: form.iconUri === it.key }]"
+                :style="form.iconUri === it.key ? { background: form.color, borderColor: form.color } : undefined"
+                :aria-label="it.label"
+                @click="form.iconUri = it.key"
+              >
+                <component :is="it.icon" />
+              </button>
+            </a-tooltip>
+          </div>
+        </a-form-item>
         <a-form-item label="颜色" name="color">
           <div class="color-swatches">
             <button
@@ -125,7 +140,7 @@
               <CheckOutlined v-if="form.color === c" />
             </button>
             <span class="color-preview">
-              <span class="color-preview-icon" :style="{ background: form.color }"><TagsOutlined /></span>
+              <span class="color-preview-icon" :style="{ background: form.color }"><component :is="issueTypeIconOf(form.iconUri)" /></span>
               {{ form.issueTypeName || '预览' }}
             </span>
           </div>
@@ -148,7 +163,7 @@
     >
       <template #title>
         <div class="status-drawer-title">
-          <span class="type-avatar sm" :style="{ background: statusType?.color || DEFAULT_COLOR }"><TagsOutlined /></span>
+          <span class="type-avatar sm" :style="{ background: statusType?.color || DEFAULT_COLOR }"><component :is="issueTypeIconOf(statusType?.iconUri)" /></span>
           <span>{{ statusType?.issueTypeName }} · 问题状态</span>
         </div>
       </template>
@@ -204,13 +219,15 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { Modal, type FormInstance, type TablePaginationConfig } from 'ant-design-vue'
 import type { Rule } from 'ant-design-vue/es/form'
-import { PlusOutlined, SearchOutlined, ReloadOutlined, EditOutlined, DeleteOutlined, TagsOutlined, ApartmentOutlined, CheckOutlined, ArrowUpOutlined, ArrowDownOutlined, FlagOutlined } from '@ant-design/icons-vue'
+import { PlusOutlined, SearchOutlined, ReloadOutlined, EditOutlined, DeleteOutlined, ApartmentOutlined, CheckOutlined, ArrowUpOutlined, ArrowDownOutlined, FlagOutlined } from '@ant-design/icons-vue'
 import {
   queryIssueTypes, createIssueType, updateIssueType, deleteIssueType, getOrganizationTree,
   queryIssueTypeStatuses, saveIssueTypeStatuses,
   type IssueTypeItem, type IssueTypeSaveParams, type OrganizationNode, type IssueTypeStatus,
 } from '@/api/faiz'
 import OrgTreeSelect from '@/components/OrgTreeSelect.vue'
+import { findOrgCode, findOrgIdByCode } from '@/utils/orgTree'
+import { ISSUE_TYPE_ICONS, DEFAULT_ISSUE_TYPE_ICON, issueTypeIconOf } from '@/utils/issueTypeIcons'
 
 /** 图标颜色候选（Apple 系统色） */
 const COLOR_OPTIONS = ['#0A84FF', '#5E5CE6', '#AF52DE', '#FF375F', '#FF3B30', '#FF9500', '#FFCC00', '#34C759', '#30B0C7', '#8E8E93']
@@ -292,7 +309,7 @@ async function loadIssueTypes() {
     const res = await queryIssueTypes({
       keyword: keyword.value.trim() || undefined,
       status: statusFilter.value === 'all' ? undefined : Number(statusFilter.value),
-      organizationId: orgFilter.value,
+      organizationCode: findOrgCode(orgTree.value, orgFilter.value),
       page: page.value,
       pageSize: pageSize.value,
     })
@@ -331,8 +348,9 @@ async function toggleStatus(r: IssueTypeItem, checked: boolean) {
     const res = await updateIssueType({
       id: r.id,
       issueTypeName: r.issueTypeName,
-      organizationId: r.organizationId,
+      organizationCode: r.organizationCode ?? findOrgCode(orgTree.value, r.organizationId),
       color: r.color,
+      iconUri: r.iconUri,
       description: r.description,
       sort: r.sort,
       status: checked ? 1 : 0,
@@ -350,10 +368,12 @@ const modalOpen = ref(false)
 const saving = ref(false)
 const editingId = ref<number | null>(null)
 const formRef = ref<FormInstance>()
-const emptyForm = (): Omit<IssueTypeSaveParams, 'id'> & { description: string; sort: number } => ({
+/** 表单内组织用 ID 选择（组织树），提交时换算成组织编码 */
+const emptyForm = (): Omit<IssueTypeSaveParams, 'id' | 'organizationCode'> & { organizationId?: number; description: string; sort: number } => ({
   issueTypeName: '',
   organizationId: undefined,
   color: DEFAULT_COLOR,
+  iconUri: DEFAULT_ISSUE_TYPE_ICON as string | null,
   description: '',
   sort: 0,
   status: 1,
@@ -386,7 +406,7 @@ async function openStatusDrawer(r: IssueTypeItem) {
   statusDrawerOpen.value = true
   statusLoading.value = true
   try {
-    const res = await queryIssueTypeStatuses(r.id)
+    const res = await queryIssueTypeStatuses(r.issueTypeCode || '')
     const list = res?.success ? res.data || [] : []
     statusRows.value = list.length ? list.map(toStatusRow) : defaultStatuses()
     statusIsDefault.value = !list.length
@@ -425,7 +445,7 @@ async function saveStatuses() {
   if (statusError.value) return
   statusSaving.value = true
   try {
-    const res = await saveIssueTypeStatuses({ issueTypeId: statusType.value.id, statuses: serializeStatuses(statusRows.value) })
+    const res = await saveIssueTypeStatuses({ issueTypeCode: statusType.value.issueTypeCode || '', statuses: serializeStatuses(statusRows.value) })
     if (res?.success) statusDrawerOpen.value = false
   } catch {
     // 请求层已统一提示
@@ -454,8 +474,9 @@ function openEdit(r: IssueTypeItem) {
   editingId.value = r.id
   Object.assign(form, {
     issueTypeName: r.issueTypeName ?? '',
-    organizationId: r.organizationId,
+    organizationId: r.organizationId ?? findOrgIdByCode(orgTree.value, r.organizationCode),
     color: r.color || DEFAULT_COLOR,
+    iconUri: r.iconUri || DEFAULT_ISSUE_TYPE_ICON,
     description: r.description ?? '',
     sort: r.sort ?? 0,
     status: r.status ?? 1,
@@ -471,8 +492,10 @@ async function handleSubmit() {
   }
   saving.value = true
   try {
+    const { organizationId, ...rest } = form
     const payload: IssueTypeSaveParams = {
-      ...form,
+      ...rest,
+      organizationCode: findOrgCode(orgTree.value, organizationId),
       issueTypeName: form.issueTypeName.trim(),
       description: form.description.trim() || undefined,
       sort: editingId.value ? form.sort : undefined,
@@ -655,6 +678,37 @@ onMounted(() => {
 
 .text-muted {
   color: #6e6e73;
+}
+
+.icon-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.icon-option {
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  font-size: 15px;
+  color: #3a3a3c;
+  background: #f5f5f7;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, transform 0.15s;
+}
+
+.icon-option:hover {
+  background: #e8e8ed;
+  transform: scale(1.06);
+}
+
+.icon-option.active {
+  color: #fff;
 }
 
 .color-swatches {

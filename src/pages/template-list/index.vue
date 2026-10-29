@@ -492,12 +492,12 @@ interface Template {
   issue_type?: { issue_type_id: number; issue_type_name: string } | null
 }
 
-/** 问题类型常量（下拉 value=issueTypeId, label=issueTypeName；同时承载分类 value/label） */
+/** 问题类型常量（下拉 value=issueTypeId, label=issueTypeName；同时承载分类 value/label；保存时提交 issueTypeCode） */
 const ISSUE_TYPE_OPTIONS = [
-  { issueTypeId: 10001, issueTypeName: '需求', value: 'requirement', label: '需求' },
-  { issueTypeId: 10002, issueTypeName: '任务', value: 'task', label: '任务' },
-  { issueTypeId: 10003, issueTypeName: '缺陷', value: 'bug', label: '缺陷' },
-  { issueTypeId: 10004, issueTypeName: '其他', value: 'other', label: '其他' },
+  { issueTypeId: 10001, issueTypeCode: 'TYPE10001', issueTypeName: '需求', value: 'requirement', label: '需求' },
+  { issueTypeId: 10002, issueTypeCode: 'TYPE10002', issueTypeName: '任务', value: 'task', label: '任务' },
+  { issueTypeId: 10003, issueTypeCode: 'TYPE10003', issueTypeName: '缺陷', value: 'bug', label: '缺陷' },
+  { issueTypeId: 10004, issueTypeCode: 'TYPE10004', issueTypeName: '其他', value: 'other', label: '其他' },
 ]
 /** Tab 导航选项（含「全部」） */
 const TAB_NAV_OPTIONS = [{ label: '全部', value: '' }, ...ISSUE_TYPE_OPTIONS]
@@ -1052,7 +1052,9 @@ const totalTabs = ref(0)
 // ---- 数据适配 ----
 function adaptBackendTemplate(t: any): Template {
   // 兼容两种后端结构：flat（实体直出 issueTypeId/issueTypeName）与嵌套（issue_type.issue_type_id）
-  const issueTypeId: number | undefined = t.issueTypeId ?? t.issue_type?.issue_type_id
+  // 优先按 issueTypeCode 识别问题类型，兼容历史数据中的 issueTypeId
+  const byCode = t.issueTypeCode ? ISSUE_TYPE_OPTIONS.find(o => o.issueTypeCode === t.issueTypeCode) : undefined
+  const issueTypeId: number | undefined = byCode?.issueTypeId ?? t.issueTypeId ?? t.issue_type?.issue_type_id
   const issueTypeName: string | undefined = t.issueTypeName ?? t.issue_type?.issue_type_name
   const category = (issueTypeId && ISSUE_TYPE_ID_TO_CATEGORY[issueTypeId]) || t.category || 'other'
   const issue_type = issueTypeId
@@ -1075,15 +1077,14 @@ function adaptBackendTemplate(t: any): Template {
 }
 
 function serializeTemplatePayload(form: any) {
-  const found = ISSUE_TYPE_OPTIONS.find(t => t.value === form.category)
-  const issue_type = found
-    ? { issue_type_id: found.issueTypeId, issue_type_name: found.issueTypeName }
-    : { issue_type_id: 10004, issue_type_name: '其他' }
+  // 问题类型提交编码 issueTypeCode（如 TYPE10001），不再提交 issueTypeId
+  const found = ISSUE_TYPE_OPTIONS.find(t => t.value === form.category) ?? ISSUE_TYPE_OPTIONS[ISSUE_TYPE_OPTIONS.length - 1]
   const is_tab = !!form.useTabs
   return {
     templateName: form.templateName,
     description: form.description,
-    issue_type,
+    issueTypeCode: found.issueTypeCode,
+    issueTypeName: found.issueTypeName,
     status: form.status ? 1 : 0,
     isDefault: form.isDefault ? 1 : 0,
     tabs: (form.tabs || []).map((tab: any, idx: number) => ({

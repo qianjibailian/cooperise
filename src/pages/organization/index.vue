@@ -22,7 +22,7 @@
       <div class="org-toolbar">
         <a-input
           v-model:value="keyword"
-          placeholder="搜索组织名称 / 编码"
+          placeholder="搜索组织名称 / 标识"
           allow-clear
           class="org-search"
         >
@@ -34,6 +34,9 @@
           <component :is="allExpanded ? ShrinkOutlined : ArrowsAltOutlined" />
           {{ allExpanded ? '全部收起' : '全部展开' }}
         </button>
+        <a-tooltip title="刷新">
+          <button class="org-icon-btn" :disabled="loading" @click="loadTree"><ReloadOutlined :spin="loading" /></button>
+        </a-tooltip>
       </div>
 
       <a-spin :spinning="loading">
@@ -76,7 +79,7 @@
                 <span class="org-node-name">{{ node.organizationName }}</span>
               </a-tooltip>
               <span v-if="isCompanyNode(node)" class="org-node-company">公司</span>
-              <span v-if="node.organizationCode" class="org-node-code">{{ node.organizationCode }}</span>
+              <span v-if="node.issueKeyPrefix" class="org-node-code" title="事项标识">{{ node.issueKeyPrefix }}</span>
               <span v-if="node.status === 0" class="org-node-badge">已停用</span>
               <span v-if="node.children?.length" class="org-node-count">{{ node.children.length }} 个子组织</span>
               <span class="org-node-actions" @click.stop>
@@ -134,8 +137,17 @@
             :maxlength="64"
           />
         </a-form-item>
-        <a-form-item :label="isCompanyForm ? '公司编码' : '组织编码'" name="organizationCode">
-          <a-input v-model:value="form.organizationCode" placeholder="业务唯一编码，如 Jira 部门 ID" :maxlength="64" />
+        <!-- 组织编码由后端生成：新增时不填，编辑时只读展示 -->
+        <a-form-item v-if="editingCode" :label="isCompanyForm ? '公司编码' : '组织编码'">
+          <a-input :value="editingCode" disabled />
+        </a-form-item>
+        <a-form-item label="事项标识" name="issueKeyPrefix" extra="1~4 位大写字母，用作事项单号前缀，如 UG">
+          <a-input
+            :value="form.issueKeyPrefix"
+            placeholder="如 UG"
+            :maxlength="4"
+            @update:value="(v: string) => (form.issueKeyPrefix = v.toUpperCase().replace(/[^A-Z]/g, ''))"
+          />
         </a-form-item>
         <a-form-item label="状态" name="status">
           <a-switch v-model:checked="statusChecked" checked-children="启用" un-checked-children="停用" />
@@ -155,7 +167,7 @@ import type { Rule } from 'ant-design-vue/es/form'
 import type { AntTreeNodeDropEvent } from 'ant-design-vue/es/tree'
 import {
   SearchOutlined, PlusOutlined, EditOutlined, DeleteOutlined, ApartmentOutlined, BankOutlined,
-  RightOutlined, ArrowsAltOutlined, ShrinkOutlined, HolderOutlined,
+  RightOutlined, ArrowsAltOutlined, ShrinkOutlined, HolderOutlined, ReloadOutlined,
 } from '@ant-design/icons-vue'
 import {
   getOrganizationTree, createOrganization, updateOrganization, deleteOrganization,
@@ -248,7 +260,7 @@ const filteredTree = computed<OrganizationNode[]>(() => {
   const kw = keyword.value.trim().toLowerCase()
   if (!kw) return treeData.value
   const match = (n: OrganizationNode) =>
-    `${n.organizationName ?? ''} ${n.organizationCode ?? ''}`.toLowerCase().includes(kw)
+    `${n.organizationName ?? ''} ${n.issueKeyPrefix ?? ''}`.toLowerCase().includes(kw)
   const filter = (nodes: OrganizationNode[]): OrganizationNode[] =>
     nodes.reduce<OrganizationNode[]>((acc, n) => {
       if (match(n)) {
@@ -379,14 +391,16 @@ const modalOpen = ref(false)
 const saving = ref(false)
 const editingId = ref<number | null>(null)
 const formRef = ref<FormInstance>()
-const form = reactive<Required<Omit<OrganizationSaveParams, 'id'>>>({
+const form = reactive<Required<Omit<OrganizationSaveParams, 'id' | 'organizationCode'>>>({
   parentId: ROOT_ID,
   organizationName: '',
-  organizationCode: '',
+  issueKeyPrefix: '',
   sort: 0,
   status: 1,
   remark: '',
 })
+/** 编辑时展示的组织编码（后端生成，只读） */
+const editingCode = ref('')
 const statusChecked = computed({
   get: () => form.status === 1,
   set: (v: boolean) => { form.status = v ? 1 : 0 },
@@ -411,6 +425,10 @@ const rules = computed<Record<string, Rule[]>>(() => ({
     },
   }],
   organizationName: [{ required: true, whitespace: true, message: isCompanyForm.value ? '请输入公司名称' : '请输入组织名称' }],
+  issueKeyPrefix: [
+    { required: true, message: '请输入事项标识' },
+    { pattern: /^[A-Z]{1,4}$/, message: '事项标识为 1~4 位大写字母' },
+  ],
 }))
 
 /** 上级组织候选：公司及其下属组织（部门必须挂在某个公司下）；编辑时排除自身及其子孙，避免成环 */
@@ -431,11 +449,12 @@ const parentOptions = computed(() => {
 
 function openCreate(parent: OrganizationNode | null) {
   editingId.value = null
+  editingCode.value = ''
   isCompanyForm.value = !parent
   Object.assign(form, {
     parentId: parent?.id ?? ROOT_ID,
     organizationName: '',
-    organizationCode: '',
+    issueKeyPrefix: '',
     sort: 0,
     status: 1,
     remark: '',
@@ -445,11 +464,12 @@ function openCreate(parent: OrganizationNode | null) {
 
 function openEdit(node: OrganizationNode) {
   editingId.value = node.id
+  editingCode.value = node.organizationCode ?? ''
   isCompanyForm.value = isCompanyNode(node)
   Object.assign(form, {
     parentId: node.parentId ?? ROOT_ID,
     organizationName: node.organizationName ?? '',
-    organizationCode: node.organizationCode ?? '',
+    issueKeyPrefix: node.issueKeyPrefix ?? '',
     sort: node.sort ?? 0,
     status: node.status ?? 1,
     remark: node.remark ?? '',
@@ -468,7 +488,7 @@ async function handleSubmit() {
     const payload: OrganizationSaveParams = {
       ...form,
       organizationName: form.organizationName.trim(),
-      organizationCode: form.organizationCode.trim() || undefined,
+      issueKeyPrefix: form.issueKeyPrefix.trim(),
       remark: form.remark.trim() || undefined,
     }
     // 排序由拖动维护：新增时排到同级最后，编辑时保留原排序
@@ -651,6 +671,28 @@ onMounted(loadTree)
 
 .org-ghost-btn:disabled {
   color: #c7c7cc;
+  cursor: not-allowed;
+}
+
+.org-icon-btn {
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #6e6e73;
+  background: transparent;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.org-icon-btn:hover:not(:disabled) {
+  background: #f2f2f5;
+}
+
+.org-icon-btn:disabled {
   cursor: not-allowed;
 }
 

@@ -22,11 +22,12 @@
             <a-select
               v-model:value="selectedTemplate"
               class="new-form-template-select"
+              :loading="templateLoading"
               :popup-match-select-width="false"
               @change="handleTemplateChange"
             >
               <a-select-option
-                v-for="tpl in templateOptions"
+                v-for="tpl in filteredTemplateOptions"
                 :key="tpl.value"
                 :value="tpl.value"
               >{{ tpl.label }}</a-select-option>
@@ -258,6 +259,7 @@ import { Empty, message } from 'ant-design-vue'
 import { createIssue, getAvailableFieldOptions, queryUsers, queryTemplates, getTemplate, getIssueCreateMeta, queryDetail, patchIssue, queryAvailableFieldList, getOrganizationTree, queryIssueTypes, type OrganizationNode } from '@/api/faiz'
 import OrgTreeSelect from '@/components/OrgTreeSelect.vue'
 import { getUserOrganizationId } from '@/utils/auth'
+import { findOrgCode } from '@/utils/orgTree'
 import { FIELD_TYPE, normalizeFieldType, formatTypeLabel } from '@/types/fieldType'
 import type {
   CustomFieldOptionReq,
@@ -294,7 +296,7 @@ const visible = ref(props.open)
 // 新建表单弹窗内部状态（需在 watch 之前声明，因 watch immediate 会立即访问）
 const DEFAULT_TEMPLATE = 'default'
 const selectedTemplate = ref<string>(DEFAULT_TEMPLATE)
-const templateOptions = ref<{ value: string; label: string }[]>([
+const templateOptions = ref<{ value: string; label: string; issueTypeId?: number; issueTypeCode?: string }[]>([
   { value: DEFAULT_TEMPLATE, label: '请选择模板' },
 ])
 const customFieldOptionsMap = ref<Record<string, CustomFieldOptionItem[]>>({})
@@ -312,10 +314,8 @@ watch(
         // eslint-disable-next-line @typescript-eslint/no-floating-promises
         loadEditDetail(props.issueKey)
       } else {
-        // eslint-disable-next-line @typescript-eslint/no-floating-promises
-        await loadTemplateOptions()
-        // 弹窗出现触发 queryCreateMeta（projectId + issueTypeId）渲染默认表单
-        await loadCreateMeta()
+        // 默认表单（queryCreateMeta）和模板列表都需要问题类型编码，
+        // 等组织的问题类型加载完成后再查（见 loadIssueTypesByOrg）
       }
     }
   },
@@ -340,13 +340,26 @@ watch(visible, (val) => {
 // 组织：新建事项时选择所属组织（组织树每次打开刷新，保证与组织管理同步）
 const newFormOrganizationId = ref<number | string | undefined>()
 const newFormOrgTree = ref<OrganizationNode[]>([])
-async function loadNewFormOrgTree() {
-  try {
-    const res = await getOrganizationTree()
-    if (res?.success) newFormOrgTree.value = res.data || []
-  } catch {
-    // 请求层已统一提示
-  }
+/** 组织树加载中的请求：查询表单元数据前需等待，以便取到组织编码 */
+let orgTreeLoading: Promise<void> | null = null
+function loadNewFormOrgTree() {
+  orgTreeLoading = (async () => {
+    try {
+      const res = await getOrganizationTree()
+      if (res?.success) newFormOrgTree.value = res.data || []
+    } catch {
+      // 请求层已统一提示
+    }
+  })()
+  return orgTreeLoading
+}
+
+/** 当前所选组织的编码（未选择或查不到时为 undefined） */
+async function currentOrgCode(): Promise<string | undefined> {
+  const orgId = newFormOrganizationId.value
+  if (orgId == null || orgId === '') return undefined
+  if (orgTreeLoading) await orgTreeLoading
+  return findOrgCode(newFormOrgTree.value, orgId)
 }
 
 // 新建表单弹窗内部状态
@@ -372,14 +385,15 @@ let issueTypeReqSeq = 0
 async function loadIssueTypesByOrg() {
   if (isEditMode.value) return
   const seq = ++issueTypeReqSeq
-  const orgId = newFormOrganizationId.value
   issueTypeLoading.value = true
   try {
+    const organizationCode = await currentOrgCode()
+    if (seq !== issueTypeReqSeq) return
     const res = await queryIssueTypes({
       page: 1,
       pageSize: 999,
       status: 1,
-      organizationId: orgId != null && orgId !== '' ? Number(orgId) : undefined,
+      organizationCode,
     })
     if (seq !== issueTypeReqSeq || !res?.success) return
     issueTypeOptions.value = (res.data?.list || []).map(t => ({ value: String(t.id), label: t.issueTypeName, code: t.issueTypeCode }))
@@ -392,10 +406,48 @@ async function loadIssueTypesByOrg() {
   // 当前问题类型不属于该组织：切到第一个可选类型并重新渲染表单；无可选类型则清空
   if (seq !== issueTypeReqSeq) return
   const cur = newFormIssueTypeId.value
-  if (cur && issueTypeOptions.value.some(o => o.value === cur)) return
+  if (cur && issueTypeOptions.value.some(o => o.value === cur)) {
+    // 问题类型未变（不会触发切换监听）：按当前组织 + 类型编码查询模板；未选模板时重新渲染默认表单
+    loadTemplateOptions()
+    if (selectedTemplate.value === DEFAULT_TEMPLATE) loadCreateMeta()
+    return
+  }
   const first = issueTypeOptions.value[0]?.value
   newFormIssueTypeId.value = first ?? ''
   if (first) onIssueTypeChanged(first)
+}
+
+/**
+ * 模板下拉按「组织 + 问题类型」筛选：
+ * 模板只关联问题类型，问题类型下拉已按组织过滤，因此只展示属于当前问题类型的模板；
+ * 未关联问题类型的模板视为通用模板，始终展示
+ */
+const filteredTemplateOptions = computed(() => {
+  const cur = issueTypeOptions.value.find(o => o.value === newFormIssueTypeId.value)
+  return templateOptions.value.filter(t => {
+    if (t.value === DEFAULT_TEMPLATE || (t.issueTypeId == null && !t.issueTypeCode)) return true
+    if (!cur) return false
+    if (t.issueTypeCode) return t.issueTypeCode === cur.code
+    // 模板里存的是问题类型 ID（如 10001），兼容按编码（TYPE10001）匹配
+    return String(t.issueTypeId) === cur.value || (!!cur.code && cur.code === `TYPE${t.issueTypeId}`)
+  })
+})
+
+// 已选模板不在筛选结果中（切换了组织 / 问题类型）：重置为未选择
+watch(filteredTemplateOptions, (opts) => {
+  if (selectedTemplate.value !== DEFAULT_TEMPLATE && !opts.some(o => o.value === selectedTemplate.value)) {
+    selectedTemplate.value = DEFAULT_TEMPLATE
+  }
+})
+
+// 切换问题类型：重新查询该类型下的模板列表
+watch(newFormIssueTypeId, (val, old) => {
+  if (visible.value && !isEditMode.value && val && val !== old) loadTemplateOptions()
+})
+
+/** 当前问题类型编码（如 TYPE10002）；兜底选项无编码时退回 ID */
+function currentIssueTypeCode(): string {
+  return issueTypeOptions.value.find(o => o.value === newFormIssueTypeId.value)?.code || newFormIssueTypeId.value
 }
 
 watch(newFormOrganizationId, () => {
@@ -403,7 +455,7 @@ watch(newFormOrganizationId, () => {
 })
 
 /** 模板下拉：本地缓存已启用模板详情（含解析后的 widgetData），供选中后直接使用 */
-const templateCache = reactive<Record<string, { issue_type_id?: number; tabs: { name: string; sequence: number; widgetData: any[] }[] }>>({})
+const templateCache = reactive<Record<string, { issue_type_id?: number; issue_type_code?: string; tabs: { name: string; sequence: number; widgetData: any[] }[] }>>({})
 
 /** 将后端 Tab.widgetData 的每个 widget 映射为 NewIssueFormModal 需要的 issueField（CreateMetaField 风格） */
 function widgetToIssueField(w: any, sequence: number): CreateMetaField & { configSchema?: unknown } {
@@ -449,7 +501,14 @@ function flattenWidgets(widgets: any[]): any[] {
 function applyTemplateToForm(tplId: string | number) {
   const tpl = templateCache[String(tplId)]
   if (!tpl) return
-  if (tpl.issue_type_id) newFormIssueTypeId.value = String(tpl.issue_type_id)
+  if (tpl.issue_type_code || tpl.issue_type_id) {
+    // 模板问题类型对应到当前下拉中的选项：优先按编码匹配，兼容历史 ID（TYPE{id}）
+    const id = tpl.issue_type_id != null ? String(tpl.issue_type_id) : ''
+    const opt = issueTypeOptions.value.find(o =>
+      (tpl.issue_type_code && o.code === tpl.issue_type_code) || (id && (o.value === id || o.code === `TYPE${id}`)))
+    if (opt) newFormIssueTypeId.value = opt.value
+    else if (id) newFormIssueTypeId.value = id
+  }
   const tabs: { title: string; sequence: number; issueFields: any[] }[] = []
   const form: Record<string, unknown> = {}
   tpl.tabs.forEach((t, idx) => {
@@ -575,7 +634,7 @@ function buildOptionMapFromResponse(
  */
 async function loadCustomFieldOptions(
   projectId: string,
-  issueTypeId: string,
+  issueTypeCode: string,
   tabs: { issueFields: any[] }[],
 ) {
   const reqs: CustomFieldOptionReq[] = []
@@ -589,7 +648,7 @@ async function loadCustomFieldOptions(
         fieldId: customId,
         type: widgetType,
         projectId,
-        issueTypeId,
+        issueTypeCode,
       })
     }
   }
@@ -607,20 +666,33 @@ async function loadCustomFieldOptions(
 
 // 选择模板（标题栏右侧下拉）
 
-/** 打开弹窗时拉取一次「已启用」模板填充下拉（不分页=status:1，大 pageSize 尽量取全） */
+const templateLoading = ref(false)
+let templateReqSeq = 0
+
+/** 按当前问题类型拉取「已启用」模板填充下拉（打开弹窗、切换问题类型时触发；大 pageSize 尽量取全） */
 async function loadTemplateOptions() {
-  newFormLoading.value = true
+  const seq = ++templateReqSeq
+  const cur = issueTypeOptions.value.find(o => o.value === newFormIssueTypeId.value)
+  templateLoading.value = true
   try {
-    const res = await queryTemplates({ page: 1, pageSize: 200, status: 1 })
+    const res = await queryTemplates({
+      page: 1,
+      pageSize: 200,
+      status: 1,
+      // 按问题类型编码（如 TYPE10002）查询
+      issueTypeCode: cur?.code,
+    })
+    if (seq !== templateReqSeq) return
     if (res?.success && res.data) {
       const list: any[] = res.data.list || []
-      const opts = [{ value: DEFAULT_TEMPLATE, label: '请选择模板' }]
+      const opts: { value: string; label: string; issueTypeId?: number; issueTypeCode?: string }[] = [{ value: DEFAULT_TEMPLATE, label: '请选择模板' }]
       for (const t of list) {
         const id = String(t.id)
         const issueTypeId: number | undefined = t.issueTypeId ?? t.issue_type?.issue_type_id
         const tabs: any[] = Array.isArray(t.tabs) ? t.tabs : []
         templateCache[id] = {
           issue_type_id: issueTypeId,
+          issue_type_code: t.issueTypeCode,
           tabs: tabs.map((tab: any, idx: number) => ({
             name: tab.name ?? tab.tabName ?? `表单${idx + 1}`,
             sequence: tab.tabOrder ?? tab.sequence ?? idx,
@@ -631,13 +703,13 @@ async function loadTemplateOptions() {
             ),
           })),
         }
-        opts.push({ value: id, label: t.templateName ?? `模板 ${id}` })
+        opts.push({ value: id, label: t.templateName ?? `模板 ${id}`, issueTypeId, issueTypeCode: t.issueTypeCode })
       }
       templateOptions.value = opts
     }
   } catch {
   } finally {
-    newFormLoading.value = false
+    if (seq === templateReqSeq) templateLoading.value = false
   }
 }
 
@@ -687,6 +759,7 @@ const handleTemplateChange = async (val: string) => {
       const tabs: any[] = Array.isArray(t.tabs) ? t.tabs : []
       templateCache[val] = {
         issue_type_id: issueTypeId,
+        issue_type_code: t.issueTypeCode,
         tabs: tabs.map((tab: any, idx: number) => ({
           name: tab.name ?? tab.tabName ?? `表单${idx + 1}`,
           sequence: tab.tabOrder ?? tab.sequence ?? idx,
@@ -712,7 +785,7 @@ const handleTemplateChange = async (val: string) => {
 /** 模板字段构建完 Tabs + newFormData 后，补做成员选项预取和自定义字段接口拉取 */
 function postLoadAfterBuildTabs() {
   const projectId = NEW_FORM_DEFAULT_PROJECT_ID
-  const issueTypeId = newFormIssueTypeId.value
+  const issueTypeCode = currentIssueTypeCode()
   // member 字段：SELECT_USER_SINGLE / SELECT_USER_MULTI 一律预取用户数据（/user/query），
   // 保证新建弹窗打开时人员下拉即有可选数据（无需输入关键词搜索）
   // eslint-disable-next-line @typescript-eslint/no-floating-promises
@@ -744,7 +817,7 @@ function postLoadAfterBuildTabs() {
   })()
   // 自定义字段选项（服务端枚举/级联，widget.options.options 若已填会先被用作兜底）
   // eslint-disable-next-line @typescript-eslint/no-floating-promises
-  loadCustomFieldOptions(projectId, issueTypeId, newFormTabs.value)
+  loadCustomFieldOptions(projectId, issueTypeCode, newFormTabs.value)
 }
 
 // 手动切问题类型：解除模板关联，避免不一致（除非对应模板下已就该 issue_type）
@@ -752,7 +825,11 @@ function onIssueTypeChanged(_v: string) {
   // 切换问题类型：重置模板选择，重新拉取 queryCreateMeta 渲染默认表单
   if (selectedTemplate.value && selectedTemplate.value !== DEFAULT_TEMPLATE) {
     const tpl = templateCache[selectedTemplate.value]
-    if (tpl?.issue_type_id && String(tpl.issue_type_id) !== String(_v)) {
+    const code = issueTypeOptions.value.find(o => o.value === _v)?.code
+    const mismatch = tpl?.issue_type_code
+      ? tpl.issue_type_code !== code
+      : !!tpl?.issue_type_id && String(tpl.issue_type_id) !== String(_v) && `TYPE${tpl.issue_type_id}` !== code
+    if (mismatch) {
       selectedTemplate.value = DEFAULT_TEMPLATE
     }
   }
@@ -762,14 +839,14 @@ function onIssueTypeChanged(_v: string) {
 
 /**
  * 调用 /issue/queryCreateMeta 获取默认表单元数据并渲染
- * 入参：projectId + issueTypeId
+ * 入参：organizationCode（所选组织编码）+ issueTypeCode
  */
 async function loadCreateMeta() {
   newFormLoading.value = true
   try {
     const res = await getIssueCreateMeta({
-      projectId: NEW_FORM_DEFAULT_PROJECT_ID,
-      issueTypeId: newFormIssueTypeId.value,
+      organizationCode: await currentOrgCode(),
+      issueTypeCode: currentIssueTypeCode(),
     })
     const meta = res?.success ? res.data : null
     const metaData = meta?.data
@@ -1133,7 +1210,7 @@ function handleAddField(f: AvailableFieldItem) {
 
   if (OPTION_WIDGET_TYPE_SET.has(field.type)) {
     // eslint-disable-next-line @typescript-eslint/no-floating-promises
-    loadCustomFieldOptions(NEW_FORM_DEFAULT_PROJECT_ID, newFormIssueTypeId.value, [{ issueFields: [field] }])
+    loadCustomFieldOptions(NEW_FORM_DEFAULT_PROJECT_ID, currentIssueTypeCode(), [{ issueFields: [field] }])
   }
   if (field.type === FIELD_TYPE.SELECT_USER_SINGLE || field.type === FIELD_TYPE.SELECT_USER_MULTI) {
     handleMemberSearch(field.id, '')
@@ -1152,11 +1229,10 @@ function collectAllFields(): CreateMetaField[] {
 }
 
 /**
- * 项目/问题类型的标准字段 type 约定（与后端 POST /issue/create 示例一致）
+ * 组织/问题类型的标准字段 type 约定（与后端 POST /issue/create 示例一致）
  */
-const PROJECT_FIELD_TYPE = 'SELECT_LIST_SINGLE_PROJECT'
 const ISSUETYPE_FIELD_TYPE = 'SELECT_LIST_SINGLE_ISSUETYPE'
-const ORGANIZATION_FIELD_TYPE = 'SELECT_ORGANIZATION'
+const ORGANIZATION_FIELD_TYPE = 'SELECT_LIST_SINGLE_ORGANIZATION'
 
 /**
  * 判断字段是否为空（空字符串/空数组/null/undefined 视为空）
@@ -1261,35 +1337,29 @@ function buildFieldValue(field: CreateMetaField, raw: unknown): unknown {
 
 /**
  * 构造 POST /issue/create 的 { inputFields: [...] }
- * 顺序：project -> issuetype -> meta 中的自定义/标准字段（按 tab 顺序，空值也带 id/type 以防服务端默认值缺失）
+ * 顺序：organization -> issuetype -> meta 中的自定义/标准字段（按 tab 顺序，空值也带 id/type 以防服务端默认值缺失）
  */
 function buildCreateIssuePayload(): CreateIssuePayload {
   const allFields = collectAllFields()
   const inputFields: CreateIssueInputField[] = []
 
-  // 1) 项目
-  inputFields.push({
-    id: 'project',
-    type: PROJECT_FIELD_TYPE,
-    value: NEW_FORM_DEFAULT_PROJECT_ID,
-  })
-  // 2) 组织（未选择时不提交）
+  // 1) 组织：提交组织编码 organizationCode（未选择时不提交；树中查不到编码时退回提交 ID）
   if (newFormOrganizationId.value != null && newFormOrganizationId.value !== '') {
     inputFields.push({
       id: 'organization',
       type: ORGANIZATION_FIELD_TYPE,
-      value: String(newFormOrganizationId.value),
+      value: findOrgCode(newFormOrgTree.value, newFormOrganizationId.value) || String(newFormOrganizationId.value),
     })
   }
-  // 3) 问题类型
+  // 2) 问题类型
   // 问题类型提交编码（如 TYPE10001）；兜底选项无编码时退回提交 ID
   inputFields.push({
     id: 'issuetype',
     type: ISSUETYPE_FIELD_TYPE,
-    value: issueTypeOptions.value.find(o => o.value === newFormIssueTypeId.value)?.code || newFormIssueTypeId.value,
+    value: currentIssueTypeCode(),
   })
 
-  // 4) 其余字段（按 tab.sequence + tab 内顺序）
+  // 3) 其余字段（按 tab.sequence + tab 内顺序；project 不提交）
   const seenIds = new Set<string>(['project', 'organization', 'issuetype'])
   for (const field of allFields) {
     const id = String(field.id ?? '').trim()
@@ -1378,7 +1448,9 @@ async function saveEditForm() {
 }
 
 .new-form-modal .ant-modal {
-  max-width: min(1280px, calc(100vw - 32px));
+  /* 窄屏不再压缩：最小 880px，超出视口时弹窗层横向滚动 */
+  min-width: 880px;
+  max-width: 1280px;
   margin: 0 auto;
   top: 0;
   padding-bottom: 0;
@@ -2064,7 +2136,7 @@ async function saveEditForm() {
   margin: 0;
 }
 
-/* ========== 响应式适配：随视口宽度调整弹窗宽度与布局 ========== */
+/* ========== 响应式适配：随视口宽度调整弹窗宽度（最小 880px，更窄时不再压缩布局） ========== */
 @media (max-width: 1440px) {
   .new-form-modal .ant-modal {
     width: 72% !important;
@@ -2074,115 +2146,6 @@ async function saveEditForm() {
 @media (max-width: 1200px) {
   .new-form-modal .ant-modal {
     width: 85% !important;
-  }
-}
-
-@media (max-width: 992px) {
-  .new-form-modal .ant-modal {
-    width: calc(100vw - 32px) !important;
-  }
-
-  .new-form-modal .ant-form-item .ant-form-item-label {
-    width: 96px;
-    flex: 0 0 96px;
-  }
-}
-
-/* 窄屏：标题与模板选择上下排列，表单标签置于控件上方 */
-@media (max-width: 768px) {
-  .new-form-modal .ant-modal {
-    width: calc(100vw - 16px) !important;
-    max-width: calc(100vw - 16px);
-  }
-
-  .new-form-modal .ant-modal-content {
-    border-radius: 14px;
-  }
-
-  .new-form-modal .ant-modal-header {
-    padding: 14px 16px 8px;
-  }
-
-  .new-form-modal .ant-modal-close {
-    top: 14px;
-    right: 12px;
-  }
-
-  .new-form-title-bar {
-    display: flex;
-    flex-direction: column;
-    align-items: stretch;
-    height: auto;
-    row-gap: 10px;
-  }
-
-  .new-form-title-side:first-child {
-    display: none;
-  }
-
-  .new-form-title-text {
-    line-height: 30px;
-  }
-
-  .new-form-title-side-right {
-    justify-content: flex-start;
-  }
-
-  .new-form-title-side-right:empty {
-    display: none;
-  }
-
-  .new-form-template-selector {
-    width: 100%;
-    margin-right: 0;
-  }
-
-  .new-form-template-select.ant-select {
-    flex: 1;
-    width: auto;
-  }
-
-  .new-form-modal .ant-modal-body {
-    padding: 4px 16px 0;
-  }
-
-  .new-form-modal .ant-modal-footer {
-    padding: 10px 16px;
-  }
-
-  .new-form-modal .ant-form-item .ant-row {
-    flex-direction: column;
-    flex-wrap: nowrap;
-  }
-
-  .new-form-modal .ant-form-item .ant-form-item-label {
-    width: 100%;
-    flex: 0 0 auto;
-    padding: 0 0 4px;
-    text-align: left;
-  }
-
-  .new-form-modal .ant-form-item .ant-form-item-label > label {
-    height: auto;
-  }
-
-  .new-form-modal .ant-form-item .ant-form-item-control {
-    width: 100%;
-    max-width: 100%;
-  }
-
-  .new-form-tabs-area .new-form-tabs .ant-tabs-tab {
-    padding: 8px 12px;
-  }
-
-  .tab-pane-scroll {
-    max-height: calc(90vh - 300px);
-    max-height: calc(90dvh - 300px);
-    padding-right: 4px;
-  }
-
-  .new-form-rich-editor {
-    height: 260px !important;
   }
 }
 

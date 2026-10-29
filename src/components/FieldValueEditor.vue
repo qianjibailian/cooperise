@@ -85,7 +85,7 @@ async function loadOptions() {
         fieldId: props.field.id,
         type: normType.value,
         projectId: '',
-        issueTypeId: '',
+        issueTypeCode: '',
         issueKey: props.issueKey,
         page: 1,
         pageSize: 100,

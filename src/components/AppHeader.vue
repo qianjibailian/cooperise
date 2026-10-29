@@ -16,28 +16,69 @@
     </div>
 
     <div class="header-right">
-      <a-dropdown
-        v-model:open="dropdownOpen"
-        :trigger="[]"
-        placement="bottomLeft"
-        overlay-class-name="search-dropdown-popup"
-      >
+      <!-- 搜索框 + 自控下拉面板（不用 a-dropdown：受控 open 会被组件内部重置，结果有数据也不弹出） -->
+      <div class="header-search-wrap">
         <a-input
           v-model:value="searchValue"
           :placeholder="searchPlaceholder"
           class="header-search"
           allow-clear
-          @focus="openSearchDropdown"
-          @blur="closeSearchDropdown"
+          @focus="onSearchFocus"
+          @blur="onSearchBlur"
           @press-enter="handleEnter"
           @keydown.esc="closeSearchDropdown"
+          @keydown.up.prevent="moveActive(-1)"
+          @keydown.down.prevent="moveActive(1)"
         >
           <template #prefix>
             <SearchOutlined style="color: #bbb" />
           </template>
         </a-input>
-        <template #overlay>
-          <div class="search-dropdown">
+        <div v-if="dropdownOpen" class="search-panel" @mousedown.prevent>
+          <!-- 有输入：搜索结果（参考 Google / Spotlight：单行、灰色辅助信息、命中词加粗） -->
+          <div v-if="searchValue.trim()" class="sp-body">
+            <div v-if="fuzzyResults.length" class="sp-section">问题</div>
+            <div v-if="fuzzyResults.length" class="sp-list">
+              <div
+                v-for="(item, i) in fuzzyResults"
+                :key="item.issueKey"
+                :class="['sp-item', { 'is-active': i === activeIndex }]"
+                @mouseenter="activeIndex = i"
+                @click="openIssue(item)"
+              >
+                <span
+                  class="sp-icon"
+                  :style="{ color: item.issueTypeColor || '#8c8c8c', background: `${item.issueTypeColor || '#8c8c8c'}1f` }"
+                  :title="item.issueTypeName"
+                ><component :is="issueTypeIconOf()" /></span>
+                <div class="sp-text">
+                  <div class="sp-title" :title="item.summary">
+                    <template v-for="(seg, k) in highlight(item.summary || '（无概要）')" :key="k">
+                      <b v-if="seg.hit">{{ seg.text }}</b><template v-else>{{ seg.text }}</template>
+                    </template>
+                  </div>
+                  <div class="sp-sub">
+                    <template v-for="(seg, k) in highlight(item.issueKey)" :key="k">
+                      <b v-if="seg.hit">{{ seg.text }}</b><template v-else>{{ seg.text }}</template>
+                    </template>
+                  </div>
+                </div>
+                <span
+                  v-if="item.statusName"
+                  class="sp-status"
+                  :style="item.statusColor ? { color: item.statusColor, background: `${item.statusColor}14` } : undefined"
+                >{{ item.statusName }}</span>
+              </div>
+            </div>
+            <div v-else-if="fuzzyLoading" class="sp-empty">搜索中…</div>
+            <div v-else class="sp-empty">没有找到相关问题</div>
+          </div>
+          <!-- 未输入：搜索提示 -->
+          <div v-else class="sp-body">
+            <div class="sp-empty">输入问题单号或概要</div>
+          </div>
+          <!-- 最近搜索 / 最近访问：暂时隐藏（数据为占位，待接入真实记录后恢复）
+          <div v-else class="search-dropdown">
             <div class="search-dropdown-section">
               <div class="search-dropdown-title">最近搜索</div>
               <div class="search-dropdown-tags">
@@ -67,8 +108,9 @@
               </div>
             </div>
           </div>
-        </template>
-      </a-dropdown>
+          -->
+        </div>
+      </div>
 
       <button class="header-create-btn" @click="$emit('create-click')">
         <PlusOutlined />
@@ -133,7 +175,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, nextTick, onMounted } from 'vue'
+import { ref, computed, nextTick, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 
 import {
@@ -142,13 +184,14 @@ import {
   RightOutlined,
   DownOutlined,
   PlusOutlined,
-  DragOutlined,
+  // DragOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
 } from '@ant-design/icons-vue'
 import AppLogo from './AppLogo.vue'
 import { useAuth, setAuthUser } from '@/utils/auth'
-import { logout, getCurrentUser } from '@/api/faiz'
+import { logout, getCurrentUser, fuzzyQueryIssues, type FuzzyIssueItem } from '@/api/faiz'
+import { issueTypeIconOf } from '@/utils/issueTypeIcons'
 
 defineProps<{
   drawerOpen?: boolean
@@ -169,20 +212,10 @@ const searchValue = ref('')
 const dropdownOpen = ref(false)
 const userPopoverOpen = ref(false)
 // 更新门闩：防止同一 flush 中重复对同一个 open ref 赋值触发 checkRecursiveUpdates
-let _dropdownUpdating = false
 let _popoverUpdating = false
 
-function setDropdownOpen(next: boolean) {
-  if (_dropdownUpdating) return
-  if (dropdownOpen.value === next) return
-  _dropdownUpdating = true
-  nextTick(() => {
-    dropdownOpen.value = next
-    _dropdownUpdating = false
-  })
-}
-function openSearchDropdown() { setDropdownOpen(true) }
-function closeSearchDropdown() { setDropdownOpen(false) }
+function openSearchDropdown() { dropdownOpen.value = true }
+function closeSearchDropdown() { dropdownOpen.value = false }
 
 function setUserPopoverOpen(next: boolean) {
   if (_popoverUpdating) return
@@ -195,19 +228,125 @@ function setUserPopoverOpen(next: boolean) {
 }
 function toggleUserPopover() { setUserPopoverOpen(!userPopoverOpen.value) }
 
-const recentSearches = ref(['待办事项', '项目', '文档', '工作台', '设置'])
-const recentVisits = ref(['轻量应用服务器', '控制台首页', '云解析DNS', '费用与成本', '大模型服务平台百炼'])
+// 最近搜索 / 最近访问：暂时隐藏，恢复时取消注释（模板同步恢复）
+// const recentSearches = ref(['待办事项', '项目', '文档', '工作台', '设置'])
+// const recentVisits = ref(['轻量应用服务器', '控制台首页', '云解析DNS', '费用与成本', '大模型服务平台百炼'])
+
+// ---------- 事项模糊搜索（POST /issue/fuzzy-query）：输入即查，防抖 300ms ----------
+const FUZZY_PAGE_SIZE = 10
+const fuzzyResults = ref<FuzzyIssueItem[]>([])
+const fuzzyTotal = ref(0)
+const fuzzyLoading = ref(false)
+let fuzzySeq = 0
+let fuzzyTimer: ReturnType<typeof setTimeout> | undefined
+
+/** 输入框是否聚焦：接口返回时仍聚焦才弹出结果下拉 */
+const searchFocused = ref(false)
+function onSearchFocus() {
+  searchFocused.value = true
+  openSearchDropdown()
+}
+function onSearchBlur() {
+  searchFocused.value = false
+  closeSearchDropdown()
+}
+
+// 输入变化即查询（不用 @update:value：与 v-model 合并成数组会触发 antd 的 prop 类型告警）
+watch(searchValue, (v) => onSearchInput(v))
+
+function onSearchInput(v: string) {
+  clearTimeout(fuzzyTimer)
+  const keyword = (v ?? '').trim()
+  if (!keyword) {
+    fuzzySeq++
+    fuzzyResults.value = []
+    fuzzyTotal.value = 0
+    fuzzyLoading.value = false
+    return
+  }
+  openSearchDropdown()
+  fuzzyLoading.value = true
+  fuzzyTimer = setTimeout(() => runFuzzyQuery(keyword), 300)
+}
+
+/**
+ * 同一关键字分别按单号、概要模糊查询后合并去重（后端两个条件同时传为「且」，
+ * 单个输入框需要「或」的效果）；单号命中排在前面，最多展示 10 条
+ */
+async function runFuzzyQuery(keyword: string) {
+  const seq = ++fuzzySeq
+  try {
+    const [byKey, bySummary] = await Promise.all([
+      fuzzyQueryIssues({ issueKey: keyword, page: 1, pageSize: FUZZY_PAGE_SIZE }).catch(() => null),
+      fuzzyQueryIssues({ summary: keyword, page: 1, pageSize: FUZZY_PAGE_SIZE }).catch(() => null),
+    ])
+    if (seq !== fuzzySeq) return
+    const merged = new Map<string, FuzzyIssueItem>()
+    for (const item of [...(byKey?.data?.list ?? []), ...(bySummary?.data?.list ?? [])]) {
+      if (item?.issueKey && !merged.has(item.issueKey)) merged.set(item.issueKey, item)
+    }
+    fuzzyResults.value = [...merged.values()].slice(0, FUZZY_PAGE_SIZE)
+    // 两路结果可能重叠，总数取较大值作为参考
+    fuzzyTotal.value = Math.max(byKey?.data?.total ?? 0, bySummary?.data?.total ?? 0, fuzzyResults.value.length)
+    // 有数据且输入框仍聚焦：展开下拉
+    if (searchFocused.value) dropdownOpen.value = true
+  } finally {
+    if (seq === fuzzySeq) fuzzyLoading.value = false
+  }
+}
+
+/** 键盘选中项：↑↓ 切换，回车打开 */
+const activeIndex = ref(0)
+watch(fuzzyResults, () => (activeIndex.value = 0))
+function moveActive(step: number) {
+  const n = fuzzyResults.value.length
+  if (!n) return
+  openSearchDropdown()
+  activeIndex.value = (activeIndex.value + step + n) % n
+}
+
+/** 关键字高亮：不区分大小写拆分为命中 / 未命中片段 */
+function highlight(text: string): { text: string; hit: boolean }[] {
+  const kw = searchValue.value.trim()
+  if (!kw || !text) return [{ text, hit: false }]
+  const lower = text.toLowerCase()
+  const k = kw.toLowerCase()
+  const out: { text: string; hit: boolean }[] = []
+  let from = 0
+  let idx = lower.indexOf(k)
+  while (idx !== -1) {
+    if (idx > from) out.push({ text: text.slice(from, idx), hit: false })
+    out.push({ text: text.slice(idx, idx + kw.length), hit: true })
+    from = idx + kw.length
+    idx = lower.indexOf(k, from)
+  }
+  if (from < text.length) out.push({ text: text.slice(from), hit: false })
+  return out
+}
+
+/** 点击结果：新标签页打开事项详情页 */
+function openIssue(item: FuzzyIssueItem) {
+  closeSearchDropdown()
+  const { href } = router.resolve({ name: 'IssueDetail', params: { issueKey: item.issueKey } })
+  window.open(href, '_blank', 'noopener')
+}
 
 function handleEnter() {
+  // 有结果时回车打开当前选中项（默认第一条）
+  const picked = fuzzyResults.value[activeIndex.value] ?? fuzzyResults.value[0]
+  if (searchValue.value.trim() && picked && !fuzzyLoading.value) {
+    openIssue(picked)
+    return
+  }
   closeSearchDropdown()
   handleSearch()
 }
 
-function handleSelect(item: string) {
-  searchValue.value = item
-  closeSearchDropdown()
-  handleSearch(item)
-}
+// function handleSelect(item: string) {
+//   searchValue.value = item
+//   closeSearchDropdown()
+//   handleSearch(item)
+// }
 /** 登录用户资料（登录接口 data.user / 个人中心同步），姓名缺失时回退占位文案 */
 const { realName, user } = useAuth()
 const username = computed(() => user.value?.realName || realName.value || '用户')
@@ -296,6 +435,8 @@ async function handleLogout() {
   top: 0;
   left: 0;
   right: 0;
+  min-width: var(--app-min-width);
+  transform: translateX(calc(-1 * var(--app-scroll-x, 0px)));
   height: 56px;
   background: #fff;
   display: flex;
@@ -548,12 +689,118 @@ async function handleLogout() {
   font-size: 14px;
 }
 
-.search-dropdown-popup {
-  width: 380px !important;
+.sp-body {
+  padding: 6px;
 }
 
-.search-dropdown-popup.ant-dropdown-placement-bottomLeft {
-  transform-origin: top left;
+.sp-section {
+  padding: 6px 10px 4px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #8c8c8c;
+}
+
+.sp-list {
+  display: flex;
+  flex-direction: column;
+  max-height: 360px;
+  overflow-y: auto;
+}
+
+.sp-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+
+.sp-item.is-active {
+  background: #f5f5f7;
+}
+
+.sp-icon {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  border-radius: 6px;
+}
+
+.sp-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.sp-title {
+  overflow: hidden;
+  font-size: 14px;
+  line-height: 20px;
+  color: #1f1f1f;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.sp-sub {
+  margin-top: 1px;
+  font-size: 12px;
+  line-height: 16px;
+  color: #8c8c8c;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.sp-status {
+  flex-shrink: 0;
+  padding: 0 8px;
+  font-size: 11px;
+  line-height: 20px;
+  color: #595959;
+  background: #f0f0f0;
+  border-radius: 10px;
+  white-space: nowrap;
+}
+
+.sp-item b {
+  font-weight: 600;
+  color: #000;
+}
+
+.sp-empty {
+  padding: 10px;
+  font-size: 13px;
+  color: #8c8c8c;
+}
+
+.search-result-empty {
+  padding: 16px 0;
+  font-size: 13px;
+  color: #8c8c8c;
+  text-align: center;
+}
+
+.header-search-wrap {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.search-panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  z-index: 1050;
+  /* 与输入框同宽（输入框聚焦时 380px，容器随之变宽） */
+  width: 100%;
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
 }
 
 .user-dropdown-popover .ant-popover-inner-content {

@@ -37,6 +37,8 @@ export interface TemplateQueryRequest {
   category?: string
   /** 状态：0-停用, 1-启用 */
   status?: number
+  /** 按问题类型筛选：问题类型编码（如 TYPE10001） */
+  issueTypeCode?: string
 }
 
 /** 模板分页查询结果（对应后端 TemplatePageVO） */
@@ -462,7 +464,8 @@ export interface CustomFieldOptionReq {
   /** 组件 key（与 queryCreateMeta 返回的 type 一致，如 cascader / select_single 等） */
   type: string
   projectId: string
-  issueTypeId: string
+  /** 问题类型编码（如 TYPE10001） */
+  issueTypeCode: string
   issueKey?: string
   pageSize?: number
   page?: number
@@ -747,12 +750,16 @@ export interface WorkflowNode {
   assigneeType?: string
   /** 经办人值：assigneeType=POSITION 时的岗位 ID，多个以英文逗号分隔 */
   assigneeValue?: string | null
-  /** 对应事项状态 statusId */
+  /** 对应事项状态编码 statusCode（如 STATUS00003），取自 /issue-type/status/list */
+  statusCode?: string | null
+  /** @deprecated 旧字段：状态 ID，仅兼容历史数据与流转接口返回 */
   statusId?: string | null
   /** 入口线名称：该节点作为某个节点的后续节点时，标识来源线（如：已完成 / 取消 / 暂停），可空 */
   branchName?: string
   /** 后续节点：一个节点可延伸出多个后续节点（多出边），树形结构，支持任意层级 */
   nextNodes?: WorkflowNode[]
+  /** 是否回退节点（状态变更弹窗中由后端标记，用于展示「回退」标签） */
+  isBack?: boolean
   /** 可回退到的节点 nodeId 列表：引用流程中已存在的节点（如 暂停 → 处理中），用于表达回退箭头 */
   backToNodeIds?: string[]
   /** 分支（旧模型）：仅兼容历史数据，加载时会归一化为 nextNodes */
@@ -766,12 +773,16 @@ export interface WorkflowDefinition {
   processKey: string
   /** 流程名称 */
   processName: string
-  /** 绑定的问题类型ID：10001-需求 10002-任务 10003-缺陷 10004-其他 */
+  /** 绑定的问题类型ID（历史字段，仅兼容读取） */
   issueTypeId?: string | number
+  /** 绑定的问题类型编码（如 TYPE10001），保存/部署入参 */
+  issueTypeCode?: string
   /** 问题类型名称 */
   issueTypeName?: string
-  /** 所属组织（问题类型归属的组织） */
+  /** 所属组织 ID（仅兼容读取） */
   organizationId?: number
+  /** 所属组织编码（问题类型归属的组织），保存/部署入参 */
+  organizationCode?: string
   organizationName?: string
   /** 组织路径名称，如 SPEEDX/研发中心 */
   organizationPathName?: string

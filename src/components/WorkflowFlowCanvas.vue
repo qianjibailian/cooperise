@@ -5,7 +5,7 @@ import '@logicflow/core/dist/style/index.css'
 import { Control, MiniMap } from '@logicflow/extension'
 import '@logicflow/extension/es/style/index.css'
 import { message } from 'ant-design-vue'
-import { PlusOutlined, NodeIndexOutlined, DeleteOutlined, EditOutlined, LinkOutlined } from '@ant-design/icons-vue'
+import { PlusOutlined, NodeIndexOutlined, DeleteOutlined, EditOutlined, LinkOutlined, RollbackOutlined } from '@ant-design/icons-vue'
 import type { WorkflowNode } from '@/types/faiz'
 import { workflowToFlow, lfTextValue, genNodeId, splitAssigneeIds, joinAssigneeIds } from './workflow-flow-layout'
 import type { WfProps, LFNode, LFEdge } from './workflow-flow-layout'
@@ -33,7 +33,7 @@ class WfNodeModel extends RectNodeModel {
   }
   getNodeStyle() {
     const style = super.getNodeStyle()
-    const configured = !!(this.properties as WfProps)?.statusId
+    const configured = !!(this.properties as WfProps)?.statusCode
     const active = this.isSelected || this.isHovered
     style.fill = configured ? '#ffffff' : '#fffbe6'
     style.stroke = active ? WF_ACTIVE_COLOR : configured ? '#dcdce6' : '#ffc53d'
@@ -44,7 +44,7 @@ class WfNodeModel extends RectNodeModel {
   getTextStyle() {
     const style = super.getTextStyle()
     style.fontSize = 13
-    style.color = (this.properties as WfProps)?.statusId ? '#1f1f1f' : '#ad6800'
+    style.color = (this.properties as WfProps)?.statusCode ? '#1f1f1f' : '#ad6800'
     style.overflowMode = 'ellipsis'
     ;(style as any).fontWeight = 500
     ;(style as any).textWidth = NODE_W - 24
@@ -83,7 +83,7 @@ class WfNodeView extends RectNode {
     const { x, y, width, height, radius } = model
     const style = model.getNodeStyle()
     const p = (model.properties || {}) as WfProps
-    const configured = !!p.statusId
+    const configured = !!p.statusCode
     const left = x - width / 2
     const top = y - height / 2
     const sub = !configured
@@ -94,7 +94,7 @@ class WfNodeView extends RectNode {
     return h('g', {}, [
       h('rect', { ...style, x: left, y: top, rx: radius, ry: radius, width, height }),
       h('rect', { x: left + 1, y: top + 10, width: 3, height: height - 20, rx: 1.5, fill: configured ? WF_ACTIVE_COLOR : '#faad14' }),
-      h('text', { x, y: y + 12, fill: '#8c8c8c', fontSize: 11, textAnchor: 'middle', dominantBaseline: 'middle' }, sub),
+      h('text', { x, y: y + 12, fill: '#8c8c8c', 'font-size': 11, 'text-anchor': 'middle', 'dominant-baseline': 'central' }, sub),
     ])
   }
 }
@@ -113,7 +113,8 @@ function flowToWorkflow(nodes: LFNode[], edges: LFEdge[]): WorkflowNode[] {
   }
   for (const e of edges) {
     if (outEdges.has(e.sourceNodeId)) outEdges.get(e.sourceNodeId)!.push(e)
-    inCount.set(e.targetNodeId, (inCount.get(e.targetNodeId) ?? 0) + 1)
+    // 回退线不计入入度：否则被回退到的起始节点不再被识别为流程起点
+    if (!e.properties?.isBack) inCount.set(e.targetNodeId, (inCount.get(e.targetNodeId) ?? 0) + 1)
   }
 
   const built = new Map<string, WorkflowNode>()
@@ -123,14 +124,14 @@ function flowToWorkflow(nodes: LFNode[], edges: LFEdge[]): WorkflowNode[] {
     const cached = built.get(id)
     if (cached) return cached
     const n = nodeMap.get(id)
-    if (!n) return { nodeId: '', nodeName: '', assigneeType: 'CREATOR', assigneeValue: null, statusId: null }
+    if (!n) return { nodeId: '', nodeName: '', assigneeType: 'CREATOR', assigneeValue: null, statusCode: null }
     const p = (n.properties ?? {}) as WfProps
     const wf: WorkflowNode = {
       nodeId: p.nodeId ?? lfTextValue(n.text) ?? '',
       nodeName: p.nodeName ?? lfTextValue(n.text) ?? '',
       assigneeType: p.assigneeType || 'CREATOR',
       assigneeValue: p.assigneeValue ?? null,
-      statusId: p.statusId ?? null,
+      statusCode: p.statusCode ?? null,
     }
     built.set(id, wf)
     stack.add(id)
@@ -138,7 +139,7 @@ function flowToWorkflow(nodes: LFNode[], edges: LFEdge[]): WorkflowNode[] {
     const next: WorkflowNode[] = []
     for (const e of outs) {
       const tid = e.targetNodeId
-      if (stack.has(tid)) {
+      if (stack.has(tid) || e.properties?.isBack) {
         // 回边：指向当前递归路径上的祖先节点（如 暂停 → 处理中），记录为可回退引用
         const tNode = nodeMap.get(tid)
         const refId = tNode ? (tNode.properties?.nodeId ?? lfTextValue(tNode.text) ?? '') : ''
@@ -181,7 +182,7 @@ const editForm = ref<WfProps>({
   nodeName: '',
   assigneeType: 'CREATOR',
   assigneeValue: null,
-  statusId: null,
+  statusCode: null,
 })
 
 // 连线编辑
@@ -283,7 +284,7 @@ function openNodeEdit(data: any) {
     nodeName: p.nodeName ?? lfTextValue(data?.text) ?? '',
     assigneeType: p.assigneeType || 'CREATOR',
     assigneeValue: p.assigneeValue ?? null,
-    statusId: p.statusId ?? null,
+    statusCode: p.statusCode ?? null,
   }
   editOpen.value = true
 }
@@ -294,14 +295,14 @@ function onNodeDblClick({ data }: { data: any }) {
 
 /** 选择状态：节点名称直接取状态名称 */
 function handleEditStatusChange(v?: string) {
-  editForm.value.statusId = v ?? null
+  editForm.value.statusCode = v ?? null
   editForm.value.nodeName = props.statusOptions.find((o) => o.value === v)?.label ?? ''
 }
 
 function saveNodeEdit() {
   const lf = lfRef.value
   if (!lf || !editTarget.value) return
-  if (!editForm.value.statusId) return message.warning('请选择状态')
+  if (!editForm.value.statusCode) return message.warning('请选择状态')
   if (editForm.value.assigneeType === 'POSITION' && !editForm.value.assigneeValue) return message.warning('请选择岗位')
   // @logicflow/core@1.2.10 无 updateNodeData()，改用 updateText() + setProperties()
   lf.updateText(editTarget.value, editForm.value.nodeName || '未命名')
@@ -310,7 +311,7 @@ function saveNodeEdit() {
     nodeName: editForm.value.nodeName,
     assigneeType: editForm.value.assigneeType,
     assigneeValue: editForm.value.assigneeValue ?? null,
-    statusId: editForm.value.statusId ?? null,
+    statusCode: editForm.value.statusCode ?? null,
   } as any)
   editOpen.value = false
 }
@@ -349,7 +350,7 @@ function addNodeAt(x: number, y: number) {
     x,
     y,
     text: { value: '未命名' },
-    properties: { nodeId: genNodeId(), nodeName: '', assigneeType: 'CREATOR', assigneeValue: null, statusId: null },
+    properties: { nodeId: genNodeId(), nodeName: '', assigneeType: 'CREATOR', assigneeValue: null, statusCode: null },
   } as any)
 }
 
@@ -420,7 +421,7 @@ function ctxAddNextNode() {
     x: baseX,
     y: baseY + outs * (NODE_H + 28),
     text: { value: '未命名' },
-    properties: { nodeId: genNodeId(), nodeName: '', assigneeType: 'CREATOR', assigneeValue: null, statusId: null },
+    properties: { nodeId: genNodeId(), nodeName: '', assigneeType: 'CREATOR', assigneeValue: null, statusCode: null },
   } as any)
   lf.addEdge({
     type: WF_EDGE_TYPE,
@@ -436,9 +437,15 @@ const linkModal = ref(false)
 const linkSourceId = ref('')
 const linkTargetId = ref('')
 const linkName = ref('')
-const linkCandidates = ref<{ id: string; label: string }[]>([])
+const linkCandidates = ref<{ value: string; label: string }[]>([])
+/** 连线类型：next 后续流转 / back 回退到指定节点（橙色虚线，保存为 backToNodeIds） */
+const linkMode = ref<'next' | 'back'>('next')
 
-function ctxLinkNode() {
+function ctxBackToNode() {
+  ctxLinkNode('back')
+}
+
+function ctxLinkNode(mode: 'next' | 'back' = 'next') {
   const lf = lfRef.value
   const data = ctxMenu.value.data
   const sid = data?.id
@@ -447,13 +454,14 @@ function ctxLinkNode() {
   const graph = lf.getGraphData() as { nodes: LFNode[] }
   linkSourceId.value = sid
   linkTargetId.value = ''
-  linkName.value = ''
+  linkMode.value = mode
+  linkName.value = mode === 'back' ? '回退' : ''
   // 候选 = 画布上除自身外的所有节点
   linkCandidates.value = graph.nodes
     .filter((n) => n.id !== sid)
     .map((n) => {
       const nm = (n.properties?.nodeName as string) || lfTextValue(n.text) || '未命名'
-      return { id: n.id, label: nm }
+      return { value: n.id, label: nm }
     })
   linkModal.value = true
 }
@@ -464,15 +472,36 @@ function confirmLinkNode() {
   const tid = linkTargetId.value
   if (!lf || !sid || !tid) return
   const graph = lf.getGraphData() as { edges: LFEdge[] }
-  const exists = graph.edges.some((e) => e.sourceNodeId === sid && e.targetNodeId === tid)
+  const isBack = linkMode.value === 'back'
+  const exists = graph.edges.some((e) => e.sourceNodeId === sid && e.targetNodeId === tid && !!e.properties?.isBack === isBack)
+  if (exists) return message.info(isBack ? '已存在回退到该节点的连线' : '已存在到该节点的连线')
   lf.addEdge({
     type: WF_EDGE_TYPE,
     sourceNodeId: sid,
     targetNodeId: tid,
     text: { value: linkName.value.trim() },
+    properties: isBack ? { isBack: true } : {},
   } as any)
   linkModal.value = false
-  message.success(exists ? '已添加连线（与已有连线并行）' : '已创建连线')
+  message.success(isBack ? '已添加回退' : '已创建连线')
+}
+
+/** 节点 → 回退到上一步：从当前节点连一条回退线到它的上一步（入边来源）节点 */
+function ctxBackToPrev() {
+  const lf = lfRef.value
+  const sid = ctxMenu.value.data?.id
+  hideCtxMenu()
+  if (!lf || !sid) return
+  const { edges } = lf.getGraphData() as { edges: LFEdge[] }
+  const prevIds = edges.filter((e) => e.targetNodeId === sid && !e.properties?.isBack).map((e) => e.sourceNodeId)
+  if (!prevIds.length) return message.warning('该节点没有上一步节点')
+  let added = 0
+  for (const pid of prevIds) {
+    if (edges.some((e) => e.sourceNodeId === sid && e.targetNodeId === pid)) continue
+    lf.addEdge({ type: WF_EDGE_TYPE, sourceNodeId: sid, targetNodeId: pid, text: { value: '回退' }, properties: { isBack: true } } as any)
+    added++
+  }
+  message[added ? 'success' : 'info'](added ? '已添加回退到上一步' : '已存在回退到上一步的连线')
 }
 
 function ctxEditNode() {
@@ -581,7 +610,9 @@ defineExpose({
     >
       <template v-if="ctxMenu.kind === 'node'">
         <div class="wf-ctx-item" @click="ctxAddNextNode"><PlusOutlined /> 添加后续节点（分支）</div>
-        <div class="wf-ctx-item" @click="ctxLinkNode"><LinkOutlined /> 链接指定节点</div>
+        <div class="wf-ctx-item" @click="ctxLinkNode()"><LinkOutlined /> 链接指定节点</div>
+        <div class="wf-ctx-item" @click="ctxBackToPrev"><RollbackOutlined /> 回退到上一步</div>
+        <div class="wf-ctx-item" @click="ctxBackToNode"><RollbackOutlined /> 回退到指定节点</div>
         <div class="wf-ctx-item" @click="ctxEditNode"><EditOutlined /> 编辑属性</div>
         <div class="wf-ctx-item wf-ctx-danger" @click="ctxDeleteNode"><DeleteOutlined /> 删除节点</div>
       </template>
@@ -595,27 +626,37 @@ defineExpose({
       </template>
     </div>
 
-    <!-- 链接指定节点（支持回退箭头） -->
-    <a-modal v-model:open="linkModal" title="链接指定节点" width="440px" :footer="null" destroy-on-close>
+    <!-- 链接指定节点：后续流转 / 回退到指定节点 -->
+    <a-modal v-model:open="linkModal" :title="linkMode === 'back' ? '回退到指定节点' : '链接指定节点'" width="440px" :footer="null" destroy-on-close>
       <a-form :label-col="{ span: 6 }" :wrapper-col="{ span: 18 }">
-        <a-form-item label="目标节点" required>
+        <a-form-item label="连线类型">
+          <a-radio-group v-model:value="linkMode" button-style="solid" @change="linkName = linkMode === 'back' ? '回退' : ''">
+            <a-radio-button value="next">后续流转</a-radio-button>
+            <a-radio-button value="back">回退</a-radio-button>
+          </a-radio-group>
+        </a-form-item>
+        <a-form-item :label="linkMode === 'back' ? '回退到' : '目标节点'" required>
           <a-select
             v-model:value="linkTargetId"
+            :options="linkCandidates"
             show-search
-            :filter-option="(input: string, option: any) => String(option?.label ?? '').toLowerCase().includes(input.toLowerCase())"
-            placeholder="选择要链接的节点（可为流程中已有节点，形成回退）"
-          >
-            <a-select-option v-for="c in linkCandidates" :key="c.id" :value="c.id">{{ c.label }}</a-select-option>
-          </a-select>
+            option-filter-prop="label"
+            :placeholder="linkMode === 'back' ? '选择要回退到的节点' : '选择要链接的节点'"
+          />
         </a-form-item>
         <a-form-item label="连线名称">
           <a-input v-model:value="linkName" placeholder="如：回退 / 重新处理，可留空" @pressEnter="confirmLinkNode" />
         </a-form-item>
       </a-form>
-      <a-alert type="info" show-icon message="链接到流程中已存在的节点将形成回退箭头（如 暂停 → 处理中）" style="margin-bottom: 12px" />
+      <a-alert
+        type="info"
+        show-icon
+        :message="linkMode === 'back' ? '回退不改变流程结构，仅允许从当前节点退回到所选节点（橙色虚线）' : '后续流转：所选节点将成为当前节点的下一步'"
+        style="margin-bottom: 12px"
+      />
       <div class="wf-edit-footer">
         <a-button @click="linkModal = false">取消</a-button>
-        <a-button type="primary" @click="confirmLinkNode">创建连线</a-button>
+        <a-button type="primary" @click="confirmLinkNode">{{ linkMode === 'back' ? '添加回退' : '创建连线' }}</a-button>
       </div>
     </a-modal>
 
@@ -633,7 +674,7 @@ defineExpose({
       <a-form :label-col="{ span: 6 }" :wrapper-col="{ span: 18 }">
         <a-form-item label="状态" required>
           <a-select
-            :value="editForm.statusId || undefined"
+            :value="editForm.statusCode || undefined"
             :options="statusOptions"
             placeholder="选择该问题类型下的状态"
             show-search

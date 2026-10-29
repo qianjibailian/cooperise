@@ -119,37 +119,18 @@
     <a-drawer
       v-model:open="flowSettingModal.open"
       title="流程设置"
-      :width="'min(1180px, 94vw)'"
+      :width="'clamp(1000px, 94vw, 1180px)'"
+      :content-wrapper-style="{ '--drawer-min-width': '1000px' }"
       destroy-on-close
       class="wf-setting-drawer"
       :body-style="{ padding: '16px 20px', overflow: 'hidden', display: 'flex', flexDirection: 'column' }"
     >
       <div class="fs-tip">配置「{{ flowSettingModal.processName || defForm.processName }}」的流程节点：一个节点可延伸出多个后续节点（如 处理中 → 已完成 / 取消 / 暂停）</div>
-      <a-segmented
-        v-model:value="defMode"
-        :options="[{ label: '画板编辑', value: 'canvas' }, { label: '列表编辑', value: 'list' }]"
-        block
-        style="margin: 4px 0 10px"
-        @change="switchDefMode"
-      />
 
       <div class="fs-body">
-        <!-- 画板模式：LogicFlow 可视化编辑 -->
-        <WorkflowFlowCanvas v-if="defMode === 'canvas'" ref="flowCanvasRef" :model-value="defForm.nodes" :status-options="flowStatusOptions" :position-options="flowPositionOptions" />
+        <!-- LogicFlow 可视化编辑 -->
+        <WorkflowFlowCanvas ref="flowCanvasRef" :model-value="defForm.nodes" :status-options="flowStatusOptions" :position-options="flowPositionOptions" />
 
-        <!-- 列表模式：树形表单编辑，一个节点可延伸多个后续节点 -->
-        <template v-else>
-          <div class="node-list-toolbar">
-            <span class="node-list-summary">共 {{ countNodes(defForm.nodes) }} 个节点</span>
-            <span class="node-list-legend"><i class="legend-bar" />已配置<i class="legend-bar is-empty" />待选择状态</span>
-            <a-button size="small" @click="toggleAllNodes(true)"><PlusSquareOutlined /> 全部展开</a-button>
-            <a-button size="small" @click="toggleAllNodes(false)"><MinusSquareOutlined /> 全部收起</a-button>
-          </div>
-          <div class="node-list">
-            <WorkflowNodeEditor v-for="(n, idx) in defForm.nodes" :key="idx" :node="n" :depth="0" :status-options="flowStatusOptions" :position-options="flowPositionOptions" :expand-signal="nodeExpandSignal" @remove="removeNode(idx)" @insert-after="insertNodeAfter(idx)" />
-          </div>
-          <a-button v-if="!defForm.nodes.length" type="dashed" size="small" class="node-add" @click="addNode"><PlusOutlined /> 添加节点</a-button>
-        </template>
       </div>
 
       <template #footer>
@@ -174,8 +155,6 @@ import {
   SettingOutlined,
   ThunderboltOutlined,
   DeleteOutlined,
-  PlusSquareOutlined,
-  MinusSquareOutlined,
 } from '@ant-design/icons-vue'
 import {
   listWorkflowDefinitions,
@@ -196,8 +175,8 @@ import type {
 } from '@/types/faiz'
 import WorkflowFlowCanvas from '@/components/WorkflowFlowCanvas.vue'
 import { normalizeLegacyNodes, genNodeId, ensureNodeIds } from '@/components/workflow-flow-layout'
-import WorkflowNodeEditor from '@/components/WorkflowNodeEditor.vue'
 import OrgTreeSelect from '@/components/OrgTreeSelect.vue'
+import { findOrgCode, findOrgIdByCode } from '@/utils/orgTree'
 
 // ---------- Tabs ----------
 const activeTab = ref('definition')
@@ -302,13 +281,18 @@ const defIssueTypeOptions = ref<IssueTypeOption[]>([])
 const defIssueTypeLoading = ref(false)
 let defIssueTypeSeq = 0
 
-async function loadDefOrgTree() {
-  try {
-    const res = await getOrganizationTree()
-    if (res?.success) defOrgTree.value = res.data || []
-  } catch {
-    // 请求层已统一提示
-  }
+/** 组织树加载中的请求：按组织查询问题类型、回填组织前需等待，以便换算组织编码 / ID */
+let defOrgTreeLoading: Promise<void> | null = null
+function loadDefOrgTree() {
+  defOrgTreeLoading = (async () => {
+    try {
+      const res = await getOrganizationTree()
+      if (res?.success) defOrgTree.value = res.data || []
+    } catch {
+      // 请求层已统一提示
+    }
+  })()
+  return defOrgTreeLoading
 }
 
 /** 拉取所选组织下启用的问题类型 */
@@ -320,7 +304,9 @@ async function loadDefIssueTypes(orgId?: number | string) {
   }
   defIssueTypeLoading.value = true
   try {
-    const res = await queryIssueTypes({ page: 1, pageSize: 999, status: 1, organizationId: Number(orgId) })
+    if (defOrgTreeLoading) await defOrgTreeLoading
+    if (seq !== defIssueTypeSeq) return
+    const res = await queryIssueTypes({ page: 1, pageSize: 999, status: 1, organizationCode: findOrgCode(defOrgTree.value, orgId) })
     if (seq !== defIssueTypeSeq) return
     defIssueTypeOptions.value = res?.success ? (res.data?.list || []).map(toIssueTypeOption) : []
   } catch {
@@ -399,12 +385,32 @@ const flowSettingModal = reactive<{ open: boolean; processName: string }>({ open
 const flowSettingSaving = ref(false)
 /** 流程绑定问题类型下的全部状态：节点直接选择状态，节点名称取状态名称 */
 const flowStatusOptions = ref<{ value: string; label: string }[]>([])
+/** 状态 ID → 状态编码：历史流程节点只存了 statusId，打开时换算为 statusCode */
+const flowStatusCodeById = ref<Record<string, string>>({})
 
-/** 列表模式一键展开 / 收起：seq 自增触发各层节点同步 */
-const nodeExpandSignal = reactive({ open: false, seq: 0 })
-function toggleAllNodes(open: boolean) {
-  nodeExpandSignal.open = open
-  nodeExpandSignal.seq++
+/** 历史数据兼容：节点无 statusCode 但有 statusId 时，按状态 ID 换算为编码 */
+function migrateStatusCodes(list: WorkflowNode[]) {
+  for (const n of list) {
+    if (!n.statusCode && n.statusId) n.statusCode = flowStatusCodeById.value[String(n.statusId)] ?? null
+    delete n.statusId
+    if (n.nextNodes?.length) migrateStatusCodes(n.nextNodes)
+  }
+}
+
+/** 清理回退引用：目标节点已删除的引用去掉，避免保存后指向不存在的节点 */
+function pruneBackRefs(list: WorkflowNode[]): WorkflowNode[] {
+  const ids = new Set<string>()
+  const collect = (l: WorkflowNode[]) => l.forEach((n) => { ids.add(n.nodeId); if (n.nextNodes) collect(n.nextNodes) })
+  collect(list)
+  const walk = (n: WorkflowNode): WorkflowNode => {
+    const refs = (n.backToNodeIds ?? []).filter((id) => ids.has(id))
+    return {
+      ...n,
+      backToNodeIds: refs.length ? refs : undefined,
+      nextNodes: n.nextNodes?.map(walk),
+    }
+  }
+  return list.map(walk)
 }
 
 /** 经办岗位选项：启用的岗位，标签带组织路径便于区分同名岗位 */
@@ -426,14 +432,19 @@ async function loadFlowPositions() {
 
 async function loadFlowStatuses(issueType?: string | number | null) {
   flowStatusOptions.value = []
+  flowStatusCodeById.value = {}
   if (issueType == null || issueType === '') return
-  // 流程绑定的是问题类型编码，状态接口需要数字 ID：先按编码换算，历史数据为数字 ID 时直接使用
+  // 状态接口按问题类型编码查询；历史数据为数字 ID 时先换算成编码
   if (!findIssueTypeOption(issueType)) await loadAllIssueTypes()
-  const id = findIssueTypeOption(issueType)?.id ?? Number(issueType)
-  if (!id || Number.isNaN(id)) return
+  const code = findIssueTypeOption(issueType)?.value ?? String(issueType)
   try {
-    const res = await queryIssueTypeStatuses(id)
-    if (res?.success) flowStatusOptions.value = (res.data || []).map((s) => ({ value: String(s.id), label: s.statusName }))
+    const res = await queryIssueTypeStatuses(code)
+    if (res?.success) {
+      const list = res.data || []
+      // 节点提交状态编码 statusCode（如 STATUS00003），不再提交状态 ID
+      flowStatusOptions.value = list.map((s) => ({ value: s.statusCode || String(s.id), label: s.statusName }))
+      flowStatusCodeById.value = Object.fromEntries(list.filter((s) => s.id != null && s.statusCode).map((s) => [String(s.id), String(s.statusCode)]))
+    }
   } catch {
     // 错误提示由请求拦截器统一展示后端 message
   }
@@ -441,10 +452,8 @@ async function loadFlowStatuses(issueType?: string | number | null) {
 
 /** 打开"流程设置"：拉取最新详情并只展示节点编辑区 */
 async function openFlowSetting(record: WorkflowDefinition) {
-  defMode.value = 'canvas'
   flowSettingModal.processName = record.processName || ''
   flowSettingModal.open = true
-  nodeExpandSignal.open = false
   if (record.id) {
     defDetailLoading.value = true
     try {
@@ -460,8 +469,9 @@ async function openFlowSetting(record: WorkflowDefinition) {
     id: record.id,
     processKey: record.processKey,
     processName: record.processName || '',
-    organizationId: record.organizationId,
-    issueTypeId: record.issueTypeId ?? record.issueTypeName ?? undefined,
+    organizationId: record.organizationId ?? findOrgIdByCode(defOrgTree.value, record.organizationCode),
+    organizationCode: record.organizationCode,
+    issueTypeId: record.issueTypeCode ?? record.issueTypeId ?? record.issueTypeName ?? undefined,
     issueTypeName: record.issueTypeName || issueTypeNameOf(record.issueTypeId),
     remark: record.remark || '',
     nodes: record.nodes?.length ? normalizeLegacyNodes(record.nodes).map((n) => cloneNode(n)) : [emptyNode()],
@@ -470,6 +480,7 @@ async function openFlowSetting(record: WorkflowDefinition) {
   // 历史数据保存的是数字 ID：保存流程设置时统一提交编码
   const matchedType = findIssueTypeOption(defForm.value.issueTypeId)
   if (matchedType) defForm.value.issueTypeId = matchedType.value
+  migrateStatusCodes(defForm.value.nodes)
   if (!flowStatusOptions.value.length) message.warning('该问题类型暂未配置状态，请先在「问题类型」中维护状态')
 }
 
@@ -486,11 +497,11 @@ async function saveFlowSetting() {
       id: f.id,
       processKey: f.processKey.trim(),
       processName: f.processName.trim(),
-      organizationId: f.organizationId,
-      issueTypeId: String(f.issueTypeId),
+      organizationCode: findOrgCode(defOrgTree.value, f.organizationId) ?? f.organizationCode,
+      issueTypeCode: String(f.issueTypeId),
       issueTypeName: f.issueTypeName || issueTypeNameOf(f.issueTypeId),
       remark: f.remark || '',
-      nodes: f.nodes.filter(nodeValid).map((n) => sanitizeNode(n)),
+      nodes: pruneBackRefs(f.nodes.filter(nodeValid).map((n) => sanitizeNode(n))),
     })
     if (res?.data || res?.success) {
       flowSettingModal.open = false
@@ -502,20 +513,11 @@ async function saveFlowSetting() {
     flowSettingSaving.value = false
   }
 }
-const defMode = ref<'canvas' | 'list'>('canvas')
 const flowCanvasRef = ref<InstanceType<typeof WorkflowFlowCanvas> | null>(null)
 
-/** 画板 ↔ 列表切换：切回列表前先把画板内容应用到表单 */
-function switchDefMode(mode: string | number) {
-  if (mode === 'list' && defMode.value === 'canvas' && flowCanvasRef.value) {
-    defForm.value.nodes = flowCanvasRef.value.exportNodes()
-  }
-  defMode.value = mode as 'canvas' | 'list'
-}
-
-/** 保存前若处于画板模式，先把画板内容应用到表单 */
+/** 保存前把画板内容应用到表单 */
 function applyCanvasToForm() {
-  if (defMode.value === 'canvas' && flowCanvasRef.value) {
+  if (flowCanvasRef.value) {
     defForm.value.nodes = flowCanvasRef.value.exportNodes()
   }
 }
@@ -529,16 +531,7 @@ const defForm = ref<WorkflowDefinition & { nodes: WorkflowNode[] }>({
 })
 
 function emptyNode(): WorkflowNode {
-  return { nodeId: genNodeId(), nodeName: '', assigneeType: 'CREATOR', assigneeValue: null, statusId: null }
-}
-function addNode() {
-  defForm.value.nodes.push(emptyNode())
-}
-function insertNodeAfter(idx: number) {
-  defForm.value.nodes.splice(idx + 1, 0, emptyNode())
-}
-function removeNode(idx: number) {
-  defForm.value.nodes.splice(idx, 1)
+  return { nodeId: genNodeId(), nodeName: '', assigneeType: 'CREATOR', assigneeValue: null, statusCode: null }
 }
 
 /** 深拷贝节点（含后续节点），避免编辑时污染列表数据 */
@@ -562,7 +555,7 @@ function sanitizeNode(n: WorkflowNode): WorkflowNode {
     nodeName: n.nodeName.trim(),
     assigneeType: n.assigneeType || 'CREATOR',
     assigneeValue: n.assigneeValue?.trim() || null,
-    statusId: n.statusId?.trim() || null,
+    statusCode: n.statusCode?.trim() || null,
     branchName: n.branchName?.trim() || undefined,
     // 回退引用：去重 + 去空白 + 排除指向自身
     backToNodeIds: (() => {
@@ -592,7 +585,6 @@ function countNodes(nodes?: WorkflowNode[]): number {
 
 /** 旧数据兼容：把历史分支模型（branches）归一化为树形后续节点（nextNodes） */
 async function openDefModal(record?: WorkflowDefinition) {
-  defMode.value = 'canvas'
   if (!record) {
     defModal.isEdit = false
     defForm.value = { processKey: '', processName: '', organizationId: undefined, issueTypeId: undefined, issueTypeName: '', remark: '', nodes: [emptyNode()] }
@@ -616,17 +608,19 @@ async function openDefModal(record?: WorkflowDefinition) {
       defDetailLoading.value = false
     }
   }
+  if (defOrgTreeLoading) await defOrgTreeLoading
   defForm.value = {
     id: record.id,
     processKey: record.processKey,
     processName: record.processName || '',
-    organizationId: record.organizationId,
-    issueTypeId: record.issueTypeId != null ? String(record.issueTypeId) : undefined,
+    organizationId: record.organizationId ?? findOrgIdByCode(defOrgTree.value, record.organizationCode),
+    organizationCode: record.organizationCode,
+    issueTypeId: record.issueTypeCode ?? (record.issueTypeId != null ? String(record.issueTypeId) : undefined),
     issueTypeName: record.issueTypeName || issueTypeNameOf(record.issueTypeId),
     remark: record.remark || '',
     nodes: record.nodes?.length ? normalizeLegacyNodes(record.nodes).map((n) => cloneNode(n)) : [emptyNode()],
   }
-  await loadDefIssueTypes(record.organizationId)
+  await loadDefIssueTypes(defForm.value.organizationId)
   // 历史数据的问题类型不在当前组织列表中：补一个选项，保证回显名称
   const curId = defForm.value.issueTypeId
   const matched = findIssueTypeOption(curId)
@@ -671,8 +665,8 @@ async function handleSaveDef() {
       // 新增时由后端生成流程标识，编辑时原样回传
       processKey: defModal.isEdit ? f.processKey : undefined,
       processName: f.processName.trim(),
-      organizationId: Number(f.organizationId),
-      issueTypeId: String(f.issueTypeId),
+      organizationCode: findOrgCode(defOrgTree.value, f.organizationId) ?? f.organizationCode,
+      issueTypeCode: String(f.issueTypeId),
       issueTypeName: f.issueTypeName || issueTypeNameOf(f.issueTypeId),
       remark: f.remark || '',
     })
@@ -970,70 +964,6 @@ onMounted(() => {
 }
 
 /* ---- node editor ---- */
-.node-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-bottom: 8px;
-  padding: 12px;
-  background: #f7f8fa;
-  border: 1px solid #ececf2;
-  border-radius: 12px;
-}
-.node-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-.node-item {
-  border-radius: 8px;
-}
-.node-key {
-  width: 130px;
-}
-.node-name {
-  width: 130px;
-}
-.node-type {
-  width: 110px;
-}
-.node-value {
-  width: 130px;
-}
-.node-list-toolbar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 10px;
-  padding: 6px 10px;
-  background: #fff;
-  border: 1px solid #ececf2;
-  border-radius: 10px;
-}
-.node-list-summary {
-  font-size: 13px;
-  font-weight: 500;
-  color: #262626;
-}
-.node-list-legend {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  margin-right: auto;
-  margin-left: 12px;
-  font-size: 12px;
-  color: #8c8c8c;
-}
-.legend-bar {
-  width: 3px;
-  height: 12px;
-  margin-left: 6px;
-  background: #722ed1;
-  border-radius: 2px;
-}
-.legend-bar.is-empty {
-  background: #faad14;
-}
 .node-status {
   width: 110px;
 }
