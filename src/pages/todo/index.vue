@@ -23,6 +23,7 @@
               v-model="filterConditions"
               v-model:logic="filterLogic"
               @save="handleFilterSave"
+              @reset="handleFilterReset"
             />
           </template>
           <a-button
@@ -688,6 +689,13 @@ const isSortDesc = computed(() => sortItemList.value[0]?.sortTypeCode === 'DESC'
 // 视图编码（请求 /filter/draft 时的视图标识；issue/query 入参取接口返回的 data.viewCode）
 const viewCode = ref('MY_TODO21941')
 
+
+/** 全局筛选：重置为默认条件（经办人=当前用户 + 未结束状态）并保存草稿、刷新列表 */
+async function handleFilterReset() {
+  filterConditions.value = defaultConditions()
+  filterLogic.value = 'AND'
+  await handleFilterSave()
+}
 
 /** 保存全局筛选到草稿（PUT /filter/draft） */
 async function handleFilterSave() {
@@ -2407,8 +2415,10 @@ onBeforeUnmount(() => {
 <style>
 .filter-popover .ant-popover-inner {
   padding: 0;
-  border-radius: 6px;
-  box-shadow: 0 6px 16px 0 rgba(0, 0, 0, 0.08), 0 3px 6px -4px rgba(0, 0, 0, 0.12), 0 9px 28px 8px rgba(0, 0, 0, 0.05);
+  border-radius: 16px;
+  overflow: hidden;
+  border: 1px solid rgba(0, 0, 0, 0.04);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.14), 0 2px 8px rgba(0, 0, 0, 0.06);
 }
 
 .filter-popover .ant-popover-inner-content {

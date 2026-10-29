@@ -463,7 +463,7 @@
                       </div>
                       <div class="field-right">
                         <a-tag v-if="tabAddedFieldIds(tab.id).has(String(f.fieldId))" color="success">已添加</a-tag>
-                        <a-tag v-else-if="f.isRequired" color="red" bordered="false">必填</a-tag>
+                        <a-tag v-else-if="f.isRequired" color="red" :bordered="false">必填</a-tag>
                       </div>
                     </div>
                   </div>
@@ -1093,7 +1093,7 @@ watch(() => [showEditModal.value, editForm.issueTypeCode] as const, async ([open
 async function findOtherDefaults(issueTypeCode: string | undefined, exceptId: string): Promise<Template[]> {
   if (!issueTypeCode) return []
   try {
-    const res = await queryTemplates({ page: 1, pageSize: 999 })
+    const res = await queryTemplates({ page: 1, pageSize: 999, includeCustom: true })
     if (!res.success) return []
     return (res.data.list || [])
       .map(adaptBackendTemplate)
@@ -1280,6 +1280,8 @@ async function loadTemplates() {
       keyword: searchValue.value.trim() || undefined,
       issueTypeCode: tabIssueType.value || undefined,
       spaceCode: props.spaceCode,
+      // 模板管理页：该空间下所有模板都可见（含他人自定义）
+      includeCustom: true,
     })
     if (res.success) {
       const list = (res.data.list || []).map(adaptBackendTemplate)

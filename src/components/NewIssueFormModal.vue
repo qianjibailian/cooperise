@@ -12,6 +12,13 @@
     destroy-on-close
     class="new-form-modal"
   >
+    <template #footer>
+      <a-button @click="handleNewFormCancel">取消</a-button>
+      <a-button v-if="!isEditMode" @click="openSaveTemplateModal">保存为模板</a-button>
+      <a-button type="primary" :loading="newFormSubmitting" @click="handleNewFormSubmit">
+        {{ isEditMode ? '保存' : '提交' }}
+      </a-button>
+    </template>
     <template #title>
       <div class="new-form-title-bar">
         <span class="new-form-title-side"></span>
@@ -24,6 +31,7 @@
               class="new-form-template-select"
               :loading="templateLoading"
               :popup-match-select-width="false"
+              placeholder="请选择模板"
               @change="handleTemplateChange"
             >
               <a-select-option
@@ -262,6 +270,21 @@
         </div>
       </div>
     </a-spin>
+
+    <!-- 保存为模板：把当前表单字段与已填内容保存为新模板 -->
+    <a-modal
+      v-model:open="saveTplOpen"
+      title="保存为模板"
+      width="420px"
+      :confirm-loading="saveTplSaving"
+      ok-text="保存"
+      cancel-text="取消"
+      @ok="handleSaveTemplate"
+      @cancel="saveTplOpen = false"
+    >
+      <div class="save-tpl-tip">将当前表单的字段与已填内容保存为模板，下次新建时可直接选用。</div>
+      <a-input v-model:value="saveTplName" placeholder="请输入模板名称" :maxlength="50" @press-enter="handleSaveTemplate" />
+    </a-modal>
   </a-modal>
 </template>
 
@@ -275,7 +298,7 @@ import type { IDomEditor, IEditorConfig } from '@wangeditor/editor'
 import '@wangeditor/editor/dist/css/style.css'
 import { PlusOutlined } from '@ant-design/icons-vue'
 import { Empty, message } from 'ant-design-vue'
-import { createIssue, getAvailableFieldOptions, queryUsers, queryTemplates, getTemplate, getIssueCreateMeta, queryDetail, patchIssue, queryAvailableFieldList, querySpaceOptions, queryIssueTypes, type SpaceItem } from '@/api/faiz'
+import { createIssue, getAvailableFieldOptions, queryUsers, queryTemplates, getTemplate, getIssueCreateMeta, queryDetail, patchIssue, queryAvailableFieldList, querySpaceOptions, queryIssueTypes, createTemplate, type SpaceItem } from '@/api/faiz'
 import { issueTypeIconOf } from '@/utils/issueTypeIcons'
 import { FIELD_TYPE, normalizeFieldType, formatTypeLabel } from '@/types/fieldType'
 import type {
@@ -311,11 +334,9 @@ const emit = defineEmits<{
 const visible = ref(props.open)
 
 // 新建表单弹窗内部状态（需在 watch 之前声明，因 watch immediate 会立即访问）
-const DEFAULT_TEMPLATE = 'default'
-const selectedTemplate = ref<string>(DEFAULT_TEMPLATE)
-const templateOptions = ref<{ value: string; label: string; issueTypeId?: number; issueTypeCode?: string }[]>([
-  { value: DEFAULT_TEMPLATE, label: '请选择模板' },
-])
+// 未选择模板用空串表示（下拉不再提供「请选择模板」占位项，仅以 placeholder 提示）
+const selectedTemplate = ref<string>('')
+const templateOptions = ref<{ value: string; label: string; issueTypeId?: number; issueTypeCode?: string; isDefault?: boolean }[]>([])
 const customFieldOptionsMap = ref<Record<string, CustomFieldOptionItem[]>>({})
 
 watch(
@@ -324,7 +345,7 @@ watch(
     visible.value = val
     if (val) {
       // 每次打开：清空残留 + 拉取最新启用模板列表
-      selectedTemplate.value = DEFAULT_TEMPLATE
+      selectedTemplate.value = ''
       customFieldOptionsMap.value = {}
       if (props.issueKey) {
         // 编辑模式：/issue/queryDetail 获取数据回填
@@ -442,9 +463,9 @@ async function loadIssueTypesByOrg() {
   if (seq !== issueTypeReqSeq) return
   const cur = newFormIssueTypeId.value
   if (cur && issueTypeOptions.value.some(o => o.value === cur)) {
-    // 问题类型未变（不会触发切换监听）：按当前组织 + 类型编码查询模板；未选模板时重新渲染默认表单
-    loadTemplateOptions()
-    if (selectedTemplate.value === DEFAULT_TEMPLATE) loadCreateMeta()
+    // 问题类型未变（不会触发切换监听）：按当前组织 + 类型编码查询模板；有默认模板则用模板内容，否则渲染默认表单
+    // eslint-disable-next-line @typescript-eslint/no-floating-promises
+    loadTemplatesAndApply()
     return
   }
   const first = issueTypeOptions.value[0]?.value
@@ -460,7 +481,7 @@ async function loadIssueTypesByOrg() {
 const filteredTemplateOptions = computed(() => {
   const cur = issueTypeOptions.value.find(o => o.value === newFormIssueTypeId.value)
   return templateOptions.value.filter(t => {
-    if (t.value === DEFAULT_TEMPLATE || (t.issueTypeId == null && !t.issueTypeCode)) return true
+    if (t.issueTypeId == null && !t.issueTypeCode) return true
     if (!cur) return false
     if (t.issueTypeCode) return t.issueTypeCode === cur.code
     // 模板里存的是问题类型 ID（如 10001），兼容按编码（TYPE10001）匹配
@@ -470,14 +491,20 @@ const filteredTemplateOptions = computed(() => {
 
 // 已选模板不在筛选结果中（切换了组织 / 问题类型）：重置为未选择
 watch(filteredTemplateOptions, (opts) => {
-  if (selectedTemplate.value !== DEFAULT_TEMPLATE && !opts.some(o => o.value === selectedTemplate.value)) {
-    selectedTemplate.value = DEFAULT_TEMPLATE
+  // 已选模板不在筛选结果中（切换了组织 / 问题类型）：重新按当前类型选默认模板（无默认则选第一个），保证选中项不为空
+  if (selectedTemplate.value && !opts.some(o => o.value === selectedTemplate.value)) {
+    selectedTemplate.value = ''
+    // eslint-disable-next-line @typescript-eslint/no-floating-promises
+    loadTemplatesAndApply()
   }
 })
 
-// 切换问题类型：重新查询该类型下的模板列表
+// 切换问题类型：重新查询该类型下的模板列表，并应用该类型的默认模板（无则渲染默认表单）
 watch(newFormIssueTypeId, (val, old) => {
-  if (visible.value && !isEditMode.value && val && val !== old) loadTemplateOptions()
+  if (visible.value && !isEditMode.value && val && val !== old) {
+    // eslint-disable-next-line @typescript-eslint/no-floating-promises
+    loadTemplatesAndApply()
+  }
 })
 
 /** 当前问题类型编码（如 TYPE10002）；兜底选项无编码时退回 ID */
@@ -495,7 +522,8 @@ watch(newFormSpaceId, (val) => {
 /** 模板下拉：本地缓存已启用模板详情（含解析后的 widgetData），供选中后直接使用 */
 const templateCache = reactive<Record<string, { issue_type_id?: number; issue_type_code?: string; tabs: { name: string; sequence: number; widgetData: any[] }[] }>>({})
 
-/** 将后端 Tab.widgetData 的每个 widget 映射为 NewIssueFormModal 需要的 issueField（CreateMetaField 风格） */
+/** 将后端 Tab.widgetData 的每个 widget 映射为 NewIssueFormModal 需要的 issueField（CreateMetaField 风格）
+ * value 取模板里保存的默认值（defaultValue）：用「保存为模板」保存的已填内容会在下次选用该模板时回填 */
 function widgetToIssueField(w: any, sequence: number): CreateMetaField & { configSchema?: unknown } {
   const fieldId = String(w.field ?? w.fieldId ?? w.id)
   const title = String(w.title ?? fieldId)
@@ -507,7 +535,7 @@ function widgetToIssueField(w: any, sequence: number): CreateMetaField & { confi
     name: title,
     type: String(w.type ?? FIELD_TYPE.TEXT_BOX_SINGLE_LINE),
     jiraType: null,
-    value: null,
+    value: w.defaultValue ?? w.value ?? null,
     editable: true,
     required,
     standard: false,
@@ -707,8 +735,32 @@ async function loadCustomFieldOptions(
 const templateLoading = ref(false)
 let templateReqSeq = 0
 
-/** 按当前问题类型拉取「已启用」模板填充下拉（打开弹窗、切换问题类型时触发；大 pageSize 尽量取全） */
-async function loadTemplateOptions() {
+let templateApplySeq = 0
+
+/**
+ * 拉取模板列表 + 选中模板：
+ * 优先选中默认模板（isDefault=1），没有默认模板则选中第一个，保证下拉选中项不为空；
+ * 该问题类型无任何模板时才走 queryCreateMeta 默认表单。
+ * seq 保证并发（打开弹窗 / 切换问题类型）时只有最后一次生效。
+ */
+async function loadTemplatesAndApply() {
+  const seq = ++templateApplySeq
+  const { defaultId, firstId } = await loadTemplateOptions()
+  if (seq !== templateApplySeq) return
+  // 用户已手动选过模板时不覆盖其选择
+  if (selectedTemplate.value) return
+  const target = defaultId || firstId
+  if (target) {
+    selectedTemplate.value = target
+    await handleTemplateChange(target)
+    return
+  }
+  await loadCreateMeta()
+}
+
+/** 按当前问题类型拉取「已启用」模板填充下拉（打开弹窗、切换问题类型时触发；大 pageSize 尽量取全）
+ * 返回默认模板 id（isDefault=1）与首个模板 id，均没有则返回空串 */
+async function loadTemplateOptions(): Promise<{ defaultId: string; firstId: string }> {
   const seq = ++templateReqSeq
   const cur = issueTypeOptions.value.find(o => o.value === newFormIssueTypeId.value)
   templateLoading.value = true
@@ -720,14 +772,20 @@ async function loadTemplateOptions() {
       // 按问题类型编码（如 TYPE10002）查询
       issueTypeCode: cur?.code,
     })
-    if (seq !== templateReqSeq) return
+    if (seq !== templateReqSeq) return { defaultId: '', firstId: '' }
     if (res?.success && res.data) {
       const list: any[] = res.data.list || []
-      const opts: { value: string; label: string; issueTypeId?: number; issueTypeCode?: string }[] = [{ value: DEFAULT_TEMPLATE, label: '请选择模板' }]
+      const opts: { value: string; label: string; issueTypeId?: number; issueTypeCode?: string; isDefault?: boolean }[] = []
+      let defaultId = ''
+      let firstId = ''
       for (const t of list) {
         const id = String(t.id)
         const issueTypeId: number | undefined = t.issueTypeId ?? t.issue_type?.issue_type_id
         const tabs: any[] = Array.isArray(t.tabs) ? t.tabs : []
+        // 默认模板标记：后端返回数字 1 / 字符串 '1' / 布尔
+        const isDefault = t.isDefault === 1 || t.isDefault === '1' || t.isDefault === true
+        if (isDefault && !defaultId) defaultId = id
+        if (!firstId) firstId = id
         templateCache[id] = {
           issue_type_id: issueTypeId,
           issue_type_code: t.issueTypeCode,
@@ -741,14 +799,23 @@ async function loadTemplateOptions() {
             ),
           })),
         }
-        opts.push({ value: id, label: t.templateName ?? `模板 ${id}`, issueTypeId, issueTypeCode: t.issueTypeCode })
+        // 选项文案只展示模板名：带「（默认）」后缀会一并显示在下拉选中框里
+        opts.push({
+          value: id,
+          label: t.templateName ?? `模板 ${id}`,
+          issueTypeId,
+          issueTypeCode: t.issueTypeCode,
+          isDefault,
+        })
       }
       templateOptions.value = opts
+      return { defaultId, firstId }
     }
   } catch {
   } finally {
     if (seq === templateReqSeq) templateLoading.value = false
   }
+  return { defaultId: '', firstId: '' }
 }
 
 function parseWidgetDataSafe(s: string): any[] {
@@ -773,8 +840,8 @@ function normalizeWidgets(ws: any[]): any[] {
 }
 
 const handleTemplateChange = async (val: string) => {
-  // 1) 选了"请选择模板"占位项：重新拉取 queryCreateMeta 渲染默认表单
-  if (!val || val === DEFAULT_TEMPLATE) {
+  // 1) 未选择模板（清空选择）：重新拉取 queryCreateMeta 渲染默认表单
+  if (!val) {
     // eslint-disable-next-line @typescript-eslint/no-floating-promises
     await loadCreateMeta()
     return
@@ -861,18 +928,19 @@ function postLoadAfterBuildTabs() {
 // 手动切问题类型：解除模板关联，避免不一致（除非对应模板下已就该 issue_type）
 function onIssueTypeChanged(_v: string) {
   // 切换问题类型：重置模板选择，重新拉取 queryCreateMeta 渲染默认表单
-  if (selectedTemplate.value && selectedTemplate.value !== DEFAULT_TEMPLATE) {
+  if (selectedTemplate.value) {
     const tpl = templateCache[selectedTemplate.value]
     const code = issueTypeOptions.value.find(o => o.value === _v)?.code
     const mismatch = tpl?.issue_type_code
       ? tpl.issue_type_code !== code
       : !!tpl?.issue_type_id && String(tpl.issue_type_id) !== String(_v) && `TYPE${tpl.issue_type_id}` !== code
     if (mismatch) {
-      selectedTemplate.value = DEFAULT_TEMPLATE
+      selectedTemplate.value = ''
     }
   }
+  // 有默认模板则应用模板内容，否则渲染默认表单（queryCreateMeta）
   // eslint-disable-next-line @typescript-eslint/no-floating-promises
-  loadCreateMeta()
+  loadTemplatesAndApply()
 }
 
 /**
@@ -1174,7 +1242,7 @@ function destroyRichEditors() {
 // 注：旧流程（getIssueCreateMeta）已替换为「选中模板 → 解析 widgetData → 渲染表单」，详见 handleTemplateChange
 
 function handleNewFormCancel() {
-  selectedTemplate.value = DEFAULT_TEMPLATE
+  selectedTemplate.value = ''
   customFieldOptionsMap.value = {}
   visible.value = false
 }
@@ -1267,10 +1335,10 @@ function collectAllFields(): CreateMetaField[] {
 }
 
 /**
- * 组织/问题类型的标准字段 type 约定（与后端 POST /issue/create 示例一致）
+ * 空间 / 问题类型的标准字段 type 约定（与后端 POST /issue/create 示例一致）
  */
 const ISSUETYPE_FIELD_TYPE = 'SELECT_LIST_SINGLE_ISSUETYPE'
-const ORGANIZATION_FIELD_TYPE = 'SELECT_LIST_SINGLE_ORGANIZATION'
+const SPACE_FIELD_TYPE = 'SELECT_LIST_SINGLE_SPACE'
 
 /**
  * 判断字段是否为空（空字符串/空数组/null/undefined 视为空）
@@ -1375,20 +1443,19 @@ function buildFieldValue(field: CreateMetaField, raw: unknown): unknown {
 
 /**
  * 构造 POST /issue/create 的 { inputFields: [...] }
- * 顺序：organization -> issuetype -> meta 中的自定义/标准字段（按 tab 顺序，空值也带 id/type 以防服务端默认值缺失）
+ * 顺序：space -> issuetype -> meta 中的自定义/标准字段（按 tab 顺序，空值也带 id/type 以防服务端默认值缺失）
  */
 function buildCreateIssuePayload(): CreateIssuePayload {
   const allFields = collectAllFields()
   const inputFields: CreateIssueInputField[] = []
 
-  // 1) 组织：提交所选空间的所属组织编码（空间未关联组织时不提交）
-  // TODO 后端支持空间字段后，在此追加 { id: 'space', value: spaceCode }
-  const orgCode = currentSpace.value?.organizationCode
-  if (orgCode) {
+  // 1) 空间：提交所选空间的编码 spaceCode（不再提交 organization）
+  const spaceCode = currentSpace.value?.spaceCode
+  if (spaceCode) {
     inputFields.push({
-      id: 'organization',
-      type: ORGANIZATION_FIELD_TYPE,
-      value: orgCode,
+      id: 'space',
+      type: SPACE_FIELD_TYPE,
+      value: spaceCode,
     })
   }
   // 2) 问题类型
@@ -1400,7 +1467,7 @@ function buildCreateIssuePayload(): CreateIssuePayload {
   })
 
   // 3) 其余字段（按 tab.sequence + tab 内顺序；project 不提交）
-  const seenIds = new Set<string>(['project', 'organization', 'issuetype'])
+  const seenIds = new Set<string>(['project', 'space', 'organization', 'issuetype'])
   for (const field of allFields) {
     const id = String(field.id ?? '').trim()
     if (!id || seenIds.has(id)) continue
@@ -1415,6 +1482,87 @@ function buildCreateIssuePayload(): CreateIssuePayload {
   }
 
   return { inputFields }
+}
+
+// ---------- 保存为模板：把当前表单字段 + 已填内容存成新模板 ----------
+const saveTplOpen = ref(false)
+const saveTplName = ref('')
+const saveTplSaving = ref(false)
+
+function openSaveTemplateModal() {
+  const hasField = newFormTabs.value.some(t => (t.issueFields?.length ?? 0) > 0)
+  if (!hasField) {
+    message.warning('当前表单没有可保存的字段')
+    return
+  }
+  saveTplName.value = ''
+  saveTplOpen.value = true
+}
+
+/** 表单值 → 模板默认值：dayjs 转字符串，其余尽量保持可 JSON 序列化 */
+function serializeTemplateValue(v: unknown): unknown {
+  if (v == null) return null
+  if (Array.isArray(v)) return v.map(serializeTemplateValue)
+  if (dayjs.isDayjs(v)) return v.format('YYYY-MM-DD HH:mm:ss')
+  if (typeof v === 'object') {
+    try { return JSON.parse(JSON.stringify(v)) } catch { return null }
+  }
+  return v
+}
+
+/** 提交保存：构造与模板管理一致的 payload（tabs[].widgetData 为 JSON 字符串），调 POST /template */
+async function handleSaveTemplate() {
+  const name = saveTplName.value.trim()
+  if (!name) {
+    message.warning('请输入模板名称')
+    return
+  }
+  saveTplSaving.value = true
+  try {
+    const isTab = newFormTabs.value.length > 1
+    const tabs = newFormTabs.value.map((t, idx) => ({
+      name: t.title || `表单${idx + 1}`,
+      is_tab: isTab,
+      tabOrder: idx + 1,
+      widgetData: JSON.stringify(
+        (t.issueFields ?? []).map((f: any) => ({
+          id: `t_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`,
+          name: f.name || f.id,
+          type: f.type,
+          fieldId: String(f.id),
+          options: { title: f.name || f.id, required: !!f.required, placeholder: f.description || '' },
+          required: !!f.required,
+          // 当前填写的内容作为该字段的默认值
+          defaultValue: serializeTemplateValue(newFormData.value[String(f.id)]),
+        })),
+      ),
+    }))
+    const res = await createTemplate({
+      templateName: name,
+      description: '',
+      organizationCode: currentSpace.value?.organizationCode || undefined,
+      spaceCode: currentSpace.value?.spaceCode || undefined,
+      spaceName: currentSpace.value?.spaceName || undefined,
+      issueTypeCode: currentIssueTypeCode(),
+      issueTypeName: issueTypeOptions.value.find(o => o.value === newFormIssueTypeId.value)?.label,
+      status: 1,
+      isDefault: 0,
+      // 从新建事项弹窗保存的属于用户自定义模板，仅自己可见
+      isCustom: 1,
+      tabs,
+    })
+    if (res?.success) {
+      message.success('已保存为模板')
+      saveTplOpen.value = false
+      // 刷新模板下拉（不改变当前选中项）
+      // eslint-disable-next-line @typescript-eslint/no-floating-promises
+      loadTemplateOptions()
+    }
+  } catch {
+    // 请求层已统一提示
+  } finally {
+    saveTplSaving.value = false
+  }
 }
 
 async function handleNewFormSubmit() {
@@ -1646,6 +1794,13 @@ async function saveEditForm() {
   height: auto;
   font-size: 16px;
   line-height: 1;
+}
+
+/* 保存为模板弹窗提示 */
+.save-tpl-tip {
+  font-size: 13px;
+  color: #8c8c8c;
+  margin-bottom: 10px;
 }
 
 /* ========== Footer：按钮区 + 细分隔线 ========== */

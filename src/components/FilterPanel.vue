@@ -1,7 +1,7 @@
 <template>
   <div class="filter-panel">
     <div class="filter-panel-header">
-      <span class="filter-title">全局筛选({{ conditions.length }})</span>
+      <span class="filter-title">全局筛选<span class="filter-count">{{ conditions.length }}</span></span>
       <div class="filter-actions">
         <span class="filter-logic-label">满足</span>
         <a-select v-model:value="logicLocal" size="small" class="filter-logic">
@@ -53,7 +53,6 @@
             mode="multiple"
             size="small"
             placeholder="请选择"
-            :max-tag-count="2"
             :options="selectOptionsOf(cond)"
             :loading="optionLoading[cond.field]"
             show-search
@@ -68,15 +67,40 @@
             mode="multiple"
             size="small"
             placeholder="搜索人员"
-            :max-tag-count="2"
-            :options="userOptionsOf(cond)"
             :filter-option="false"
             :loading="userLoading"
             class="value-input"
             @search="searchUsers"
             @focus="searchUsers('')"
             @change="(v: unknown, opts: unknown) => setUserValues(cond, v, opts)"
-          />
+          >
+            <!-- 选中标签：只显示姓名，账号与头像留在下拉选项 / hover 提示里，避免标签过长换行 -->
+            <template #tagRender="{ value, closable, onClose }">
+              <span class="user-tag" :title="userTagTitle(cond, String(value))">
+                <span class="user-tag-text">{{ userTagName(cond, String(value)) }}</span>
+                <CloseOutlined
+                  v-if="closable"
+                  class="user-tag-close"
+                  @mousedown.prevent
+                  @click.stop="onClose"
+                />
+              </span>
+            </template>
+            <a-select-option
+              v-for="opt in userOptionsOf(cond)"
+              :key="String(opt.value)"
+              :value="opt.value"
+              :label="opt.label"
+            >
+              <span class="user-option">
+                <a-avatar :size="18" :src="opt.avatarUrl || undefined" class="user-option-avatar">
+                  {{ initialOf(opt) }}
+                </a-avatar>
+                <span class="user-option-name">{{ opt.name || opt.label }}</span>
+                <span v-if="opt.account" class="user-option-account">（{{ opt.account }}）</span>
+              </span>
+            </a-select-option>
+          </a-select>
 
           <a-date-picker
             v-else-if="kindOf(cond) === 'date'"
@@ -116,9 +140,8 @@
     </div>
 
     <div class="filter-footer">
-      <span class="filter-footer-tip">「保存」会记住筛选，下次进入仍生效</span>
-      <a-button size="small" @click="emit('save')">保存</a-button>
-      <a-button size="small" type="primary" @click="emit('update:visible', false)">确定</a-button>
+      <a-button class="fp-btn" size="small" @click="emit('reset')">重置</a-button>
+      <a-button class="fp-btn fp-btn-primary" size="small" type="primary" @click="handleSave">保存</a-button>
     </div>
   </div>
 </template>
@@ -127,6 +150,7 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import dayjs from 'dayjs'
 import { Empty } from 'ant-design-vue'
+import { CloseOutlined } from '@ant-design/icons-vue'
 import {
   queryAvailableFields,
   queryIssueTypes,
@@ -134,7 +158,7 @@ import {
   queryUsers,
   getAvailableFieldOptions,
 } from '@/api/faiz'
-import type { AvailableFieldItem } from '@/types/faiz'
+import type { AvailableFieldItem, UserItem } from '@/types/faiz'
 import {
   OPERATORS,
   OPERATORS_BY_KIND,
@@ -164,9 +188,23 @@ const emit = defineEmits<{
   (e: 'update:modelValue', value: FilterCondition[]): void
   (e: 'update:logic', value: FilterLogic): void
   (e: 'save'): void
+  (e: 'reset'): void
 }>()
 
-type Option = { value: string; label: string }
+/** 保存：通知父级保存草稿后关闭面板 */
+function handleSave() {
+  emit('save')
+  emit('update:visible', false)
+}
+
+/** 选项：人员项额外带头像 / 姓名 / 账号（账号在括号中展示） */
+type Option = {
+  value: string
+  label: string
+  avatarUrl?: string
+  name?: string
+  account?: string
+}
 
 // ---------- 条件与逻辑：本地编辑，实时同步回父级 ----------
 const conditions = ref<FilterCondition[]>(JSON.parse(JSON.stringify(props.modelValue)))
@@ -336,9 +374,89 @@ let userSeq = 0
 let userTimer: ReturnType<typeof setTimeout> | undefined
 
 function userOptionsOf(c: FilterCondition): Option[] {
-  const base: Option[] = [{ value: CURRENT_USER, label: '当前用户' }, ...userOptions.value]
-  const extra = c.values.filter((v) => !base.some((o) => o.value === v)).map((v) => ({ value: v, label: c.labels?.[v] ?? v }))
+  const base: Option[] = [
+    { value: CURRENT_USER, label: '当前用户', name: '当前用户' },
+    ...userOptions.value,
+  ]
+  // 已选但不在当前搜索结果中的值：用记录的展示名回显（无头像时走默认头像）
+  const extra = c.values
+    .filter((v) => !base.some((o) => o.value === v))
+    .map((v) => {
+      const label = c.labels?.[v] ?? v
+      // labels 里存的是「姓名（账号）」，拆出姓名与账号，标签只显示姓名
+      const m = /^(.*?)（(.*)）$/.exec(label)
+      return m
+        ? { value: v, label, name: m[1], account: m[2] }
+        : { value: v, label, name: label }
+    })
   return [...base, ...extra]
+}
+
+/** 头像兜底文字：取姓名首字，无则账号首字 */
+function initialOf(opt: Option): string {
+  const s = (opt.name || opt.label || '').trim()
+  return s ? s.charAt(0) : '?'
+}
+
+/** 去掉「（账号）」后缀，只保留姓名 */
+function shortName(text: string): string {
+  const m = /^(.*?)（(.*)）$/.exec(text)
+  return m ? m[1] : text
+}
+
+/**
+ * 选中标签文字：只显示姓名
+ * 依次回退：当前搜索结果 → 「当前用户」→ 保存时记录的 labels → 原始值
+ * 只读 userOptions（稳定数组），不再每次新建选项列表
+ */
+function userTagName(c: FilterCondition, value: string): string {
+  const hit = userOptions.value.find((o) => String(o.value) === value)
+  if (hit?.name) return hit.name
+  if (value === CURRENT_USER) return '当前用户'
+  const saved = c.labels?.[value]
+  return saved ? shortName(saved) : value
+}
+
+/** 选中标签 hover 提示：姓名（账号） */
+function userTagTitle(c: FilterCondition, value: string): string {
+  const hit = userOptions.value.find((o) => String(o.value) === value)
+  if (hit) return hit.account ? `${hit.name || ''}（${hit.account}）` : hit.label
+  if (value === CURRENT_USER) return '当前用户'
+  return c.labels?.[value] ?? value
+}
+
+/** /user/query 结果 → 人员选项
+ * 唯一值取 memberId（接口返回的 userNo 可能为 null，用空值当 value 会导致选中一个勾上全部） */
+function mapUserOptions(list: UserItem[]): Option[] {
+  const seen = new Set<string>()
+  const opts: Option[] = []
+  for (const u of list) {
+    const value = String(u.memberId || u.userNo || u.coAccount || u.userCoAccount || '').trim()
+    if (!value || seen.has(value)) continue
+    seen.add(value)
+    const name = u.realName || u.coAccount || u.userCoAccount || value
+    // 括号中展示账号 coAccount（无则退回该人员唯一值）
+    const account = u.coAccount || u.userCoAccount || value
+    opts.push({
+      value,
+      label: `${name}（${account}）`,
+      avatarUrl: u.avatarUrl || u.userAvatar || '',
+      name,
+      account,
+    })
+  }
+  return opts
+}
+
+/** 预取人员列表：面板首次打开时执行一次，保证草稿里已选的人员也能回显姓名 */
+async function prefetchUsers() {
+  if (userOptions.value.length) return
+  try {
+    const res = await queryUsers({ keyword: '', isActive: 1, page: 1, pageSize: 200 })
+    userOptions.value = mapUserOptions(res?.data?.list || [])
+  } catch {
+    // 请求层已统一提示
+  }
 }
 
 function searchUsers(keyword: string) {
@@ -349,10 +467,7 @@ function searchUsers(keyword: string) {
     try {
       const res = await queryUsers({ keyword: keyword.trim(), page: 1, pageSize: 20 })
       if (seq !== userSeq) return
-      userOptions.value = (res?.data?.list || []).map((u) => {
-        const name = u.realName || u.coAccount || u.userCoAccount || u.userNo
-        return { value: u.userNo, label: name && name !== u.userNo ? `${name}（${u.userNo}）` : u.userNo }
-      })
+      userOptions.value = mapUserOptions(res?.data?.list || [])
     } catch {
       if (seq === userSeq) userOptions.value = []
     } finally {
@@ -366,8 +481,13 @@ function setUserValues(c: FilterCondition, v: unknown, opts: unknown) {
   setValues(c, v)
   const labels: Record<string, string> = {}
   const list = Array.isArray(opts) ? (opts as Option[]) : []
+  // option 上带 label（= 姓名（账号）），取不到时回退当前选项列表 / 已有记录
+  const known = new Map(userOptionsOf(c).map((o) => [String(o.value), o.label]))
   for (const val of c.values) {
-    labels[val] = list.find((o) => o?.value === val)?.label ?? c.labels?.[val] ?? val
+    labels[val] = list.find((o) => String(o?.value) === String(val))?.label
+      ?? known.get(String(val))
+      ?? c.labels?.[val]
+      ?? val
   }
   c.labels = labels
 }
@@ -392,6 +512,9 @@ function resetDefault() {
 }
 
 onMounted(async () => {
+  // 人员列表与字段列表并行预取：前者用于已选人员回显姓名/头像
+  // eslint-disable-next-line @typescript-eslint/no-floating-promises
+  prefetchUsers()
   await loadAvailableFields()
   conditions.value.forEach(ensureOptions)
 })
@@ -406,55 +529,81 @@ watch(
 </script>
 
 <style scoped>
+/* 视觉风格参考 Apple（SF 系统字体 / 灰阶层次 / 圆角卡片）与 Google（细边控件 / 蓝色焦点环） */
 .filter-panel {
-  background: #fff;
-  padding: 16px 20px;
+  padding: 14px 16px 12px;
   min-height: 220px;
+  background: #fff;
+  color: #1d1d1f;
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto,
+    'Helvetica Neue', 'PingFang SC', 'Microsoft YaHei', Arial, sans-serif;
 }
 
 .filter-panel-header {
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   margin-bottom: 12px;
 }
 
 .filter-title {
-  font-size: 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
   font-weight: 600;
-  color: #1f1f1f;
+  letter-spacing: 0.2px;
+  color: #1d1d1f;
+}
+
+.filter-count {
+  min-width: 18px;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 9px;
+  background: #f0f0f5;
+  color: #6e6e73;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 18px;
+  text-align: center;
 }
 
 .filter-actions {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 2px;
 }
 
 .filter-logic-label {
-  font-size: 13px;
-  color: #595959;
+  font-size: 12px;
+  color: #6e6e73;
 }
 
 .filter-logic {
-  width: 100px;
+  width: 104px;
 }
 
 .filter-action-link {
-  font-size: 13px;
-  color: #1677ff;
+  padding: 4px 8px;
+  border-radius: 8px;
+  font-size: 12px;
+  color: #6e6e73;
   cursor: pointer;
   user-select: none;
+  transition: background 0.15s ease, color 0.15s ease;
 }
 
 .filter-action-link:hover {
-  color: #4096ff;
+  background: rgba(60, 60, 67, 0.06);
+  color: #1d1d1f;
 }
 
 .filter-divider {
-  color: #d9d9d9;
-  font-size: 12px;
   margin: 0 2px;
+  font-size: 11px;
+  color: #e5e5ea;
 }
 
 .filter-conditions {
@@ -463,17 +612,27 @@ watch(
   gap: 8px;
 }
 
+/* 条件行：浅灰圆角卡片，hover 微加深；顶部对齐以支持值控件自适应增高 */
 .filter-row {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 8px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(118, 118, 128, 0.06);
+  transition: background 0.15s ease;
+}
+
+.filter-row:hover {
+  background: rgba(118, 118, 128, 0.1);
 }
 
 .condition-logic-text {
   flex-shrink: 0;
-  width: 24px;
-  font-size: 13px;
-  color: #8c8c8c;
+  width: 22px;
+  font-size: 12px;
+  line-height: 24px;
+  color: #6e6e73;
   text-align: center;
 }
 
@@ -498,21 +657,96 @@ watch(
 
 .value-none {
   font-size: 12px;
-  color: #bfbfbf;
+  color: #aeaeb2;
+}
+
+/* 人员选项：头像 + 姓名（账号） */
+.user-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+}
+
+.user-option-avatar {
+  flex-shrink: 0;
+  font-size: 11px;
+  background: #0a84ff;
+}
+
+.user-option-name {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.user-option-account {
+  flex-shrink: 0;
+  font-size: 12px;
+  color: #8e8e93;
+}
+
+/* 人员选中标签：紧凑胶囊，只显示姓名 */
+.user-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 140px;
+  height: 22px;
+  margin: 2px 4px 2px 0;
+  padding: 0 6px 0 8px;
+  border-radius: 6px;
+  background: rgba(118, 118, 128, 0.12);
+  color: #1d1d1f;
+  font-size: 12px;
+  line-height: 22px;
+  transition: background 0.15s ease;
+}
+
+.user-tag:hover {
+  background: rgba(118, 118, 128, 0.18);
+}
+
+.user-tag-text {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.user-tag-close {
+  flex-shrink: 0;
+  padding: 2px;
+  font-size: 10px;
+  color: #8e8e93;
+  cursor: pointer;
+  border-radius: 50%;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+
+.user-tag-close:hover {
+  background: rgba(60, 60, 67, 0.1);
+  color: #ff3b30;
 }
 
 .condition-delete {
   flex-shrink: 0;
-  width: 20px;
-  font-size: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 1px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  font-size: 15px;
   line-height: 1;
-  color: #bfbfbf;
-  text-align: center;
+  color: #aeaeb2;
   cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
 }
 
 .condition-delete:hover {
-  color: #ff4d4f;
+  background: rgba(255, 59, 48, 0.1);
+  color: #ff3b30;
 }
 
 .filter-add-row {
@@ -520,29 +754,124 @@ watch(
 }
 
 .filter-add-btn {
-  font-size: 13px;
-  color: #1677ff;
+  display: inline-flex;
+  align-items: center;
+  height: 30px;
+  padding: 0 12px;
+  border: 1px dashed #c7c7cc;
+  border-radius: 8px;
+  background: rgba(10, 132, 255, 0.04);
+  color: #0a84ff;
+  font-size: 12px;
   cursor: pointer;
   user-select: none;
+  transition: background 0.15s ease, border-color 0.15s ease;
 }
 
 .filter-add-btn:hover {
-  color: #4096ff;
+  background: rgba(10, 132, 255, 0.1);
+  border-color: #0a84ff;
 }
 
 .filter-footer {
   display: flex;
-  justify-content: flex-end;
   align-items: center;
+  justify-content: flex-end;
   gap: 8px;
-  margin-top: 16px;
+  margin-top: 14px;
   padding-top: 12px;
-  border-top: 1px solid #f0f0f0;
+  border-top: 1px solid rgba(60, 60, 67, 0.08);
 }
 
-.filter-footer-tip {
-  margin-right: auto;
+.fp-btn {
+  height: 30px;
+  padding: 0 16px;
+  border: 1px solid #d2d2d7;
+  border-radius: 999px;
+  background: #fff;
+  color: #1d1d1f;
+  font-size: 13px;
+  font-weight: 500;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+.fp-btn:hover {
+  background: #f5f5f7;
+}
+
+.fp-btn-primary,
+.fp-btn-primary:hover {
+  border-color: #0a84ff;
+  background: #0a84ff;
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(10, 132, 255, 0.28);
+}
+
+/* 控件：细边 + 圆角 + 蓝色焦点环 */
+.filter-panel :deep(.ant-select-sm .ant-select-selector),
+.filter-panel :deep(.ant-input-sm),
+.filter-panel :deep(.ant-input-number-sm),
+.filter-panel :deep(.ant-picker-small) {
+  border: 1px solid #d2d2d7 !important;
+  border-radius: 8px !important;
+  background: #fff;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.filter-panel :deep(.ant-select-sm:hover .ant-select-selector),
+.filter-panel :deep(.ant-input-sm:hover),
+.filter-panel :deep(.ant-picker-small:hover) {
+  border-color: #aeaeb2 !important;
+}
+
+.filter-panel :deep(.ant-select-focused .ant-select-selector),
+.filter-panel :deep(.ant-input-sm:focus),
+.filter-panel :deep(.ant-picker-focused) {
+  border-color: #0a84ff !important;
+  box-shadow: 0 0 0 3px rgba(10, 132, 255, 0.15) !important;
+}
+
+/* 多选选中框：按选中项数量自适应高度（换行展示全部标签，不折叠成 +N） */
+.filter-panel :deep(.ant-select-multiple .ant-select-selector) {
+  height: auto;
+  min-height: 24px;
+  padding-top: 2px;
+  padding-bottom: 2px;
+  align-content: flex-start;
+  flex-wrap: wrap;
+}
+
+.filter-panel :deep(.ant-select-selection-overflow) {
+  flex-wrap: wrap;
+}
+
+.filter-panel :deep(.ant-select-selection-overflow-item) {
+  flex: none;
+  max-width: 100%;
+}
+
+/* tagRender 自带样式，清掉 antd 默认标签底色/内边距 */
+.filter-panel :deep(.ant-select-multiple .ant-select-selection-item) {
+  max-width: 100%;
+  height: auto;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  border: none;
+  line-height: normal;
+}
+
+.filter-panel :deep(.ant-select-multiple .ant-select-selection-search) {
+  margin-inline-start: 2px;
+}
+
+.filter-panel :deep(.ant-empty) {
+  margin: 24px 0;
+}
+
+.filter-panel :deep(.ant-empty-description) {
   font-size: 12px;
-  color: #8c8c8c;
+  color: #8e8e93;
 }
 </style>
+

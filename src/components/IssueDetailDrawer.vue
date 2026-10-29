@@ -424,7 +424,7 @@
               </a-collapse-panel>
             </a-collapse>
 
-            <!-- 研发活动（折叠板，位于描述下方）：需求文档 / 应用名称 / 代码分支 / 测试计划 / 缺陷管理 / 线上故障 -->
+            <!-- ========== 暂时隐藏：研发活动（折叠板，位于描述下方）：需求文档 / 应用名称 / 代码分支 / 测试计划 / 缺陷管理 / 线上故障 ==========
             <a-collapse
               v-model:activeKey="rdCollapseKeys"
               ghost
@@ -442,6 +442,7 @@
                 </div>
               </a-collapse-panel>
             </a-collapse>
+            ========== /暂时隐藏：研发活动 ========== -->
 
             <!-- ========== 暂时注释：关联 OKR（折叠板） ==========
             <a-collapse
@@ -803,7 +804,7 @@ import { message } from 'ant-design-vue'
 import type { DetailData, DetailField, DetailLayoutGroup } from '@/types/faiz'
 import { FIELD_TYPE } from '@/types/fieldType'
 import { sanitizeHtml } from '@/utils/sanitizeHtml'
-import IssueRdActivity from '@/components/IssueRdActivity.vue'
+// 暂时隐藏研发活动，恢复时取消注释：import IssueRdActivity from '@/components/IssueRdActivity.vue'
 import FieldValueEditor from '@/components/FieldValueEditor.vue'
 import WorkflowViewModal from '@/components/WorkflowViewModal.vue'
 

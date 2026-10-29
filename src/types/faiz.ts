@@ -26,6 +26,12 @@ export interface Template {
   createdAt?: string
   updatedAt?: string
   tabs: TemplateTab[]
+  /** 是否自定义：0-否（空间模板，空间内所有人可见）,1-是（用户自建，仅创建人可见） */
+  isCustom?: number
+  /** 创建人 memberId（is_custom=1 时的归属人） */
+  createdBy?: string
+  /** 更新人 memberId */
+  updatedBy?: string
 }
 
 /** 模板分页查询请求（对应后端 QueryTemplatesRequest） */
@@ -43,6 +49,8 @@ export interface TemplateQueryRequest {
   organizationCode?: string
   /** 按所属空间筛选：空间编码 */
   spaceCode?: string
+  /** true-返回该空间下全部模板（含他人自定义，管理页用）；false/不传-只返回空间模板与自己的自定义 */
+  includeCustom?: boolean
 }
 
 /** 模板分页查询结果（对应后端 TemplatePageVO） */

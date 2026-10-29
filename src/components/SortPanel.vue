@@ -1,7 +1,7 @@
 <template>
   <div class="sort-panel">
     <div class="sort-panel-header">
-      <span class="sort-title">排序({{ rows.length }})</span>
+      <span class="sort-title">排序<span class="sort-count">{{ rows.length }}</span></span>
       <div class="sort-actions">
         <a-dropdown :trigger="['click']">
           <span class="sort-action-link">复制</span>
@@ -20,6 +20,8 @@
     </div>
 
     <div class="sort-conditions">
+      <div v-if="!rows.length" class="sort-empty">暂无排序条件，将按默认顺序展示</div>
+
       <div
         v-for="(cond, index) in rows"
         :key="index"
@@ -31,6 +33,9 @@
           class="sort-field"
           size="small"
           placeholder="选择字段"
+          :loading="fieldLoading"
+          show-search
+          option-filter-prop="label"
         >
           <a-select-option
             v-for="f in fieldOptions"
@@ -78,8 +83,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
-import type { SortItem } from '@/types/faiz'
+import { computed, onMounted, ref, watch } from 'vue'
+import { queryAvailableFields } from '@/api/faiz'
+import type { AvailableFieldItem, SortItem } from '@/types/faiz'
 
 interface SortRow {
   fieldId: string
@@ -96,30 +102,68 @@ const emit = defineEmits<{
   (e: 'update:modelValue', value: SortItem[]): void
 }>()
 
-const BASE_FIELD_OPTIONS = [
-  { value: 'summary', label: '概要' },
-  { value: 'issuekey', label: '编号' },
-  { value: 'status', label: '状态' },
-  { value: 'priority', label: '优先级' },
-  { value: 'issuetype', label: '分类' },
-  { value: 'assignee', label: '经办人' },
-  { value: 'createtime', label: '创建时间' },
-  { value: 'updated', label: '更新时间' },
-]
+// ---------- 字段：与全局筛选一致，取「可用字段接口」，接口未返回的常用系统字段作兜底 ----------
+const fieldLoading = ref(false)
+const availableFields = ref<AvailableFieldItem[]>([])
 
-// 当前已选字段不在基础列表时，追加展示，避免 select 显示原始 fieldId
+const SYSTEM_FIELD_LABELS: Record<string, string> = {
+  issuekey: '编号',
+  summary: '概要',
+  status: '状态',
+  priority: '优先级',
+  issuetype: '分类',
+  assignee: '经办人',
+  creator: '创建人',
+  reporter: '报告人',
+  createtime: '创建时间',
+  created: '创建时间',
+  updated: '更新时间',
+}
+
 const fieldOptions = computed(() => {
-  const known = new Set(BASE_FIELD_OPTIONS.map(f => f.value))
-  const extra: { value: string; label: string }[] = []
+  const list: { value: string; label: string }[] = []
+  const known = new Set<string>()
+
+  // 1) 接口返回的可用字段（含自定义字段，展示中文名）
+  for (const f of availableFields.value) {
+    if (known.has(f.fieldId)) continue
+    known.add(f.fieldId)
+    list.push({ value: f.fieldId, label: f.fieldName })
+  }
+
+  // 2) 常用系统字段兜底（接口未返回时仍可选）
+  for (const [id, label] of Object.entries(SYSTEM_FIELD_LABELS)) {
+    if (!known.has(id)) {
+      known.add(id)
+      list.push({ value: id, label })
+    }
+  }
+
+  // 3) 已选字段不在上述列表时，追加展示，避免 select 显示原始 fieldId
   for (const item of props.modelValue || []) {
     const id = item.field?.id
     if (id && !known.has(id)) {
       known.add(id)
-      extra.push({ value: id, label: id })
+      list.push({ value: id, label: id })
     }
   }
-  return [...BASE_FIELD_OPTIONS, ...extra]
+
+  return list
 })
+
+async function loadAvailableFields() {
+  fieldLoading.value = true
+  try {
+    const res = await queryAvailableFields({ page: 1, pageSize: 200, searchKey: '' })
+    if (res.success && res.data?.list) availableFields.value = res.data.list.filter((f) => !f.obsolete)
+  } catch {
+    availableFields.value = []
+  } finally {
+    fieldLoading.value = false
+  }
+}
+
+onMounted(loadAvailableFields)
 
 const rows = ref<SortRow[]>([])
 
@@ -182,23 +226,45 @@ function handleClear() {
 </script>
 
 <style scoped>
+/* 与全局筛选面板保持同一套视觉规范：Apple 灰阶层次 + Google 细边控件/蓝色焦点环 */
 .sort-panel {
-  background: #fff;
-  padding: 16px 20px;
+  padding: 14px 16px 12px;
   min-height: 120px;
+  background: #fff;
+  color: #1d1d1f;
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto,
+    'Helvetica Neue', 'PingFang SC', 'Microsoft YaHei', Arial, sans-serif;
 }
 
 .sort-panel-header {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  margin-bottom: 10px;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
 }
 
 .sort-title {
-  font-size: 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
   font-weight: 600;
-  color: #1f1f1f;
+  letter-spacing: 0.2px;
+  color: #1d1d1f;
+}
+
+.sort-count {
+  min-width: 18px;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 9px;
+  background: #f0f0f5;
+  color: #6e6e73;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 18px;
+  text-align: center;
 }
 
 .sort-actions {
@@ -208,20 +274,24 @@ function handleClear() {
 }
 
 .sort-action-link {
+  padding: 4px 8px;
+  border-radius: 8px;
   font-size: 12px;
-  color: #1677ff;
+  color: #6e6e73;
   cursor: pointer;
-  padding: 1px 3px;
+  user-select: none;
+  transition: background 0.15s ease, color 0.15s ease;
 }
 
 .sort-action-link:hover {
-  color: #4096ff;
+  background: rgba(60, 60, 67, 0.06);
+  color: #1d1d1f;
 }
 
 .sort-divider {
-  color: #d9d9d9;
   margin: 0 2px;
-  font-size: 12px;
+  font-size: 11px;
+  color: #e5e5ea;
 }
 
 .sort-conditions {
@@ -230,10 +300,26 @@ function handleClear() {
   gap: 8px;
 }
 
+.sort-empty {
+  padding: 24px 0;
+  font-size: 12px;
+  color: #8e8e93;
+  text-align: center;
+}
+
+/* 排序行：与筛选条件行一致的浅灰圆角卡片 */
 .sort-row {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 8px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(118, 118, 128, 0.06);
+  transition: background 0.15s ease;
+}
+
+.sort-row:hover {
+  background: rgba(118, 118, 128, 0.1);
 }
 
 .sort-field {
@@ -246,62 +332,77 @@ function handleClear() {
   min-width: 90px;
 }
 
-.sort-more {
-  color: #bfbfbf;
-  cursor: pointer;
-  padding: 4px;
-  font-size: 16px;
+.sort-more,
+.sort-delete {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 1px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  font-size: 15px;
   line-height: 1;
-  border-radius: 4px;
-  transition: all 0.15s;
+  color: #aeaeb2;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
 }
 
 .sort-more:hover {
-  color: #595959;
-  background: #f5f5f5;
-}
-
-.sort-delete {
-  color: #bfbfbf;
-  cursor: pointer;
-  padding: 4px;
-  font-size: 16px;
-  line-height: 1;
-  border-radius: 4px;
-  transition: all 0.15s;
+  background: rgba(60, 60, 67, 0.08);
+  color: #1d1d1f;
 }
 
 .sort-delete:hover {
-  color: #ff4d4f;
-  background: #fff1f0;
+  background: rgba(255, 59, 48, 0.1);
+  color: #ff3b30;
 }
 
 .sort-delete-placeholder {
-  width: 16px;
-  min-width: 16px;
-  height: 16px;
+  flex-shrink: 0;
+  width: 22px;
+  min-width: 22px;
+  height: 22px;
 }
 
 .sort-add-row {
-  padding-top: 4px;
+  padding-left: 10px;
 }
 
 .sort-add-btn {
   display: inline-flex;
   align-items: center;
-  font-size: 13px;
-  color: #1677ff;
+  height: 30px;
+  padding: 0 12px;
+  border: 1px dashed #c7c7cc;
+  border-radius: 8px;
+  background: rgba(10, 132, 255, 0.04);
+  color: #0a84ff;
+  font-size: 12px;
   cursor: pointer;
-  padding: 4px 12px;
-  border: 1px dashed #91caff;
-  border-radius: 6px;
-  background: #f0f7ff;
-  transition: all 0.15s;
+  user-select: none;
+  transition: background 0.15s ease, border-color 0.15s ease;
 }
 
 .sort-add-btn:hover {
-  color: #4096ff;
-  border-color: #1677ff;
-  background: #e6f4ff;
+  background: rgba(10, 132, 255, 0.1);
+  border-color: #0a84ff;
+}
+
+/* 控件：细边 + 圆角 + 蓝色焦点环 */
+.sort-panel :deep(.ant-select-sm .ant-select-selector) {
+  border: 1px solid #d2d2d7 !important;
+  border-radius: 8px !important;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.sort-panel :deep(.ant-select-sm:hover .ant-select-selector) {
+  border-color: #aeaeb2 !important;
+}
+
+.sort-panel :deep(.ant-select-focused .ant-select-selector) {
+  border-color: #0a84ff !important;
+  box-shadow: 0 0 0 3px rgba(10, 132, 255, 0.15) !important;
 }
 </style>

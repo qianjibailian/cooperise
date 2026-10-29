@@ -26,9 +26,7 @@
           @focus="onSearchFocus"
           @blur="onSearchBlur"
           @press-enter="handleEnter"
-          @keydown.esc="closeSearchDropdown"
-          @keydown.up.prevent="moveActive(-1)"
-          @keydown.down.prevent="moveActive(1)"
+          @keydown="onSearchKeydown"
         >
           <template #prefix>
             <SearchOutlined style="color: #bbb" />
@@ -117,12 +115,8 @@
         <span>新建</span>
       </button>
 
-      <a-popover
-        v-model:open="userPopoverOpen"
-        :trigger="[]"
-        placement="bottomRight"
-        overlay-class-name="user-dropdown-popover"
-      >
+      <!-- 用户菜单：自绘浮层（不受点击页面其它位置影响，仅点头像或菜单项收起） -->
+      <div class="user-dropdown-wrap">
         <div class="user-trigger" :class="{ active: userPopoverOpen }" @click="toggleUserPopover">
           <a-avatar :size="30" :src="avatarSrc" class="user-avatar" :load-error="onAvatarError">
             {{ userInitials }}
@@ -130,7 +124,7 @@
           <span class="user-name">{{ username }}</span>
           <DownOutlined class="user-caret" />
         </div>
-        <template #content>
+        <div v-if="userPopoverOpen" class="user-dropdown-popover user-dropdown-float">
           <div class="user-panel">
             <div class="user-panel-header">
               <a-avatar :size="48" :src="avatarSrc" class="user-panel-avatar" :load-error="onAvatarError">
@@ -168,8 +162,8 @@
               <div class="user-menu-text" @click="handleMenuSelect('admin')">管理后台</div>
             </div>
           </div>
-        </template>
-      </a-popover>
+        </div>
+      </div>
     </div>
   </header>
 </template>
@@ -211,20 +205,11 @@ const emit = defineEmits<{
 const searchValue = ref('')
 const dropdownOpen = ref(false)
 const userPopoverOpen = ref(false)
-// 更新门闩：防止同一 flush 中重复对同一个 open ref 赋值触发 checkRecursiveUpdates
-let _popoverUpdating = false
-
 function openSearchDropdown() { dropdownOpen.value = true }
 function closeSearchDropdown() { dropdownOpen.value = false }
 
 function setUserPopoverOpen(next: boolean) {
-  if (_popoverUpdating) return
-  if (userPopoverOpen.value === next) return
-  _popoverUpdating = true
-  nextTick(() => {
-    userPopoverOpen.value = next
-    _popoverUpdating = false
-  })
+  userPopoverOpen.value = next
 }
 function toggleUserPopover() { setUserPopoverOpen(!userPopoverOpen.value) }
 
@@ -303,6 +288,24 @@ function moveActive(step: number) {
   if (!n) return
   openSearchDropdown()
   activeIndex.value = (activeIndex.value + step + n) % n
+}
+
+/** 统一处理搜索框按键：esc 关闭面板、上下键移动选中项
+ * （多个 @keydown.xxx 修饰符监听会被 Vue 合成为数组，触发 a-input 的 onKeydown 类型校验告警） */
+function onSearchKeydown(e: KeyboardEvent) {
+  if (e.key === 'Escape') {
+    closeSearchDropdown()
+    return
+  }
+  if (e.key === 'ArrowUp') {
+    e.preventDefault()
+    moveActive(-1)
+    return
+  }
+  if (e.key === 'ArrowDown') {
+    e.preventDefault()
+    moveActive(1)
+  }
 }
 
 /** 关键字高亮：不区分大小写拆分为命中 / 未命中片段 */
@@ -605,16 +608,27 @@ async function handleLogout() {
 .user-trigger.active .user-caret {
   transform: rotate(180deg);
 }
+
+.user-dropdown-wrap {
+  position: relative;
+}
+
+/* 自绘浮层：绝对定位于头像下方，替换 a-popover（避免点击页面其它位置时自动收起） */
+.user-dropdown-float {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  z-index: 1050;
+  background: #fff;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid #f0f0f0;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+}
 </style>
 
 <style>
-.user-dropdown-popover .ant-popover-inner {
-  padding: 0 !important;
-  border-radius: 12px !important;
-  overflow: hidden;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12) !important;
-  border: 1px solid #f0f0f0;
-}
+/* 浮层已改为自绘（.user-dropdown-float），不再使用 ant-popover 结构 */
 
 .search-dropdown {
   width: 100%;
@@ -801,10 +815,6 @@ async function handleLogout() {
   border: 1px solid rgba(0, 0, 0, 0.06);
   border-radius: 12px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
-}
-
-.user-dropdown-popover .ant-popover-inner-content {
-  padding: 0 !important;
 }
 
 .user-panel {
