@@ -51,11 +51,10 @@
                 :filter-option="filterSpaceOption"
                 placeholder="请选择空间"
               >
-                <a-select-option v-for="sp in spaceOptions" :key="sp.id" :value="sp.id" :label="`${sp.spaceName} ${sp.spaceCode}`">
+                <a-select-option v-for="sp in spaceOptions" :key="sp.id" :value="sp.id" :label="sp.spaceName">
                   <span class="space-option">
                     <span class="space-option-icon" :style="{ background: sp.color || '#0A84FF' }">{{ spaceAvatarText(sp.spaceName) }}</span>
                     <span class="space-option-name">{{ sp.spaceName }}</span>
-                    <span class="space-option-key">{{ sp.spaceCode }}</span>
                   </span>
                 </a-select-option>
                 <template #notFoundContent>
@@ -384,8 +383,12 @@ function spaceAvatarText(name?: string) {
   const t = (name || '').trim()
   return /^[a-zA-Z]/.test(t) ? t.slice(0, 2).toUpperCase() : t.slice(0, 1)
 }
+/** 按空间名称或编码搜索（label 只放名称，避免选中后回显编码） */
 function filterSpaceOption(input: string, option: any) {
-  return String(option?.label ?? '').toLowerCase().includes(input.trim().toLowerCase())
+  const kw = input.trim().toLowerCase()
+  const code = spaceOptions.value.find(sp => sp.id === option?.value)?.spaceCode
+  return String(option?.label ?? '').toLowerCase().includes(kw)
+    || String(code ?? '').toLowerCase().includes(kw)
 }
 
 /** 当前所选空间的所属组织编码（未选择或空间未关联组织时为 undefined） */
@@ -413,19 +416,19 @@ const issueTypeOptions = ref<{ value: string; label: string; code?: string; colo
 const issueTypeLoading = ref(false)
 let issueTypeReqSeq = 0
 
-/** 按所选空间的所属组织拉取启用的问题类型；空间未关联组织时拉取全部 */
+/** 按所选空间拉取启用的问题类型（按 spaceCode 查询）；未选空间时拉取全部 */
 async function loadIssueTypesByOrg() {
   if (isEditMode.value) return
   const seq = ++issueTypeReqSeq
   issueTypeLoading.value = true
   try {
-    const organizationCode = await currentOrgCode()
+    if (spaceLoadingReq) await spaceLoadingReq
     if (seq !== issueTypeReqSeq) return
     const res = await queryIssueTypes({
       page: 1,
       pageSize: 999,
       status: 1,
-      organizationCode,
+      spaceCode: currentSpace.value?.spaceCode,
     })
     if (seq !== issueTypeReqSeq || !res?.success) return
     issueTypeOptions.value = (res.data?.list || []).map(t => ({ value: String(t.id), label: t.issueTypeName, code: t.issueTypeCode, color: t.color, iconUri: t.iconUri }))
@@ -1475,7 +1478,6 @@ async function saveEditForm() {
 .space-option { display: inline-flex; align-items: center; gap: 8px; max-width: 100%; vertical-align: middle; }
 .space-option-icon { width: 20px; height: 20px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 6px; font-size: 11px; font-weight: 600; color: #fff; }
 .space-option-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.space-option-key { flex-shrink: 0; padding: 0 5px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11px; line-height: 18px; color: #6e6e73; background: #f2f2f5; border-radius: 5px; }
 /* 问题类型下拉：颜色图标 + 名称 */
 .it-option { display: inline-flex; align-items: center; gap: 8px; max-width: 100%; vertical-align: middle; }
 .it-option-icon { width: 20px; height: 20px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 6px; font-size: 12px; color: #fff; }

@@ -280,10 +280,7 @@ const defIssueTypeOptions = ref<IssueTypeOption[]>([])
 const defIssueTypeLoading = ref(false)
 let defIssueTypeSeq = 0
 
-/**
- * 拉取所属空间下启用的问题类型：按 spaceCode 查询；
- * 后端按空间筛选就绪前，同时按空间所属组织查询，并排除明确属于其他空间的类型
- */
+/** 拉取所属空间下启用的问题类型（按 spaceCode 查询） */
 async function loadDefIssueTypes(spaceCode?: string) {
   const seq = ++defIssueTypeSeq
   if (!spaceCode) {
@@ -292,9 +289,7 @@ async function loadDefIssueTypes(spaceCode?: string) {
   }
   defIssueTypeLoading.value = true
   try {
-    const organizationCode = await orgCodeOfSpace(spaceCode)
-    if (seq !== defIssueTypeSeq) return
-    const res = await queryIssueTypes({ page: 1, pageSize: 999, status: 1, spaceCode, organizationCode })
+    const res = await queryIssueTypes({ page: 1, pageSize: 999, status: 1, spaceCode })
     if (seq !== defIssueTypeSeq) return
     const list = res?.success ? res.data?.list || [] : []
     defIssueTypeOptions.value = list.filter((t) => !t.spaceCode || t.spaceCode === spaceCode).map(toIssueTypeOption)

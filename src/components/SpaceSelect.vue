@@ -11,7 +11,7 @@
     style="width: 100%"
     @update:value="onChange"
   >
-    <a-select-option v-for="sp in options" :key="sp.spaceCode" :value="sp.spaceCode" :label="`${sp.spaceName} ${sp.spaceCode}`">
+    <a-select-option v-for="sp in options" :key="sp.spaceCode" :value="sp.spaceCode" :label="sp.spaceName">
       <span class="space-select-option">
         <span class="space-select-icon" :style="{ background: sp.color || '#0A84FF' }">{{ spaceAvatarText(sp.spaceName) }}</span>
         <span class="space-select-name">{{ sp.spaceName }}</span>
@@ -53,8 +53,11 @@ const { spaces, loading, ensureLoaded, findSpace } = useSpaces()
 /** 只展示启用空间；当前已选的停用空间保留，保证回显 */
 const options = computed(() => spaces.value.filter(s => s.status === 1 || s.spaceCode === props.modelValue))
 
+/** 按空间名称或编码搜索（label 只放名称，避免选中后回显编码） */
 function filterOption(input: string, option: any) {
-  return String(option?.label ?? '').toLowerCase().includes(input.trim().toLowerCase())
+  const kw = input.trim().toLowerCase()
+  return String(option?.label ?? '').toLowerCase().includes(kw)
+    || String(option?.value ?? '').toLowerCase().includes(kw)
 }
 
 function onChange(v?: string) {

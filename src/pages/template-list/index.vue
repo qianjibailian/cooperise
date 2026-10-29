@@ -535,17 +535,14 @@ interface Template {
   updatedAt: string
 }
 
-const { spaceNameOf, findSpace, orgCodeOfSpace } = useSpaces()
+const { spaceNameOf, findSpace } = useSpaces()
 
 /** 在空间内管理（空间首页嵌入）时传入：列表只看该空间，新建 / 编辑固定归属该空间 */
 const props = defineProps<{ spaceCode?: string }>()
 
-/**
- * 空间下启用的问题类型（筛选 / 编辑弹窗共用）：
- * 按 spaceCode 查询；后端按空间筛选就绪前，同时按空间所属组织查询，并排除明确属于其他空间的类型
- */
+/** 空间下启用的问题类型（筛选 / 编辑弹窗共用，按 spaceCode 查询） */
 async function querySpaceIssueTypes(spaceCode?: string): Promise<IssueTypeItem[]> {
-  const res = await queryIssueTypes({ page: 1, pageSize: 999, status: 1, spaceCode, organizationCode: await orgCodeOfSpace(spaceCode) })
+  const res = await queryIssueTypes({ page: 1, pageSize: 999, status: 1, spaceCode })
   const list = res?.success ? res.data?.list || [] : []
   return spaceCode ? list.filter(t => !t.spaceCode || t.spaceCode === spaceCode) : list
 }
