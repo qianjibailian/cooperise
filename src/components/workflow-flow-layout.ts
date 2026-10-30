@@ -89,7 +89,14 @@ export function mkLFEdge(id: string, source: string, target: string, branchName:
 }
 
 /**
- * WorkflowNode[]（树形多后续节点 + 回退引用）→ LogicFlow graphData，家族树分层布局。
+ * WorkflowNode[]（树形多后续节点 + 回退引用）→ LogicFlow graphData。
+ *
+ * 后端返回的是「展开树」：同一个 nodeId 会挂在多个父节点的 nextNodes 里（如「暂停」同时挂在 10 个
+ * 节点下，且自身 backToNodeIds 指向全部上游）。按树逐个展开会产生 11 个「暂停」节点、上百条回退线。
+ * 因此这里先把图折叠成 DAG：节点按 nodeId 去重、正向边与回退边各自去重（每条 (源, 目标) 只留一条）。
+ * 布局改为分层：层级 = 到起点的最长路径（x 按层级展开），y 先让叶子依次占行、父节点居中于子节点，
+ * 再按层内顺序拉开间距，避免多个父共享同一子节点时坐标重叠。
+ *
  * nodeStates：nodeId → 节点运行状态（current/done/pending），用于只读流程图按状态着色。
  */
 export function workflowToFlow(
@@ -100,74 +107,156 @@ export function workflowToFlow(
   const nodes: LFNode[] = []
   const edges: LFEdge[] = []
 
-  // 记录 nodeId → 画布节点 id（用于回退箭头定位已放置节点）
-  const lfIdByNodeId = new Map<string, string>()
-  // 回退引用收集：{ 源节点画布id, 目标节点 nodeId }，布局完成后统一建回退边（不参与分层，避免环）
-  const backRefs: { source: string; targetNodeId: string }[] = []
-
-  // 从左到右的树形布局（与节点左入 / 右出锚点一致）：层级沿 x 展开，叶子沿 y 排列，父节点垂直居中于子树
+  // 从左到右布局（与节点左入 / 右出锚点一致）：层级沿 x 展开，叶子沿 y 排列
   const NODE_W = 168
   const NODE_H = 56
   const COL_GAP = 96 // 层级间水平间距（留出连线名称的位置）
-  const ROW_GAP = 28 // 叶子节点垂直间距
-  const TREE_GAP = 0.6 // 多棵独立流程树之间额外空出的行数
+  const ROW_GAP = 28 // 同一层级相邻节点的垂直间距
   const X0 = 120
   const Y0 = 80
 
-  interface TNode {
-    wf: WorkflowNode
-    children: TNode[]
-    x: number
-    y: number
+  // ---------- 1. 折叠成 DAG：同一 nodeId 只保留一个画布节点 ----------
+  let anonSeq = 0
+  const keyOf = new WeakMap<WorkflowNode, string>()
+  const byKey = new Map<string, WorkflowNode>()
+
+  /** 节点去重键：无 nodeId 的历史数据按出现顺序生成匿名键（各自独立） */
+  const keyFor = (n: WorkflowNode): string => {
+    const cached = keyOf.get(n)
+    if (cached) return cached
+    const key = n.nodeId?.trim() || `__anon_${++anonSeq}`
+    keyOf.set(n, key)
+    return key
   }
 
-  const buildTree = (n: WorkflowNode): TNode => ({
-    wf: n,
-    children: (n.nextNodes ?? []).map(buildTree),
-    x: 0,
-    y: 0,
-  })
-
-  let leafSeq = 0
-  const layout = (tn: TNode, depth: number) => {
-    const kids = tn.children
-    if (!kids.length) {
-      tn.y = Y0 + leafSeq * (NODE_H + ROW_GAP)
-      leafSeq++
-    } else {
-      for (const k of kids) layout(k, depth + 1)
-      tn.y = (kids[0].y + kids[kids.length - 1].y) / 2
-    }
-    tn.x = X0 + depth * (NODE_W + COL_GAP)
+  const collect = (n: WorkflowNode) => {
+    const key = keyFor(n)
+    if (!byKey.has(key)) byKey.set(key, n)
+    for (const c of n.nextNodes ?? []) collect(c)
   }
+  for (const n of list) collect(n)
 
-  // 放置节点 + 建正向边（回退边最后统一补）
-  const place = (n: WorkflowNode, tn: TNode): string => {
-    const id = nid()
-    nodes.push(mkLFNode(id, n, tn.x, tn.y, nodeStates?.[n.nodeId ?? ''] ?? 'pending'))
-    if (n.nodeId) lfIdByNodeId.set(n.nodeId, id)
+  const childrenKeys = new Map<string, string[]>()
+  const branchNames = new Map<string, string>()
+  const backTargets = new Map<string, string[]>()
+
+  const walkEdges = (n: WorkflowNode, seen: Set<string>) => {
+    const key = keyFor(n)
+    if (seen.has(key)) return // 同一节点首次展开时已建过出边，避免重复遍历
+    seen.add(key)
+
     for (const bid of n.backToNodeIds ?? []) {
-      if (bid) backRefs.push({ source: id, targetNodeId: bid })
+      const target = String(bid ?? '').trim()
+      if (!target || target === key || !byKey.has(target)) continue
+      const arr = backTargets.get(key) ?? []
+      if (!arr.includes(target)) arr.push(target)
+      backTargets.set(key, arr)
     }
-    tn.children.forEach((c) => {
-      const cid = place(c.wf, c)
-      edges.push(mkLFEdge(nid(), id, cid, c.wf.branchName ?? ''))
-    })
-    return id
+
+    for (const c of n.nextNodes ?? []) {
+      const ck = keyFor(c)
+      if (ck === key) continue
+      const arr = childrenKeys.get(key) ?? []
+      if (!arr.includes(ck)) {
+        arr.push(ck)
+        childrenKeys.set(key, arr)
+        const name = (c.branchName ?? '').trim()
+        if (name) branchNames.set(`${key}|${ck}`, name)
+      }
+      walkEdges(c, seen)
+    }
+  }
+  const seen = new Set<string>()
+  for (const n of list) walkEdges(n, seen)
+
+  const allKeys = [...byKey.keys()]
+
+  // ---------- 2. 分层：层级 = 到起点的最长路径 ----------
+  const parentCount = new Map<string, number>(allKeys.map((k) => [k, 0]))
+  for (const cs of childrenKeys.values()) {
+    for (const c of cs) parentCount.set(c, (parentCount.get(c) ?? 0) + 1)
+  }
+  const levels = new Map<string, number>()
+  const queue = allKeys.filter((k) => (parentCount.get(k) ?? 0) === 0)
+  for (const k of queue) levels.set(k, 0)
+  for (let i = 0; i < queue.length; i++) {
+    const cur = queue[i]
+    const lv = levels.get(cur) ?? 0
+    for (const c of childrenKeys.get(cur) ?? []) {
+      levels.set(c, Math.max(levels.get(c) ?? 0, lv + 1))
+      const left = (parentCount.get(c) ?? 1) - 1
+      parentCount.set(c, left)
+      if (left === 0) queue.push(c)
+    }
+  }
+  // 兜底：正向边理论上无环，极端数据下未分层的放第 0 层
+  for (const k of allKeys) if (!levels.has(k)) levels.set(k, 0)
+
+  // ---------- 3. y 坐标：叶子依次占行，父节点居中于子节点，再按层内去重叠 ----------
+  const yOf = new Map<string, number>()
+  let cursor = 0
+  const byLevelDesc = [...allKeys].sort((a, b) => (levels.get(b) ?? 0) - (levels.get(a) ?? 0))
+  for (const k of byLevelDesc) {
+    const ys = (childrenKeys.get(k) ?? [])
+      .map((c) => yOf.get(c))
+      .filter((v): v is number => typeof v === 'number')
+    if (!ys.length) {
+      yOf.set(k, Y0 + cursor * (NODE_H + ROW_GAP))
+      cursor++
+      continue
+    }
+    yOf.set(k, (Math.min(...ys) + Math.max(...ys)) / 2)
+  }
+  // 多个父共享同一子节点时会算出相同的 y，按层内顺序拉开间距
+  const keysByLevel = new Map<number, string[]>()
+  for (const k of allKeys) {
+    const lv = levels.get(k) ?? 0
+    const arr = keysByLevel.get(lv) ?? []
+    arr.push(k)
+    keysByLevel.set(lv, arr)
+  }
+  for (const lv of [...keysByLevel.keys()].sort((a, b) => a - b)) {
+    const arr = keysByLevel.get(lv)!.sort((a, b) => (yOf.get(a) ?? 0) - (yOf.get(b) ?? 0))
+    let prevY = -Infinity
+    for (const k of arr) {
+      const y = Math.max(yOf.get(k) ?? Y0, prevY + NODE_H + ROW_GAP)
+      yOf.set(k, y)
+      prevY = y
+    }
   }
 
-  const trees = list.map(buildTree)
-  for (const t of trees) {
-    layout(t, 0)
-    place(t.wf, t)
-    leafSeq += TREE_GAP
+  // ---------- 4. 输出画布数据 ----------
+  const lfIdByKey = new Map<string, string>()
+  for (const k of allKeys) {
+    const n = byKey.get(k)!
+    const id = nid()
+    lfIdByKey.set(k, id)
+    nodes.push(
+      mkLFNode(
+        id,
+        n,
+        X0 + (levels.get(k) ?? 0) * (NODE_W + COL_GAP),
+        yOf.get(k) ?? Y0,
+        nodeStates?.[n.nodeId ?? ''] ?? 'pending',
+      ),
+    )
   }
-
-  // 回退引用补边（目标节点必须已在画布中存在，否则忽略）
-  for (const r of backRefs) {
-    const target = lfIdByNodeId.get(r.targetNodeId)
-    if (target && target !== r.source) {
-      edges.push(mkLFEdge(nid(), r.source, target, '回退', true))
+  for (const [p, cs] of childrenKeys) {
+    const sid = lfIdByKey.get(p)
+    if (!sid) continue
+    for (const c of cs) {
+      const tid = lfIdByKey.get(c)
+      if (!tid) continue
+      edges.push(mkLFEdge(nid(), sid, tid, branchNames.get(`${p}|${c}`) ?? ''))
+    }
+  }
+  for (const [k, backs] of backTargets) {
+    const sid = lfIdByKey.get(k)
+    if (!sid) continue
+    for (const b of backs) {
+      const tid = lfIdByKey.get(b)
+      if (!tid || tid === sid) continue
+      edges.push(mkLFEdge(nid(), sid, tid, '回退', true))
     }
   }
   return { nodes, edges }

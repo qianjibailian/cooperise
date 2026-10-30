@@ -104,7 +104,19 @@
 
     <!-- 看板列 -->
     <a-spin :spinning="loading || universeLoading" wrapper-class-name="board-spin">
-      <div class="board-columns">
+      <div
+        ref="boardColumnsRef"
+        class="board-columns"
+        :class="{ 'is-grabbing': boardDragging }"
+        @wheel="onBoardWheel"
+        @pointerdown="onBoardPointerDown"
+        @pointermove="onBoardPointerMove"
+        @pointerup="onBoardPointerUp"
+        @pointercancel="onBoardPointerUp"
+        @click.capture="onBoardClickCapture"
+      >
+        <!-- 有数据：渲染看板列（含不分组时的「全部事项」列） -->
+        <template v-if="!boardEmpty">
         <div
           v-for="col in columns"
           :key="col.key"
@@ -176,19 +188,30 @@
             </div>
           </div>
         </div>
+        </template>
 
-        <div v-if="!columns.length && !loading" class="board-empty">
-          <a-empty description="暂无事项" />
+        <!-- 接口无返回数据：只展示空骨架，不渲染任何看板列 / 卡片（含「全部事项」） -->
+        <div v-if="boardEmpty && !loading" class="board-empty">
+          <div class="board-empty-skeleton">
+            <span class="sk sk-line sk-line-lg" />
+            <span class="sk sk-line" />
+            <span class="sk sk-line sk-line-sm" />
+          </div>
         </div>
       </div>
     </a-spin>
 
+    <!-- 事项详情抽屉 -->
+    <IssueDetailDrawer
+      v-model:open="detailDrawerOpen"
+      :issue-key="detailIssueKey"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRoute } from 'vue-router'
 import {
   ReloadOutlined,
   AlignCenterOutlined,
@@ -199,6 +222,7 @@ import {
   LockOutlined,
 } from '@ant-design/icons-vue'
 import FilterPanel from '@/components/FilterPanel.vue'
+import IssueDetailDrawer from '@/components/IssueDetailDrawer.vue'
 import {
   isConditionComplete,
   buildGlobalFilter,
@@ -251,9 +275,86 @@ const BOARD_PAGE_SIZE = 1000
 /** 不分组时的唯一一列 */
 const ALL_COLUMN: GroupValue = { key: '__all__', label: '全部事项', avatar: '', isUser: false, color: '#6B95C9' }
 
-const router = useRouter()
+// ---------- 看板横向移动：滚轮转横向滚动 + 空白处按住拖动 ----------
+const boardColumnsRef = ref<HTMLElement | null>(null)
+const boardDragging = ref(false)
+let dragStartX = 0
+let dragStartScroll = 0
+let dragged = false
+
+/** 鼠标所在位置到看板容器之间是否存在可纵向滚动的元素（如某列卡片区溢出），有则优先纵向滚动 */
+function hasScrollableY(target: EventTarget | null, stop: HTMLElement): boolean {
+  let el = target instanceof HTMLElement ? target : null
+  while (el && el !== stop) {
+    if (el.scrollHeight - el.clientHeight > 1) {
+      const oy = getComputedStyle(el).overflowY
+      if (oy === 'auto' || oy === 'scroll') return true
+    }
+    el = el.parentElement
+  }
+  return false
+}
+
+function onBoardWheel(e: WheelEvent) {
+  const el = boardColumnsRef.value
+  if (!el || el.scrollWidth - el.clientWidth <= 1) return
+  // shift + 滚轮、触控板横向手势交给浏览器原生处理
+  if (e.shiftKey || Math.abs(e.deltaX) > Math.abs(e.deltaY) || !e.deltaY) return
+  if (hasScrollableY(e.target, el)) return
+  e.preventDefault()
+  const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? el.clientWidth : 1
+  el.scrollLeft += e.deltaY * unit
+}
+
+/** 卡片/按钮等可交互元素不参与拖拽平移，避免与卡片拖拽、点击冲突 */
+function canStartBoardDrag(e: PointerEvent): boolean {
+  const t = e.target instanceof HTMLElement ? e.target : null
+  if (!t) return false
+  if (e.button !== 0 && e.button !== 1) return false
+  if (t.closest('.board-card, button, a, input, textarea, select, [draggable="true"]')) return false
+  return true
+}
+
+function onBoardPointerDown(e: PointerEvent) {
+  const el = boardColumnsRef.value
+  if (!el || el.scrollWidth - el.clientWidth <= 1) return
+  if (!canStartBoardDrag(e)) return
+  dragStartX = e.clientX
+  dragStartScroll = el.scrollLeft
+  dragged = false
+}
+
+function onBoardPointerMove(e: PointerEvent) {
+  const el = boardColumnsRef.value
+  if (!el || !dragStartX || (e.buttons !== 1 && e.buttons !== 4)) return
+  const dx = e.clientX - dragStartX
+  if (!dragged && Math.abs(dx) < 4) return
+  dragged = true
+  boardDragging.value = true
+  el.scrollLeft = dragStartScroll - dx
+}
+
+function onBoardPointerUp() {
+  dragStartX = 0
+  boardDragging.value = false
+}
+
+/** 拖拽平移后抑制这一次误点击 */
+function onBoardClickCapture(e: MouseEvent) {
+  if (!dragged) return
+  dragged = false
+  e.stopPropagation()
+  e.preventDefault()
+}
+
+// ---------- 详情：看板里点击事项打开详情抽屉（不跳页面） ----------
+const detailDrawerOpen = ref(false)
+const detailIssueKey = ref('')
+
 function openIssue(issueKey: string) {
-  if (issueKey) router.push({ name: 'IssueDetail', params: { issueKey } })
+  if (!issueKey) return
+  detailIssueKey.value = issueKey
+  detailDrawerOpen.value = true
 }
 
 // ---------- 标题：取当前视图名称 ----------
@@ -494,6 +595,9 @@ const visibleIssues = computed<(BoardIssue & { groupKey: string })[]>(() =>
     }
   }),
 )
+
+/** 接口没有返回任何事项：此时连「全部事项」列也不展示，只显示空骨架 */
+const boardEmpty = computed(() => visibleIssues.value.length === 0)
 
 /** 看板列：分组字段的取值（按状态分组时只取相关问题类型的状态，顺序沿用状态配置）+ 事项里出现的其它取值，「未设置」排最后 */
 const columns = computed(() => {
@@ -813,6 +917,14 @@ watch(filterCode, () => {
   gap: 14px;
   padding: 0 24px 20px;
   overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
+}
+
+/* 拖拽平移看板时：抓取手势 + 禁止选中 */
+.board-columns.is-grabbing {
+  cursor: grabbing;
+  user-select: none;
 }
 .board-column {
   position: relative;
@@ -1047,11 +1159,68 @@ watch(filterCode, () => {
 .empty-icon {
   font-size: 22px;
 }
+/* ---- 无数据：居中空骨架（不展示任何看板列 / 卡片） ---- */
 .board-empty {
   flex: 1;
   display: flex;
   align-items: center;
   justify-content: center;
+  padding: 40px 24px;
+}
+
+.board-empty-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 320px;
+  max-width: 100%;
+  padding: 16px;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05), 0 0 0 1px rgba(15, 23, 42, 0.03);
+}
+
+.sk {
+  display: block;
+  border-radius: 6px;
+  background: linear-gradient(
+    90deg,
+    rgba(118, 118, 128, 0.1) 25%,
+    rgba(118, 118, 128, 0.2) 37%,
+    rgba(118, 118, 128, 0.1) 63%
+  );
+  background-size: 400% 100%;
+  animation: board-sk 1.4s ease infinite;
+}
+
+.sk-line {
+  width: 100%;
+  height: 12px;
+}
+
+.sk-line-lg {
+  width: 58%;
+  height: 16px;
+}
+
+.sk-line-sm {
+  width: 42%;
+  height: 12px;
+}
+
+@keyframes board-sk {
+  0% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0 50%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sk {
+    animation: none;
+  }
 }
 
 @media (max-width: 768px) {

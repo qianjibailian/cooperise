@@ -194,7 +194,26 @@ function renderGraph(list: WorkflowNode[]) {
   if (!lf) return
   const { nodes, edges } = workflowToFlow(list)
   lf.render({ nodes: nodes as any, edges: edges as any })
+  applyBackEdgeVisibility()
   selectedEdgeId.value = ''
+}
+
+// ---------- 回退线显示开关：只隐藏显示，连线数据保持不变（仍会导出） ----------
+const showBackEdges = ref(true)
+
+function applyBackEdgeVisibility() {
+  const lf = lfRef.value
+  if (!lf) return
+  const { edges } = lf.getGraphData() as { edges: LFEdge[] }
+  for (const e of edges) {
+    if (!e.properties?.isBack) continue
+    lf.setProperties(e.id, { hidden: !showBackEdges.value })
+  }
+}
+
+function onToggleBackEdges(show: boolean) {
+  showBackEdges.value = show
+  applyBackEdgeVisibility()
 }
 
 function init() {
@@ -582,6 +601,13 @@ defineExpose({
     <div class="wf-canvas-toolbar">
       <a-button size="small" @click="addMainNode"><PlusOutlined /> 添加节点</a-button>
       <a-button size="small" @click="autoLayout"><NodeIndexOutlined /> 自动布局</a-button>
+      <a-switch
+        :checked="showBackEdges"
+        size="small"
+        checked-children="回退线"
+        un-checked-children="回退线"
+        @change="(v: boolean) => onToggleBackEdges(v)"
+      />
       <template v-if="selectedEdgeId">
         <span class="wf-edge-label">连线名称：</span>
         <a-input v-model:value="edgeName" size="small" placeholder="如：已完成 / 取消，可留空" class="wf-edge-input" @change="updateEdgeName" />

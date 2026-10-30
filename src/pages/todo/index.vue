@@ -4,7 +4,6 @@
     <div class="top-bar">
       <div class="top-bar-left">
         <h1 class="page-title" :title="pageTitle">{{ pageTitle }}</h1>
-        <span class="edit-status">(已编辑 <a class="reset-link" @click="handleReset">重置</a>)</span>
         <component :is="ReloadOutlined" class="refresh-icon" @click="fetchIssues" />
       </div>
       <div class="top-bar-right">
@@ -506,6 +505,9 @@ function getDraftShownFieldIds(): string[] {
   }).filter(Boolean)
 }
 
+/** 展示位置：列表 / 列设置只取 LIST 场景的字段（与后端 displayScene 取值一致） */
+const DISPLAY_SCENE_LIST = 'LIST'
+
 async function fetchAvailableFields(keyword?: string) {
   settingLoading.value = true
   hiddenCurrentPage.value = 1
@@ -514,6 +516,7 @@ async function fetchAvailableFields(keyword?: string) {
       page: 1,
       pageSize: 20,
       searchKey: keyword || '',
+      displayScene: DISPLAY_SCENE_LIST,
     })
     if (res.success && res.data?.list) {
       const list = res.data.list
@@ -566,6 +569,7 @@ async function loadMoreHiddenFields() {
       page: nextPage,
       pageSize: 20,
       searchKey: settingSearchKeyword.value || '',
+      displayScene: DISPLAY_SCENE_LIST,
     })
     if (res.success && res.data?.list) {
       const shownIds = new Set(getDraftShownFieldIds())
@@ -802,11 +806,6 @@ function restoreFromDraft(d: FilterDraft) {
     restoringSort = true
     sortItemList.value = sort.sortItemList
   }
-}
-
-function handleReset() {
-  currentPage.value = 1
-  fetchIssues()
 }
 
 function handleImportExportClick(e: { key: string }) {
@@ -2017,22 +2016,6 @@ onBeforeUnmount(() => {
   margin-right: 8px;
   white-space: nowrap;
   flex-shrink: 0;
-}
-
-/* 功能按钮 */
-.edit-status {
-  font-size: 13px;
-  color: #8c8c8c;
-}
-
-.reset-link {
-  color: var(--c-primary);
-  cursor: pointer;
-  text-decoration: none;
-}
-
-.reset-link:hover {
-  text-decoration: underline;
 }
 
 .tool-btn {

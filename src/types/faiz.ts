@@ -546,6 +546,8 @@ export interface AvailableFieldQuery {
   page?: number
   pageSize?: number
   searchKey?: string
+  /** 展示位置：CREATE（新建）/ EDIT（编辑）/ DETAIL（详情）/ LIST（列表）；传了则只返回该场景展示的字段 */
+  displayScene?: string | string[]
 }
 
 /** 可用字段单项 */

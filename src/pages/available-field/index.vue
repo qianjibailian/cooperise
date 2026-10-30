@@ -888,10 +888,16 @@ onMounted(loadFields)
 .component-list-page {
   padding: 0 24px;
   font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, sans-serif;
+  /* 撑满右侧内容区：表格区域自适应剩余高度，内部滚动 */
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 /* ---- toolbar ---- */
-.toolbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 20px; flex-wrap: wrap; }
+.toolbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 20px; flex-wrap: wrap; flex-shrink: 0; }
 .toolbar-left { display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0; flex-wrap: wrap; }
 .search-box { flex: 1; min-width: 260px; position: relative; display: flex; align-items: center; background: #f5f5f7; border-radius: 14px; transition: background 0.2s, box-shadow 0.2s; }
 .search-box:focus-within { background: #fff; box-shadow: 0 0 0 3px color-mix(in srgb, var(--c-primary) 15%, transparent); }
@@ -911,7 +917,7 @@ onMounted(loadFields)
 .create-btn:hover { background: #333; transform: scale(1.02); }
 
 /* ---- stats ---- */
-.stats-row { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
+.stats-row { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; flex-shrink: 0; }
 .stat-item { display: flex; align-items: baseline; gap: 6px; }
 .stat-value { font-size: 22px; font-weight: 700; color: #1d1d1f; letter-spacing: -0.3px; }
 .stat-label { font-size: 13px; color: #86868b; font-weight: 500; }
@@ -920,7 +926,49 @@ onMounted(loadFields)
 .stat-divider { width: 1px; height: 20px; background: #e5e5ea; }
 
 /* ---- table ---- */
-.table-wrapper { background: #fff; border-radius: 14px; border: 1px solid #f0f0f0; overflow: hidden; }
+.table-wrapper {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  border-radius: 14px;
+  border: 1px solid #f0f0f0;
+  overflow: hidden;
+}
+
+/* 表格自身撑满剩余高度并内部滚动（兼容 antd 拆分表头的结构） */
+.table-wrapper :deep(.ant-table-wrapper),
+.table-wrapper :deep(.ant-spin-nested-loading),
+.table-wrapper :deep(.ant-spin-container),
+.table-wrapper :deep(.ant-table),
+.table-wrapper :deep(.ant-table-container) {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+/* 设置了 scroll.x 时 header / body 已拆分：表头固定，表体滚动 */
+.table-wrapper :deep(.ant-table-header) {
+  flex: none;
+  overflow: hidden;
+}
+.table-wrapper :deep(.ant-table-body) {
+  flex: 1;
+  min-height: 0;
+  overflow: auto !important;
+}
+/* 未拆分时整表滚动，表头吸顶 */
+.table-wrapper :deep(.ant-table-content) {
+  flex: 1;
+  min-height: 0;
+}
+.table-wrapper :deep(.ant-table-thead > tr > th) {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: #fafafa;
+}
 .cell-field-name { font-weight: 600; color: #1d1d1f; }
 
 .cell-operators { display: inline-flex; flex-wrap: wrap; gap: 4px; }
@@ -940,7 +988,7 @@ onMounted(loadFields)
 }
 
 /* ---- pagination ---- */
-.pagination-bar { display: flex; justify-content: flex-end; padding-top: 24px; }
+.pagination-bar { display: flex; justify-content: flex-end; padding: 24px 0 0; flex-shrink: 0; }
 
 /* ---- edit modal ---- */
 .edit-modal :deep(.ant-modal-content) { border-radius: 20px; }

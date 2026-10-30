@@ -107,24 +107,59 @@
                 <div class="tab-pane-scroll">
                   <a-form layout="horizontal" :label-width="120" :model="newFormData">
                     <a-form-item
-                      v-for="field in tab.issueFields"
+                      v-for="(field, fi) in tab.issueFields"
                       :key="field.id"
                     >
                       <template #label>
-                        <span>{{ field.name }}</span>
+                        <!-- 「新建」追加的字段：拖拽手柄排在字段名前面 -->
+                        <span
+                          v-if="field.__added"
+                          class="field-drag"
+                          draggable="true"
+                          title="拖动排序"
+                          @dragstart="onFieldDragStart(tab, fi, $event)"
+                          @dragend="onFieldDragEnd"
+                        >
+                          <i v-for="n in 9" :key="n" class="field-drag-dot" />
+                        </span>
+                        <span class="field-label-text">{{ field.name }}</span>
                         <span v-if="field.required" class="form-item-required-mark">*</span>
                       </template>
-                      <div class="form-field-content">
+                      <div
+                        class="field-row"
+                        :class="{ 'is-dragging': dragFieldIndex === fi && dragTabTitle === tab.title }"
+                        @dragover="onFieldDragOver(tab, fi, $event)"
+                        @drop.prevent
+                      >
+                        <div class="form-field-content">
                         <a-input v-if="field.type === FIELD_TYPE.TEXT_BOX_SINGLE_LINE" v-model:value="newFormData[field.id]" :placeholder="field.description || '请输入'" :disabled="!field.editable" style="width: 100%" />
                         <a-textarea v-if="field.type === FIELD_TYPE.TEXT_BOX_MULTI_LINE" v-model:value="newFormData[field.id]" :placeholder="field.description || '请输入'" :disabled="!field.editable" :rows="4" style="width: 100%" />
                         <a-input-number v-if="field.type === FIELD_TYPE.TEXT_BOX_NUMBER" v-model:value="newFormData[field.id]" :placeholder="field.description || '请输入数字'" :disabled="!field.editable" style="width: 100%" />
                         <a-date-picker v-if="field.type === FIELD_TYPE.DATE_PICKER" v-model:value="newFormData[field.id]" :placeholder="field.description || '请选择日期'" :disabled="!field.editable" style="width: 100%" />
                         <a-date-picker v-if="field.type === FIELD_TYPE.TIME_PICKER" v-model:value="newFormData[field.id]" show-time :placeholder="field.description || '请选择日期时间'" :disabled="!field.editable" style="width: 100%" />
                         <a-select v-if="field.type === FIELD_TYPE.SELECT_LIST_SINGLE" v-model:value="newFormData[field.id]" :placeholder="field.description || '请选择'" :disabled="!field.editable" allow-clear style="width: 100%">
-                          <a-select-option v-for="opt in getFieldOptions(field)" :key="opt.value" :value="opt.value" :disabled="opt.disabled">{{ opt.name }}</a-select-option>
+                          <a-select-option v-for="opt in getFieldOptions(field)" :key="opt.value" :value="opt.value" :disabled="opt.disabled" :title="opt.name">
+                            <span class="enum-opt">
+                              <i v-if="opt.color" class="enum-opt-dot" :style="{ background: opt.color }" />
+                              <span :style="optionTextStyle(opt.color)">{{ opt.name }}</span>
+                            </span>
+                          </a-select-option>
                         </a-select>
                         <a-select v-if="field.type === FIELD_TYPE.SELECT_LIST_MULTI" v-model:value="newFormData[field.id]" mode="multiple" :placeholder="field.description || '请选择'" :disabled="!field.editable" allow-clear style="width: 100%">
-                          <a-select-option v-for="opt in getFieldOptions(field)" :key="opt.value" :value="opt.value" :disabled="opt.disabled">{{ opt.name }}</a-select-option>
+                          <a-select-option v-for="opt in getFieldOptions(field)" :key="opt.value" :value="opt.value" :disabled="opt.disabled" :title="opt.name">
+                            <span class="enum-opt">
+                              <i v-if="opt.color" class="enum-opt-dot" :style="{ background: opt.color }" />
+                              <span :style="optionTextStyle(opt.color)">{{ opt.name }}</span>
+                            </span>
+                          </a-select-option>
+                          <!-- 多选标签也带枚举颜色 -->
+                          <template #tagRender="{ value, closable, onClose }">
+                            <span class="enum-tag" :style="enumTagStyle(field, String(value))">
+                              <i v-if="enumOptionOf(field, String(value))?.color" class="enum-opt-dot" :style="{ background: enumOptionOf(field, String(value))!.color }" />
+                              <span class="enum-tag-text">{{ enumOptionOf(field, String(value))?.name ?? String(value) }}</span>
+                              <CloseOutlined v-if="closable" class="enum-tag-close" @click="onClose" />
+                            </span>
+                          </template>
                         </a-select>
                         <a-cascader v-if="field.type === FIELD_TYPE.CASCADER_SINGLE" v-model:value="newFormData[field.id]" :options="getFieldOptions(field)" :placeholder="field.description || '请选择'" :disabled="!field.editable" :field-names="{ label: 'name', value: 'value', children: 'children' }" allow-clear style="width: 100%" />
                         <a-select
@@ -219,6 +254,14 @@
                           {{ newFormData[field.id] != null ? String(newFormData[field.id]) : '' }}
                         </span>
                         <a-input v-if="!field.type" v-model:value="newFormData[field.id]" :placeholder="field.description || ''" :disabled="!field.editable" style="width: 100%" />
+                        </div>
+                        <!-- 「新建」追加的字段：删除图标排在字段后面 -->
+                        <DeleteOutlined
+                          v-if="field.__added"
+                          class="field-act field-act-danger field-delete"
+                          title="删除"
+                          @click="removeField(tab, fi)"
+                        />
                       </div>
                     </a-form-item>
                   </a-form>
@@ -300,7 +343,7 @@ import dayjs from 'dayjs'
 import { Editor, Toolbar } from '@wangeditor/editor-for-vue'
 import type { IDomEditor, IEditorConfig } from '@wangeditor/editor'
 import '@wangeditor/editor/dist/css/style.css'
-import { PlusOutlined } from '@ant-design/icons-vue'
+import { PlusOutlined, DeleteOutlined, CloseOutlined } from '@ant-design/icons-vue'
 import { Empty, message } from 'ant-design-vue'
 import { createIssue, getAvailableFieldOptions, queryUsers, queryTemplates, getTemplate, getIssueCreateMeta, queryDetail, patchIssue, queryAvailableFieldList, querySpaceOptions, queryIssueTypes, createTemplate, type SpaceItem } from '@/api/faiz'
 import { issueTypeIconOf } from '@/utils/issueTypeIcons'
@@ -651,12 +694,14 @@ function mapLabelValueToOption(
   const children = childArr
     ? childArr.map((c: any, i: number) => mapLabelValueToOption(c, i))
     : undefined
+  const color = String(base.color ?? base.colour ?? base.ext?.color ?? '').trim()
   return {
     id: value,
     name: label,
     value,
     disabled: !!base.disabled || !!base.obsolete,
     children,
+    ...(color ? { color } : {}),
   }
 }
 
@@ -1145,6 +1190,29 @@ function getFieldOptions(field: any): CustomFieldOptionItem[] {
   return []
 }
 
+// ---- 枚举选项颜色：下拉选项与选中值都按后端返回的 color 渲染 ----
+/** 按 value 找到该字段的枚举项 */
+function enumOptionOf(field: any, value: string): CustomFieldOptionItem | undefined {
+  return getFieldOptions(field).find((o: CustomFieldOptionItem) => String(o.value) === value)
+}
+
+/** 选项文字色：混入深色保证浅色枚举仍可读；无颜色时返回 undefined（用默认色） */
+function optionTextStyle(color?: string): { color: string } | undefined {
+  const c = String(color ?? '').trim()
+  return c ? { color: `color-mix(in srgb, ${c} 78%, #1d1d1f)` } : undefined
+}
+
+/** 多选标签样式：同色浅底 + 加深的同色文字 + 描边 */
+function enumTagStyle(field: any, value: string): Record<string, string> | undefined {
+  const c = String(enumOptionOf(field, value)?.color ?? '').trim()
+  if (!c) return undefined
+  return {
+    background: `color-mix(in srgb, ${c} 12%, #fff)`,
+    color: `color-mix(in srgb, ${c} 78%, #1d1d1f)`,
+    borderColor: `color-mix(in srgb, ${c} 35%, #fff)`,
+  }
+}
+
 // ---- member 类型：远程搜索用户（按 field id 独立状态） ----
 const memberOptionsMap = reactive<Record<string, UserItem[]>>({})
 const memberLoadingMap = reactive<Record<string, boolean>>({})
@@ -1248,6 +1316,8 @@ function handleNewFormCancel() {
 }
 
 // ---- 表单末尾「新建」：下拉选择可用字段追加到当前 Tab ----
+/** 展示位置：新建事项只取 CREATE 场景的字段（与后端 displayScene 取值一致） */
+const DISPLAY_SCENE_CREATE = 'CREATE'
 const addFieldDropdownOpen = ref(false)
 const addFieldKeyword = ref('')
 const availableFieldsLoading = ref(false)
@@ -1265,7 +1335,13 @@ async function loadAvailableFields(keyword = '') {
   const seq = ++availableFieldsSeq
   availableFieldsLoading.value = true
   try {
-    const res = await queryAvailableFieldList({ page: 1, pageSize: 999, searchKey: keyword.trim() })
+    // 展示位置限定为「新建」场景（后端按 displayScene 过滤）
+    const res = await queryAvailableFieldList({
+      page: 1,
+      pageSize: 999,
+      searchKey: keyword.trim(),
+      displayScene: DISPLAY_SCENE_CREATE,
+    })
     if (seq !== availableFieldsSeq) return
     availableFieldsList.value = (res?.data?.list || [])
       .filter(f => !f.obsolete)
@@ -1295,6 +1371,8 @@ watch(addFieldKeyword, (kw) => {
 /** 选中字段：追加到当前激活 Tab 末尾，初始化值并补拉选项/成员数据 */
 function handleAddField(f: AvailableFieldItem) {
   const field = {
+    /** 由「新建」追加的字段：可删除、可调整顺序（说明文本等原生字段不支持） */
+    __added: true,
     id: String(f.fieldId),
     name: f.fieldName || String(f.fieldId),
     type: f.type || FIELD_TYPE.TEXT_BOX_SINGLE_LINE,
@@ -1328,6 +1406,51 @@ function handleAddField(f: AvailableFieldItem) {
   if (field.type === FIELD_TYPE.SELECT_USER_SINGLE || field.type === FIELD_TYPE.SELECT_USER_MULTI) {
     handleMemberSearch(field.id, '')
   }
+}
+
+type TabFields = { title: string; sequence: number; issueFields: any[] }
+
+// ---------- 追加字段拖动排序（拖动经过目标行时即时插入） ----------
+const dragFieldIndex = ref(-1)
+const dragTabTitle = ref('')
+
+function onFieldDragStart(tab: TabFields, index: number, e: DragEvent) {
+  dragTabTitle.value = tab.title
+  dragFieldIndex.value = index
+  if (e.dataTransfer) {
+    e.dataTransfer.effectAllowed = 'move'
+    // 部分浏览器不写 data 不会触发拖拽
+    e.dataTransfer.setData('text/plain', String(index))
+  }
+}
+
+/** 拖到某个字段上：把正在拖动的字段插到该位置（同一个 Tab 内） */
+function onFieldDragOver(tab: TabFields, index: number, e: DragEvent) {
+  if (dragFieldIndex.value < 0 || tab.title !== dragTabTitle.value) return
+  e.preventDefault()
+  if (e.dataTransfer) e.dataTransfer.dropEffect = 'move'
+  const from = dragFieldIndex.value
+  if (from === index) return
+  const list = tab.issueFields
+  const [moved] = list.splice(from, 1)
+  list.splice(index, 0, moved)
+  dragFieldIndex.value = index
+  list.forEach((f: any, i: number) => {
+    f.sequence = i
+  })
+}
+
+function onFieldDragEnd() {
+  dragFieldIndex.value = -1
+  dragTabTitle.value = ''
+}
+
+/** 删除：从当前 Tab 移除该字段并清掉已填的值（删除后可在「新建」里重新添加） */
+function removeField(tab: TabFields, index: number) {
+  const field = tab.issueFields[index]
+  if (!field?.__added) return
+  tab.issueFields.splice(index, 1)
+  delete newFormData.value[String(field.id)]
 }
 
 /**
@@ -2079,6 +2202,123 @@ async function saveEditForm() {
 }
 
 /* 表单末尾「新建」入口：靠最左侧 */
+/* ---- 枚举颜色：下拉选项 / 选中值 ---- */
+.enum-opt {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.enum-opt-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.enum-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  margin: 2px 4px 2px 0;
+  padding: 0 4px 0 6px;
+  border: 1px solid #e5e5ea;
+  border-radius: 6px;
+  background: #fafafa;
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.enum-tag-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.enum-tag-close {
+  margin-left: 2px;
+  font-size: 10px;
+  color: #8c8c8c;
+  cursor: pointer;
+}
+
+.enum-tag-close:hover {
+  color: #ff4d4f;
+}
+
+/* 「新建」追加字段：最前拖拽手柄 + 字段本体 + 末尾删除图标，同一行 */
+.field-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+/* 字段本体占满剩余宽度 */
+.form-field-content {
+  flex: 1;
+  min-width: 0;
+}
+
+/* 拖拽手柄：3×3 九个点 */
+.field-drag {
+  flex: none;
+  display: grid;
+  grid-template-columns: repeat(3, 3px);
+  grid-template-rows: repeat(3, 3px);
+  gap: 2px;
+  padding: 3px 2px;
+  cursor: grab;
+  opacity: 0.45;
+  transition: opacity 0.15s ease;
+}
+
+.field-drag:hover {
+  opacity: 1;
+}
+
+.field-drag:active {
+  cursor: grabbing;
+}
+
+.field-drag-dot {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: #8c8c8c;
+}
+
+/* 拖动中的行置灰 */
+.field-row.is-dragging {
+  opacity: 0.45;
+}
+
+/* 删除图标：悬停该字段时出现在最右侧 */
+.field-delete {
+  flex: none;
+  font-size: 14px;
+  color: #bfbfbf;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s ease, color 0.15s ease;
+}
+
+.ant-form-item:hover .field-delete {
+  opacity: 1;
+}
+
+.field-act {
+  font-size: 13px;
+  color: #8c8c8c;
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+
+.field-act-danger:hover {
+  color: #ff4d4f;
+}
+
 .new-form-add-row {
   padding: 4px 0;
 }
@@ -2216,12 +2456,22 @@ async function saveEditForm() {
 }
 
 .new-form-modal .ant-form-item .ant-form-item-label > label {
-  height: 34px;
+  display: flex;
+  justify-content: flex-end;
   align-items: center;
+  gap: 6px;
+  height: 34px;
   white-space: nowrap;
   color: #334155;
   font-size: 13px;
   font-weight: 500;
+}
+
+/* 字段名过长时省略，拖拽手柄与必填星号不参与压缩 */
+.field-label-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .new-form-modal .ant-form-item-label > label::after {
