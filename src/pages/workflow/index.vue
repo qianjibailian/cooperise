@@ -782,7 +782,8 @@ onMounted(() => {
 }
 .search-box:focus-within {
   background: #fff;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+  box-shadow: 0 0 0 3px transparent;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--c-primary) 15%, transparent);
 }
 .search-icon {
   font-size: 16px;
@@ -819,7 +820,7 @@ onMounted(() => {
   align-items: center;
   gap: 6px;
   border: none;
-  background: #3b82f6;
+  background: var(--c-primary);
   color: #fff;
   padding: 9px 18px;
   border-radius: 10px;
@@ -872,8 +873,9 @@ onMounted(() => {
   transition: border-color 0.2s, box-shadow 0.2s;
 }
 .wf-input:focus {
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12);
+  border-color: var(--c-primary);
+  box-shadow: 0 0 0 3px transparent;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--c-primary) 12%, transparent);
 }
 .wf-select {
   padding: 9px 12px;
@@ -957,7 +959,7 @@ onMounted(() => {
   font-size: 13px;
   color: #595959;
   background: #f0f7ff;
-  border: 1px solid #bae0ff;
+  border: 1px solid var(--c-primary-bg-hover);
   border-radius: 8px;
 }
 

@@ -68,7 +68,10 @@ export default defineConfig(({ mode }) => {
     proxy,
   },
   build: {
-    target: 'esnext',
+    // 兼容基线（参考 Apple 官网）：Chrome / Edge 87+、Firefox 78+、Safari 14+；
+    // ??= 等新语法会被降级，360 / QQ 等国产浏览器的旧 Chromium 内核也能运行
+    target: ['es2020', 'chrome87', 'edge88', 'firefox78', 'safari14'],
+    cssTarget: ['chrome87', 'edge88', 'firefox78', 'safari14'],
     outDir: 'dist',
     assetsDir: 'assets',
     rollupOptions: {

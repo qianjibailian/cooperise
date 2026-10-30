@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { personLabel } from '@/utils/person'
+import { personLabel, personKey } from '@/utils/person'
 import { message } from 'ant-design-vue'
 import dayjs from 'dayjs'
 import type { Dayjs } from 'dayjs'
@@ -135,9 +135,9 @@ function handleMemberSearch(keyword: string) {
       if (res?.success) {
         const list = Array.isArray(res.data?.list) ? res.data.list : []
         const cur = editUserValue.value
-        if (cur && !list.some((u: UserItem) => String(u.userNo) === String(cur))) {
-          const existing = memberOptions.value.find((u) => String(u.userNo) === String(cur))
-          memberOptions.value = [existing ?? ({ userNo: cur } as UserItem), ...list]
+        if (cur && !list.some((u: UserItem) => personKey(u) === String(cur))) {
+          const existing = memberOptions.value.find((u) => personKey(u) === String(cur))
+          memberOptions.value = [existing ?? ({ memberId: cur } as UserItem), ...list]
         } else {
           memberOptions.value = list
         }
@@ -243,7 +243,7 @@ function initEdit() {
   } else if (isUserSingleType.value) {
     const uv =
       typeof raw === 'object' && raw != null
-        ? String((raw as Record<string, unknown>).userNo ?? (raw as Record<string, unknown>).id ?? '')
+        ? personKey(raw)
         : raw == null
           ? ''
           : String(raw)
@@ -251,19 +251,19 @@ function initEdit() {
     if (uv) {
       memberOptions.value = [{
         ...(typeof raw === 'object' && raw != null ? (raw as Record<string, unknown>) : {}),
-        userNo: uv,
+        memberId: uv,
       } as UserItem]
     }
     handleMemberSearch('')
   } else if (isUserMultiType.value) {
     const arr = Array.isArray(raw) ? raw : raw == null ? [] : [raw]
     editUserMultiValue.value = arr.map((v: unknown) =>
-      String((v as Record<string, unknown> | null)?.userNo ?? (v as Record<string, unknown> | null)?.id ?? ''),
+      personKey(v),
     )
     if (editUserMultiValue.value.length) {
       memberOptions.value = editUserMultiValue.value.map((no, i) => ({
         ...(arr[i] && typeof arr[i] === 'object' ? (arr[i] as Record<string, unknown>) : {}),
-        userNo: no,
+        memberId: no,
       } as UserItem))
     }
     handleMemberSearch('')
@@ -302,14 +302,14 @@ async function confirmEdit() {
     if (uv == null || String(uv).trim() === '') {
       fieldValue = null
     } else {
-      const found = memberOptions.value.find((u) => String(u.userNo) === String(uv))
-      fieldValue = found ? { ...found } : { userNo: String(uv) }
+      const found = memberOptions.value.find((u) => personKey(u) === String(uv))
+      fieldValue = found ? { ...found } : { memberId: String(uv) }
     }
   } else if (isUserMultiType.value) {
     const arr = Array.isArray(editUserMultiValue.value) ? editUserMultiValue.value : []
     fieldValue = arr.map((uv) => {
-      const found = memberOptions.value.find((u) => String(u.userNo) === String(uv))
-      return found ? { ...found } : { userNo: String(uv) }
+      const found = memberOptions.value.find((u) => personKey(u) === String(uv))
+      return found ? { ...found } : { memberId: String(uv) }
     })
   } else if (isSingleSelect.value) {
     const sv = editValue.value == null ? '' : String(editValue.value).trim()
@@ -414,12 +414,14 @@ onMounted(initEdit)
       :filter-option="false"
       :loading="memberLoading"
       placeholder="搜索用户"
+      :dropdown-match-select-width="false"
+      popup-class-name="person-select-popup"
       @search="handleMemberSearch"
     >
       <a-select-option
         v-for="u in memberOptions"
-        :key="String(u.userNo ?? u.id ?? '')"
-        :value="String(u.userNo ?? u.id ?? '')"
+        :key="personKey(u)"
+        :value="personKey(u)"
       >
         <div class="fve-user-option">
           <img
@@ -443,12 +445,14 @@ onMounted(initEdit)
       :filter-option="false"
       :loading="memberLoading"
       placeholder="搜索用户"
+      :dropdown-match-select-width="false"
+      popup-class-name="person-select-popup"
       @search="handleMemberSearch"
     >
       <a-select-option
         v-for="u in memberOptions"
-        :key="String(u.userNo ?? u.id ?? '')"
-        :value="String(u.userNo ?? u.id ?? '')"
+        :key="personKey(u)"
+        :value="personKey(u)"
       >
         <div class="fve-user-option">
           <img

@@ -247,15 +247,15 @@ watch(
   align-items: center;
   gap: 12px;
   padding: 12px 14px;
-  background: #e6f4ff;
-  border: 1px solid #91caff;
+  background: var(--c-primary-bg);
+  border: 1px solid var(--c-primary-border);
   border-radius: 8px;
 }
 .nn-cur-label {
   font-size: 12px;
-  color: #1677ff;
+  color: var(--c-primary);
   background: #fff;
-  border: 1px solid #91caff;
+  border: 1px solid var(--c-primary-border);
   border-radius: 10px;
   padding: 0 8px;
   line-height: 20px;
@@ -269,7 +269,7 @@ watch(
 .nn-arrow {
   text-align: center;
   font-size: 18px;
-  color: #1677ff;
+  color: var(--c-primary);
   line-height: 1;
   padding: 10px 0 4px;
 }
@@ -356,9 +356,9 @@ watch(
   line-height: 1;
 }
 .nn-rt-btn:hover {
-  background: #e6f4ff;
-  color: #1677ff;
-  border-color: #91caff;
+  background: var(--c-primary-bg);
+  color: var(--c-primary);
+  border-color: var(--c-primary-border);
 }
 .nn-rt-editor {
   min-height: 90px;

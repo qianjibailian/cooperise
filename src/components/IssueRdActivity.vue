@@ -195,10 +195,10 @@ const percent = (a: number, b: number) => (b ? Math.round((a / b) * 100) : 0)
   transition: color 0.15s;
 }
 .rd-tab:hover {
-  color: #1677ff;
+  color: var(--c-primary);
 }
 .rd-tab.is-active {
-  color: #1677ff;
+  color: var(--c-primary);
   font-weight: 500;
 }
 .rd-tab.is-active::after {
@@ -208,7 +208,7 @@ const percent = (a: number, b: number) => (b ? Math.round((a / b) * 100) : 0)
   right: 12%;
   bottom: -1px;
   height: 2px;
-  background: #1677ff;
+  background: var(--c-primary);
   border-radius: 1px;
 }
 .rd-tab-count {
@@ -218,7 +218,7 @@ const percent = (a: number, b: number) => (b ? Math.round((a / b) * 100) : 0)
   color: #8c8c8c;
 }
 .rd-tab.is-active .rd-tab-count {
-  color: #1677ff;
+  color: var(--c-primary);
 }
 
 .rd-list {
@@ -251,7 +251,7 @@ const percent = (a: number, b: number) => (b ? Math.round((a / b) * 100) : 0)
   text-overflow: ellipsis;
 }
 .rd-title.is-link {
-  color: #1677ff;
+  color: var(--c-primary);
 }
 .rd-title.is-link:hover {
   text-decoration: underline;
@@ -269,7 +269,7 @@ const percent = (a: number, b: number) => (b ? Math.round((a / b) * 100) : 0)
 .rd-key {
   flex-shrink: 0;
   font-size: 12px;
-  color: #1677ff;
+  color: var(--c-primary);
 }
 .rd-meta {
   flex-shrink: 0;

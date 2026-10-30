@@ -142,6 +142,8 @@
             :options="userOptions"
             :loading="userLoading"
             placeholder="搜索并选择负责人（选填）"
+            :dropdown-match-select-width="false"
+            popup-class-name="person-select-popup"
             @search="searchUsers"
             @dropdown-visible-change="(o: boolean) => o && ensureUsers()"
           />
@@ -547,7 +549,8 @@ onMounted(() => {
   padding: 0 16px;
   border-radius: 10px;
   font-weight: 500;
-  box-shadow: 0 2px 8px rgba(10, 132, 255, 0.24);
+  box-shadow: 0 2px 8px transparent;
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--c-primary) 24%, transparent);
 }
 
 .mgmt-card {
@@ -654,8 +657,8 @@ onMounted(() => {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 12px;
   font-weight: 600;
-  color: #0a84ff;
-  background: #eef5ff;
+  color: var(--c-primary);
+  background: var(--c-primary-bg);
   border-radius: 6px;
 }
 
@@ -700,7 +703,7 @@ onMounted(() => {
 .user-avatar {
   flex-shrink: 0;
   font-size: 11px;
-  background: #0a84ff;
+  background: var(--c-primary);
 }
 
 .ellipsis {
@@ -789,8 +792,8 @@ onMounted(() => {
   gap: 4px;
   font-size: 12px;
   font-weight: 500;
-  color: #0a84ff;
-  background: #eef5ff;
+  color: var(--c-primary);
+  background: var(--c-primary-bg);
   border: none;
   border-radius: 8px;
   cursor: pointer;
@@ -799,7 +802,7 @@ onMounted(() => {
 }
 
 .enter-btn:hover {
-  background: #dcebff;
+  background: var(--c-primary-bg-hover);
 }
 
 .enter-btn :deep(.anticon) {

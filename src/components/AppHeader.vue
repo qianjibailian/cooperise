@@ -116,7 +116,7 @@
       </button>
 
       <!-- 用户菜单：自绘浮层（不受点击页面其它位置影响，仅点头像或菜单项收起） -->
-      <div class="user-dropdown-wrap">
+      <div ref="userDropdownRef" class="user-dropdown-wrap">
         <div class="user-trigger" :class="{ active: userPopoverOpen }" @click="toggleUserPopover">
           <a-avatar :size="30" :src="avatarSrc" class="user-avatar" :load-error="onAvatarError">
             {{ userInitials }}
@@ -142,6 +142,25 @@
             </div>
             <div class="user-divider" />
 
+            <!-- 主题色：界面保持浅色，切换品牌主色（按钮 / 选中 / 链接 / 高亮） -->
+            <div class="user-section-title">主题色</div>
+            <div class="theme-picker">
+              <button
+                v-for="t in themes"
+                :key="t.key"
+                type="button"
+                class="theme-swatch"
+                :class="{ active: currentTheme.key === t.key }"
+                :style="{ '--swatch': t.primary }"
+                :title="t.source"
+                @click.stop="setTheme(t.key)"
+              >
+                <span class="theme-swatch-dot"><CheckOutlined v-if="currentTheme.key === t.key" /></span>
+                <span class="theme-swatch-name">{{ t.name }}</span>
+              </button>
+            </div>
+            <div class="user-divider" />
+
             <div class="user-menu-list">
               <div class="user-menu-text" @click="handleMenuSelect('settings')">个人中心</div>
               <div class="user-menu-text" @click="handleMenuSelect('account')">账户设置</div>
@@ -156,10 +175,6 @@
               <div class="user-org-name" :title="orgName">{{ orgName }}</div>
               <div class="user-org-switch">切换 <RightOutlined /></div>
             </div>
-
-            <div class="user-menu-list">
-              <div class="user-menu-text" @click="handleMenuSelect('admin')">管理后台</div>
-            </div>
           </div>
         </div>
       </div>
@@ -168,7 +183,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, nextTick, onMounted, watch } from 'vue'
+import { ref, computed, nextTick, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useRouter } from 'vue-router'
 
 import {
@@ -180,9 +195,11 @@ import {
   // DragOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
+  CheckOutlined,
 } from '@ant-design/icons-vue'
 import AppLogo from './AppLogo.vue'
 import { useAuth, setAuthUser } from '@/utils/auth'
+import { useTheme } from '@/utils/theme'
 import { formatPersonLabel } from '@/utils/person'
 import { logout, getCurrentUser, fuzzyQueryIssues, type FuzzyIssueItem } from '@/api/faiz'
 import { issueTypeIconOf } from '@/utils/issueTypeIcons'
@@ -212,6 +229,29 @@ function setUserPopoverOpen(next: boolean) {
   userPopoverOpen.value = next
 }
 function toggleUserPopover() { setUserPopoverOpen(!userPopoverOpen.value) }
+
+// 用户下拉：点击下拉区域以外的任意位置或按 Esc 关闭
+const userDropdownRef = ref<HTMLElement | null>(null)
+function onDocPointerDown(e: PointerEvent) {
+  const el = userDropdownRef.value
+  if (userPopoverOpen.value && el && !el.contains(e.target as Node)) setUserPopoverOpen(false)
+}
+function onDocKeydown(e: KeyboardEvent) {
+  if (e.key === 'Escape' && userPopoverOpen.value) setUserPopoverOpen(false)
+}
+watch(userPopoverOpen, (open) => {
+  if (open) {
+    document.addEventListener('pointerdown', onDocPointerDown, true)
+    document.addEventListener('keydown', onDocKeydown)
+  } else {
+    document.removeEventListener('pointerdown', onDocPointerDown, true)
+    document.removeEventListener('keydown', onDocKeydown)
+  }
+})
+onBeforeUnmount(() => {
+  document.removeEventListener('pointerdown', onDocPointerDown, true)
+  document.removeEventListener('keydown', onDocKeydown)
+})
 
 // 最近搜索 / 最近访问：暂时隐藏，恢复时取消注释（模板同步恢复）
 // const recentSearches = ref(['待办事项', '项目', '文档', '工作台', '设置'])
@@ -352,6 +392,7 @@ function handleEnter() {
 // }
 /** 登录用户资料（登录接口 data.user / 个人中心同步），姓名缺失时回退占位文案 */
 const { realName, user } = useAuth()
+const { themes, currentTheme, setTheme } = useTheme()
 const username = computed(() => user.value?.realName || realName.value || '用户')
 /** 用户面板展示：realName（coAccount） */
 const userDisplayLabel = computed(() =>
@@ -417,9 +458,6 @@ function handleMenuSelect(key: string) {
     case 'switch':
       console.log('切换组织')
       break
-    case 'admin':
-      router.push('/admin/users')
-      break
   }
 }
 
@@ -481,7 +519,7 @@ async function handleLogout() {
 }
 
 .header-fold-icon:hover {
-  color: #1677ff;
+  color: var(--c-primary);
   background: #f5f5f5;
 }
 
@@ -589,7 +627,7 @@ async function handleLogout() {
   flex-shrink: 0;
   font-size: 12px;
   font-weight: 600;
-  background: linear-gradient(135deg, #5e5ce6 0%, #0a84ff 100%);
+  background: linear-gradient(135deg, #5e5ce6 0%, var(--c-primary) 100%);
   box-shadow: 0 0 0 2px #fff, 0 0 0 3px rgba(15, 23, 42, 0.06);
 }
 
@@ -671,8 +709,8 @@ async function handleLogout() {
 }
 
 .search-tag:hover {
-  background: #e6f4ff;
-  color: #1677ff;
+  background: var(--c-primary-bg);
+  color: var(--c-primary);
 }
 
 .search-dropdown-divider {
@@ -700,7 +738,7 @@ async function handleLogout() {
 
 .search-dropdown-item:hover {
   background: #f5f5f5;
-  color: #1677ff;
+  color: var(--c-primary);
 }
 
 .search-dropdown-item .anticon {
@@ -837,8 +875,9 @@ async function handleLogout() {
   flex-shrink: 0;
   font-size: 16px;
   font-weight: 600;
-  background: linear-gradient(135deg, #5e5ce6 0%, #0a84ff 100%);
-  box-shadow: 0 2px 8px rgba(10, 132, 255, 0.25);
+  background: linear-gradient(135deg, #5e5ce6 0%, var(--c-primary) 100%);
+  box-shadow: 0 2px 8px transparent;
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--c-primary) 25%, transparent);
 }
 
 .user-panel-info {
@@ -872,6 +911,49 @@ async function handleLogout() {
   text-overflow: ellipsis;
 }
 
+.theme-picker {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  padding: 4px 12px 10px;
+}
+.theme-swatch {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 4px;
+  border: 1px solid #e5e5ea;
+  border-radius: 10px;
+  background: #fff;
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
+}
+.theme-swatch:hover {
+  background: #fafafc;
+}
+.theme-swatch.active {
+  border-color: var(--swatch);
+  box-shadow: 0 0 0 3px transparent;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--swatch) 18%, transparent);
+}
+.theme-swatch-dot {
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  font-size: 11px;
+  color: #fff;
+  background: var(--swatch);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.06);
+}
+.theme-swatch-name {
+  font-size: 12px;
+  color: #3a3a3c;
+  white-space: nowrap;
+}
 .user-panel-tags {
   display: flex;
   flex-wrap: wrap;
@@ -910,7 +992,7 @@ async function handleLogout() {
 }
 
 .user-menu-text:hover {
-  color: #1677ff;
+  color: var(--c-primary);
 }
 
 .user-divider {
@@ -977,6 +1059,6 @@ async function handleLogout() {
 }
 
 .user-org-card:hover .user-org-switch {
-  color: #1677ff;
+  color: var(--c-primary);
 }
 </style>

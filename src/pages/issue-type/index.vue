@@ -573,7 +573,8 @@ onMounted(() => {
   padding: 0 16px;
   border-radius: 10px;
   font-weight: 500;
-  box-shadow: 0 2px 8px rgba(10, 132, 255, 0.24);
+  box-shadow: 0 2px 8px transparent;
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--c-primary) 24%, transparent);
 }
 
 .mgmt-card {
@@ -908,7 +909,7 @@ onMounted(() => {
   gap: 6px;
   height: 32px;
   font-size: 13px;
-  color: #0a84ff;
+  color: var(--c-primary);
   background: #fff;
   border: 1px dashed #c7d8f5;
   border-radius: 8px;
@@ -918,7 +919,7 @@ onMounted(() => {
 
 .status-add-btn:hover {
   background: #f0f6ff;
-  border-color: #0a84ff;
+  border-color: var(--c-primary);
 }
 
 

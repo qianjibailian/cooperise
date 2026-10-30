@@ -11,6 +11,7 @@
 .workbench-panel {
   width: 100%;
   height: calc(100vh - 75px);
+  height: calc(100dvh - 75px);
   background: #ffffff;
   display: flex;
   flex-direction: column;

@@ -185,6 +185,8 @@
                 size="small"
                 style="width: 100%"
                 placeholder="搜索姓名/账号"
+                :dropdown-match-select-width="false"
+                popup-class-name="person-select-popup"
                 @search="handleMemberSearch"
                 @change="confirmCellEdit"
               >
@@ -200,15 +202,15 @@
                 </template>
                 <a-select-option
                   v-for="u in memberOptions"
-                  :key="String(u.userNo)"
-                  :value="String(u.userNo)"
+                  :key="userKeyOf(u)"
+                  :value="userKeyOf(u)"
                   :label="formatUserOptionLabel(u)"
                 >
                   <span class="user-option-cell">
                     <a-avatar :src="u.avatarUrl || u.userAvatar" :size="18" class="user-option-avatar">
                       {{ userOptionInitial(u) }}
                     </a-avatar>
-                    <span>{{ formatUserOptionLabel(u) }}</span>
+                    <span class="user-option-label" :title="formatUserOptionLabel(u)">{{ formatUserOptionLabel(u) }}</span>
                   </span>
                 </a-select-option>
               </a-select>
@@ -427,6 +429,7 @@ import { buildGlobalFilter, parseGlobalFilter, defaultConditions, isConditionCom
 import SortPanel from '@/components/SortPanel.vue'
 import NewIssueFormModal from '@/components/NewIssueFormModal.vue'
 import { onIssueCreated } from '@/utils/issue-events'
+import { MY_TODO_VIEW_CODE, setTodoCount } from '@/utils/todo-count'
 import { FIELD_TYPE } from '@/types/fieldType'
 import { issueTypeIconOf } from '@/utils/issueTypeIcons'
 
@@ -684,8 +687,8 @@ const filterDisplayCount = computed(() => filterConditions.value.filter(isCondit
 
 // 排序 / 分组 / 分层 / 视图状态
 const sortPanelVisible = ref(false)
-/** 默认排序（视图草稿未保存排序时使用） */
-const DEFAULT_SORT_ITEMS: SortItem[] = [{ field: { id: 'customfield_46508' }, sortTypeCode: 'DESC' }]
+/** 默认排序（视图草稿未保存排序时使用）：按创建时间倒序 */
+const DEFAULT_SORT_ITEMS: SortItem[] = [{ field: { id: 'createtime' }, sortTypeCode: 'DESC' }]
 const sortItemList = ref<SortItem[]>(JSON.parse(JSON.stringify(DEFAULT_SORT_ITEMS)))
 const sortCountComputed = computed(() => sortItemList.value.length)
 const isSortDesc = computed(() => sortItemList.value[0]?.sortTypeCode === 'DESC')
@@ -1122,8 +1125,13 @@ function userOptionInitial(u: UserItem): string {
 }
 
 /** 根据 userNo 从当前选项列表中查找用户对象 */
+/** 人员唯一键：新接口 memberId（userNo 可能为空），兼容旧接口 userNo / id */
+function userKeyOf(u: { memberId?: unknown; userNo?: unknown; id?: unknown }): string {
+  return String(u.memberId || u.userNo || u.id || '')
+}
+
 function findMemberByNo(no: string): UserItem | undefined {
-  return memberOptions.value.find(u => String(u.userNo) === no)
+  return memberOptions.value.find(u => userKeyOf(u) === no)
 }
 
 /** 选中标签文字：账号（工号），选项未加载时兜底显示 userNo */
@@ -1224,10 +1232,10 @@ function handleMemberSearch(keyword: string) {
       if (res?.success) {
         const list = Array.isArray(res.data?.list) ? res.data.list : []
         const cur = editUserValue.value
-        if (cur && !list.some(u => String(u.userNo) === String(cur))) {
+        if (cur && !list.some(u => userKeyOf(u) === String(cur))) {
           // 保留预填充的完整用户对象，避免降级为仅 userNo 的占位
-          const existing = memberOptions.value.find(u => String(u.userNo) === String(cur))
-          memberOptions.value = [existing ?? ({ userNo: cur } as UserItem), ...list]
+          const existing = memberOptions.value.find(u => userKeyOf(u) === String(cur))
+          memberOptions.value = [existing ?? ({ memberId: cur, userNo: cur } as UserItem), ...list]
         } else {
           memberOptions.value = list
         }
@@ -1525,7 +1533,7 @@ function startCellEdit(rec: IssueRecord, fieldId: string) {
   } else if (upperType === FIELD_TYPE.SELECT_USER_SINGLE) {
     // 人员单选字段：回填 userNo + 预填充当前用户 + 预取用户列表（含当前值）
     const uv = typeof raw === 'object' && raw != null
-      ? String((raw as Record<string, unknown>).userNo ?? (raw as Record<string, unknown>).id ?? '')
+      ? userKeyOf(raw as Record<string, unknown>)
       : raw == null
         ? ''
         : String(raw)
@@ -1538,10 +1546,10 @@ function startCellEdit(rec: IssueRecord, fieldId: string) {
     // 预填充当前已选用户对象，避免选项异步加载前 a-select 只显示 userNo
     memberOptions.value = []
     const curUser = getUserFieldObj(rec, fieldId)
-    if (uv && curUser && String(curUser.userNo ?? curUser.id ?? '') === uv) {
+    if (uv && curUser && userKeyOf(curUser) === uv) {
       memberOptions.value = [{ ...(curUser as unknown as UserItem) }]
     } else if (uv) {
-      memberOptions.value = [{ userNo: uv } as UserItem]
+      memberOptions.value = [{ memberId: uv, userNo: uv } as UserItem]
     }
     handleMemberSearch('')
   } else if (upperType === FIELD_TYPE.SELECT_LIST_SINGLE) {
@@ -1607,8 +1615,8 @@ async function confirmCellEdit() {
     if (uv == null || String(uv).trim() === '') {
       fieldValue = null
     } else {
-      const found = memberOptions.value.find(u => String(u.userNo) === String(uv))
-      fieldValue = found || { userNo: String(uv) }
+      const found = memberOptions.value.find(u => userKeyOf(u) === String(uv))
+      fieldValue = found || { memberId: String(uv) }
     }
   } else if (isSingleSelectField(cell.row, cell.fieldId)) {
     // 单选下拉字段：传整个选项对象 { optionId, optionName, color }（与新增/编辑弹窗一致）
@@ -1779,6 +1787,8 @@ async function fetchIssues() {
       dataList.value = []
       total.value = 0
     }
+    // 侧边栏「我的事项 (N)」与列表总数一致（其它列表视图不影响该数字）
+    if (viewCode.value === MY_TODO_VIEW_CODE) setTodoCount(total.value)
   } catch {
     rawIssueRecords.value = []
     dataList.value = []
@@ -1855,7 +1865,28 @@ watch(sortItemList, () => {
   }
   currentPage.value = 1
   fetchIssues()
+  saveSortToDraft()
 }, { deep: true })
+
+/** 排序变化后存到当前视图的草稿（防抖，连续调整只保存最后一次） */
+let sortSaveTimer: ReturnType<typeof setTimeout> | undefined
+function saveSortToDraft() {
+  clearTimeout(sortSaveTimer)
+  sortSaveTimer = setTimeout(async () => {
+    try {
+      const res = await updateFilterDraft({
+        id: draftFilter.value?.id,
+        userNo: draftUserNo.value,
+        viewCode: viewCode.value,
+        sort: JSON.stringify({ sortItemList: sortItemList.value }),
+      })
+      if (res?.success) {
+        const fresh = await getFilterDraft(draftUserNo.value, viewCode.value)
+        if (fresh?.success && fresh.data) draftFilter.value = fresh.data
+      }
+    } catch { /* 请求层已统一提示 */ }
+  }, 400)
+}
 
 // 分页变化时重新查询
 watch([currentPage, pageSize], () => {
@@ -1913,6 +1944,7 @@ onBeforeUnmount(() => {
   padding: 1vh 1vh 1vh;
   background: #ffffff;
   height: calc(100vh - 75px);
+  height: calc(100dvh - 75px);
   width: calc(100% + 1vh);
   max-width: none;
   margin: -2vh -0.5vh;
@@ -1954,7 +1986,7 @@ onBeforeUnmount(() => {
 }
 
 .refresh-icon:hover {
-  color: #1890ff;
+  color: var(--c-primary);
 }
 
 /* 右侧工具栏 */
@@ -1994,7 +2026,7 @@ onBeforeUnmount(() => {
 }
 
 .reset-link {
-  color: #1890ff;
+  color: var(--c-primary);
   cursor: pointer;
   text-decoration: none;
 }
@@ -2021,35 +2053,35 @@ onBeforeUnmount(() => {
 
 .tool-btn:hover {
   background: #f0f0f0 !important;
-  color: #1890ff;
+  color: var(--c-primary);
 }
 
 .tool-btn.active {
-  color: #1890ff;
+  color: var(--c-primary);
 }
 
 .filter-btn {
-  background: #e6f4ff !important;
-  color: #1890ff !important;
+  background: var(--c-primary-bg) !important;
+  color: var(--c-primary) !important;
   gap: 2px !important;
   padding: 0 8px !important;
   height: 28px;
 }
 
 .filter-btn:hover {
-  background: #bae0ff !important;
+  background: var(--c-primary-bg-hover) !important;
 }
 
 .sort-btn {
-  background: #e6f4ff !important;
-  color: #1890ff !important;
+  background: var(--c-primary-bg) !important;
+  color: var(--c-primary) !important;
   gap: 2px !important;
   padding: 0 8px !important;
   height: 28px;
 }
 
 .sort-btn:hover {
-  background: #bae0ff !important;
+  background: var(--c-primary-bg-hover) !important;
 }
 
 .more-btn {
@@ -2114,7 +2146,7 @@ onBeforeUnmount(() => {
 
 /* 选中行高亮 */
 .items-table :deep(.ant-table-tbody > tr.ant-table-row-selected > td) {
-  background: #e6f4ff;
+  background: var(--c-primary-bg);
 }
 
 /* 单元格悬停编辑 icon */
@@ -2142,7 +2174,7 @@ onBeforeUnmount(() => {
   transition: color 0.2s;
 }
 .summary-cell-text:hover {
-  color: #1677ff;
+  color: var(--c-primary);
   text-decoration: underline;
 }
 .single-select-tag {
@@ -2165,7 +2197,7 @@ onBeforeUnmount(() => {
   width: 18px;
   height: 18px;
   font-size: 12px;
-  color: #0050b3;
+  color: var(--c-primary-active);
   cursor: pointer;
   border-radius: 4px;
   line-height: 1;
@@ -2177,7 +2209,7 @@ onBeforeUnmount(() => {
 }
 
 .cell-edit-icon:hover {
-  background: #e6f4ff;
+  background: var(--c-primary-bg);
 }
 
 /* 优先级：圆点 + 文字（只改文字颜色） */
@@ -2206,7 +2238,7 @@ onBeforeUnmount(() => {
 
 .user-cell-avatar {
   flex-shrink: 0;
-  background: #1890ff;
+  background: var(--c-primary);
   font-size: 12px;
 }
 
@@ -2225,7 +2257,7 @@ onBeforeUnmount(() => {
 
 .user-option-avatar {
   flex-shrink: 0;
-  background: #1890ff;
+  background: var(--c-primary);
   font-size: 11px;
 }
 
@@ -2250,7 +2282,7 @@ onBeforeUnmount(() => {
 
 .issue-key-link {
   font-size: 14px;
-  color: #1890ff;
+  color: var(--c-primary);
   cursor: pointer;
   text-decoration: none;
 }
@@ -2281,7 +2313,7 @@ onBeforeUnmount(() => {
 }
 
 .action-dots:hover {
-  color: #1890ff;
+  color: var(--c-primary);
 }
 
 /* 列设置抽屉 */

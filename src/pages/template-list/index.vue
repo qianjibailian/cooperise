@@ -1490,7 +1490,7 @@ onMounted(() => {
 .stat-value { font-size: 22px; font-weight: 700; color: #1d1d1f; letter-spacing: -0.3px; }
 .stat-label { font-size: 13px; color: #86868b; font-weight: 500; }
 .stat-green { color: #34c759; }
-.stat-blue { color: #007aff; }
+.stat-blue { color: var(--c-primary); }
 .stat-divider { width: 1px; height: 20px; background: #e5e5ea; }
 
 /* ---- tab nav ---- */
@@ -1505,7 +1505,7 @@ onMounted(() => {
 .tpl-icon { width: 32px; height: 32px; border-radius: 9px; display: flex; align-items: center; justify-content: center; font-size: 15px; color: #fff; flex-shrink: 0; }
 .tpl-name-text { min-width: 0; flex: 1; }
 .tpl-name { display: block; font-size: 14px; font-weight: 500; color: #1d1d1f; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.tpl-name:hover { color: #1677ff; }
+.tpl-name:hover { color: var(--c-primary); }
 .tpl-desc { font-size: 12px; color: #86868b; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tpl-default-tag { display: inline-flex; align-items: center; gap: 3px; flex-shrink: 0; margin-inline-end: 0; }
 .tpl-tag { margin-inline-end: 0; }
@@ -1525,7 +1525,7 @@ onMounted(() => {
 .empty-icon { font-size: 36px; color: #aeaeb2; }
 .empty-title { font-size: 18px; font-weight: 600; color: #1d1d1f; margin: 0 0 6px; }
 .empty-desc { font-size: 14px; color: #86868b; margin: 0 0 24px; }
-.create-btn-empty { display: flex; align-items: center; gap: 6px; padding: 11px 24px; border: none; background: #007aff; color: #fff; border-radius: 12px; font-size: 14px; font-weight: 600; cursor: pointer; font-family: inherit; transition: all 0.2s; }
+.create-btn-empty { display: flex; align-items: center; gap: 6px; padding: 11px 24px; border: none; background: var(--c-primary); color: #fff; border-radius: 12px; font-size: 14px; font-weight: 600; cursor: pointer; font-family: inherit; transition: all 0.2s; }
 .create-btn-empty:hover { background: #0066d6; }
 
 /* ---- pagination ---- */
@@ -1604,7 +1604,7 @@ onMounted(() => {
 .added-item { display: grid; grid-template-columns: 16px 22px 1fr auto auto; align-items: center; gap: 8px; padding: 7px 8px; border-radius: 8px; background: #fff; border: 1px solid #eef0f3; transition: all 0.15s; cursor: grab; }
 .added-item:hover { border-color: #d6dee9; background: #f7faff; }
 .added-item.is-dragging { opacity: 0.4; cursor: grabbing; }
-.added-item.is-drag-over { border-color: #007aff; background: #eaf4ff; box-shadow: 0 0 0 1px #007aff; }
+.added-item.is-drag-over { border-color: var(--c-primary); background: #eaf4ff; box-shadow: 0 0 0 1px var(--c-primary); }
 .added-drag-handle { color: #c5c8cc; font-size: 14px; cursor: grab; flex-shrink: 0; transition: color 0.15s; }
 .added-item:hover .added-drag-handle { color: #86868b; }
 .added-drag-handle:active { cursor: grabbing; }
@@ -1614,7 +1614,7 @@ onMounted(() => {
 .added-remove { opacity: 0.5; transition: opacity 0.15s; padding: 0 !important; }
 .added-remove:hover { opacity: 1; }
 .add-tab-btn { display: flex; align-items: center; gap: 5px; border: 1.5px dashed #d1d1d6; background: transparent; padding: 7px 16px; border-radius: 10px; font-size: 13px; font-weight: 500; color: #6e6e73; cursor: pointer; font-family: inherit; transition: all 0.2s; }
-.add-tab-btn:hover { border-color: #007aff; color: #007aff; }
+.add-tab-btn:hover { border-color: var(--c-primary); color: var(--c-primary); }
 
 .form-tabs { margin-top: 4px; }
 .form-tabs :deep(.ant-tabs-nav) { margin-bottom: 16px; }

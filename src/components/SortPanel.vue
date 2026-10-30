@@ -7,8 +7,7 @@
           <span class="sort-action-link">复制</span>
           <template #overlay>
             <a-menu @click="handleActionClick">
-              <a-menu-item key="copy">复制当前排序</a-menu-item>
-              <a-menu-item key="copyAll">复制所有排序</a-menu-item>
+              <a-menu-item key="copy" :disabled="!rows.length">复制排序</a-menu-item>
             </a-menu>
           </template>
         </a-dropdown>
@@ -36,11 +35,14 @@
           :loading="fieldLoading"
           show-search
           option-filter-prop="label"
+          @change="sync"
         >
           <a-select-option
             v-for="f in fieldOptions"
             :key="f.value"
             :value="f.value"
+            :label="f.label"
+            :disabled="isUsedByOther(f.value, index)"
           >{{ f.label }}</a-select-option>
         </a-select>
 
@@ -49,6 +51,7 @@
           v-model:value="cond.sortTypeCode"
           class="sort-direction"
           size="small"
+          @change="sync"
         >
           <a-select-option value="ASC">升序</a-select-option>
           <a-select-option value="DESC">降序</a-select-option>
@@ -76,7 +79,7 @@
 
       <!-- 新增排序 -->
       <div class="sort-add-row">
-        <span class="sort-add-btn" @click="addCondition">+ 新增排序</span>
+        <span class="sort-add-btn" @click="addCondition()">+ 新增排序</span>
       </div>
     </div>
   </div>
@@ -84,7 +87,8 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
-import { queryAvailableFields } from '@/api/faiz'
+import { message } from 'ant-design-vue'
+import { queryAvailableFieldList } from '@/api/faiz'
 import type { AvailableFieldItem, SortItem } from '@/types/faiz'
 
 interface SortRow {
@@ -102,96 +106,87 @@ const emit = defineEmits<{
   (e: 'update:modelValue', value: SortItem[]): void
 }>()
 
-// ---------- 字段：与全局筛选一致，取「可用字段接口」，接口未返回的常用系统字段作兜底 ----------
+// ---------- 字段：与全局筛选一致，取 /availableField/list（自定义字段 + 系统字段） ----------
 const fieldLoading = ref(false)
 const availableFields = ref<AvailableFieldItem[]>([])
 
-const SYSTEM_FIELD_LABELS: Record<string, string> = {
-  issuekey: '编号',
-  summary: '概要',
-  status: '状态',
-  priority: '优先级',
-  issuetype: '分类',
-  assignee: '经办人',
-  creator: '创建人',
-  reporter: '报告人',
-  createtime: '创建时间',
-  created: '创建时间',
-  updated: '更新时间',
+/** 下拉选项：只取后端返回的字段 */
+const fieldOptions = computed(() => availableFields.value.map((f) => ({ value: f.fieldId, label: f.fieldName })))
+
+/** 字段列表加载后，移除不在列表中的排序（已删除的字段 / 历史遗留的无效字段），并同步给父级 */
+function dropUnknownRows() {
+  if (!availableFields.value.length) return
+  const known = new Set(availableFields.value.map((f) => f.fieldId))
+  const kept = rows.value.filter((r) => !r.fieldId || known.has(r.fieldId))
+  if (kept.length !== rows.value.length) {
+    rows.value = kept
+    sync()
+  }
 }
-
-const fieldOptions = computed(() => {
-  const list: { value: string; label: string }[] = []
-  const known = new Set<string>()
-
-  // 1) 接口返回的可用字段（含自定义字段，展示中文名）
-  for (const f of availableFields.value) {
-    if (known.has(f.fieldId)) continue
-    known.add(f.fieldId)
-    list.push({ value: f.fieldId, label: f.fieldName })
-  }
-
-  // 2) 常用系统字段兜底（接口未返回时仍可选）
-  for (const [id, label] of Object.entries(SYSTEM_FIELD_LABELS)) {
-    if (!known.has(id)) {
-      known.add(id)
-      list.push({ value: id, label })
-    }
-  }
-
-  // 3) 已选字段不在上述列表时，追加展示，避免 select 显示原始 fieldId
-  for (const item of props.modelValue || []) {
-    const id = item.field?.id
-    if (id && !known.has(id)) {
-      known.add(id)
-      list.push({ value: id, label: id })
-    }
-  }
-
-  return list
-})
 
 async function loadAvailableFields() {
   fieldLoading.value = true
   try {
-    const res = await queryAvailableFields({ page: 1, pageSize: 200, searchKey: '' })
-    if (res.success && res.data?.list) availableFields.value = res.data.list.filter((f) => !f.obsolete)
+    const res = await queryAvailableFieldList({ page: 1, pageSize: 500, searchKey: '' })
+    if (res?.success && res.data?.list) {
+      availableFields.value = res.data.list.filter((f) => !f.obsolete)
+      dropUnknownRows()
+    }
   } catch {
-    availableFields.value = []
+    // 请求层已统一提示；保留上次结果
   } finally {
     fieldLoading.value = false
   }
 }
 
 onMounted(loadAvailableFields)
+// 每次打开面板重新拉取，保证与字段配置同步
+watch(
+  () => props.visible,
+  (open, wasOpen) => {
+    if (open && wasOpen === false) loadAvailableFields()
+  },
+)
 
+// ---------- 排序条件 ----------
 const rows = ref<SortRow[]>([])
 
 watch(
   () => props.modelValue,
   (val) => {
-    rows.value = (val || []).map((item) => ({
-      fieldId: item.field?.id || '',
-      sortTypeCode: item.sortTypeCode,
-    }))
+    const next = (val || []).map((item) => ({ fieldId: item.field?.id || '', sortTypeCode: item.sortTypeCode || 'ASC' }))
+    // 与本地一致（含未选字段的空行）时不覆盖，避免新增的空行被父级回写冲掉
+    const sameAsLocal = JSON.stringify(next) === JSON.stringify(rows.value.filter((r) => r.fieldId))
+    if (!sameAsLocal) {
+      rows.value = next
+      dropUnknownRows()
+    }
   },
   { immediate: true },
 )
 
+/** 其它行已使用的字段不能重复选择 */
+function isUsedByOther(fieldId: string, index: number): boolean {
+  return rows.value.some((r, i) => i !== index && r.fieldId === fieldId)
+}
+
+/** 同步给父级：只提交已选字段的行（未选字段的空行仅留在面板里） */
 function sync() {
   emit(
     'update:modelValue',
-    rows.value.map((r) => ({
-      field: { id: r.fieldId, datasourceId: 0 },
-      sortTypeCode: r.sortTypeCode,
-    })),
+    rows.value
+      .filter((r) => r.fieldId)
+      .map((r) => ({ field: { id: r.fieldId, datasourceId: 0 }, sortTypeCode: r.sortTypeCode })),
   )
 }
 
-function addCondition() {
-  const used = new Set(rows.value.map(r => r.fieldId))
-  const next = fieldOptions.value.find(f => !used.has(f.value))?.value ?? ''
-  rows.value.push({ fieldId: next, sortTypeCode: 'ASC' })
+/** 新增排序：默认选第一个未使用的字段；index 传入时插在该行下方 */
+function addCondition(index?: number) {
+  const used = new Set(rows.value.map((r) => r.fieldId))
+  const next = fieldOptions.value.find((f) => !used.has(f.value))?.value ?? ''
+  const row = { fieldId: next, sortTypeCode: 'ASC' }
+  if (index === undefined) rows.value.push(row)
+  else rows.value.splice(index + 1, 0, row)
   sync()
 }
 
@@ -203,7 +198,7 @@ function removeCondition(index: number) {
 function handleRowAction(e: { key: string }, index: number) {
   switch (e.key) {
     case 'insert':
-      addCondition()
+      addCondition(index)
       break
     case 'delete':
       removeCondition(index)
@@ -211,12 +206,40 @@ function handleRowAction(e: { key: string }, index: number) {
   }
 }
 
-function handleActionClick(_e: { key: string }) {
-  // placeholder for copy actions
+// ---------- 复制 / 粘贴：以 JSON 形式经剪贴板在视图间复用排序 ----------
+const CLIPBOARD_TAG = 'cooperise-sort'
+
+async function handleActionClick(e: { key: string }) {
+  if (e.key !== 'copy') return
+  const payload = JSON.stringify({ type: CLIPBOARD_TAG, rows: rows.value.filter((r) => r.fieldId) })
+  try {
+    await navigator.clipboard.writeText(payload)
+    message.success('已复制排序')
+  } catch {
+    message.error('复制失败：浏览器不允许访问剪贴板')
+  }
 }
 
-function handlePaste() {
-  // placeholder
+async function handlePaste() {
+  let text = ''
+  try {
+    text = await navigator.clipboard.readText()
+  } catch {
+    message.error('粘贴失败：浏览器不允许访问剪贴板')
+    return
+  }
+  try {
+    const data = JSON.parse(text) as { type?: string; rows?: SortRow[] }
+    if (data?.type !== CLIPBOARD_TAG || !Array.isArray(data.rows)) throw new Error('invalid')
+    const seen = new Set<string>()
+    rows.value = data.rows
+      .filter((r) => r && typeof r.fieldId === 'string' && r.fieldId && !seen.has(r.fieldId) && seen.add(r.fieldId))
+      .map((r) => ({ fieldId: r.fieldId, sortTypeCode: r.sortTypeCode === 'DESC' ? 'DESC' : 'ASC' }))
+    sync()
+    message.success('已粘贴排序')
+  } catch {
+    message.warning('剪贴板中没有可用的排序')
+  }
 }
 
 function handleClear() {
@@ -377,8 +400,9 @@ function handleClear() {
   padding: 0 12px;
   border: 1px dashed #c7c7cc;
   border-radius: 8px;
-  background: rgba(10, 132, 255, 0.04);
-  color: #0a84ff;
+  background: transparent;
+  background: color-mix(in srgb, var(--c-primary) 4%, transparent);
+  color: var(--c-primary);
   font-size: 12px;
   cursor: pointer;
   user-select: none;
@@ -386,8 +410,9 @@ function handleClear() {
 }
 
 .sort-add-btn:hover {
-  background: rgba(10, 132, 255, 0.1);
-  border-color: #0a84ff;
+  background: transparent;
+  background: color-mix(in srgb, var(--c-primary) 10%, transparent);
+  border-color: var(--c-primary);
 }
 
 /* 控件：细边 + 圆角 + 蓝色焦点环 */
@@ -402,7 +427,8 @@ function handleClear() {
 }
 
 .sort-panel :deep(.ant-select-focused .ant-select-selector) {
-  border-color: #0a84ff !important;
-  box-shadow: 0 0 0 3px rgba(10, 132, 255, 0.15) !important;
+  border-color: var(--c-primary) !important;
+  box-shadow: 0 0 0 3px transparent !important;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--c-primary) 15%, transparent) !important;
 }
 </style>

@@ -165,8 +165,8 @@ function handleMenuClick(path: string) {
 }
 
 .drawer-dashboard:hover {
-  background: #f0f5ff;
-  color: #1677ff;
+  background: var(--c-primary-bg);
+  color: var(--c-primary);
 }
 
 .dashboard-arrow {
@@ -206,9 +206,9 @@ function handleMenuClick(path: string) {
 }
 
 .recent-item:hover {
-  border-color: #91caff;
-  color: #1677ff;
-  background: #f0f5ff;
+  border-color: var(--c-primary-border);
+  color: var(--c-primary);
+  background: var(--c-primary-bg);
 }
 
 .grid-list {
@@ -234,13 +234,13 @@ function handleMenuClick(path: string) {
 }
 
 .grid-item:hover {
-  border-color: #91caff;
-  color: #1677ff;
-  background: #f0f5ff;
+  border-color: var(--c-primary-border);
+  color: var(--c-primary);
+  background: var(--c-primary-bg);
 }
 
 .grid-icon {
   font-size: 24px;
-  color: #1677ff;
+  color: var(--c-primary);
 }
 </style>

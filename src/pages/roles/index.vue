@@ -317,7 +317,8 @@ onMounted(loadRoles)
   padding: 0 16px;
   border-radius: 10px;
   font-weight: 500;
-  box-shadow: 0 2px 8px rgba(10, 132, 255, 0.24);
+  box-shadow: 0 2px 8px transparent;
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--c-primary) 24%, transparent);
 }
 
 .mgmt-card {

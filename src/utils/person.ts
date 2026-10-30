@@ -52,3 +52,10 @@ export function isPersonLike(u: unknown): boolean {
   const o = u as Record<string, unknown>
   return ['coAccount', 'userCoAccount', 'realName', 'memberId', 'userEnName', 'userAvatar'].some((k) => o[k] != null && o[k] !== '')
 }
+
+/** 人员唯一键：新接口 memberId（userNo 已不再返回），兼容旧接口 userNo / id */
+export function personKey(u: unknown): string {
+  if (!u || typeof u !== 'object') return u == null ? '' : String(u)
+  const o = u as Record<string, unknown>
+  return str(o.memberId) || str(o.userNo) || str(o.id)
+}

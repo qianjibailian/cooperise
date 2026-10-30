@@ -1701,14 +1701,14 @@ function formatRichText(v: unknown): string {
   padding: 0 40px;
   text-align: center;
   background:
-    radial-gradient(circle at 50% 0%, #f0f5ff 0%, transparent 60%),
+    radial-gradient(circle at 50% 0%, var(--c-primary-bg) 0%, transparent 60%),
     #ffffff;
 }
 .empty-illustration {
   width: 96px;
   height: 96px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #f0f5ff 0%, #f9f0ff 100%);
+  background: linear-gradient(135deg, var(--c-primary-bg) 0%, #f9f0ff 100%);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1716,7 +1716,7 @@ function formatRichText(v: unknown): string {
   font-size: 40px;
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.9),
-    0 8px 24px rgba(22, 119, 255, 0.08);
+    0 8px 24px color-mix(in srgb, var(--c-primary) 8%, transparent);
 }
 .empty-title {
   font-size: 16px;
@@ -1794,13 +1794,14 @@ function formatRichText(v: unknown): string {
   width: 60px;
   height: 60px;
   border-radius: 10px;
-  background: linear-gradient(135deg, #1677ff 0%, #4096ff 100%);
+  background: linear-gradient(135deg, var(--c-primary) 0%, var(--c-primary-hover) 100%);
   color: #fff;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   font-size: 48px;
-  box-shadow: 0 2px 8px rgba(22, 119, 255, 0.2);
+  box-shadow: 0 2px 8px transparent;
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--c-primary) 20%, transparent);
   flex-shrink: 0;
 }
 .dh-icon :deep(.anticon) {
@@ -1874,8 +1875,10 @@ function formatRichText(v: unknown): string {
   transition: background 0.2s, box-shadow 0.2s;
 }
 .dh-title:hover {
-  background: rgba(22, 119, 255, 0.06);
-  box-shadow: inset 0 0 0 1px rgba(22, 119, 255, 0.25);
+  background: transparent;
+  background: color-mix(in srgb, var(--c-primary) 6%, transparent);
+  box-shadow: inset 0 0 0 1px transparent;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c-primary) 25%, transparent);
 }
 .dh-title-empty {
   display: inline-flex;
@@ -1888,8 +1891,9 @@ function formatRichText(v: unknown): string {
   transition: border-color 0.2s, background 0.2s;
 }
 .dh-title-empty:hover {
-  border-color: #1677ff;
-  background: rgba(22, 119, 255, 0.04);
+  border-color: var(--c-primary);
+  background: transparent;
+  background: color-mix(in srgb, var(--c-primary) 4%, transparent);
 }
 .dh-summary-label {
   flex-shrink: 0;
@@ -1929,7 +1933,7 @@ function formatRichText(v: unknown): string {
 }
 .dh-icon-btn:hover {
   background: #f5f5f5;
-  color: #1677ff;
+  color: var(--c-primary);
 }
 
 /* ============ 属性卡（5 列一行） ============ */
@@ -2080,12 +2084,14 @@ function formatRichText(v: unknown): string {
 .action-primary {
   height: 28px !important;
   font-weight: 600 !important;
-  background: linear-gradient(135deg, #1677ff 0%, #4096ff 100%) !important;
-  box-shadow: 0 2px 6px rgba(22, 119, 255, 0.28) !important;
+  background: linear-gradient(135deg, var(--c-primary) 0%, var(--c-primary-hover) 100%) !important;
+  box-shadow: 0 2px 6px transparent !important;
+  box-shadow: 0 2px 6px color-mix(in srgb, var(--c-primary) 28%, transparent) !important;
   border-color: transparent !important;
 }
 .action-primary:hover {
-  box-shadow: 0 3px 10px rgba(22, 119, 255, 0.38) !important;
+  box-shadow: 0 3px 10px transparent !important;
+  box-shadow: 0 3px 10px color-mix(in srgb, var(--c-primary) 38%, transparent) !important;
 }
 
 .action-bar-right {
@@ -2252,8 +2258,8 @@ function formatRichText(v: unknown): string {
   line-height: 1;
   padding: 2px 6px;
   border-radius: 8px;
-  background: #e6f4ff;
-  color: #1677ff;
+  background: var(--c-primary-bg);
+  color: var(--c-primary);
   white-space: nowrap;
 }
 .nn-activity-node {
@@ -2283,14 +2289,14 @@ function formatRichText(v: unknown): string {
   transition: all 0.15s !important;
 }
 .panel-tabs :deep(.ant-tabs-tab:hover) {
-  color: #1677ff !important;
+  color: var(--c-primary) !important;
 }
 .panel-tabs :deep(.ant-tabs-tab-active) {
-  color: #1677ff !important;
+  color: var(--c-primary) !important;
   font-weight: 600 !important;
 }
 .panel-tabs :deep(.ant-tabs-ink-bar) {
-  background: linear-gradient(90deg, #1677ff 0%, #9254de 100%) !important;
+  background: linear-gradient(90deg, var(--c-primary) 0%, #9254de 100%) !important;
   height: 2.5px !important;
   border-radius: 2px;
 }
@@ -2362,7 +2368,7 @@ function formatRichText(v: unknown): string {
 }
 .kv-row:hover .field-edit-icon {
   opacity: 1;
-  color: #1677ff;
+  color: var(--c-primary);
 }
 .user-cell-pretty {
   display: inline-flex;
@@ -2386,8 +2392,8 @@ function formatRichText(v: unknown): string {
   flex-shrink: 0;
 }
 .ucp-share:hover {
-  color: #1677ff;
-  background: #e6f4ff;
+  color: var(--c-primary);
+  background: var(--c-primary-bg);
 }
 
 /* Description rich text（WangEditor 可编辑） */
@@ -2406,10 +2412,10 @@ function formatRichText(v: unknown): string {
   color: #8c8c8c;
 }
 .desc-act-btn:hover {
-  color: #1677ff;
+  color: var(--c-primary);
 }
 .desc-act-btn.is-save {
-  color: #1677ff;
+  color: var(--c-primary);
 }
 /* 编辑态：按钮放在工具栏上方，避免遮挡工具栏按钮 */
 .desc-rich-wrap.is-editing {
@@ -2470,15 +2476,17 @@ function formatRichText(v: unknown): string {
 .desc-rich-wrap :deep(p) { margin: 0 0 10px; }
 .desc-rich-wrap :deep(p:last-child) { margin-bottom: 0; }
 .desc-rich-wrap :deep(a) {
-  color: #1677ff;
+  color: var(--c-primary);
   text-decoration: none;
   padding: 1px 6px;
   border-radius: 4px;
-  background: rgba(22, 119, 255, 0.06);
+  background: transparent;
+  background: color-mix(in srgb, var(--c-primary) 6%, transparent);
   transition: background 0.15s;
 }
 .desc-rich-wrap :deep(a:hover) {
-  background: rgba(22, 119, 255, 0.12);
+  background: transparent;
+  background: color-mix(in srgb, var(--c-primary) 12%, transparent);
   text-decoration: underline;
 }
 .desc-rich-wrap :deep(img) {

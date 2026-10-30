@@ -44,15 +44,11 @@
               :selectedKeys="[currentPath]"
 
               @click="handleLocalMenuClick"
-              class="sidebar-menu"
+              class="sidebar-menu workspace-top-menu"
             >
-              <a-menu-item key="/workbench/filters">
-                <component :is="FilterOutlined" />
-                <span>新筛选器</span>
-              </a-menu-item>
               <a-menu-item key="/workbench/todo">
                 <component :is="CheckSquareOutlined" />
-                <span>我的事项 (2)</span>
+                <span>我的事项<template v-if="todoCount !== null"> ({{ todoCount }})</template></span>
               </a-menu-item>
             </a-menu>
 
@@ -266,7 +262,6 @@ import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import {
   HomeOutlined,
   SettingOutlined,
-  FilterOutlined,
   CheckSquareOutlined,
   SearchOutlined,
   PlusOutlined,
@@ -288,7 +283,9 @@ import { useRouter, useRoute } from 'vue-router'
 import AppHeader from '@/components/AppHeader.vue'
 import AppSideDrawer from '@/components/AppSideDrawer.vue'
 import NewIssueFormModal from '@/components/NewIssueFormModal.vue'
-import { notifyIssueCreated } from '@/utils/issue-events'
+import { notifyIssueCreated, onIssueCreated } from '@/utils/issue-events'
+import { useTodoCount, refreshTodoCount } from '@/utils/todo-count'
+import { useAuth } from '@/utils/auth'
 import CreateViewModal from '@/components/CreateViewModal.vue'
 import ViewTypeIcon from '@/components/ViewTypeIcon.vue'
 import WorkbenchPanel from './WorkbenchPanel.vue'
@@ -306,6 +303,13 @@ const iconBarItems = [
 
 const router = useRouter()
 const route = useRoute()
+
+// 侧边栏「我的事项 (N)」：与我的事项列表总数一致；挂载时与新建事项后按我的事项的筛选条件刷新
+const { todoCount } = useTodoCount()
+const { user: authUser } = useAuth()
+const todoUserNo = computed(() => authUser.value?.memberId || '10284941')
+onMounted(() => refreshTodoCount(todoUserNo.value))
+onIssueCreated(() => refreshTodoCount(todoUserNo.value))
 
 const drawerOpen = ref(false)
 const sidebarCollapsed = ref(false)
@@ -555,6 +559,7 @@ onBeforeUnmount(() => {
 .sider {
   background: #ffffff !important;
   height: calc(100vh - 56px);
+  height: calc(100dvh - 56px);
   position: fixed;
   left: 0;
   top: 56px;
@@ -572,6 +577,7 @@ onBeforeUnmount(() => {
   overflow: hidden;
   min-height: 0;
   height: 100vh;
+  height: 100dvh;
 }
 
 /* 左侧图标栏 */
@@ -605,15 +611,15 @@ onBeforeUnmount(() => {
 }
 
 .icon-bar-item.active {
-  background: #e6f7ff;
+  background: var(--c-primary-bg);
 }
 
 .icon-bar-item.active .icon-bar-icon {
-  color: #1890ff;
+  color: var(--c-primary);
 }
 
 .icon-bar-item.active .icon-bar-label {
-  color: #1890ff;
+  color: var(--c-primary);
 }
 
 .icon-bar-icon {
@@ -635,6 +641,11 @@ onBeforeUnmount(() => {
   flex-direction: column;
   overflow: hidden;
   background: #ffffff;
+}
+
+/* 工作台顶部菜单（我的事项）：与面板顶部留出间距 */
+.workspace-top-menu {
+  padding-top: 12px !important;
 }
 
 .side-panel-collapsed {
@@ -825,7 +836,7 @@ onBeforeUnmount(() => {
 }
 
 .action-icon:hover {
-  color: #1890ff;
+  color: var(--c-primary);
 }
 
 /* 文件夹 / 视图名称：按内容宽度、超长时收缩显示省略号，数量紧跟名称；标签、操作图标不被挤压 */
@@ -997,8 +1008,8 @@ onBeforeUnmount(() => {
 }
 
 .sidebar-menu :deep(.ant-menu-item-selected) {
-  background: #e6f7ff !important;
-  color: #1890ff !important;
+  background: var(--c-primary-bg) !important;
+  color: var(--c-primary) !important;
   font-weight: 500;
 }
 
@@ -1042,9 +1053,9 @@ onBeforeUnmount(() => {
 }
 
 .view-tag.shared {
-  color: #1890ff;
+  color: var(--c-primary);
   border-color: #91d5ff;
-  background: #e6f7ff;
+  background: var(--c-primary-bg);
 }
 
 /* 子菜单项样式 */
@@ -1111,6 +1122,7 @@ onBeforeUnmount(() => {
   padding-top: 56px;
   margin-left: 280px;
   min-height: 100vh;
+  min-height: 100dvh;
   transition: margin-left 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 

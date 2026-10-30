@@ -270,8 +270,8 @@ function confirmLogout() {
   justify-content: center;
   border-radius: 8px;
   font-size: 15px;
-  color: #0a84ff;
-  background: #eef5ff;
+  color: var(--c-primary);
+  background: var(--c-primary-bg);
 }
 
 .setting-row .setting-main {

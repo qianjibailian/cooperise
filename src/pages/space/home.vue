@@ -238,8 +238,8 @@ loadOrgTree()
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 12px;
   font-weight: 600;
-  color: #0a84ff;
-  background: #eef5ff;
+  color: var(--c-primary);
+  background: var(--c-primary-bg);
   border-radius: 6px;
 }
 
@@ -310,7 +310,7 @@ loadOrgTree()
 .user-avatar {
   flex-shrink: 0;
   font-size: 11px;
-  background: #0a84ff;
+  background: var(--c-primary);
 }
 
 @media (max-width: 768px) {

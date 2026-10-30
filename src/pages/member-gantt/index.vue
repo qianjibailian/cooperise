@@ -822,6 +822,7 @@ watch(filterCode, () => {
 .gantt-page {
   /* 与「我的事项」一致：抵消布局内边距，撑满内容区 */
   height: calc(100vh - 75px);
+  height: calc(100dvh - 75px);
   width: calc(100% + 1vh);
   max-width: none;
   margin: -2vh -0.5vh;
@@ -866,7 +867,7 @@ watch(filterCode, () => {
   transition: color 0.2s;
 }
 .refresh-icon:hover {
-  color: #0a84ff;
+  color: var(--c-primary);
 }
 .refresh-icon.spinning {
   animation: gantt-spin 0.8s linear infinite;
@@ -951,8 +952,8 @@ watch(filterCode, () => {
   background: #e5e5ea !important;
 }
 .tool-btn.active {
-  color: #0a84ff !important;
-  background: #e8f1ff !important;
+  color: var(--c-primary) !important;
+  background: var(--c-primary-bg) !important;
 }
 
 /* ---- 字段面板 ---- */
@@ -983,6 +984,7 @@ watch(filterCode, () => {
 }
 .field-panel-list {
   max-height: min(360px, calc(100vh - 240px));
+  max-height: min(360px, calc(100dvh - 240px));
   overflow-y: auto;
   overscroll-behavior: contain;
   padding: 0 6px;
@@ -1138,7 +1140,7 @@ watch(filterCode, () => {
 .g-head-bottom .g-head-cell.today {
   font-weight: 600;
   color: #fff;
-  background: #0a84ff;
+  background: var(--c-primary);
 }
 
 /* 行 */
@@ -1218,7 +1220,9 @@ watch(filterCode, () => {
   font-size: 11px;
   font-weight: 500;
   line-height: 18px;
+  color: var(--tag);
   color: color-mix(in srgb, var(--tag) 70%, #1d1d1f);
+  background: #fff;
   background: color-mix(in srgb, var(--tag) 14%, #fff);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1257,7 +1261,8 @@ watch(filterCode, () => {
   z-index: 1;
   width: 2px;
   margin-left: -1px;
-  background: rgba(10, 132, 255, 0.55);
+  background: var(--c-primary);
+  background: color-mix(in srgb, var(--c-primary) 55%, transparent);
   pointer-events: none;
 }
 
@@ -1271,6 +1276,7 @@ watch(filterCode, () => {
   padding: 0 8px;
   border-left: 3px solid var(--bar);
   border-radius: 6px;
+  background: #fff;
   background: color-mix(in srgb, var(--bar) 18%, #fff);
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
   transform: translateY(-50%);
@@ -1278,6 +1284,7 @@ watch(filterCode, () => {
   transition: background 0.15s, box-shadow 0.15s;
 }
 .g-row:hover .g-bar {
+  background: #fff;
   background: color-mix(in srgb, var(--bar) 28%, #fff);
   box-shadow: 0 2px 8px rgba(15, 23, 42, 0.1);
 }
@@ -1291,6 +1298,7 @@ watch(filterCode, () => {
   white-space: nowrap;
   font-size: 12px;
   font-weight: 500;
+  color: #1d1d1f;
   color: color-mix(in srgb, var(--bar) 35%, #1d1d1f);
 }
 

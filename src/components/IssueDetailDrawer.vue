@@ -1735,6 +1735,7 @@ function formatRichText(v: unknown): string {
   display: flex;
   flex-direction: column;
   height: 100vh;
+  height: 100dvh;
   overflow: hidden;
   background: #f5f7fa;
 }
@@ -1772,14 +1773,14 @@ function formatRichText(v: unknown): string {
   padding: 0 40px;
   text-align: center;
   background:
-    radial-gradient(circle at 50% 0%, #f0f5ff 0%, transparent 60%),
+    radial-gradient(circle at 50% 0%, var(--c-primary-bg) 0%, transparent 60%),
     #ffffff;
 }
 .empty-illustration {
   width: 96px;
   height: 96px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #f0f5ff 0%, #f9f0ff 100%);
+  background: linear-gradient(135deg, var(--c-primary-bg) 0%, #f9f0ff 100%);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1787,7 +1788,7 @@ function formatRichText(v: unknown): string {
   font-size: 40px;
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.9),
-    0 8px 24px rgba(22, 119, 255, 0.08);
+    0 8px 24px color-mix(in srgb, var(--c-primary) 8%, transparent);
 }
 .empty-title {
   font-size: 16px;
@@ -1825,7 +1826,7 @@ function formatRichText(v: unknown): string {
   content: '';
   position: absolute;
   left: 0; right: 0; bottom: 0; height: 1px;
-  background: linear-gradient(90deg, transparent 0%, #1677ff 50%, transparent 100%);
+  background: linear-gradient(90deg, transparent 0%, var(--c-primary) 50%, transparent 100%);
   opacity: 0.12;
   pointer-events: none;
 }
@@ -1842,13 +1843,14 @@ function formatRichText(v: unknown): string {
   width: 26px;
   height: 26px;
   border-radius: 6px;
-  background: linear-gradient(135deg, #1677ff 0%, #4096ff 100%);
+  background: linear-gradient(135deg, var(--c-primary) 0%, var(--c-primary-hover) 100%);
   color: #fff;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   font-size: 13px;
-  box-shadow: 0 2px 6px rgba(22, 119, 255, 0.25);
+  box-shadow: 0 2px 6px transparent;
+  box-shadow: 0 2px 6px color-mix(in srgb, var(--c-primary) 25%, transparent);
   flex-shrink: 0;
 }
 .tb-project {
@@ -1896,7 +1898,7 @@ function formatRichText(v: unknown): string {
 }
 .tb-icon-btn:hover {
   background: #ffffff;
-  color: #1677ff;
+  color: var(--c-primary);
   transform: translateY(-1px);
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.06);
 }
@@ -1924,13 +1926,14 @@ function formatRichText(v: unknown): string {
   position: absolute;
   top: 0; right: 0;
   width: 240px; height: 100%;
-  background: radial-gradient(ellipse at right top, rgba(22, 119, 255, 0.05), transparent 60%);
+  background: radial-gradient(ellipse at right top, transparent, transparent 60%);
+  background: radial-gradient(ellipse at right top, color-mix(in srgb, var(--c-primary) 5%, transparent), transparent 60%);
   pointer-events: none;
 }
 .title-accent {
   width: 3px;
   height: 20px;
-  background: linear-gradient(180deg, #1677ff 0%, #9254de 100%);
+  background: linear-gradient(180deg, var(--c-primary) 0%, #9254de 100%);
   border-radius: 2px;
   position: absolute;
   left: 20px;
@@ -1952,8 +1955,10 @@ function formatRichText(v: unknown): string {
   transition: box-shadow 0.2s, background 0.2s;
 }
 .issue-title:hover {
-  background: rgba(22, 119, 255, 0.06);
-  box-shadow: inset 0 0 0 1px rgba(22, 119, 255, 0.25);
+  background: transparent;
+  background: color-mix(in srgb, var(--c-primary) 6%, transparent);
+  box-shadow: inset 0 0 0 1px transparent;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c-primary) 25%, transparent);
 }
 .summary-empty-wrap {
   position: relative;
@@ -1968,8 +1973,9 @@ function formatRichText(v: unknown): string {
   transition: border-color 0.2s, background 0.2s;
 }
 .summary-empty-wrap:hover {
-  border-color: #1677ff;
-  background: rgba(22, 119, 255, 0.04);
+  border-color: var(--c-primary);
+  background: transparent;
+  background: color-mix(in srgb, var(--c-primary) 4%, transparent);
 }
 .summary-label {
   flex-shrink: 0;
@@ -2150,19 +2156,22 @@ function formatRichText(v: unknown): string {
 .action-primary {
   height: 28px !important;
   font-weight: 600 !important;
-  background: linear-gradient(135deg, #1677ff 0%, #4096ff 100%) !important;
-  box-shadow: 0 2px 6px rgba(22, 119, 255, 0.28) !important;
+  background: linear-gradient(135deg, var(--c-primary) 0%, var(--c-primary-hover) 100%) !important;
+  box-shadow: 0 2px 6px transparent !important;
+  box-shadow: 0 2px 6px color-mix(in srgb, var(--c-primary) 28%, transparent) !important;
   border-color: transparent !important;
 }
 .action-primary:hover {
-  box-shadow: 0 3px 10px rgba(22, 119, 255, 0.38) !important;
+  box-shadow: 0 3px 10px transparent !important;
+  box-shadow: 0 3px 10px color-mix(in srgb, var(--c-primary) 38%, transparent) !important;
 }
 .action-groupchat {
   height: 28px !important;
   margin-left: 4px;
-  background: linear-gradient(135deg, #e6f4ff 0%, #f0e6ff 100%) !important;
-  color: #1677ff !important;
-  border-color: rgba(22, 119, 255, 0.2) !important;
+  background: linear-gradient(135deg, var(--c-primary-bg) 0%, #f0e6ff 100%) !important;
+  color: var(--c-primary) !important;
+  border-color: transparent !important;
+  border-color: color-mix(in srgb, var(--c-primary) 20%, transparent) !important;
   font-weight: 500 !important;
 }
 
@@ -2327,7 +2336,7 @@ function formatRichText(v: unknown): string {
   box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.9);
   flex-shrink: 0;
 }
-.pch-dot-blue   { background: linear-gradient(135deg, #1677ff, #4096ff); box-shadow: 0 0 0 3px rgba(22, 119, 255, 0.12); }
+.pch-dot-blue   { background: linear-gradient(135deg, var(--c-primary), var(--c-primary-hover)); box-shadow: 0 0 0 3px color-mix(in srgb, var(--c-primary) 12%, transparent); }
 .pch-dot-green  { background: linear-gradient(135deg, #52c41a, #73d13d); box-shadow: 0 0 0 3px rgba(82, 196, 26, 0.12); }
 .pch-dot-purple { background: linear-gradient(135deg, #722ed1, #9254de); box-shadow: 0 0 0 3px rgba(114, 46, 209, 0.12); }
 .pch-dot-orange { background: linear-gradient(135deg, #fa8c16, #ffa940); box-shadow: 0 0 0 3px rgba(250, 140, 22, 0.12); }
@@ -2357,7 +2366,7 @@ function formatRichText(v: unknown): string {
   transition: all 0.15s;
   cursor: default;
 }
-.pch-meta:hover { color: #1677ff; background: #e6f4ff; }
+.pch-meta:hover { color: var(--c-primary); background: var(--c-primary-bg); }
 .pch-meta.dim { opacity: 0.55; }
 .pch-actions {
   display: inline-flex;
@@ -2377,8 +2386,8 @@ function formatRichText(v: unknown): string {
   font-size: 13px;
 }
 .pch-action-btn:hover {
-  background: #f0f5ff;
-  color: #1677ff;
+  background: var(--c-primary-bg);
+  color: var(--c-primary);
 }
 .pch-add {
   display: inline-flex;
@@ -2387,8 +2396,8 @@ function formatRichText(v: unknown): string {
   padding: 4px 10px;
   font-size: 12px;
   font-weight: 500;
-  color: #1677ff;
-  background: linear-gradient(135deg, #e6f4ff 0%, #f0e6ff 100%);
+  color: var(--c-primary);
+  background: linear-gradient(135deg, var(--c-primary-bg) 0%, #f0e6ff 100%);
   border-radius: 6px;
   cursor: pointer;
   text-decoration: none;
@@ -2396,7 +2405,8 @@ function formatRichText(v: unknown): string {
 }
 .pch-add:hover {
   transform: translateY(-1px);
-  box-shadow: 0 2px 6px rgba(22, 119, 255, 0.15);
+  box-shadow: 0 2px 6px transparent;
+  box-shadow: 0 2px 6px color-mix(in srgb, var(--c-primary) 15%, transparent);
 }
 
 /* 卡片体 */
@@ -2430,8 +2440,8 @@ function formatRichText(v: unknown): string {
   line-height: 1;
   padding: 2px 6px;
   border-radius: 8px;
-  background: #e6f4ff;
-  color: #1677ff;
+  background: var(--c-primary-bg);
+  color: var(--c-primary);
   white-space: nowrap;
 }
 .nn-activity-node {
@@ -2461,14 +2471,14 @@ function formatRichText(v: unknown): string {
   transition: all 0.15s !important;
 }
 .panel-tabs :deep(.ant-tabs-tab:hover) {
-  color: #1677ff !important;
+  color: var(--c-primary) !important;
 }
 .panel-tabs :deep(.ant-tabs-tab-active) {
-  color: #1677ff !important;
+  color: var(--c-primary) !important;
   font-weight: 600 !important;
 }
 .panel-tabs :deep(.ant-tabs-ink-bar) {
-  background: linear-gradient(90deg, #1677ff 0%, #9254de 100%) !important;
+  background: linear-gradient(90deg, var(--c-primary) 0%, #9254de 100%) !important;
   height: 2.5px !important;
   border-radius: 2px;
 }
@@ -2545,7 +2555,7 @@ function formatRichText(v: unknown): string {
 }
 .kv-row:hover .field-edit-icon {
   opacity: 1;
-  color: #1677ff;
+  color: var(--c-primary);
 }
 .user-cell-pretty {
   display: inline-flex;
@@ -2569,8 +2579,8 @@ function formatRichText(v: unknown): string {
   flex-shrink: 0;
 }
 .ucp-share:hover {
-  color: #1677ff;
-  background: #e6f4ff;
+  color: var(--c-primary);
+  background: var(--c-primary-bg);
 }
 
 /* Description rich text（WangEditor 可编辑） */
@@ -2589,10 +2599,10 @@ function formatRichText(v: unknown): string {
   color: #8c8c8c;
 }
 .desc-act-btn:hover {
-  color: #1677ff;
+  color: var(--c-primary);
 }
 .desc-act-btn.is-save {
-  color: #1677ff;
+  color: var(--c-primary);
 }
 /* 编辑态：按钮放在工具栏上方，避免遮挡工具栏按钮 */
 .desc-rich-wrap.is-editing {
@@ -2653,15 +2663,17 @@ function formatRichText(v: unknown): string {
 .desc-rich-wrap :deep(p) { margin: 0 0 10px; }
 .desc-rich-wrap :deep(p:last-child) { margin-bottom: 0; }
 .desc-rich-wrap :deep(a) {
-  color: #1677ff;
+  color: var(--c-primary);
   text-decoration: none;
   padding: 1px 6px;
   border-radius: 4px;
-  background: rgba(22, 119, 255, 0.06);
+  background: transparent;
+  background: color-mix(in srgb, var(--c-primary) 6%, transparent);
   transition: background 0.15s;
 }
 .desc-rich-wrap :deep(a:hover) {
-  background: rgba(22, 119, 255, 0.12);
+  background: transparent;
+  background: color-mix(in srgb, var(--c-primary) 12%, transparent);
   text-decoration: underline;
 }
 .desc-rich-wrap :deep(img) {

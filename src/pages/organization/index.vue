@@ -549,7 +549,8 @@ onMounted(loadTree)
   padding: 0 16px;
   border-radius: 10px;
   font-weight: 500;
-  box-shadow: 0 2px 8px rgba(10, 132, 255, 0.24);
+  box-shadow: 0 2px 8px transparent;
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--c-primary) 24%, transparent);
 }
 
 /* ---- 统计 ---- */
@@ -578,7 +579,7 @@ onMounted(loadTree)
   border-radius: 50%;
 }
 
-.dot-blue { background: #0a84ff; }
+.dot-blue { background: var(--c-primary); }
 .dot-green { background: #34c759; }
 .dot-gray { background: #c7c7cc; }
 .dot-purple { background: #5e5ce6; }
@@ -785,12 +786,12 @@ onMounted(loadTree)
 /* 拖动中的落点指示线 / 放入目标高亮 */
 .org-tree :deep(.ant-tree-drop-indicator) {
   height: 2px;
-  background: #0a84ff;
+  background: var(--c-primary);
   border-radius: 1px;
 }
 
 .org-tree :deep(.ant-tree-drop-indicator::after) {
-  border-color: #0a84ff;
+  border-color: var(--c-primary);
 }
 
 .org-tree :deep(.ant-tree-treenode.dragging) {
@@ -839,8 +840,8 @@ onMounted(loadTree)
   padding: 1px 8px;
   font-size: 11px;
   font-weight: 500;
-  color: #0a84ff;
-  background: #eef5ff;
+  color: var(--c-primary);
+  background: var(--c-primary-bg);
   border-radius: 999px;
 }
 
@@ -932,8 +933,8 @@ onMounted(loadTree)
   justify-content: center;
   margin-bottom: 14px;
   font-size: 26px;
-  color: #0a84ff;
-  background: #eef5ff;
+  color: var(--c-primary);
+  background: var(--c-primary-bg);
   border-radius: 16px;
 }
 

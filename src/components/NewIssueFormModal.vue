@@ -137,6 +137,8 @@
                           allow-clear
                           style="width: 100%"
                           :loading="memberLoadingMap[field.id] || false"
+                          :dropdown-match-select-width="false"
+                          popup-class-name="person-select-popup"
                           @search="(kw: string) => handleMemberSearch(field.id, kw)"
                         >
                           <template #selection="{ value }">
@@ -151,8 +153,8 @@
                           </template>
                           <a-select-option
                             v-for="u in memberOptionsMap[field.id] || []"
-                            :key="String(u.userNo)"
-                            :value="String(u.userNo)"
+                            :key="personKey(u)"
+                            :value="personKey(u)"
                             :label="formatMemberLabel(u)"
                           >
                             <span class="user-option-cell">
@@ -174,6 +176,8 @@
                           allow-clear
                           style="width: 100%"
                           :loading="memberLoadingMap[field.id] || false"
+                          :dropdown-match-select-width="false"
+                          popup-class-name="person-select-popup"
                           @search="(kw: string) => handleMemberSearch(field.id, kw)"
                         >
                           <template #selection="{ value }">
@@ -188,8 +192,8 @@
                           </template>
                           <a-select-option
                             v-for="u in memberOptionsMap[field.id] || []"
-                            :key="String(u.userNo)"
-                            :value="String(u.userNo)"
+                            :key="personKey(u)"
+                            :value="personKey(u)"
                             :label="formatMemberLabel(u)"
                           >
                             <span class="user-option-cell">
@@ -300,7 +304,7 @@ import { PlusOutlined } from '@ant-design/icons-vue'
 import { Empty, message } from 'ant-design-vue'
 import { createIssue, getAvailableFieldOptions, queryUsers, queryTemplates, getTemplate, getIssueCreateMeta, queryDetail, patchIssue, queryAvailableFieldList, querySpaceOptions, queryIssueTypes, createTemplate, type SpaceItem } from '@/api/faiz'
 import { issueTypeIconOf } from '@/utils/issueTypeIcons'
-import { personLabel, personAvatar, personInitial } from '@/utils/person'
+import { personLabel, personAvatar, personInitial, personKey } from '@/utils/person'
 import { FIELD_TYPE, normalizeFieldType, formatTypeLabel } from '@/types/fieldType'
 import type {
   CustomFieldOptionReq,
@@ -914,7 +918,7 @@ function postLoadAfterBuildTabs() {
           // 与编辑回填预置的用户合并去重，避免重复选项/丢失当前选中
           const merged = [...(memberOptionsMap[fid] || [])]
           for (const u of list) {
-            if (!merged.some(m => String(m.userNo) === String(u.userNo))) merged.push(u)
+            if (!merged.some(m => personKey(m) === personKey(u))) merged.push(u)
           }
           memberOptionsMap[fid] = merged
         }
@@ -1019,16 +1023,16 @@ async function loadEditDetail(issueKey: string) {
             } else if ((f.type === FIELD_TYPE.DATE_PICKER || f.type === FIELD_TYPE.TIME_PICKER) && f.value && typeof f.value === 'string') {
               form[fid] = dayjs(f.value)
             } else if (f.type === FIELD_TYPE.SELECT_USER_SINGLE || f.type === FIELD_TYPE.SELECT_USER_MULTI) {
-              // 用户字段：form 值规范为 userNo（a-select option value 为 userNo），
-              // 并预填充当前已选用户对象，避免选项异步加载前 a-select 只显示 userNo
+              // 用户字段：form 值规范为人员唯一键 memberId（a-select option value 同为 personKey），
+              // 并预填充当前已选用户对象，避免选项异步加载前 a-select 只显示原始值
               const rawVal = f.value
               if (f.type === FIELD_TYPE.SELECT_USER_MULTI) {
                 const arr = Array.isArray(rawVal) ? rawVal : rawVal == null ? [] : [rawVal]
                 form[fid] = arr
-                  .map(v => (v != null && typeof v === 'object' ? String((v as any).userNo ?? (v as any).id ?? '') : String(v ?? '')))
+                  .map(v => personKey(v))
                   .filter(Boolean)
               } else if (rawVal != null && typeof rawVal === 'object') {
-                form[fid] = String((rawVal as any).userNo ?? (rawVal as any).id ?? '')
+                form[fid] = personKey(rawVal)
               } else {
                 form[fid] = rawVal ?? null
               }
@@ -1162,9 +1166,9 @@ function handleMemberSearch(fieldId: string, keyword: string) {
           ? [String(curVal)]
           : []
       for (const no of curNos) {
-        if (!merged.some(u => String(u.userNo) === no)) {
-          const pre = (memberOptionsMap[fieldId] || []).find(u => String(u.userNo) === no)
-          merged.unshift(pre ? { ...pre } : ({ userNo: no } as UserItem))
+        if (!merged.some(u => personKey(u) === no)) {
+          const pre = (memberOptionsMap[fieldId] || []).find(u => personKey(u) === no)
+          merged.unshift(pre ? { ...pre } : ({ memberId: no } as UserItem))
         }
       }
       memberOptionsMap[fieldId] = merged
@@ -1186,9 +1190,9 @@ function memberInitial(u: UserItem): string {
   return personInitial(u as unknown as Record<string, unknown>)
 }
 
-/** 根据 userNo 从字段选项列表中查找用户对象 */
+/** 根据人员唯一键（memberId）从字段选项列表中查找用户对象 */
 function findMemberByNo(fieldId: string, no: string): UserItem | undefined {
-  return (memberOptionsMap[fieldId] || []).find(u => String(u.userNo) === no)
+  return (memberOptionsMap[fieldId] || []).find(u => personKey(u) === no)
 }
 
 /** 选中标签文字：realName（coAccount），选项未加载时兜底显示原始值 */
@@ -1249,28 +1253,27 @@ const addFieldKeyword = ref('')
 const availableFieldsLoading = ref(false)
 const availableFieldsList = ref<AvailableFieldItem[]>([])
 
-/** 可添加字段：排除表单中已存在的字段，按关键词过滤 */
+/** 可添加字段：后端返回的字段（已按关键词搜索）中排除表单里已存在的 */
 const addableFields = computed(() => {
   const existing = new Set(collectAllFields().map(f => String(f.id)))
-  const kw = addFieldKeyword.value.trim().toLowerCase()
-  return availableFieldsList.value.filter(f => {
-    if (existing.has(String(f.fieldId))) return false
-    if (kw && !`${f.fieldName ?? ''} ${f.fieldId ?? ''}`.toLowerCase().includes(kw)) return false
-    return true
-  })
+  return availableFieldsList.value.filter(f => !existing.has(String(f.fieldId)))
 })
 
-/** 首次展开时拉取可用字段（/availableField/list），类型统一归一化 */
-async function loadAvailableFields() {
-  if (availableFieldsList.value.length > 0) return
+let availableFieldsSeq = 0
+/** 拉取可用字段（/availableField/list，后端按关键词搜索）：每次展开都重新获取，保证与字段配置同步；过滤已废弃字段 */
+async function loadAvailableFields(keyword = '') {
+  const seq = ++availableFieldsSeq
   availableFieldsLoading.value = true
   try {
-    const res = await queryAvailableFieldList({ page: 1, pageSize: 999, searchKey: '' })
-    availableFieldsList.value = (res?.data?.list || []).map(f => ({ ...f, type: normalizeFieldType(f.type || f.filedType) }))
+    const res = await queryAvailableFieldList({ page: 1, pageSize: 999, searchKey: keyword.trim() })
+    if (seq !== availableFieldsSeq) return
+    availableFieldsList.value = (res?.data?.list || [])
+      .filter(f => !f.obsolete)
+      .map(f => ({ ...f, type: normalizeFieldType(f.type || f.filedType) }))
   } catch {
-    availableFieldsList.value = []
+    if (seq === availableFieldsSeq) availableFieldsList.value = []
   } finally {
-    availableFieldsLoading.value = false
+    if (seq === availableFieldsSeq) availableFieldsLoading.value = false
   }
 }
 
@@ -1280,6 +1283,14 @@ function handleAddDropdownOpenChange(open: boolean) {
   // eslint-disable-next-line @typescript-eslint/no-floating-promises
   loadAvailableFields()
 }
+
+// 搜索：防抖后按关键词请求后端
+let addFieldSearchTimer: ReturnType<typeof setTimeout> | undefined
+watch(addFieldKeyword, (kw) => {
+  if (!addFieldDropdownOpen.value) return
+  clearTimeout(addFieldSearchTimer)
+  addFieldSearchTimer = setTimeout(() => loadAvailableFields(kw), 300)
+})
 
 /** 选中字段：追加到当前激活 Tab 末尾，初始化值并补拉选项/成员数据 */
 function handleAddField(f: AvailableFieldItem) {
@@ -1421,16 +1432,16 @@ function buildFieldValue(field: CreateMetaField, raw: unknown): unknown {
   // 用户单选：传整个 UserItem
   if (type === FIELD_TYPE.SELECT_USER_SINGLE) {
     const opts = memberOptionsMap[String(field.id)] || []
-    const found = opts.find(u => String(u.userNo) === String(raw))
-    return found || { userNo: String(raw) }
+    const found = opts.find(u => personKey(u) === String(raw))
+    return found || { memberId: String(raw) }
   }
   // 用户多选：传 UserItem 数组
   if (type === FIELD_TYPE.SELECT_USER_MULTI) {
     const opts = memberOptionsMap[String(field.id)] || []
     const arr = Array.isArray(raw) ? raw : [raw]
     return arr.map((v: unknown) => {
-      const found = opts.find(u => String(u.userNo) === String(v))
-      return found || { userNo: String(v) }
+      const found = opts.find(u => personKey(u) === String(v))
+      return found || { memberId: String(v) }
     })
   }
   // 文本/日期/富文本等：保持原值
@@ -1756,8 +1767,9 @@ async function saveEditForm() {
 }
 
 .new-form-template-select.ant-select-focused .ant-select-selector {
-  border-color: #3b82f6 !important;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12) !important;
+  border-color: var(--c-primary) !important;
+  box-shadow: 0 0 0 3px transparent !important;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--c-primary) 12%, transparent) !important;
 }
 
 .new-form-template-select.ant-select-single .ant-select-selector .ant-select-selection-item,
@@ -1831,7 +1843,7 @@ async function saveEditForm() {
 }
 
 .new-form-modal .ant-modal-footer .ant-btn-primary {
-  background: linear-gradient(180deg, #3b82f6 0%, #2563eb 100%);
+  background: linear-gradient(180deg, var(--c-primary) 0%, #2563eb 100%);
   border: none;
   color: #ffffff;
   box-shadow:
@@ -1855,7 +1867,7 @@ async function saveEditForm() {
 }
 
 .new-form-modal .ant-modal-footer .ant-btn-primary.ant-btn-loading {
-  background: linear-gradient(180deg, #3b82f6 0%, #2563eb 100%);
+  background: linear-gradient(180deg, var(--c-primary) 0%, #2563eb 100%);
   border: none;
   opacity: 0.85;
 }
@@ -2167,7 +2179,7 @@ async function saveEditForm() {
 
 .user-option-avatar {
   flex-shrink: 0;
-  background: #1890ff;
+  background: var(--c-primary);
   font-size: 11px;
 }
 
@@ -2276,8 +2288,9 @@ async function saveEditForm() {
 .new-form-modal .ant-input-affix-wrapper:focus,
 .new-form-modal .ant-input-affix-wrapper-focused,
 .new-form-modal textarea.ant-input:focus {
-  border-color: #3b82f6 !important;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.10) !important;
+  border-color: var(--c-primary) !important;
+  box-shadow: 0 0 0 3px transparent !important;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--c-primary) 10%, transparent) !important;
   outline: none;
   background: #ffffff !important;
 }

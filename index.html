@@ -6,10 +6,30 @@
     <meta http-equiv="Pragma" content="no-cache" />
     <meta http-equiv="Expires" content="0" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- 国产双核浏览器（360 / QQ / 搜狗等）强制使用极速（Webkit / Blink）内核，避免落到 IE 兼容模式 -->
+    <meta name="renderer" content="webkit" />
+    <meta name="force-rendering" content="webkit" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1" />
+    <!-- viewport-fit=cover：适配刘海屏 / 圆角屏的安全区 -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#ffffff" />
+    <meta name="format-detection" content="telephone=no,email=no" />
     <title>需求管控平台</title>
   </head>
   <body>
+    <noscript>请开启浏览器的 JavaScript 后使用需求管控平台。</noscript>
+    <!-- 浏览器过旧时给出升级提示，而不是白屏 -->
+    <div id="unsupported-browser" style="display:none;padding:48px 24px;text-align:center;font:15px/1.6 -apple-system,'PingFang SC','Microsoft YaHei',sans-serif;color:#1d1d1f">
+      <div style="font-size:20px;font-weight:600;margin-bottom:8px">当前浏览器版本过低</div>
+      <div style="color:#6e6e73">请使用最新版 Chrome、Edge、Safari 或 Firefox；360 / QQ 浏览器请切换到「极速模式」。</div>
+    </div>
+    <script>
+      (function () {
+        var ok = 'Promise' in window && 'fetch' in window && 'IntersectionObserver' in window &&
+          window.CSS && CSS.supports && CSS.supports('display', 'grid') && CSS.supports('(--a: 0)');
+        if (!ok) document.getElementById('unsupported-browser').style.display = 'block';
+      })();
+    </script>
     <div id="app"></div>
     <script type="module" src="/src/main.ts"></script>
   </body>

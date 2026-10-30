@@ -229,7 +229,7 @@ onMounted(loadProfile)
   flex-shrink: 0;
   font-size: 24px;
   font-weight: 600;
-  background: linear-gradient(135deg, #0a84ff, #5e5ce6);
+  background: linear-gradient(135deg, var(--c-primary), #5e5ce6);
 }
 
 .hero-main {
@@ -379,7 +379,7 @@ onMounted(loadProfile)
   border-radius: 8px;
   font-weight: 600;
   color: #fff;
-  background: #0a84ff;
+  background: var(--c-primary);
 }
 
 .org-main {

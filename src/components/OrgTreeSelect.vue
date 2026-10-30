@@ -94,12 +94,12 @@ function levelColor(id: number) {
 }
 
 .org-select-popup .ant-select-tree .ant-select-tree-node-content-wrapper.ant-select-tree-node-selected {
-  background: #eef5ff;
+  background: var(--c-primary-bg);
 }
 
 .org-select-popup .ant-select-tree .ant-select-tree-node-selected .org-option-name {
   font-weight: 600;
-  color: #0a84ff;
+  color: var(--c-primary);
 }
 
 .org-select-popup .ant-select-tree .ant-select-tree-switcher {
@@ -158,8 +158,8 @@ function levelColor(id: number) {
   padding: 0 6px;
   font-size: 11px;
   line-height: 18px;
-  color: #0a84ff;
-  background: #eef5ff;
+  color: var(--c-primary);
+  background: var(--c-primary-bg);
   border-radius: 999px;
 }
 

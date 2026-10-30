@@ -894,13 +894,13 @@ onMounted(loadFields)
 .toolbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 20px; flex-wrap: wrap; }
 .toolbar-left { display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0; flex-wrap: wrap; }
 .search-box { flex: 1; min-width: 260px; position: relative; display: flex; align-items: center; background: #f5f5f7; border-radius: 14px; transition: background 0.2s, box-shadow 0.2s; }
-.search-box:focus-within { background: #fff; box-shadow: 0 0 0 3px rgba(59,130,246,.15); }
+.search-box:focus-within { background: #fff; box-shadow: 0 0 0 3px color-mix(in srgb, var(--c-primary) 15%, transparent); }
 .search-icon { font-size: 16px; color: #86868b; margin-left: 14px; flex-shrink: 0; }
 .search-input { flex: 1; border: none; background: transparent; padding: 11px 12px 11px 10px; font-size: 15px; color: #1d1d1f; outline: none; font-family: inherit; }
 .search-input::placeholder { color: #aeaeb2; }
 .search-clear { padding: 0 12px; cursor: pointer; color: #aeaeb2; font-size: 16px; display: flex; align-items: center; }
 .search-clear:hover { color: #6e6e73; }
-.search-btn { display: inline-flex; align-items: center; gap: 6px; border: none; background: #3b82f6; color: #fff; padding: 9px 18px; border-radius: 10px; font-size: 14px; font-weight: 500; cursor: pointer; transition: background 0.2s; font-family: inherit; white-space: nowrap; }
+.search-btn { display: inline-flex; align-items: center; gap: 6px; border: none; background: var(--c-primary); color: #fff; padding: 9px 18px; border-radius: 10px; font-size: 14px; font-weight: 500; cursor: pointer; transition: background 0.2s; font-family: inherit; white-space: nowrap; }
 .search-btn:hover { background: #2563eb; }
 .toolbar-actions { display: flex; align-items: center; gap: 12px; }
 .delete-btn { display: flex; align-items: center; gap: 6px; padding: 10px 20px; border: 1px solid #e5e5ea; background: #fff; color: #ff3b30; border-radius: 12px; font-size: 14px; font-weight: 600; cursor: pointer; font-family: inherit; transition: all 0.2s; white-space: nowrap; }
@@ -916,7 +916,7 @@ onMounted(loadFields)
 .stat-value { font-size: 22px; font-weight: 700; color: #1d1d1f; letter-spacing: -0.3px; }
 .stat-label { font-size: 13px; color: #86868b; font-weight: 500; }
 .stat-green { color: #34c759; }
-.stat-blue { color: #007aff; }
+.stat-blue { color: var(--c-primary); }
 .stat-divider { width: 1px; height: 20px; background: #e5e5ea; }
 
 /* ---- table ---- */

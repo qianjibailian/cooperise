@@ -502,7 +502,8 @@ onMounted(loadUsers)
   padding: 0 16px;
   border-radius: 10px;
   font-weight: 500;
-  box-shadow: 0 2px 8px rgba(10, 132, 255, 0.24);
+  box-shadow: 0 2px 8px transparent;
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--c-primary) 24%, transparent);
 }
 
 .mgmt-card {
@@ -582,7 +583,7 @@ onMounted(loadUsers)
 .user-avatar {
   flex-shrink: 0;
   font-weight: 600;
-  background: linear-gradient(135deg, #0a84ff, #5e5ce6);
+  background: linear-gradient(135deg, var(--c-primary), #5e5ce6);
 }
 
 .user-cell-text {
@@ -689,8 +690,8 @@ onMounted(loadUsers)
 
 .soft-tag {
   margin: 2px 4px 2px 0;
-  color: #0a84ff;
-  background: #eef5ff;
+  color: var(--c-primary);
+  background: var(--c-primary-bg);
   border: none;
   border-radius: 6px;
 }

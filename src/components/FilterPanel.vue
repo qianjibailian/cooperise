@@ -70,6 +70,8 @@
             :filter-option="false"
             :loading="userLoading"
             class="value-input"
+            :dropdown-match-select-width="false"
+            popup-class-name="person-select-popup"
             @search="searchUsers"
             @focus="searchUsers('')"
             @change="(v: unknown, opts: unknown) => setUserValues(cond, v, opts)"
@@ -707,7 +709,7 @@ watch(
 .user-option-avatar {
   flex-shrink: 0;
   font-size: 11px;
-  background: #0a84ff;
+  background: var(--c-primary);
 }
 
 .user-option-name {
@@ -747,7 +749,7 @@ watch(
   flex-shrink: 0;
   font-size: 9px;
   line-height: 16px;
-  background: #0a84ff;
+  background: var(--c-primary);
 }
 .user-tag-text {
   overflow: hidden;
@@ -802,8 +804,9 @@ watch(
   padding: 0 12px;
   border: 1px dashed #c7c7cc;
   border-radius: 8px;
-  background: rgba(10, 132, 255, 0.04);
-  color: #0a84ff;
+  background: transparent;
+  background: color-mix(in srgb, var(--c-primary) 4%, transparent);
+  color: var(--c-primary);
   font-size: 12px;
   cursor: pointer;
   user-select: none;
@@ -811,8 +814,9 @@ watch(
 }
 
 .filter-add-btn:hover {
-  background: rgba(10, 132, 255, 0.1);
-  border-color: #0a84ff;
+  background: transparent;
+  background: color-mix(in srgb, var(--c-primary) 10%, transparent);
+  border-color: var(--c-primary);
 }
 
 .filter-footer {
@@ -843,10 +847,11 @@ watch(
 
 .fp-btn-primary,
 .fp-btn-primary:hover {
-  border-color: #0a84ff;
-  background: #0a84ff;
+  border-color: var(--c-primary);
+  background: var(--c-primary);
   color: #fff;
-  box-shadow: 0 2px 8px rgba(10, 132, 255, 0.28);
+  box-shadow: 0 2px 8px transparent;
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--c-primary) 28%, transparent);
 }
 
 /* 控件：细边 + 圆角 + 蓝色焦点环 */
@@ -869,8 +874,9 @@ watch(
 .filter-panel :deep(.ant-select-focused .ant-select-selector),
 .filter-panel :deep(.ant-input-sm:focus),
 .filter-panel :deep(.ant-picker-focused) {
-  border-color: #0a84ff !important;
-  box-shadow: 0 0 0 3px rgba(10, 132, 255, 0.15) !important;
+  border-color: var(--c-primary) !important;
+  box-shadow: 0 0 0 3px transparent !important;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--c-primary) 15%, transparent) !important;
 }
 
 /* 多选选中框：按选中项数量自适应高度（换行展示全部标签，不折叠成 +N） */

@@ -952,6 +952,7 @@ watch(filterCode, () => {
 .testing-calendar-page {
   /* 与「我的事项」一致：抵消布局内边距，撑满内容区 */
   height: calc(100vh - 75px);
+  height: calc(100dvh - 75px);
   width: calc(100% + 1vh);
   max-width: none;
   margin: -2vh -0.5vh;
@@ -997,7 +998,7 @@ watch(filterCode, () => {
   transition: color 0.2s;
 }
 .refresh-icon:hover {
-  color: #0a84ff;
+  color: var(--c-primary);
 }
 .refresh-icon.spinning {
   animation: tc-spin 0.8s linear infinite;
@@ -1088,11 +1089,11 @@ watch(filterCode, () => {
   background: #e5e5ea !important;
 }
 .tool-btn.active {
-  color: #0a84ff !important;
-  background: #e8f1ff !important;
+  color: var(--c-primary) !important;
+  background: var(--c-primary-bg) !important;
 }
 .tool-btn.active:hover {
-  background: #dbe9ff !important;
+  background: var(--c-primary-bg-hover) !important;
 }
 
 /* 展示字段面板 */
@@ -1124,6 +1125,7 @@ watch(filterCode, () => {
 /* 高度随视口收缩，超出出现滚动条，滚到底加载下一页 */
 .field-panel-list {
   max-height: min(360px, calc(100vh - 240px));
+  max-height: min(360px, calc(100dvh - 240px));
   min-height: 120px;
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -1280,7 +1282,8 @@ watch(filterCode, () => {
   opacity: 0.5;
 }
 .cal-cell.is-selected {
-  background: #f4f8ff;
+  background: var(--c-primary-bg);
+  background: color-mix(in srgb, var(--c-primary-bg) 60%, #fff);
 }
 .cal-cell-head {
   display: flex;
@@ -1301,7 +1304,7 @@ watch(filterCode, () => {
   color: #1d1d1f;
 }
 .cal-cell.is-today .cal-date {
-  background: #0a84ff;
+  background: var(--c-primary);
   color: #fff;
   font-weight: 600;
 }
@@ -1330,11 +1333,13 @@ watch(filterCode, () => {
   font-size: 12px;
   line-height: 16px;
   color: #1d1d1f;
+  background: #fff;
   background: color-mix(in srgb, var(--tc-accent, #8c8c8c) 11%, #fff);
   cursor: pointer;
   transition: background 0.15s, box-shadow 0.15s;
 }
 .cal-chip:hover {
+  background: #fff;
   background: color-mix(in srgb, var(--tc-accent, #8c8c8c) 18%, #fff);
   box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
 }
@@ -1346,6 +1351,7 @@ watch(filterCode, () => {
   font-size: 12px;
   font-weight: 600;
   letter-spacing: -0.1px;
+  color: #1d1d1f;
   color: color-mix(in srgb, var(--tc-accent, #8c8c8c) 30%, #1d1d1f);
 }
 .cal-chip-line {
@@ -1364,7 +1370,9 @@ watch(filterCode, () => {
   font-size: 11px;
   font-weight: 500;
   line-height: 18px;
+  color: var(--tag);
   color: color-mix(in srgb, var(--tag) 70%, #1d1d1f);
+  background: #fff;
   background: color-mix(in srgb, var(--tag) 14%, #fff);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1543,7 +1551,7 @@ watch(filterCode, () => {
 .group-avatar {
   flex-shrink: 0;
   font-size: 11px;
-  background: var(--gc, #0a84ff);
+  background: var(--gc, var(--c-primary));
 }
 .group-name {
   flex: 1;

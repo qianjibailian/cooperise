@@ -652,6 +652,7 @@ watch(filterCode, () => {
 .board-page {
   /* 与「我的事项」一致：抵消布局内边距，撑满内容区 */
   height: calc(100vh - 75px);
+  height: calc(100dvh - 75px);
   width: calc(100% + 1vh);
   max-width: none;
   margin: -2vh -0.5vh;
@@ -695,7 +696,7 @@ watch(filterCode, () => {
   transition: color 0.2s;
 }
 .refresh-icon:hover {
-  color: #0a84ff;
+  color: var(--c-primary);
 }
 .refresh-icon.spinning {
   animation: board-spin 0.8s linear infinite;
@@ -734,8 +735,8 @@ watch(filterCode, () => {
   background: #e5e5ea !important;
 }
 .tool-btn.active {
-  color: #0a84ff !important;
-  background: #e8f1ff !important;
+  color: var(--c-primary) !important;
+  background: var(--c-primary-bg) !important;
 }
 
 /* ---- 字段面板（分组 / 展示字段） ---- */
@@ -766,6 +767,7 @@ watch(filterCode, () => {
 }
 .field-panel-list {
   max-height: min(360px, calc(100vh - 240px));
+  max-height: min(360px, calc(100dvh - 240px));
   overflow-y: auto;
   overscroll-behavior: contain;
   padding: 0 6px;
@@ -823,6 +825,7 @@ watch(filterCode, () => {
   transition: background 0.15s, box-shadow 0.15s;
 }
 .board-column.can-drop {
+  box-shadow: inset 0 0 0 1px transparent;
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--col) 45%, transparent);
 }
 .board-column.no-drop {
@@ -870,7 +873,9 @@ watch(filterCode, () => {
   pointer-events: none;
 }
 .board-column.is-drop-target {
+  background: #fafafc;
   background: color-mix(in srgb, var(--col) 8%, #fafafc);
+  box-shadow: inset 0 0 0 2px var(--col);
   box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--col) 55%, transparent);
 }
 .column-header {
@@ -1002,7 +1007,9 @@ watch(filterCode, () => {
   font-size: 11px;
   font-weight: 500;
   line-height: 20px;
+  color: var(--tag);
   color: color-mix(in srgb, var(--tag) 70%, #1d1d1f);
+  background: #fff;
   background: color-mix(in srgb, var(--tag) 14%, #fff);
   overflow: hidden;
   text-overflow: ellipsis;

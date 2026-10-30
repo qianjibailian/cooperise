@@ -81,7 +81,8 @@ const routes: RouteRecordRaw[] = [
       { path: 'workbench/todo', component: Todo, name: 'Todo', meta: { title: '我的事项' } },
       { path: 'workbench/view/:filterCode', component: ViewEntry, name: 'ViewEntry', meta: { title: '视图' } },
       { path: 'jira/browse/:issueKey', component: IssueDetail, name: 'IssueDetail', meta: { title: '事项详情' } },
-      { path: 'workbench/filters', component: EmptyContent, name: 'Filters', meta: { title: '新筛选器' } },
+      // 「新筛选器」菜单已下线：旧链接回到我的事项
+      { path: 'workbench/filters', redirect: '/workbench/todo' },
       { path: 'workbench/:pathMatch(.*)*', component: EmptyContent, name: 'WorkbenchDynamic' },
       { path: 'dashboard', component: Dashboard, name: 'Dashboard', meta: { title: '仪表盘' } },
       { path: 'requirements', component: Requirements, name: 'Requirements', meta: { title: '需求管理' } },

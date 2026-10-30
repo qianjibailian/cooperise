@@ -276,7 +276,7 @@ const myTasks = [
 }
 
 .bar-req {
-  background: #3b82f6;
+  background: var(--c-primary);
 }
 
 .bar-task {
@@ -311,7 +311,7 @@ const myTasks = [
 }
 
 .dot-req {
-  background: #3b82f6;
+  background: var(--c-primary);
 }
 
 .dot-task {
