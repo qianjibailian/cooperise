@@ -7,8 +7,9 @@ import axios, {
 import { message } from 'ant-design-vue'
 import { clearAuth, getToken, useAuth } from '@/utils/auth'
 
-// 本地开发走同源 /api，由 vite 代理转发到后端（去掉 /api），避免跨域
-const API_BASE_URL = import.meta.env.DEV ? '/api' : import.meta.env.VITE_API_DOMAIN
+// 本地开发 / 内网部署（VITE_API_DOMAIN 为空）走同源 /api，由 vite（dev / preview）代理转发到后端（去掉 /api），
+// 内网其他人访问时浏览器只请求本服务，无需直连后端也不跨域
+const API_BASE_URL = import.meta.env.DEV || !import.meta.env.VITE_API_DOMAIN ? '/api' : import.meta.env.VITE_API_DOMAIN
 
 interface CustomAxiosInstance extends AxiosInstance {
   get<T = any, R = T>(url: string, config?: AxiosRequestConfig): Promise<R>

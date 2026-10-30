@@ -1,10 +1,28 @@
-import { defineConfig } from 'vite'
+import { defineConfig, loadEnv } from 'vite'
 import vuePlugin from '@vitejs/plugin-vue'
 import qiankun from 'vite-plugin-qiankun'
 import { webUpdateNotice } from '@plugin-web-update-notification/vite'
 import { resolve } from 'path'
 
-export default defineConfig({
+// 内网访问：dev / preview 均监听 0.0.0.0，同事通过「本机 IP:8083」访问；
+// 前端请求统一走同源 /api，由本服务代理到后端（VITE_PROXY_TARGET，默认本机 8080），对方浏览器无需直连后端
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), '')
+  const apiTarget = env.VITE_PROXY_TARGET || 'http://localhost:8080'
+  const proxy = {
+    '/api': {
+      target: apiTarget,
+      changeOrigin: true,
+      rewrite: (path: string) => path.replace(/^\/api/, ''),
+    },
+    '/qianjisan-assets': {
+      target: 'http://localhost:5173',
+      changeOrigin: true,
+      rewrite: (path: string) => path.replace(/^\/qianjisan-assets/, '/assets'),
+    },
+  }
+
+  return {
   plugins: [
     vuePlugin(),
     qiankun('cooperise', {
@@ -32,24 +50,22 @@ export default defineConfig({
     },
   },
   server: {
+    host: '0.0.0.0',
     port: 8083,
+    strictPort: true,
     headers: {
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Methods': '*',
       'Access-Control-Allow-Headers': '*',
     },
-    proxy: {
-      '/api': {
-        target: 'http://localhost:8080',
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api/, ''),
-      },
-      '/qianjisan-assets': {
-        target: 'http://localhost:5173',
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/qianjisan-assets/, '/assets'),
-      },
-    },
+    proxy,
+  },
+  // 打包后的内网预览（npm run preview:lan）：同样监听 0.0.0.0 并代理 /api
+  preview: {
+    host: '0.0.0.0',
+    port: 8083,
+    strictPort: true,
+    proxy,
   },
   build: {
     target: 'esnext',
@@ -67,4 +83,5 @@ export default defineConfig({
       },
     },
   },
+}
 })
