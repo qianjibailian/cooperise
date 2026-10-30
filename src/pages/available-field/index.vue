@@ -68,7 +68,9 @@
           </template>
           <template v-else-if="column.key === 'supportOperator'">
             <span v-if="record.supportOperator && record.supportOperator.length" class="cell-operators">
-              <a-tag v-for="op in record.supportOperator" :key="op" size="small">{{ op }}</a-tag>
+              <a-tag v-for="(op, i) in toOperatorTags(record.supportOperator)" :key="op.code || op.name || i" size="small" :title="op.code || undefined">
+                {{ op.name }}<span v-if="op.identifier" class="op-identifier">{{ op.identifier }}</span>
+              </a-tag>
             </span>
             <span v-else class="cell-muted">-</span>
           </template>
@@ -388,6 +390,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, watch, h } from 'vue'
+import { personLabel, personAvatar, personInitial } from '@/utils/person'
 import { Modal } from 'ant-design-vue'
 import {
   SearchOutlined, CloseCircleFilled, PlusOutlined,
@@ -401,6 +404,9 @@ import type { AvailableFieldItem, AvailableFieldSavePayload, EnumOptionItem } fr
 import {
   FIELD_TYPE, fieldTypeOptions, formatTypeLabel, typeTagColor, isEnumFieldType, defaultFieldGroupByType,
 } from '@/types/fieldType'
+import {
+  FIELD_OPERATORS, toFieldOperator, fieldOperatorName, type FieldOperator, type RawFieldOperator,
+} from '@/types/fieldOperator'
 
 // ---- 组件 props：可选字段与系统字段共用，通过 fieldApi 注入不同的接口实现 ----
 /** 通用字段行结构（兼容 AvailableFieldItem 与 SystemFieldItem） */
@@ -415,7 +421,8 @@ interface FieldRow {
   isRequired?: boolean
   obsolete?: boolean
   isSystem?: boolean
-  supportOperator?: string[]
+  /** 系统字段为对象数组 {id,name,code,identifier}，自定义字段为名称字符串 */
+  supportOperator?: RawFieldOperator[] | null
   configSchema?: string | null
   fieldValue?: string | null
   /** 展示场景：CREATE（新建）/ EDIT（编辑）/ DETAIL（详情）/ LIST（列表） */
@@ -486,14 +493,18 @@ const fieldGroupOptions = [
   { value: 'SUBJECT', label: '主内容' },
 ]
 
-// ---- 支持的操作枚举 ----
-const supportOperatorOptions = [
-  { value: '大于', label: '大于' },
-  { value: '小于', label: '小于' },
-  { value: '等于', label: '等于' },
-  { value: '包含', label: '包含' },
-  { value: '不包含', label: '不包含' },
-]
+// ---- 支持的操作枚举（表单按名称选择；系统字段页提交时再转换为 {id,name,code,identifier}） ----
+const supportOperatorOptions = FIELD_OPERATORS.map((o) => ({ value: o.name, label: `${o.name}（${o.identifier}）` }))
+
+/** 表格展示：兼容对象与名称字符串 */
+function toOperatorTags(list?: RawFieldOperator[] | null): FieldOperator[] {
+  return (list ?? []).map(toFieldOperator).filter((o): o is FieldOperator => !!o)
+}
+
+/** 回填表单：操作符统一为名称 */
+function toOperatorNames(list?: RawFieldOperator[] | null): string[] {
+  return (list ?? []).map(fieldOperatorName).filter(Boolean)
+}
 
 // ---- 展示场景枚举 ----
 const displaySceneOptions = [
@@ -664,11 +675,12 @@ function parseUserInfo(v: unknown): UserBrief | null {
     obj = v as Record<string, unknown>
   }
   if (!obj) return null
-  const name = String(obj.coAccount ?? obj.userCoAccount ?? obj.userEnName ?? obj.displayName ?? obj.name ?? obj.userNo ?? '')
+  // 人员统一展示：头像 + realName（coAccount）
+  const name = personLabel(obj)
   if (!name) return null
-  const idPart = obj.id || obj.userId || obj.userNo ? String(obj.id ?? obj.userId ?? obj.userNo ?? '') : ''
-  const firstLetter = name.trim().charAt(0).toUpperCase()
-  const avatar = String(obj.avatarUrl ?? obj.userAvatar ?? '')
+  const idPart = ''
+  const firstLetter = personInitial(obj)
+  const avatar = personAvatar(obj)
   const palette = [
     'linear-gradient(135deg, #1677ff 0%, #4096ff 100%)',
     'linear-gradient(135deg, #52c41a 0%, #73d13d 100%)',
@@ -688,7 +700,7 @@ function parseUserInfo(v: unknown): UserBrief | null {
   }
 }
 
-/** 用户单元格：头像（无头像显示渐变首字母）+ 名称（工号） */
+/** 用户单元格：头像（无头像显示渐变首字母）+ realName（coAccount） */
 const UserCell = (props: { raw: unknown }) => {
   const u = parseUserInfo(props.raw)
   if (!u) return h('span', { class: 'cell-muted' }, '-')
@@ -779,7 +791,7 @@ async function handleEdit(record: AvailableFieldItem) {
         fieldName: d.fieldName || '',
         fieldGroup: d.fieldGroup || '',
         type: d.type || d.filedType || '',
-        supportOperator: d.supportOperator ? [...d.supportOperator] : [],
+        supportOperator: toOperatorNames(d.supportOperator),
         displayScene: d.displayScene?.length ? [...d.displayScene] : ['CREATE', 'EDIT', 'DETAIL'],
         isSystem: d.isSystem ?? false,
         obsolete: d.obsolete ?? false,
@@ -796,7 +808,7 @@ async function handleEdit(record: AvailableFieldItem) {
       fieldName: record.fieldName || '',
       fieldGroup: record.fieldGroup || '',
       type: record.type || record.filedType || '',
-      supportOperator: record.supportOperator ? [...record.supportOperator] : [],
+      supportOperator: toOperatorNames(record.supportOperator),
       displayScene: record.displayScene?.length ? [...record.displayScene] : ['CREATE', 'EDIT', 'DETAIL'],
       isSystem: record.isSystem ?? false,
       obsolete: record.obsolete ?? false,
@@ -867,6 +879,12 @@ onMounted(loadFields)
 </script>
 
 <style scoped>
+.op-identifier {
+  margin-left: 4px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color: #86868b;
+}
+
 .component-list-page {
   padding: 0 24px;
   font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, sans-serif;

@@ -45,11 +45,11 @@ export const OPERATORS_BY_KIND: Record<ValueKind, string[]> = {
 }
 
 /** 人员类系统字段（字段类型未标注为人员时按 id 识别） */
-const USER_FIELD_IDS = new Set(['assignee', 'creator', 'reporter'])
+const USER_FIELD_IDS = new Set(['assignee', 'creator', 'reporter', 'updater'])
 /** 选项类系统字段 */
 const SELECT_FIELD_IDS = new Set(['status', 'issuetype', 'priority', 'project', 'organization'])
 /** 日期类系统字段 */
-const DATE_FIELD_IDS = new Set(['created', 'updated', 'duedate', 'resolutiondate'])
+const DATE_FIELD_IDS = new Set(['created', 'updated', 'createtime', 'updatetime', 'duedate', 'resolutiondate'])
 
 /** 按字段 id + 字段类型推断值编辑器 */
 export function valueKindOf(fieldId: string, fieldType?: string | null): ValueKind {

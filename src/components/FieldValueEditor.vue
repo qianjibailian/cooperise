@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import { personLabel } from '@/utils/person'
 import { message } from 'ant-design-vue'
 import dayjs from 'dayjs'
 import type { Dayjs } from 'dayjs'
@@ -211,12 +212,9 @@ function cascadingPathToObject(path: string[], rawOpts: unknown[]): Record<strin
 }
 
 // ======================= 用户文字 =======================
+/** 人员文字：realName（coAccount） */
 function formatUserText(u: Record<string, unknown>): string {
-  const account = String(u.coAccount ?? u.userCoAccount ?? u.userEnName ?? u.displayName ?? u.name ?? '').trim()
-  const no = u.userNo != null ? String(u.userNo).trim() : ''
-  if (!account && !no) return ''
-  if (!account) return no
-  return no ? `${account}（${no}）` : account
+  return personLabel(u)
 }
 
 // ======================= 初始化编辑 =======================

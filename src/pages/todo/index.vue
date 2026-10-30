@@ -3,7 +3,7 @@
     <!-- 顶部标题栏 -->
     <div class="top-bar">
       <div class="top-bar-left">
-        <h1 class="page-title">我的事项</h1>
+        <h1 class="page-title" :title="pageTitle">{{ pageTitle }}</h1>
         <span class="edit-status">(已编辑 <a class="reset-link" @click="handleReset">重置</a>)</span>
         <component :is="ReloadOutlined" class="refresh-icon" @click="fetchIssues" />
       </div>
@@ -396,6 +396,10 @@
 
 <script setup lang="ts">
 import { ref, reactive, onMounted, onBeforeUnmount, computed, watch } from 'vue'
+import { useRoute } from 'vue-router'
+import { useAuth } from '@/utils/auth'
+import { useViewStore } from '@/utils/view-store'
+import { personLabel, personAvatar, personInitial } from '@/utils/person'
 
 import {
   ReloadOutlined,
@@ -630,7 +634,7 @@ function onShownDragEnd() {
 async function saveShownFields() {
   const d = draftFilter.value
   // 无草稿时也要保存（后端按 userNo + viewCode 创建草稿），与 handleFilterSave 保持一致
-  const userNo = d?.userNo ?? '10284941'
+  const userNo = draftUserNo.value
   // showFieldItemList 直接传字段 ID 字符串数组
   const showFieldItemList = shownFields.value.map(f => f.key)
   const newShowField = JSON.stringify({ showFieldItemList })
@@ -680,14 +684,26 @@ const filterDisplayCount = computed(() => filterConditions.value.filter(isCondit
 
 // 排序 / 分组 / 分层 / 视图状态
 const sortPanelVisible = ref(false)
-const sortItemList = ref<SortItem[]>([
-  { field: { id: 'customfield_46508' }, sortTypeCode: 'DESC' },
-])
+/** 默认排序（视图草稿未保存排序时使用） */
+const DEFAULT_SORT_ITEMS: SortItem[] = [{ field: { id: 'customfield_46508' }, sortTypeCode: 'DESC' }]
+const sortItemList = ref<SortItem[]>(JSON.parse(JSON.stringify(DEFAULT_SORT_ITEMS)))
 const sortCountComputed = computed(() => sortItemList.value.length)
 const isSortDesc = computed(() => sortItemList.value[0]?.sortTypeCode === 'DESC')
 
-// 视图编码（请求 /filter/draft 时的视图标识；issue/query 入参取接口返回的 data.viewCode）
-const viewCode = ref('MY_TODO21941')
+// 视图编码（请求 /filter/draft 时的视图标识，草稿按「用户 + 视图」隔离）：
+// 列表视图取路由上的 filterCode，「我的事项」本身用固定编码；issue/query 入参取接口返回的 data.viewCode
+const route = useRoute()
+const viewCode = computed(() => String(route.query.filterCode || '') || 'MY_TODO21941')
+/** 标题：列表视图取视图名称，「我的事项」本身（无 filterCode）显示固定标题 */
+const { ensureLoaded: ensureViewsLoaded, findViewItem } = useViewStore()
+ensureViewsLoaded()
+const pageTitle = computed(() => {
+  const code = String(route.query.filterCode || '')
+  return (code && findViewItem(code)?.filterName) || '我的事项'
+})
+/** 草稿归属人：登录用户工号（缺省兜底） */
+const { user: authUser } = useAuth()
+const draftUserNo = computed(() => authUser.value?.memberId || '10284941')
 
 
 /** 全局筛选：重置为默认条件（经办人=当前用户 + 未结束状态）并保存草稿、刷新列表 */
@@ -702,7 +718,7 @@ async function handleFilterSave() {
   const d = draftFilter.value
   const globalFilter = buildGlobalFilter(filterConditions.value, filterLogic.value)
   try {
-    const userNo = d?.userNo ?? '10284941'
+    const userNo = draftUserNo.value
     const res = await updateFilterDraft({
       id: d?.id,
       userNo,
@@ -1033,6 +1049,7 @@ function isFieldEditable(rec: IssueRecord, fieldId: string): boolean {
 
 /** 用户字段可展示的信息（名称/账号/工号/头像，兼容 UserItem 与接口原始对象） */
 interface UserLike {
+  realName?: unknown
   userNo?: unknown
   coAccount?: unknown
   userCoAccount?: unknown
@@ -1069,16 +1086,12 @@ function getUserFieldObj(rec: IssueRecord, fieldId: string): Record<string, unkn
   return raw != null && typeof raw === 'object' ? (raw as Record<string, unknown>) : null
 }
 
-/** 用户文字：账号/姓名（工号），如 Shenyuan1（10284941）或 王芳（20240003） */
+/** 用户文字：realName（coAccount），如 王芳（wangfang） */
 function formatUserText(u: UserLike): string {
-  const account = String(u.coAccount ?? u.userCoAccount ?? u.userEnName ?? u.displayName ?? u.name ?? '').trim()
-  const no = u.userNo != null ? String(u.userNo).trim() : ''
-  if (!account && !no) return ''
-  if (!account) return no
-  return no ? `${account}（${no}）` : account
+  return personLabel(u as Record<string, unknown>)
 }
 
-/** 人员单元格/下拉文字：账号（工号） */
+/** 人员单元格/下拉文字：realName（coAccount） */
 function getUserCellText(rec: IssueRecord, fieldId: string): string {
   const raw = getUserField(rec, fieldId)
   return raw == null ? '' : typeof raw === 'object' ? formatUserText(raw) : String(raw)
@@ -1088,26 +1101,24 @@ function getUserCellText(rec: IssueRecord, fieldId: string): string {
 function getUserAvatar(rec: IssueRecord, fieldId: string): string {
   const raw = getUserField(rec, fieldId)
   if (raw == null || typeof raw === 'string') return ''
-  return String(raw.avatarUrl ?? raw.userAvatar ?? '')
+  return personAvatar(raw as Record<string, unknown>)
 }
 
 /** 无头像时显示的名称首字母（账号/姓名/英文名首字符） */
 function getUserInitial(rec: IssueRecord, fieldId: string): string {
   const raw = getUserField(rec, fieldId)
   if (raw == null || typeof raw === 'string') return ''
-  const name = String(raw.coAccount ?? raw.userCoAccount ?? raw.userEnName ?? '').trim()
-  return name ? name.charAt(0).toUpperCase() : ''
+  return personInitial(raw as Record<string, unknown>)
 }
 
-/** 下拉选项 label（选中后标签显示）：账号（工号） */
+/** 下拉选项 label（选中后标签显示）：realName（coAccount） */
 function formatUserOptionLabel(u: UserItem): string {
   return formatUserText(u as UserLike)
 }
 
 /** 下拉选项无头像时的首字母 */
 function userOptionInitial(u: UserItem): string {
-  const name = String(u.coAccount ?? u.userCoAccount ?? u.userEnName ?? '').trim()
-  return name ? name.charAt(0).toUpperCase() : ''
+  return personInitial(u as unknown as Record<string, unknown>)
 }
 
 /** 根据 userNo 从当前选项列表中查找用户对象 */
@@ -1126,7 +1137,7 @@ function memberSelectionLabel(no: string): string {
 function memberSelectionAvatar(no: string): string {
   if (!no) return ''
   const u = findMemberByNo(no)
-  return u ? String(u.avatarUrl ?? u.userAvatar ?? '') : ''
+  return u ? personAvatar(u as unknown as Record<string, unknown>) : ''
 }
 
 /** 选中标签无头像时的首字母 */
@@ -1851,10 +1862,19 @@ watch([currentPage, pageSize], () => {
   fetchIssues()
 })
 
-onMounted(async () => {
+/** 加载当前视图的草稿并查询：每个视图的筛选 / 排序 / 显示字段各自独立，切换视图时先恢复默认再回填 */
+async function loadView() {
+  draftFilter.value = null
+  filterConditions.value = defaultConditions()
+  filterLogic.value = 'AND'
+  // 排序也恢复默认（回填时由 restoringSort 吞掉 watch，避免多查一次）
+  if (JSON.stringify(sortItemList.value) !== JSON.stringify(DEFAULT_SORT_ITEMS)) {
+    restoringSort = true
+    sortItemList.value = JSON.parse(JSON.stringify(DEFAULT_SORT_ITEMS))
+  }
   // 先获取草稿筛选（showField 决定已展示字段，其他字段决定 issue/query 入参）
   try {
-    const res = await getFilterDraft('10284941', viewCode.value)
+    const res = await getFilterDraft(draftUserNo.value, viewCode.value)
     if (res?.success && res.data) {
       draftFilter.value = res.data
       currentPage.value = res.data.page || 1
@@ -1867,8 +1887,17 @@ onMounted(async () => {
   shownFieldsSnapshot = JSON.stringify(shownFields.value)
   filterSnapshot = filterSignature()
   fetchIssues()
+}
+
+onMounted(async () => {
+  await loadView()
   // 测量表格容器尺寸（scroll.y 需在 DOM 渲染后计算）
   bindTableResizeObserver()
+})
+
+// 同一页面内切换列表视图（filterCode 变化）：重新加载该视图自己的草稿
+watch(viewCode, () => {
+  loadView()
 })
 
 onBeforeUnmount(() => {
@@ -1908,10 +1937,14 @@ onBeforeUnmount(() => {
 }
 
 .page-title {
+  max-width: 360px;
   font-size: 20px;
   font-weight: 700;
   color: #1a1a1a;
   margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .refresh-icon {

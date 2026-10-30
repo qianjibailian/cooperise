@@ -137,8 +137,13 @@ export function queryDetail(payload: QueryDetailPayload): Promise<QueryDetailRes
 // ==================== Filter Draft API ====================
 
 /** 获取草稿筛选（GET /filter/draft?userNo=xxx&viewCode=xxx） */
-export function getFilterDraft(userNo: string, viewCode?: string): Promise<Result<FilterDraft>> {
-  return request.get(`/filter/draft`, { params: { userNo, viewCode } })
+export async function getFilterDraft(userNo: string, viewCode?: string): Promise<Result<FilterDraft>> {
+  const res: Result<FilterDraft> = await request.get(`/filter/draft`, { params: { userNo, viewCode } })
+  // 草稿按「用户 + 视图」隔离：返回的草稿属于其它视图时视为该视图暂无草稿，避免不同视图的查询条件互相影响
+  if (viewCode && res?.data && res.data.viewCode && res.data.viewCode !== viewCode) {
+    return { ...res, data: null as unknown as FilterDraft }
+  }
+  return res
 }
 
 /** 更新草稿筛选（PUT /filter/draft） */
@@ -204,6 +209,11 @@ export function queryAvailableFields(
   params?: AvailableFieldQuery,
 ): Promise<AvailableFieldResult> {
   return request.post(`/customField/query`, params)
+}
+
+/** 查询全部可用系统字段（GET /systemField/all，不分页；全局筛选打开时拉取） */
+export function queryAllSystemFields(): Promise<{ success: boolean; message?: string; data: AvailableFieldItem[] }> {
+  return request.get(`/systemField/all`)
 }
 
 /** 查询可用字段列表（POST /availableField/list，走缓存，custom_field + system_field，供模板构建表单） */

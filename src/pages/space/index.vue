@@ -175,6 +175,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted } from 'vue'
+import { personLabel } from '@/utils/person'
 import { Modal, type FormInstance, type TablePaginationConfig } from 'ant-design-vue'
 import type { Rule } from 'ant-design-vue/es/form'
 import { useRouter } from 'vue-router'
@@ -359,9 +360,9 @@ const userOptions = computed(() => {
 function memberIdOf(u: UserItem) {
   return u.memberId || u.userNo
 }
+/** 人员展示：realName（coAccount） */
 function userLabel(u: UserItem) {
-  const name = u.realName || u.coAccount || u.userCoAccount || memberIdOf(u)
-  return u.userEnName && u.userEnName !== name ? `${name}（${u.userEnName}）` : name
+  return personLabel(u as unknown as Record<string, unknown>) || String(memberIdOf(u) ?? '')
 }
 let userSeq = 0
 let userTimer: ReturnType<typeof setTimeout> | undefined

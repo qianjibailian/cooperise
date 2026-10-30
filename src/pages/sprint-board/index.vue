@@ -1,292 +1,1065 @@
 <template>
-  <div class="sprint-board-page">
-    <!-- 顶部工具栏 -->
-    <div class="board-toolbar">
-      <div class="toolbar-left">
-        <h1 class="board-title">Sprint 看板</h1>
-        <a-tag color="blue" class="sprint-tag">Sprint 26</a-tag>
-        <span class="sprint-date">2026.07.15 - 2026.08.15</span>
+  <div class="board-page">
+    <!-- 顶部工具栏：视图名称 + 刷新 | 数量 + 筛选 + 分组 + 展示字段 -->
+    <div class="top-bar">
+      <div class="top-bar-left">
+        <h1 class="page-title" :title="pageTitle">{{ pageTitle }}</h1>
+        <component :is="ReloadOutlined" class="refresh-icon" :class="{ spinning: loading }" @click="reload" />
       </div>
-      <div class="toolbar-right">
-        <div class="sprint-progress">
-          <div class="progress-info">
-            <span class="progress-text">{{ doneCount }}/{{ totalCount }} 已完成</span>
-            <span class="progress-pct">{{ progressPct }}%</span>
-          </div>
-          <div class="progress-bar">
-            <div class="progress-fill" :style="{ width: progressPct + '%' }" />
-          </div>
-        </div>
-        <a-button class="tool-btn"><FilterOutlined />筛选</a-button>
-        <a-button class="tool-btn"><TeamOutlined />成员</a-button>
+      <div class="top-bar-right">
+        <span class="total-text">共 {{ visibleIssues.length }} 条</span>
+
+        <a-popover
+          v-model:open="filterPanelVisible"
+          trigger="click"
+          placement="bottomRight"
+          :overlayInnerStyle="{ padding: 0 }"
+          overlayClassName="filter-popover"
+          :overlayStyle="{ width: '760px', maxWidth: 'calc(100vw - 32px)' }"
+        >
+          <template #content>
+            <FilterPanel
+              v-model:visible="filterPanelVisible"
+              v-model="filterConditions"
+              v-model:logic="filterLogic"
+              @save="handleFilterSave"
+              @reset="handleFilterReset"
+            />
+          </template>
+          <a-button class="tool-btn" :class="{ active: filterDisplayCount > 0 }">
+            <component :is="AlignCenterOutlined" />
+            筛选({{ filterDisplayCount }})
+          </a-button>
+        </a-popover>
+
+        <!-- 分组：看板列按所选字段的取值划分（默认按状态） -->
+        <a-popover
+          v-model:open="groupPanelVisible"
+          trigger="click"
+          placement="bottomRight"
+          :overlayInnerStyle="{ padding: 0 }"
+          overlayClassName="filter-popover"
+          :overlayStyle="{ width: '240px' }"
+        >
+          <template #content>
+            <div class="field-panel">
+              <div class="field-panel-head">
+                <span class="field-panel-title">分组</span>
+                <span class="field-panel-hint">看板列按该字段划分</span>
+              </div>
+              <a-spin :spinning="fieldLoading">
+                <div class="field-panel-list">
+                  <label v-for="f in availableFields" :key="f.fieldId" class="field-option">
+                    <a-checkbox :checked="groupFieldId === f.fieldId" @change="toggleGroupField(f.fieldId)" />
+                    <span class="field-option-name" :title="f.fieldName">{{ f.fieldName }}</span>
+                  </label>
+                  <div v-if="!fieldLoading && !availableFields.length" class="field-panel-empty">暂无可选字段</div>
+                </div>
+              </a-spin>
+            </div>
+          </template>
+          <a-button class="tool-btn" :class="{ active: !!groupFieldId }">
+            <component :is="PartitionOutlined" />
+            分组({{ groupFieldId ? 1 : 0 }})
+          </a-button>
+        </a-popover>
+
+        <!-- 展示字段：卡片按勾选顺序每个字段一行 -->
+        <a-popover
+          v-model:open="fieldPanelVisible"
+          trigger="click"
+          placement="bottomRight"
+          :overlayInnerStyle="{ padding: 0 }"
+          overlayClassName="filter-popover"
+          :overlayStyle="{ width: '280px' }"
+        >
+          <template #content>
+            <div class="field-panel">
+              <div class="field-panel-head">
+                <span class="field-panel-title">展示字段</span>
+                <span class="field-panel-hint">卡片只展示勾选的字段</span>
+              </div>
+              <a-input v-model:value="fieldKeyword" size="small" allow-clear placeholder="搜索字段" class="field-panel-search">
+                <template #prefix><component :is="SearchOutlined" class="field-search-icon" /></template>
+              </a-input>
+              <a-spin :spinning="fieldLoading">
+                <div class="field-panel-list">
+                  <label v-for="f in filteredFields" :key="f.fieldId" class="field-option">
+                    <a-checkbox :checked="shownFieldIds.includes(f.fieldId)" @change="toggleShownField(f.fieldId)" />
+                    <span class="field-option-name" :title="f.fieldName">{{ f.fieldName }}</span>
+                  </label>
+                  <div v-if="!fieldLoading && !filteredFields.length" class="field-panel-empty">暂无可选字段</div>
+                </div>
+              </a-spin>
+            </div>
+          </template>
+          <a-button class="tool-btn" :class="{ active: shownFieldIds.length > 0 }">
+            <component :is="SettingOutlined" />
+            展示字段({{ shownFieldIds.length }})
+          </a-button>
+        </a-popover>
+
       </div>
     </div>
 
     <!-- 看板列 -->
-    <div class="board-columns">
-      <div v-for="col in columns" :key="col.id" class="board-column">
-        <div class="column-header">
-          <div class="column-header-left">
-            <span :class="['column-dot', col.dotClass]" />
-            <span class="column-title">{{ col.title }}</span>
-            <span class="column-count">{{ col.issues.length }}</span>
+    <a-spin :spinning="loading || universeLoading" wrapper-class-name="board-spin">
+      <div class="board-columns">
+        <div
+          v-for="col in columns"
+          :key="col.key"
+          class="board-column"
+          :class="{
+            'is-drop-target': dropKey === col.key && canDropTo(col),
+            'can-drop': !!dragIssue && canDropTo(col),
+            'no-drop': !!dragIssue && !canDropTo(col) && dragIssue.groupKey !== col.key,
+            'is-deny': hoverKey === col.key && isDenied(col),
+          }"
+          :style="{ '--col': col.color }"
+          @dragover="onDragOver($event, col)"
+          @dragleave="onDragLeave($event, col.key)"
+          @drop.prevent="onDrop(col)"
+        >
+          <div class="column-header">
+            <div class="column-header-left">
+              <a-avatar v-if="col.isUser" :size="20" :src="col.avatar || undefined" class="column-avatar">
+                {{ col.label.slice(0, 1) }}
+              </a-avatar>
+              <span v-else class="column-dot" />
+              <span class="column-title" :title="col.label">{{ col.label }}</span>
+              <span class="column-count">{{ col.issues.length }}</span>
+              <span v-if="dragIssue && dragIssue.groupKey !== col.key && !canDropTo(col)" class="column-lock" title="工作流不允许流转到该状态">
+                <LockOutlined />
+              </span>
+            </div>
           </div>
-          <PlusOutlined class="column-add" />
-        </div>
-        <div class="column-body">
-          <vxe-list
-            v-if="col.issues.length > 0"
-            :data="col.issues"
-            height="100%"
-            :row-config="{ keyField: 'id', isHover: false, useKey: true }"
-            class="kanban-list"
-          >
-            <template #default="{ items }">
+
+          <!-- 拖到工作流不允许的状态列：红框 + 提示 -->
+          <div v-if="hoverKey === col.key && dragIssue && dragIssue.groupKey !== col.key && !canDropTo(col)" class="column-drop-tip" :class="{ checking: !allowedNodes }">
+            <template v-if="allowedNodes"><LockOutlined /> 不允许拖动到「{{ col.label }}」</template>
+            <template v-else>正在校验工作流…</template>
+          </div>
+          <div class="column-body">
+            <template v-if="hasShownFields">
               <div
-                v-for="issue in items"
+                v-for="issue in col.issues"
                 :key="issue.id"
-                class="kanban-card-wrap"
+                class="board-card"
+                :class="{ dragging: dragIssue?.id === issue.id, draggable: canDrag, moving: movingKey === issue.issueKey }"
+                :draggable="canDrag"
+                :style="{ '--tc-accent': col.color }"
+                :title="issue.lines.map((l) => l.text).join('\n')"
+                @dragstart="onDragStart($event, issue)"
+                @dragend="onDragEnd"
+                @click="openIssue(issue.issueKey)"
               >
-                <vxe-card
-                  class="kanban-card"
-                  :class="{ 'card-urgent': issue.priorityId === '1' }"
-                  size="small"
-                  :border="false"
-                  :padding="true"
-                >
-                  <div class="card-top">
-                    <a-tag :color="typeColor(issue.issuetypeId)" class="card-type">{{ typeLabel(issue.issuetypeId) }}</a-tag>
-                    <span :class="['priority-flag', priorityClass(issue.priorityId)]">
-                      {{ priorityLabel(issue.priorityId) }}
-                    </span>
-                  </div>
-                  <div class="card-summary">{{ issue.summary }}</div>
-                  <div v-if="issue.parentIssueKey" class="card-parent">
-                    <LinkOutlined /> {{ issue.parentIssueKey }}
-                  </div>
-                  <div class="card-bottom">
-                    <span class="card-key">{{ issue.issueKey }}</span>
-                    <div class="card-assignee">
-                      <div class="avatar" :style="{ background: avatarColor(issue.assigneeId) }">
-                        {{ avatarText(issue.assigneeId) }}
-                      </div>
-                    </div>
-                  </div>
-                </vxe-card>
+                <!-- 按勾选顺序每个字段一行：单号 / 状态 / 类型为彩色标签，概要加粗，其余为次要文字 -->
+                <span v-for="line in issue.lines" :key="line.id" class="card-line">
+                  <span v-if="line.tagColor" class="card-tag" :class="`is-${line.id}`" :style="{ '--tag': line.tagColor }">
+                    <span v-if="line.id === 'status'" class="card-tag-dot" />{{ line.text }}
+                  </span>
+                  <span v-else-if="line.id === 'summary'" class="card-title">{{ line.text }}</span>
+                  <span v-else-if="line.isUser" class="card-user">
+                    <a-avatar :size="18" :src="line.avatar || undefined" class="card-avatar">{{ line.text.charAt(0) }}</a-avatar>
+                    <span class="card-sub">{{ line.text }}</span>
+                  </span>
+                  <span v-else class="card-sub">{{ line.text }}</span>
+                </span>
+              </div>
+              <div v-if="!col.issues.length" class="column-empty">
+                <InboxOutlined class="empty-icon" />
+                <span>暂无事项</span>
               </div>
             </template>
-          </vxe-list>
-          <div v-else class="column-empty">
-            <InboxOutlined class="empty-icon" />
-            <span>暂无事项</span>
+            <div v-else class="column-empty">
+              <span>未勾选展示字段</span>
+            </div>
           </div>
         </div>
+
+        <div v-if="!columns.length && !loading" class="board-empty">
+          <a-empty description="暂无事项" />
+        </div>
       </div>
-    </div>
+    </a-spin>
+
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
-import { FilterOutlined, TeamOutlined, PlusOutlined, LinkOutlined, InboxOutlined } from '@ant-design/icons-vue'
-// sprint 看板本地 mock 事项
-interface SprintIssue {
-  id: number
+import { ref, computed, onMounted, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import {
+  ReloadOutlined,
+  AlignCenterOutlined,
+  PartitionOutlined,
+  SettingOutlined,
+  SearchOutlined,
+  InboxOutlined,
+  LockOutlined,
+} from '@ant-design/icons-vue'
+import FilterPanel from '@/components/FilterPanel.vue'
+import {
+  isConditionComplete,
+  buildGlobalFilter,
+  parseGlobalFilter,
+  type FilterCondition,
+  type FilterLogic,
+} from '@/utils/issueFilter'
+import {
+  getIssues,
+  getFilterDraft,
+  updateFilterDraft,
+  queryAvailableFieldList,
+  getWorkflowNextNodes,
+  changeWorkflowTaskStatus,
+  type WorkflowNextNode,
+} from '@/api/faiz'
+import { getLoginUsername } from '@/utils/auth'
+import type { AvailableFieldItem, FilterDraft, GlobalFilter, IssueQueryPayload, IssueRecord } from '@/types/faiz'
+import {
+  NONE_GROUP_KEY,
+  fieldOf,
+  objOf,
+  issueKeyOf,
+  buildFieldLines,
+  groupValueOf,
+  fetchGroupUniverse,
+  safeParse,
+  parseShownFieldIds,
+  parseGroupFieldId,
+  type GroupValue,
+  type FieldLine,
+} from '@/utils/issue-view'
+import { useAuth } from '@/utils/auth'
+import { useViewStore } from '@/utils/view-store'
+
+/** 看板卡片 */
+interface BoardIssue {
+  id: string
   issueKey: string
-  projectId: string
-  issuetypeId: string
-  summary: string
-  description: string
-  statusId: string
-  priorityId: string
-  creatorId: string
-  assigneeId: string
-  parentIssueKey: string | null
-  createdAt: string
-  updatedAt: string
+  group: GroupValue
+  lines: FieldLine[]
 }
 
-// ---- mock 数据 ----
-const mockIssues: SprintIssue[] = [
-  { id: 1,  issueKey: 'UG-900001', projectId: '18701', issuetypeId: '10001', summary: '首页推荐流懒加载优化', description: '', statusId: '2', priorityId: '1', creatorId: 'U001', assigneeId: 'U004', parentIssueKey: null,    createdAt: '2026-07-15T09:30:00', updatedAt: '2026-07-28T14:20:00' },
-  { id: 2,  issueKey: 'UG-900002', projectId: '18701', issuetypeId: '10002', summary: '用户标签体系接口联调', description: '', statusId: '2', priorityId: '2', creatorId: 'U001', assigneeId: 'U005', parentIssueKey: null,    createdAt: '2026-07-16T10:15:00', updatedAt: '2026-07-30T16:45:00' },
-  { id: 4,  issueKey: 'UG-900004', projectId: '18701', issuetypeId: '10001', summary: '新增自定义表单设计器', description: '', statusId: '2', priorityId: '2', creatorId: 'U001', assigneeId: 'U004', parentIssueKey: null,    createdAt: '2026-07-18T08:45:00', updatedAt: '2026-08-01T17:00:00' },
-  { id: 8,  issueKey: 'UG-900008', projectId: '18701', issuetypeId: '10001', summary: '我的事项列表页开发', description: '', statusId: '2', priorityId: '2', creatorId: 'U001', assigneeId: 'U004', parentIssueKey: null,    createdAt: '2026-07-24T10:00:00', updatedAt: '2026-08-01T11:45:00' },
-  { id: 9,  issueKey: 'UG-900009', projectId: '18702', issuetypeId: '10001', summary: '前台架构微前端改造', description: '', statusId: '1', priorityId: '1', creatorId: 'U003', assigneeId: 'U005', parentIssueKey: null,    createdAt: '2026-07-10T08:00:00', updatedAt: '2026-07-26T17:30:00' },
-  { id: 11, issueKey: 'UG-900011', projectId: '18702', issuetypeId: '10003', summary: '路由切换内存泄漏', description: '', statusId: '2', priorityId: '1', creatorId: 'U002', assigneeId: 'U005', parentIssueKey: null,    createdAt: '2026-07-21T15:45:00', updatedAt: '2026-07-30T10:00:00' },
-  { id: 12, issueKey: 'UG-900012', projectId: '18703', issuetypeId: '10001', summary: '运营平台数据看板', description: '', statusId: '1', priorityId: '2', creatorId: 'U001', assigneeId: 'U002', parentIssueKey: null,    createdAt: '2026-07-26T11:20:00', updatedAt: '2026-07-26T11:20:00' },
-  { id: 14, issueKey: 'UG-900014', projectId: '18703', issuetypeId: '10003', summary: '导出大文件超时', description: '', statusId: '1', priorityId: '2', creatorId: 'U003', assigneeId: 'U005', parentIssueKey: null,    createdAt: '2026-07-28T14:30:00', updatedAt: '2026-07-28T14:30:00' },
-  { id: 15, issueKey: 'UG-900015', projectId: '18701', issuetypeId: '10001', summary: '用户权限精细化控制', description: '', statusId: '1', priorityId: '2', creatorId: 'U001', assigneeId: 'U005', parentIssueKey: null,    createdAt: '2026-07-29T10:00:00', updatedAt: '2026-07-29T10:00:00' },
-  { id: 16, issueKey: 'UG-900016', projectId: '18701', issuetypeId: '10002', summary: '表单数据校验规则配置', description: '', statusId: '2', priorityId: '3', creatorId: 'U001', assigneeId: 'U004', parentIssueKey: 'UG-900004', createdAt: '2026-07-30T08:30:00', updatedAt: '2026-08-02T14:00:00' },
-  { id: 19, issueKey: 'UG-900019', projectId: '18703', issuetypeId: '10001', summary: '消息通知中心', description: '', statusId: '2', priorityId: '2', creatorId: 'U001', assigneeId: 'U002', parentIssueKey: null,    createdAt: '2026-07-22T09:45:00', updatedAt: '2026-07-31T15:30:00' },
-  { id: 21, issueKey: 'UG-900021', projectId: '18701', issuetypeId: '10002', summary: '批量操作功能开发', description: '', statusId: '1', priorityId: '2', creatorId: 'U001', assigneeId: 'U004', parentIssueKey: 'UG-900008', createdAt: '2026-08-01T10:00:00', updatedAt: '2026-08-01T10:00:00' },
-  { id: 22, issueKey: 'UG-900022', projectId: '18702', issuetypeId: '10001', summary: '前端国际化方案落地', description: '', statusId: '1', priorityId: '3', creatorId: 'U003', assigneeId: 'U005', parentIssueKey: null,    createdAt: '2026-08-02T08:00:00', updatedAt: '2026-08-02T08:00:00' },
-  { id: 3,  issueKey: 'UG-900003', projectId: '18701', issuetypeId: '10003', summary: '搜索结果页白屏问题', description: '', statusId: '3', priorityId: '1', creatorId: 'U002', assigneeId: 'U004', parentIssueKey: null,    createdAt: '2026-07-20T11:00:00', updatedAt: '2026-07-20T11:30:00' },
-  { id: 5,  issueKey: 'UG-900005', projectId: '18701', issuetypeId: '10002', summary: '组件列表页开发', description: '', statusId: '3', priorityId: '3', creatorId: 'U001', assigneeId: 'U004', parentIssueKey: 'UG-900004', createdAt: '2026-07-22T14:00:00', updatedAt: '2026-07-31T10:30:00' },
-  { id: 6,  issueKey: 'UG-900006', projectId: '18701', issuetypeId: '10002', summary: '模板配置页面开发', description: '', statusId: '3', priorityId: '2', creatorId: 'U001', assigneeId: 'U004', parentIssueKey: 'UG-900004', createdAt: '2026-07-19T09:00:00', updatedAt: '2026-07-29T15:20:00' },
-  { id: 7,  issueKey: 'UG-900007', projectId: '18701', issuetypeId: '10003', summary: '弹窗递归更新警告', description: '', statusId: '3', priorityId: '1', creatorId: 'U002', assigneeId: 'U004', parentIssueKey: null,    createdAt: '2026-07-25T13:30:00', updatedAt: '2026-08-02T09:15:00' },
-  { id: 10, issueKey: 'UG-900010', projectId: '18702', issuetypeId: '10002', summary: '公共组件库抽离', description: '', statusId: '3', priorityId: '3', creatorId: 'U003', assigneeId: 'U005', parentIssueKey: 'UG-900009', createdAt: '2026-07-12T09:30:00', updatedAt: '2026-07-28T14:00:00' },
-  { id: 13, issueKey: 'UG-900013', projectId: '18703', issuetypeId: '10002', summary: '工单导出功能', description: '', statusId: '3', priorityId: '3', creatorId: 'U001', assigneeId: 'U002', parentIssueKey: 'UG-900012', createdAt: '2026-07-27T09:00:00', updatedAt: '2026-08-01T16:30:00' },
-  { id: 17, issueKey: 'UG-900017', projectId: '18701', issuetypeId: '10004', summary: '技术文档整理', description: '', statusId: '3', priorityId: '3', creatorId: 'U001', assigneeId: 'U004', parentIssueKey: null,    createdAt: '2026-07-15T16:00:00', updatedAt: '2026-08-01T09:00:00' },
-  { id: 18, issueKey: 'UG-900018', projectId: '18702', issuetypeId: '10002', summary: '性能监控埋点接入', description: '', statusId: '3', priorityId: '2', creatorId: 'U003', assigneeId: 'U005', parentIssueKey: 'UG-900009', createdAt: '2026-07-18T13:00:00', updatedAt: '2026-07-25T17:00:00' },
-  { id: 20, issueKey: 'UG-900020', projectId: '18701', issuetypeId: '10003', summary: '富文本编辑器粘贴图片丢失', description: '', statusId: '3', priorityId: '1', creatorId: 'U002', assigneeId: 'U004', parentIssueKey: null,    createdAt: '2026-07-24T14:15:00', updatedAt: '2026-08-02T10:30:00' },
-]
+/** 默认按状态分列（草稿未保存过分组时） */
+const DEFAULT_GROUP_FIELD_ID = 'status'
+/** 看板自身需要、始终随查询请求的字段：单号（跳详情 / 拖拽变更状态）、状态、问题类型（确定状态列取哪些类型的状态） */
+const REQUIRED_FIELD_IDS = ['issuekey', 'status', 'issuetype']
+/** 一次拉取的事项上限（不分页，按列在前端归类） */
+const BOARD_PAGE_SIZE = 1000
+/** 不分组时的唯一一列 */
+const ALL_COLUMN: GroupValue = { key: '__all__', label: '全部事项', avatar: '', isUser: false, color: '#6B95C9' }
 
-// ---- 看板列 ----
-const columns = computed(() => [
-  { id: '1', title: '待处理', dotClass: 'dot-todo',    issues: mockIssues.filter(i => i.statusId === '1') },
-  { id: '2', title: '进行中', dotClass: 'dot-progress', issues: mockIssues.filter(i => i.statusId === '2') },
-  { id: '3', title: '已完成', dotClass: 'dot-done',    issues: mockIssues.filter(i => i.statusId === '3') },
-])
-
-const totalCount = computed(() => mockIssues.length)
-const doneCount = computed(() => mockIssues.filter(i => i.statusId === '3').length)
-const progressPct = computed(() => totalCount.value > 0 ? Math.round(doneCount.value / totalCount.value * 100) : 0)
-
-// ---- 工具函数 ----
-function typeLabel(t: string) {
-  const map: Record<string, string> = { '10001': '需求', '10002': '任务', '10003': '缺陷', '10004': '其他' }
-  return map[t] ?? t
-}
-function typeColor(t: string) {
-  const map: Record<string, string> = { '10001': 'blue', '10002': 'cyan', '10003': 'red', '10004': 'default' }
-  return map[t] ?? 'default'
-}
-function priorityLabel(p: string) {
-  const map: Record<string, string> = { '1': '紧急', '2': '中等', '3': '低' }
-  return map[p] ?? p
-}
-function priorityClass(p: string) {
-  const map: Record<string, string> = { '1': 'flag-urgent', '2': 'flag-medium', '3': 'flag-low' }
-  return map[p] ?? 'flag-low'
+const router = useRouter()
+function openIssue(issueKey: string) {
+  if (issueKey) router.push({ name: 'IssueDetail', params: { issueKey } })
 }
 
-const userMap: Record<string, string> = {
-  U001: 'Allen Shen', U002: 'San Zhang', U003: 'Si Li', U004: 'Wu Wang', U005: 'Liu Zhao',
+// ---------- 标题：取当前视图名称 ----------
+const route = useRoute()
+const { ensureLoaded, findViewItem } = useViewStore()
+const filterCode = computed(() => (route.params.filterCode as string) || '')
+const pageTitle = computed(() => findViewItem(filterCode.value)?.filterName || '看板')
+
+// ---------- 草稿（筛选条件 + 分组 + 展示字段，按视图保存） ----------
+const { user } = useAuth()
+const draftUserNo = computed(() => user.value?.memberId || '10284941')
+const viewCode = computed(() => filterCode.value || 'KAN_BAN')
+const draftFilter = ref<FilterDraft | null>(null)
+
+async function loadDraft() {
+  try {
+    const res = await getFilterDraft(draftUserNo.value, viewCode.value)
+    const d = res?.success ? res.data : null
+    draftFilter.value = d ?? null
+    const gf = safeParse<GlobalFilter | null>(d?.globalFilter, null)
+    if (gf?.filter) {
+      const { conditions, logic } = parseGlobalFilter(gf)
+      filterConditions.value = conditions
+      filterLogic.value = logic
+    }
+    shownFieldIds.value = parseShownFieldIds(d?.showField)
+    groupFieldId.value = parseGroupFieldId(d?.group) ?? DEFAULT_GROUP_FIELD_ID
+  } catch {
+    draftFilter.value = null
+    groupFieldId.value = DEFAULT_GROUP_FIELD_ID
+  }
 }
-const colorMap: Record<string, string> = {
-  U001: '#3b82f6', U002: '#10b981', U003: '#f97316', U004: '#8b5cf6', U005: '#ec4899',
+
+async function saveDraft(patch: Partial<FilterDraft>) {
+  try {
+    const res = await updateFilterDraft({
+      id: draftFilter.value?.id,
+      userNo: draftUserNo.value,
+      viewCode: viewCode.value,
+      ...patch,
+    })
+    if (res?.success) {
+      const fresh = await getFilterDraft(draftUserNo.value, viewCode.value)
+      if (fresh?.success && fresh.data) draftFilter.value = fresh.data
+    }
+  } catch {
+    // 请求层已统一提示
+  }
 }
-function avatarText(uid: string) {
-  const name = userMap[uid] || uid
-  return name.split(' ').map(s => s[0]).join('').slice(0, 2).toUpperCase()
+
+// ---------- 筛选（复用「我的事项」的全局筛选组件） ----------
+const filterPanelVisible = ref(false)
+const filterConditions = ref<FilterCondition[]>([])
+const filterLogic = ref<FilterLogic>('AND')
+const filterDisplayCount = computed(() => filterConditions.value.filter(isConditionComplete).length)
+
+async function handleFilterSave() {
+  await saveDraft({ globalFilter: JSON.stringify(buildGlobalFilter(filterConditions.value, filterLogic.value)) })
+  reload()
 }
-function avatarColor(uid: string) {
-  return colorMap[uid] || '#6b7280'
+
+function handleFilterReset() {
+  filterConditions.value = []
+  filterLogic.value = 'AND'
+  handleFilterSave()
 }
+
+// ---------- 字段列表（分组 / 展示字段共用，取 /availableField/list） ----------
+const availableFields = ref<AvailableFieldItem[]>([])
+const fieldLoading = ref(false)
+
+async function loadAvailableFields() {
+  fieldLoading.value = true
+  try {
+    const res = await queryAvailableFieldList({ page: 1, pageSize: 500, searchKey: '' })
+    if (res?.success && res.data?.list) availableFields.value = res.data.list.filter((f) => !f.obsolete)
+  } catch {
+    // 请求层已统一提示
+  } finally {
+    fieldLoading.value = false
+  }
+}
+
+function fieldMeta(fieldId: string): AvailableFieldItem | undefined {
+  return availableFields.value.find((f) => f.fieldId === fieldId)
+}
+
+// ---------- 展示字段 ----------
+const fieldPanelVisible = ref(false)
+const fieldKeyword = ref('')
+/** 勾选的展示字段 ID（有序）；未勾选时卡片不展示内容 */
+const shownFieldIds = ref<string[]>([])
+const hasShownFields = computed(() => shownFieldIds.value.length > 0)
+
+const filteredFields = computed(() => {
+  const kw = fieldKeyword.value.trim().toLowerCase()
+  return kw ? availableFields.value.filter((f) => f.fieldName.toLowerCase().includes(kw)) : availableFields.value
+})
+
+async function toggleShownField(id: string) {
+  shownFieldIds.value = shownFieldIds.value.includes(id)
+    ? shownFieldIds.value.filter((x) => x !== id)
+    : [...shownFieldIds.value, id]
+  await saveDraft({ showField: JSON.stringify({ showFieldItemList: shownFieldIds.value }) })
+  reload()
+}
+
+// ---------- 查询结果（分组的状态列也依赖它，需先声明） ----------
+const rawRecords = ref<IssueRecord[]>([])
+const loading = ref(false)
+
+// ---------- 分组（看板列） ----------
+const groupPanelVisible = ref(false)
+/** 分组字段 ID；空为不分组（只有一列） */
+const groupFieldId = ref(DEFAULT_GROUP_FIELD_ID)
+const groupUniverse = ref<GroupValue[]>([])
+const universeLoading = ref(false)
+
+/** 勾选分组字段（单选）；点击已勾选的字段则取消分组 */
+async function toggleGroupField(fieldId: string) {
+  const id = groupFieldId.value === fieldId ? '' : fieldId
+  groupFieldId.value = id
+  await saveDraft({
+    group: JSON.stringify({ groupItemList: id ? [{ field: { id } }] : [], isFollowPreviousGroup: true }),
+  })
+  reload()
+}
+
+let universeSeq = 0
+/** 分组字段的全部取值：没有事项的取值也作为空列展示 */
+/**
+ * 状态列取哪些问题类型的状态：
+ * 筛选里有「问题类型 属于 …」时取所选类型；否则取查询结果里出现的类型（都没有时为空，表示全部类型）
+ */
+const statusIssueTypeCodes = computed<string[]>(() => {
+  const cond = filterConditions.value.find(
+    (c) => c.field === 'issuetype' && c.operator === 'BELONG' && isConditionComplete(c),
+  )
+  if (cond) return [...new Set(cond.values)].sort()
+  const codes = new Set<string>()
+  for (const rec of rawRecords.value) {
+    const o = objOf(fieldOf(rec, 'issuetype')?.value)
+    const code = o?.issueTypeCode ?? o?.id
+    if (code != null && code !== '') codes.add(String(code))
+  }
+  return [...codes].sort()
+})
+
+async function loadGroupUniverse() {
+  const seq = ++universeSeq
+  const fieldId = groupFieldId.value
+  groupUniverse.value = []
+  if (!fieldId) return
+  universeLoading.value = true
+  try {
+    const list = await fetchGroupUniverse(fieldId, fieldMeta(fieldId), {
+      issueTypeCodes: fieldId === 'status' ? statusIssueTypeCodes.value : undefined,
+    })
+    if (seq === universeSeq) groupUniverse.value = list
+  } catch {
+    // 请求层已统一提示；仅展示有事项的列
+  } finally {
+    if (seq === universeSeq) universeLoading.value = false
+  }
+}
+
+watch(groupFieldId, loadGroupUniverse)
+// 按状态分组时，相关问题类型变化（改了筛选 / 结果里的类型变了）需重拉状态列
+watch(
+  () => (groupFieldId.value === 'status' ? statusIssueTypeCodes.value.join(',') : ''),
+  (key, prev) => {
+    if (groupFieldId.value === 'status' && key !== prev) loadGroupUniverse()
+  },
+)
+// 字段列表加载后人员 / 下拉字段判断才准确，需重拉
+watch(
+  () => (groupFieldId.value ? fieldMeta(groupFieldId.value)?.fieldId : ''),
+  (id, prev) => {
+    if (id && id !== prev) loadGroupUniverse()
+  },
+)
+
+// 打开分组 / 展示字段面板时刷新字段列表
+watch([groupPanelVisible, fieldPanelVisible], ([a, b]) => {
+  if (a || b) loadAvailableFields()
+})
+
+// ---------- 查询 ----------
+
+function buildQueryPayload(): IssueQueryPayload {
+  const d = draftFilter.value
+  const groupIds = groupFieldId.value ? [groupFieldId.value] : []
+  return {
+    globalFilter: buildGlobalFilter(filterConditions.value, filterLogic.value),
+    group: { groupItemList: groupIds.map((id) => ({ field: { id } })), isFollowPreviousGroup: true },
+    layered: { layeredItemList: [], layerType: 'FLAT' },
+    page: 1,
+    pageSize: BOARD_PAGE_SIZE,
+    showField: { showFieldItemList: [...new Set([...REQUIRED_FIELD_IDS, ...groupIds, ...shownFieldIds.value])] },
+    sort: { sortItemList: [{ field: { id: 'createtime' }, sortTypeCode: 'DESC' }] },
+    viewCode: d?.viewCode ?? viewCode.value,
+    needShowGroupValues: [],
+    referencedFilter: safeParse(d?.referencedFilter, { filter: null }),
+  }
+}
+
+let querySeq = 0
+async function reload() {
+  const seq = ++querySeq
+  loading.value = true
+  try {
+    const res = await getIssues(buildQueryPayload())
+    if (seq === querySeq) rawRecords.value = res?.success ? res.data?.list ?? [] : []
+  } catch {
+    if (seq === querySeq) rawRecords.value = []
+  } finally {
+    if (seq === querySeq) loading.value = false
+  }
+}
+
+/** 事项分组值 → 列键：先按键匹配全部取值，对不上再按名称匹配 */
+const resolveGroupKey = computed(() => {
+  const keys = new Set(groupUniverse.value.map((g) => g.key))
+  const byLabel = new Map(groupUniverse.value.map((g) => [g.label, g.key] as const))
+  return (g: GroupValue): string => (keys.has(g.key) ? g.key : byLabel.get(g.label) ?? g.key)
+})
+
+const visibleIssues = computed<(BoardIssue & { groupKey: string })[]>(() =>
+  rawRecords.value.map((rec, i) => {
+    const issueKey = issueKeyOf(rec)
+    const group = groupFieldId.value ? groupValueOf(rec, groupFieldId.value, fieldMeta(groupFieldId.value)) : ALL_COLUMN
+    return {
+      id: issueKey || `row-${i}`,
+      issueKey,
+      group,
+      groupKey: groupFieldId.value ? resolveGroupKey.value(group) : ALL_COLUMN.key,
+      lines: buildFieldLines(rec, shownFieldIds.value),
+    }
+  }),
+)
+
+/** 看板列：分组字段的取值（按状态分组时只取相关问题类型的状态，顺序沿用状态配置）+ 事项里出现的其它取值，「未设置」排最后 */
+const columns = computed(() => {
+  const map = new Map<string, GroupValue & { issues: typeof visibleIssues.value }>()
+  if (!groupFieldId.value) {
+    return [{ ...ALL_COLUMN, issues: visibleIssues.value }]
+  }
+  for (const g of groupUniverse.value) {
+    if (!map.has(g.key)) map.set(g.key, { ...g, issues: [] })
+  }
+  for (const it of visibleIssues.value) {
+    const col = map.get(it.groupKey) ?? { ...it.group, key: it.groupKey, issues: [] }
+    col.issues.push(it)
+    map.set(it.groupKey, col)
+  }
+  const list = [...map.values()]
+  const none = list.filter((c) => c.key === NONE_GROUP_KEY)
+  return [...list.filter((c) => c.key !== NONE_GROUP_KEY), ...none]
+})
+
+// ---------- 拖拽：仅按状态分组时可用，只能拖到工作流允许流转的状态 ----------
+type DragIssue = BoardIssue & { groupKey: string }
+const canDrag = computed(() => groupFieldId.value === 'status')
+const dragIssue = ref<DragIssue | null>(null)
+const dropKey = ref('')
+/** 拖拽经过的列（含不可放下的列，用于红框提示） */
+const hoverKey = ref('')
+/** 当前拖拽事项可流转的节点：状态编码 → 节点（拖拽开始时按单号查询工作流） */
+const allowedNodes = ref<Map<string, WorkflowNextNode> | null>(null)
+/** 正在提交状态变更的事项（卡片显示处理中） */
+const movingKey = ref('')
+/** 状态变更操作人：登录账号（与状态变更弹窗一致） */
+const operator = getLoginUsername() || localStorage.getItem('wf_current_user') || '10284941'
+
+let nextNodesSeq = 0
+async function loadAllowedNodes(issueKey: string) {
+  const seq = ++nextNodesSeq
+  allowedNodes.value = null
+  try {
+    const res = await getWorkflowNextNodes(issueKey)
+    if (seq !== nextNodesSeq) return
+    const map = new Map<string, WorkflowNextNode>()
+    for (const n of res?.data?.nextNodes ?? []) {
+      // 列键为状态编码；节点未配置状态编码时按节点名与列名匹配
+      const key = n.statusCode || `name:${n.nodeName}`
+      if (!map.has(key)) map.set(key, n)
+    }
+    allowedNodes.value = map
+  } catch {
+    if (seq === nextNodesSeq) allowedNodes.value = new Map()
+  }
+}
+
+/** 列对应的可流转节点（没有则不可拖入） */
+function nodeForColumn(col: GroupValue): WorkflowNextNode | undefined {
+  const map = allowedNodes.value
+  if (!map) return undefined
+  return map.get(col.key) ?? map.get(`name:${col.label}`)
+}
+
+function canDropTo(col: GroupValue): boolean {
+  return !!dragIssue.value && dragIssue.value.groupKey !== col.key && !!nodeForColumn(col)
+}
+
+/** 工作流已校验完且不允许流转到该列（原列不算） */
+function isDenied(col: GroupValue): boolean {
+  return !!dragIssue.value && !!allowedNodes.value && dragIssue.value.groupKey !== col.key && !nodeForColumn(col)
+}
+
+function onDragStart(e: DragEvent, issue: DragIssue) {
+  if (!canDrag.value || !issue.issueKey || movingKey.value) {
+    e.preventDefault()
+    return
+  }
+  dragIssue.value = issue
+  if (e.dataTransfer) {
+    e.dataTransfer.effectAllowed = 'move'
+    e.dataTransfer.setData('text/plain', issue.issueKey)
+  }
+  loadAllowedNodes(issue.issueKey)
+}
+
+function onDragEnd() {
+  dragIssue.value = null
+  dropKey.value = ''
+  hoverKey.value = ''
+  allowedNodes.value = null
+  nextNodesSeq++
+}
+
+/** 只有可流转的列才接受放下（preventDefault），其余列浏览器显示禁止光标并红框提示 */
+function onDragOver(e: DragEvent, col: GroupValue) {
+  if (!dragIssue.value) return
+  hoverKey.value = col.key
+  if (!canDropTo(col)) return
+  e.preventDefault()
+  if (e.dataTransfer) e.dataTransfer.dropEffect = 'move'
+  dropKey.value = col.key
+}
+
+/** 离开列：移到列内子元素时也会触发 dragleave，需排除 */
+function onDragLeave(e: DragEvent, key: string) {
+  const to = e.relatedTarget as Node | null
+  if (to && (e.currentTarget as HTMLElement).contains(to)) return
+  if (dropKey.value === key) dropKey.value = ''
+  if (hoverKey.value === key) hoverKey.value = ''
+}
+
+/** 放到可流转的列：按工作流节点变更状态 */
+async function onDrop(col: GroupValue) {
+  const issue = dragIssue.value
+  const node = nodeForColumn(col)
+  onDragEnd()
+  if (!issue || !node || issue.groupKey === col.key) return
+  movingKey.value = issue.issueKey
+  try {
+    const res = await changeWorkflowTaskStatus({
+      issueKey: issue.issueKey,
+      targetStatus: node.nodeId,
+      ...(node.statusCode ? { statusId: node.statusCode } : {}),
+      operator,
+    })
+    if (res?.success) await reload()
+  } catch {
+    // 请求层已统一提示
+  } finally {
+    movingKey.value = ''
+  }
+}
+
+
+// ---------- 生命周期 ----------
+async function init() {
+  await loadDraft()
+  await reload()
+}
+
+onMounted(() => {
+  ensureLoaded()
+  loadAvailableFields()
+  init()
+})
+
+// 同一组件内切换看板视图：重新读草稿并查询
+watch(filterCode, () => {
+  draftFilter.value = null
+  filterConditions.value = []
+  filterLogic.value = 'AND'
+  shownFieldIds.value = []
+  groupFieldId.value = DEFAULT_GROUP_FIELD_ID
+  init()
+})
 </script>
 
 <style scoped>
-.sprint-board-page {
-  padding: 0 16px;
-  height: 100%;
+.board-page {
+  /* 与「我的事项」一致：抵消布局内边距，撑满内容区 */
+  height: calc(100vh - 75px);
+  width: calc(100% + 1vh);
+  max-width: none;
+  margin: -2vh -0.5vh;
+  min-height: 560px;
   display: flex;
   flex-direction: column;
-  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, sans-serif;
+  background: #fff;
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
 }
 
-/* ---- 顶部工具栏 ---- */
-.board-toolbar { display: flex; align-items: center; justify-content: space-between; padding: 12px 8px; gap: 16px; flex-wrap: wrap; }
-.toolbar-left { display: flex; align-items: center; gap: 12px; }
-.board-title { font-size: 20px; font-weight: 700; color: #1d1d1f; margin: 0; }
-.sprint-tag { font-size: 12px; border-radius: 6px; font-weight: 600; }
-.sprint-date { font-size: 13px; color: #86868b; }
-.toolbar-right { display: flex; align-items: center; gap: 16px; }
-.sprint-progress { min-width: 160px; }
-.progress-info { display: flex; justify-content: space-between; margin-bottom: 4px; }
-.progress-text { font-size: 13px; color: #86868b; }
-.progress-pct { font-size: 13px; font-weight: 600; color: #1d1d1f; }
-.progress-bar { height: 6px; background: #f0f0f5; border-radius: 3px; overflow: hidden; }
-.progress-fill { height: 100%; background: linear-gradient(90deg, #34c759, #30d158); border-radius: 3px; transition: width 0.4s; }
-.tool-btn { border: none !important; background: #f5f5f7 !important; border-radius: 10px !important; font-size: 13px; color: #595959; display: inline-flex; align-items: center; gap: 4px; }
-.tool-btn:hover { background: #e8e8ed !important; color: #1d1d1f; }
+/* ---- 顶部工具栏（与日历看板一致） ---- */
+.top-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 24px 14px;
+  flex-shrink: 0;
+}
+.top-bar-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.page-title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.2px;
+  color: #1d1d1f;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.refresh-icon {
+  flex-shrink: 0;
+  font-size: 15px;
+  color: #8e8e93;
+  cursor: pointer;
+  transition: color 0.2s;
+}
+.refresh-icon:hover {
+  color: #0a84ff;
+}
+.refresh-icon.spinning {
+  animation: board-spin 0.8s linear infinite;
+}
+@keyframes board-spin {
+  to { transform: rotate(360deg); }
+}
+.top-bar-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.total-text {
+  margin-right: 6px;
+  font-size: 13px;
+  color: #86868b;
+  white-space: nowrap;
+}
+.tool-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 30px;
+  padding: 0 12px !important;
+  font-size: 13px;
+  font-weight: 500;
+  color: #3a3a3c !important;
+  background: #f2f2f7 !important;
+  border: none !important;
+  border-radius: 8px !important;
+  box-shadow: none !important;
+  transition: background 0.15s, color 0.15s;
+}
+.tool-btn:hover {
+  background: #e5e5ea !important;
+}
+.tool-btn.active {
+  color: #0a84ff !important;
+  background: #e8f1ff !important;
+}
+
+/* ---- 字段面板（分组 / 展示字段） ---- */
+.field-panel {
+  padding: 12px 0 8px;
+}
+.field-panel-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 0 14px 8px;
+}
+.field-panel-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1d1d1f;
+}
+.field-panel-hint {
+  font-size: 12px;
+  color: #86868b;
+}
+.field-panel-search {
+  margin: 0 14px 6px;
+  width: calc(100% - 28px);
+}
+.field-search-icon {
+  color: #aeaeb2;
+}
+.field-panel-list {
+  max-height: min(360px, calc(100vh - 240px));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0 6px;
+}
+.field-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.field-option:hover {
+  background: #f5f5f7;
+}
+.field-option-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  color: #1d1d1f;
+}
+.field-panel-empty {
+  padding: 16px 0;
+  font-size: 12px;
+  color: #86868b;
+  text-align: center;
+}
 
 /* ---- 看板列 ---- */
-.board-columns { display: flex; gap: 16px; flex: 1; overflow-x: auto; padding: 0 8px 12px; min-height: 0; }
-.board-column { flex: 1; min-width: 300px; max-width: 380px; background: #f5f5f7; border-radius: 16px; display: flex; flex-direction: column; overflow: hidden; }
-.column-header { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px 10px; flex-shrink: 0; }
-.column-header-left { display: flex; align-items: center; gap: 8px; }
-.column-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
-.dot-todo { background: #8e8e93; }
-.dot-progress { background: #007aff; box-shadow: 0 0 0 3px rgba(0,122,255,.2); }
-.dot-done { background: #34c759; box-shadow: 0 0 0 3px rgba(52,199,89,.2); }
-.column-title { font-size: 14px; font-weight: 600; color: #1d1d1f; }
-.column-count { font-size: 12px; color: #86868b; background: #e0e0e5; border-radius: 8px; padding: 1px 8px; min-width: 20px; text-align: center; }
-.column-add { font-size: 14px; color: #86868b; cursor: pointer; padding: 4px; border-radius: 6px; transition: all 0.15s; }
-.column-add:hover { background: #e0e0e5; color: #1d1d1f; }
-
-/* ---- 列内容区 ---- */
-.column-body { flex: 1; overflow: hidden; padding: 0 10px 12px; display: flex; flex-direction: column; min-height: 0; }
-
-/* ---- vxe-list ---- */
-.kanban-list {
+.board-spin {
   flex: 1;
   min-height: 0;
-  background: transparent !important;
 }
-.kanban-list :deep(.vxe-list--render-wrapper),
-.kanban-list :deep(.vxe-list--body),
-.kanban-list :deep(.vxe-body--wrapper) {
-  background: transparent !important;
+.board-spin :deep(.ant-spin-container) {
+  height: 100%;
 }
-.kanban-list :deep(.vxe-body--row) {
-  background: transparent !important;
+.board-columns {
+  height: 100%;
+  display: flex;
+  align-items: stretch;
+  gap: 14px;
+  padding: 0 24px 20px;
+  overflow-x: auto;
+}
+.board-column {
+  position: relative;
+  flex: 0 0 288px;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border-radius: 14px;
+  background: #fafafc;
+  transition: background 0.15s, box-shadow 0.15s;
+}
+.board-column.can-drop {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--col) 45%, transparent);
+}
+.board-column.no-drop {
+  opacity: 0.5;
+}
+/* 拖到不允许的列：红框，取消置灰让提示清晰 */
+.board-column.is-deny {
+  opacity: 1;
+  background: #fff5f5;
+  box-shadow: inset 0 0 0 2px #ff6b6b;
+}
+.column-drop-tip {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: calc(100% - 24px);
+  padding: 8px 14px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #d92d20;
+  background: #fff;
+  box-shadow: 0 6px 20px rgba(217, 45, 32, 0.16), 0 0 0 1px rgba(217, 45, 32, 0.18);
+  transform: translate(-50%, -50%);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+}
+.column-drop-tip.checking {
+  color: #6e6e73;
+  box-shadow: 0 6px 20px rgba(15, 23, 42, 0.1), 0 0 0 1px rgba(15, 23, 42, 0.08);
+}
+.column-lock {
+  flex-shrink: 0;
+  font-size: 12px;
+  color: #aeaeb2;
+}
+.board-card.moving {
+  opacity: 0.55;
+  pointer-events: none;
+}
+.board-column.is-drop-target {
+  background: color-mix(in srgb, var(--col) 8%, #fafafc);
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--col) 55%, transparent);
+}
+.column-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 12px 12px 8px 14px;
+  flex-shrink: 0;
+}
+.column-header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.column-dot {
+  width: 10px;
+  height: 10px;
+  flex-shrink: 0;
+  border-radius: 3px;
+  background: var(--col);
+}
+.column-avatar {
+  flex-shrink: 0;
+  font-size: 10px;
+  background: var(--col);
+}
+.column-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  font-weight: 600;
+  color: #1d1d1f;
+}
+.column-count {
+  flex-shrink: 0;
+  min-width: 20px;
+  padding: 0 7px;
+  border-radius: 10px;
+  font-size: 12px;
+  line-height: 18px;
+  text-align: center;
+  color: #6e6e73;
+  background: #efeff3;
+}
+.column-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 2px 10px 12px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
-.kanban-card-wrap {
-  padding: 4px 0;
-}
-
-/* ---- vxe-card ---- */
-.kanban-card {
-  border-radius: 12px !important;
+/* ---- 卡片：白底 + 列色左条，字段上下分布（与日历事项条一致） ---- */
+.board-card {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  flex-shrink: 0;
+  padding: 10px 12px 10px 13px;
+  border-left: 3px solid var(--tc-accent, #8c8c8c);
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06), 0 0 0 1px rgba(15, 23, 42, 0.03);
   cursor: pointer;
-  transition: all 0.2s;
-  background: #fff !important;
-  display: block;
+  transition: box-shadow 0.15s, transform 0.15s, opacity 0.15s;
 }
-.kanban-card:hover {
-  box-shadow: 0 4px 12px rgba(0,0,0,.06) !important;
+.board-card:hover {
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.1), 0 0 0 1px rgba(15, 23, 42, 0.04);
   transform: translateY(-1px);
 }
-.kanban-card.card-urgent {
-  position: relative;
+.board-card.draggable {
+  cursor: grab;
 }
-.kanban-card.card-urgent::before {
-  content: '';
-  position: absolute;
-  left: 0; top: 0; bottom: 0;
-  width: 3px;
-  background: #ff3b30;
-  border-radius: 12px 0 0 12px;
+.board-card.dragging {
+  opacity: 0.45;
 }
-.kanban-card :deep(.vxe-card--wrapper) {
-  background: #fff !important;
-  border: 1px solid #f0f0f0 !important;
-  border-radius: 12px !important;
-  box-shadow: 0 1px 2px rgba(0,0,0,.04) !important;
+.card-line {
+  display: flex;
+  min-width: 0;
 }
-.kanban-card :deep(.vxe-card--body) {
-  padding: 12px 14px !important;
-  display: block !important;
+.card-title {
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 18px;
+  color: #1d1d1f;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.card-user {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.card-avatar {
+  flex-shrink: 0;
+  font-size: 10px;
+  line-height: 18px;
+  background: var(--tc-accent, #8c8c8c);
+}
+.card-sub {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  line-height: 16px;
+  color: #6e6e73;
+}
+/* 标签：圆角胶囊，同色浅底 + 加深的同色文字 */
+.card-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  height: 20px;
+  padding: 0 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 20px;
+  color: color-mix(in srgb, var(--tag) 70%, #1d1d1f);
+  background: color-mix(in srgb, var(--tag) 14%, #fff);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.card-tag.is-issuekey {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-weight: 400;
+  color: #6e6e73;
+  background: #f2f2f7;
+}
+.card-tag.is-status {
+  color: #3a3a3c;
+  background: #fff;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.08);
+}
+.card-tag-dot {
+  width: 6px;
+  height: 6px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--tag);
 }
 
-/* 卡片内结构 */
-.card-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
-.card-type { font-size: 11px; border-radius: 5px; line-height: 1; margin: 0; }
-.priority-flag { font-size: 11px; font-weight: 600; padding: 1px 6px; border-radius: 4px; }
-.flag-urgent { background: #fff2f0; color: #ff3b30; }
-.flag-medium { background: #fff7e6; color: #fa8c16; }
-.flag-low { background: #f0f0f5; color: #86868b; }
-.card-summary { font-size: 14px; color: #1d1d1f; line-height: 1.4; font-weight: 500; margin-bottom: 6px; }
-.card-parent { font-size: 12px; color: #86868b; display: flex; align-items: center; gap: 4px; margin-bottom: 6px; }
-.card-bottom { display: flex; align-items: center; justify-content: space-between; margin-top: 4px; }
-.card-key { font-size: 12px; color: #aeaeb2; font-family: 'SF Mono', monospace; }
-.card-assignee { display: flex; align-items: center; }
-.avatar { width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; color: #fff; }
+/* ---- 空态 ---- */
+.column-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 28px 0;
+  font-size: 12px;
+  color: #aeaeb2;
+}
+.empty-icon {
+  font-size: 22px;
+}
+.board-empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
 
-/* ---- 空列 ---- */
-.column-empty { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 32px 0; color: #c7c7cc; flex: 1; }
-.empty-icon { font-size: 24px; }
-.column-empty span { font-size: 12px; }
+@media (max-width: 768px) {
+  .top-bar {
+    flex-wrap: wrap;
+    padding: 14px 16px 12px;
+  }
+  .top-bar-right {
+    flex-wrap: wrap;
+  }
+  .board-columns {
+    padding: 0 16px 16px;
+  }
+  .board-column {
+    flex-basis: 260px;
+  }
+}
 </style>

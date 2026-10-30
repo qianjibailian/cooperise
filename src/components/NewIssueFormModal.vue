@@ -300,6 +300,7 @@ import { PlusOutlined } from '@ant-design/icons-vue'
 import { Empty, message } from 'ant-design-vue'
 import { createIssue, getAvailableFieldOptions, queryUsers, queryTemplates, getTemplate, getIssueCreateMeta, queryDetail, patchIssue, queryAvailableFieldList, querySpaceOptions, queryIssueTypes, createTemplate, type SpaceItem } from '@/api/faiz'
 import { issueTypeIconOf } from '@/utils/issueTypeIcons'
+import { personLabel, personAvatar, personInitial } from '@/utils/person'
 import { FIELD_TYPE, normalizeFieldType, formatTypeLabel } from '@/types/fieldType'
 import type {
   CustomFieldOptionReq,
@@ -1175,19 +1176,14 @@ function handleMemberSearch(fieldId: string, keyword: string) {
   }, 300)
 }
 
-/** 用户下拉选项文字：账号/姓名（工号），如 Shenyuan1（10284941）或 王芳（20240003） */
+/** 用户下拉选项文字：realName（coAccount），如 王芳（wangfang） */
 function formatMemberLabel(u: UserItem): string {
-  const account = String(u.coAccount ?? u.userCoAccount ?? u.userEnName ?? u.displayName ?? u.name ?? '').trim()
-  const no = u.userNo != null ? String(u.userNo).trim() : ''
-  if (!account && !no) return ''
-  if (!account) return no
-  return no ? `${account}（${no}）` : account
+  return personLabel(u as unknown as Record<string, unknown>)
 }
 
-/** 无头像时显示的名称首字母（账号/姓名/英文名首字符） */
+/** 无头像时显示的占位字（姓名首字，无姓名取账号首字） */
 function memberInitial(u: UserItem): string {
-  const name = String(u.coAccount ?? u.userCoAccount ?? u.userEnName ?? '').trim()
-  return name ? name.charAt(0).toUpperCase() : ''
+  return personInitial(u as unknown as Record<string, unknown>)
 }
 
 /** 根据 userNo 从字段选项列表中查找用户对象 */
@@ -1195,7 +1191,7 @@ function findMemberByNo(fieldId: string, no: string): UserItem | undefined {
   return (memberOptionsMap[fieldId] || []).find(u => String(u.userNo) === no)
 }
 
-/** 选中标签文字：账号（工号），选项未加载时兜底显示 userNo */
+/** 选中标签文字：realName（coAccount），选项未加载时兜底显示原始值 */
 function memberSelectionLabel(fieldId: string, no: string): string {
   if (!no) return ''
   const u = findMemberByNo(fieldId, no)
@@ -1206,7 +1202,7 @@ function memberSelectionLabel(fieldId: string, no: string): string {
 function memberSelectionAvatar(fieldId: string, no: string): string {
   if (!no) return ''
   const u = findMemberByNo(fieldId, no)
-  return u ? String(u.avatarUrl ?? u.userAvatar ?? '') : ''
+  return u ? personAvatar(u as unknown as Record<string, unknown>) : ''
 }
 
 /** 选中标签无头像时的首字母 */

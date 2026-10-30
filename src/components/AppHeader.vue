@@ -131,9 +131,8 @@
                 {{ userInitials }}
               </a-avatar>
               <div class="user-panel-info">
-                <div class="user-panel-name" :title="username">
-                  {{ username }}
-                  <span v-if="user?.userEnName" class="user-panel-en">{{ user.userEnName }}</span>
+                <div class="user-panel-name" :title="userDisplayLabel">
+                  {{ userDisplayLabel }}
                 </div>
                 <div v-if="user?.email" class="user-panel-email" :title="user.email">{{ user.email }}</div>
                 <div v-if="userTags.length" class="user-panel-tags">
@@ -184,6 +183,7 @@ import {
 } from '@ant-design/icons-vue'
 import AppLogo from './AppLogo.vue'
 import { useAuth, setAuthUser } from '@/utils/auth'
+import { formatPersonLabel } from '@/utils/person'
 import { logout, getCurrentUser, fuzzyQueryIssues, type FuzzyIssueItem } from '@/api/faiz'
 import { issueTypeIconOf } from '@/utils/issueTypeIcons'
 
@@ -353,6 +353,10 @@ function handleEnter() {
 /** 登录用户资料（登录接口 data.user / 个人中心同步），姓名缺失时回退占位文案 */
 const { realName, user } = useAuth()
 const username = computed(() => user.value?.realName || realName.value || '用户')
+/** 用户面板展示：realName（coAccount） */
+const userDisplayLabel = computed(() =>
+  formatPersonLabel(user.value?.realName || realName.value, user.value?.coAccount) || username.value,
+)
 const userInitials = computed(() => username.value.slice(-2).toUpperCase())
 const router = useRouter()
 

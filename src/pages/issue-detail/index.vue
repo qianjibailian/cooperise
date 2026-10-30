@@ -707,6 +707,7 @@
 
 <script setup lang="ts">
 import { h, ref, computed, watch, reactive, nextTick, onMounted, onBeforeUnmount } from 'vue'
+import { personLabel, personAvatar, personInitial, isPersonLike } from '@/utils/person'
 import { useRoute } from 'vue-router'
 import type { IDomEditor, IEditorConfig, IToolbarConfig } from '@wangeditor/editor'
 import { Editor, Toolbar } from '@wangeditor/editor-for-vue'
@@ -779,11 +780,11 @@ const UserAvatar = {
       const v = props.user
       if (!v || typeof v !== 'object') return { name: '', id: '', firstLetter: '?', color: '#d9d9d9', textColor: '#595959' }
       const obj = v as Record<string, unknown>
-      const name = String(obj.coAccount ?? obj.userCoAccount ?? obj.userEnName ?? obj.displayName ?? obj.name ?? '')
-      // 括号内容取用户工号 userNo
-      const idPart = obj.userNo ? String(obj.userNo) : ''
-      const firstLetter = (name || '?').trim().charAt(0).toUpperCase()
-      const avatar = String(obj.avatarUrl ?? obj.userAvatar ?? '')
+      // 人员统一展示：头像 + realName（coAccount）
+      const name = personLabel(obj)
+      const idPart = ''
+      const firstLetter = personInitial(obj)
+      const avatar = personAvatar(obj)
       const palette = [
         { bg: 'linear-gradient(135deg, #1677ff 0%, #4096ff 100%)', solid: '#1677ff' },
         { bg: 'linear-gradient(135deg, #52c41a 0%, #73d13d 100%)', solid: '#52c41a' },
@@ -917,11 +918,13 @@ const ValueWithBadge = {
       const norm = (o: unknown): { name: string; avatar: string; id: string; color: string } | null => {
         if (o == null || typeof o !== 'object') return null
         const obj = o as Record<string, unknown>
-        const name = String(obj.name ?? obj.optionName ?? obj.coAccount ?? obj.userCoAccount ?? obj.userEnName ?? obj.displayName ?? '')
+        // 人员枚举：realName（coAccount）；其余取选项名
+        const person = !obj.optionName && isPersonLike(obj)
+        const name = person ? personLabel(obj) : String(obj.name ?? obj.optionName ?? '')
         if (!name) return null
         return {
           name,
-          avatar: String(obj.avatarUrl ?? obj.userAvatar ?? obj.iconUrl ?? ''),
+          avatar: person ? personAvatar(obj) : String(obj.avatarUrl ?? obj.userAvatar ?? obj.iconUrl ?? ''),
           id: String(obj.id ?? obj.optionId ?? obj.userNo ?? ''),
           color: typeof obj.color === 'string' ? obj.color : '',
         }
@@ -1613,9 +1616,7 @@ function formatObject(v: unknown): string {
   if (typeof v === 'object') {
     const obj = v as Record<string, unknown>
     if (obj.optionName) return String(obj.optionName)
-    if (obj.coAccount || obj.userCoAccount || obj.userEnName || obj.displayName) {
-      return String(obj.coAccount ?? obj.userCoAccount ?? obj.userEnName ?? obj.displayName)
-    }
+    if (isPersonLike(obj)) return personLabel(obj) || '—'
     if (obj.pname) return String(obj.pname)
     if (obj.key && obj.name) return `${obj.key} - ${obj.name}`
     if (obj.name) return String(obj.name)
@@ -1627,8 +1628,8 @@ function formatObject(v: unknown): string {
 function formatUser(v: unknown): string {
   if (typeof v === 'object' && v !== null) {
     const obj = v as Record<string, unknown>
-    const s = obj.coAccount ?? obj.userCoAccount ?? obj.userEnName ?? obj.displayName ?? obj.name
-    if (s) return String(s)
+    const s = personLabel(obj)
+    if (s) return s
   }
   return '—'
 }

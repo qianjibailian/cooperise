@@ -32,7 +32,7 @@ import { useAuth } from '@/utils/auth'
 /** viewType → 渲染组件 & 标题映射 */
 const VIEW_TYPE_PAGE: Record<string, { component: unknown; title: string }> = {
   list: { component: Todo, title: '我的事项' },
-  KAN_BAN: { component: SprintBoard, title: 'Sprint 看板' },
+  KAN_BAN: { component: SprintBoard, title: '看板' },
   gantt: { component: MemberGantt, title: '甘特图' },
   CALENDAR_VIEW: { component: TestingCalendar, title: '测试平台需求日历' },
 }

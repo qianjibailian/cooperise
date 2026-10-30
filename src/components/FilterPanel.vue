@@ -74,9 +74,15 @@
             @focus="searchUsers('')"
             @change="(v: unknown, opts: unknown) => setUserValues(cond, v, opts)"
           >
-            <!-- 选中标签：只显示姓名，账号与头像留在下拉选项 / hover 提示里，避免标签过长换行 -->
+            <!-- 选中标签：头像 + realName（coAccount） -->
             <template #tagRender="{ value, closable, onClose }">
               <span class="user-tag" :title="userTagTitle(cond, String(value))">
+                <a-avatar
+                  v-if="String(value) !== CURRENT_USER"
+                  :size="16"
+                  :src="userTagAvatar(String(value)) || undefined"
+                  class="user-tag-avatar"
+                >{{ userTagName(cond, String(value)).charAt(0) }}</a-avatar>
                 <span class="user-tag-text">{{ userTagName(cond, String(value)) }}</span>
                 <CloseOutlined
                   v-if="closable"
@@ -152,13 +158,15 @@ import dayjs from 'dayjs'
 import { Empty } from 'ant-design-vue'
 import { CloseOutlined } from '@ant-design/icons-vue'
 import {
-  queryAvailableFields,
+  queryAvailableFieldList,
   queryIssueTypes,
   queryIssueTypeStatuses,
   queryUsers,
   getAvailableFieldOptions,
 } from '@/api/faiz'
 import type { AvailableFieldItem, UserItem } from '@/types/faiz'
+import { toFieldOperator, type FieldOperator } from '@/types/fieldOperator'
+import { personLabel, personName, personAccount, personAvatar } from '@/utils/person'
 import {
   OPERATORS,
   OPERATORS_BY_KIND,
@@ -228,6 +236,7 @@ watch(
 // ---------- 字段 ----------
 const fieldLoading = ref(false)
 const availableFields = ref<AvailableFieldItem[]>([])
+/** 字段列表未返回的条件（如默认条件 / 历史草稿）回显用的名称 */
 const SYSTEM_FIELD_LABELS: Record<string, string> = {
   assignee: '经办人',
   creator: '创建人',
@@ -243,20 +252,14 @@ const SYSTEM_FIELD_LABELS: Record<string, string> = {
 const fieldById = computed(() => new Map(availableFields.value.map((f) => [f.fieldId, f] as const)))
 
 const fieldOptions = computed<Option[]>(() => {
+  // 字段来自 /systemField/all：fieldId 为值，fieldName 为下拉与选中回显
   const list: Option[] = availableFields.value.map((f) => ({ value: f.fieldId, label: f.fieldName }))
   const known = new Set(list.map((o) => o.value))
-  // 常用系统字段兜底（接口未返回时也可选）
-  for (const [id, label] of Object.entries(SYSTEM_FIELD_LABELS)) {
-    if (!known.has(id)) {
-      known.add(id)
-      list.push({ value: id, label })
-    }
-  }
-  // 草稿里已有但字段列表没有的，补上避免显示裸 id
+  // 条件里已有但字段列表没有的（默认条件 / 历史草稿），补上避免显示裸 id
   for (const c of conditions.value) {
     if (c.field && !known.has(c.field)) {
       known.add(c.field)
-      list.push({ value: c.field, label: c.field })
+      list.push({ value: c.field, label: SYSTEM_FIELD_LABELS[c.field] || c.field })
     }
   }
   return list
@@ -265,10 +268,11 @@ const fieldOptions = computed<Option[]>(() => {
 async function loadAvailableFields() {
   fieldLoading.value = true
   try {
-    const res = await queryAvailableFields({ page: 1, pageSize: 200, searchKey: '' })
-    if (res.success && res.data?.list) availableFields.value = res.data.list.filter((f) => !f.obsolete)
+    // 与日历「分组」「字段」同源：/availableField/list（自定义字段 + 系统字段），一次取全量
+    const res = await queryAvailableFieldList({ page: 1, pageSize: 500, searchKey: '' })
+    if (res?.success && res.data?.list) availableFields.value = res.data.list.filter((f) => !f.obsolete)
   } catch {
-    availableFields.value = []
+    // 请求层已统一提示；保留上次结果
   } finally {
     fieldLoading.value = false
   }
@@ -279,8 +283,35 @@ function kindOf(c: FilterCondition): ValueKind {
   return valueKindOf(c.field, f?.filedType || f?.type)
 }
 
+/** 字段操作符 → 筛选 operationType：选项、人员类字段多选，「包含 / 不包含」即「属于 / 不属于」 */
+function operatorCodeOf(op: FieldOperator, kind: ValueKind): string | undefined {
+  const code = op.code.toUpperCase()
+  if (kind === 'select' || kind === 'user') {
+    if (code === 'CONTAIN') return 'BELONG'
+    if (code === 'NOT_CONTAIN') return 'NOT_BELONG'
+  }
+  return OPERATORS[code] ? code : undefined
+}
+
+/** 操作符选项：按字段 supportOperator 展示（文案取接口原文）；字段未配置时按值类型兜底 */
 function operatorOptionsOf(c: FilterCondition): Option[] {
-  return OPERATORS_BY_KIND[kindOf(c)].map((code) => ({ value: code, label: OPERATORS[code].label }))
+  const kind = kindOf(c)
+  const supported = fieldById.value.get(c.field)?.supportOperator ?? []
+  const list: Option[] = []
+  // supportOperator 为 [{id, name, code, identifier}]：code 为值，name 为展示
+  for (const raw of supported) {
+    const op = toFieldOperator(raw)
+    const code = op && operatorCodeOf(op, kind)
+    if (op && code && !list.some((o) => o.value === code)) list.push({ value: code, label: op.name })
+  }
+  if (!list.length) {
+    list.push(...OPERATORS_BY_KIND[kind].map((code) => ({ value: code, label: OPERATORS[code].label })))
+  }
+  // 当前已选但字段不支持的操作符（默认条件 / 历史草稿）保留，避免显示裸枚举
+  if (c.operator && !list.some((o) => o.value === c.operator)) {
+    list.push({ value: c.operator, label: OPERATORS[c.operator]?.label ?? c.operator })
+  }
+  return list
 }
 
 function isNoValue(c: FilterCondition): boolean {
@@ -290,7 +321,8 @@ function isNoValue(c: FilterCondition): boolean {
 /** 切换字段：重置操作符与值，并预加载该字段的选项 */
 function onFieldChange(c: FilterCondition, field: string) {
   c.field = field
-  c.operator = OPERATORS_BY_KIND[kindOf(c)][0]
+  c.operator = ''
+  c.operator = String(operatorOptionsOf(c)[0]?.value ?? OPERATORS_BY_KIND[kindOf(c)][0])
   c.values = []
   c.labels = {}
   ensureOptions(c)
@@ -398,23 +430,21 @@ function initialOf(opt: Option): string {
   return s ? s.charAt(0) : '?'
 }
 
-/** 去掉「（账号）」后缀，只保留姓名 */
-function shortName(text: string): string {
-  const m = /^(.*?)（(.*)）$/.exec(text)
-  return m ? m[1] : text
-}
-
 /**
- * 选中标签文字：只显示姓名
+ * 选中标签文字：realName（coAccount）
  * 依次回退：当前搜索结果 → 「当前用户」→ 保存时记录的 labels → 原始值
  * 只读 userOptions（稳定数组），不再每次新建选项列表
  */
 function userTagName(c: FilterCondition, value: string): string {
   const hit = userOptions.value.find((o) => String(o.value) === value)
-  if (hit?.name) return hit.name
+  if (hit?.label) return hit.label
   if (value === CURRENT_USER) return '当前用户'
-  const saved = c.labels?.[value]
-  return saved ? shortName(saved) : value
+  return c.labels?.[value] ?? value
+}
+
+/** 选中标签头像 */
+function userTagAvatar(value: string): string {
+  return userOptions.value.find((o) => String(o.value) === value)?.avatarUrl || ''
 }
 
 /** 选中标签 hover 提示：姓名（账号） */
@@ -434,15 +464,16 @@ function mapUserOptions(list: UserItem[]): Option[] {
     const value = String(u.memberId || u.userNo || u.coAccount || u.userCoAccount || '').trim()
     if (!value || seen.has(value)) continue
     seen.add(value)
-    const name = u.realName || u.coAccount || u.userCoAccount || value
+    const person = u as unknown as Record<string, unknown>
+    const name = personName(person) || personAccount(person) || value
     // 括号中展示账号 coAccount（无则退回该人员唯一值）
-    const account = u.coAccount || u.userCoAccount || value
+    const account = personAccount(person) || value
     opts.push({
       value,
-      label: `${name}（${account}）`,
-      avatarUrl: u.avatarUrl || u.userAvatar || '',
+      label: personLabel(person) || value,
+      avatarUrl: personAvatar(person),
       name,
-      account,
+      account: account !== name ? account : '',
     })
   }
   return opts
@@ -519,11 +550,16 @@ onMounted(async () => {
   conditions.value.forEach(ensureOptions)
 })
 
-// 打开面板时补齐选项（草稿回填后新增的条件）
+// 每次打开面板：重新拉取全部系统字段（与系统字段管理保持同步），并补齐选项（草稿回填后新增的条件）
 watch(
   () => props.visible,
-  (open) => {
-    if (open) conditions.value.forEach(ensureOptions)
+  async (open, wasOpen) => {
+    if (!open) return
+    conditions.value.forEach(ensureOptions)
+    if (wasOpen === false) {
+      await loadAvailableFields()
+      conditions.value.forEach(ensureOptions)
+    }
   },
 )
 </script>
@@ -707,6 +743,12 @@ watch(
   background: rgba(118, 118, 128, 0.18);
 }
 
+.user-tag-avatar {
+  flex-shrink: 0;
+  font-size: 9px;
+  line-height: 16px;
+  background: #0a84ff;
+}
 .user-tag-text {
   overflow: hidden;
   white-space: nowrap;

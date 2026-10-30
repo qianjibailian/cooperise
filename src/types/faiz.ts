@@ -1,3 +1,5 @@
+import type { FieldOperator, RawFieldOperator } from './fieldOperator'
+
 // ========== 后端响应包装 ==========
 export interface Result<T> {
   success: boolean
@@ -558,7 +560,8 @@ export interface AvailableFieldItem {
   /** 字段分组：PERSON/DESCRIPTION/TIME/CUSTOM_FIELD/SUBJECT */
   fieldGroup?: string
   orderAble: boolean
-  supportOperator: string[]
+  /** 支持的操作符：系统字段为对象数组 {id,name,code,identifier}，自定义字段为名称字符串 */
+  supportOperator: RawFieldOperator[] | null
   isSystem: boolean
   frontPage: boolean
   esFieldType: string | null
@@ -640,7 +643,8 @@ export interface SystemFieldItem {
   isRequired?: boolean
   filedType?: string
   type?: string
-  supportOperator?: string[]
+  /** 支持的操作符 [{id, name, code, identifier}] */
+  supportOperator?: FieldOperator[] | null
   obsolete?: boolean
   fieldSource?: string
   /** 启用状态（true=启用，false=停用） */
@@ -675,7 +679,8 @@ export interface SystemFieldSavePayload {
   required?: boolean
   filedType?: string
   type?: string
-  supportOperator?: string[]
+  /** 支持的操作符 [{id, name, code, identifier}] */
+  supportOperator?: FieldOperator[]
   obsolete?: boolean
   fieldSource?: string
   configSchema?: string
