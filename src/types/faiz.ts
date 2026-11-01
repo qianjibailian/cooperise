@@ -737,8 +737,17 @@ export interface DetailLayoutGroup {
 }
 
 /** queryDetail 响应 data */
+/** 详情顶部基础信息（空间 / 单号），queryDetail 返回 */
+export interface DetailBaseInfo {
+  issueKey?: string
+  spaceCode?: string
+  spaceName?: string
+}
+
 export interface DetailData {
   layoutGroup: DetailLayoutGroup[]
+  /** 顶部数据来源：空间名 + 问题单号 */
+  baseInfo?: DetailBaseInfo
   jiraIssueId?: string
   workflowName?: string
   hasDevActivityValue?: boolean
@@ -749,6 +758,43 @@ export interface QueryDetailResult {
   message: string
   success: boolean
   data: DetailData
+}
+
+// ========== Edit Meta API（编辑事项弹窗数据）==========
+
+/** POST /issue/queryEditMeta 请求参数 */
+export interface IssueEditMetaRequest {
+  issueKey: string
+  /** 展示位置 / 场景：EDIT（编辑弹窗），不传则由后端按默认场景返回 */
+  scene?: string
+}
+
+/** 编辑表单的一个 Tab（title 与新建/详情一致，如「必填」「选填」） */
+export interface IssueEditMetaTabItem {
+  title: string
+  sequence?: number
+  issueFields?: DetailField[]
+}
+
+/** POST /issue/queryEditMeta 响应 data：表单结构 + 字段当前值 + 事项基础信息 */
+export interface IssueEditMetaVO {
+  id?: number | string
+  issueKey?: string
+  issueTypeCode?: string
+  issueTypeName?: string
+  spaceCode?: string
+  spaceName?: string
+  statusId?: string
+  statusName?: string
+  statusColor?: string
+  statusNode?: string
+  /** 表单分组类型：TAB_CONTAINER（data 为 { tabItems }）/ COMMON_LIST（data 为字段数组） */
+  type?: 'TAB_CONTAINER' | 'COMMON_LIST' | string
+  /** TAB_CONTAINER 时为 { tabItems: [...]，fromItems }；COMMON_LIST 时为字段数组 */
+  data?: { tabItems?: IssueEditMetaTabItem[]; fromItems?: unknown | null } | DetailField[] | null
+  isUpdateToDefault?: boolean
+  /** 该事项未配置专属表单时为 true，返回的是默认表单 */
+  fallback?: boolean
 }
 
 // ========== Workflow API（工作流）==========

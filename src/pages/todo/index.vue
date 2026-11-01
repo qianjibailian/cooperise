@@ -90,16 +90,18 @@
         </template>
         <template #bodyCell="{ column, record }">
           <template v-if="column.key === '__op__'">
-            <a-dropdown :trigger="['click']">
-              <a-button type="text" class="action-dots">···</a-button>
-              <template #overlay>
-                <a-menu @click="handleMenuClick($event, record)">
-                  <a-menu-item key="edit">编辑</a-menu-item>
-                  <a-menu-item key="copy">复制</a-menu-item>
-                  <a-menu-item key="rollback">回滚</a-menu-item>
-                </a-menu>
-              </template>
-            </a-dropdown>
+            <div class="action-cell">
+              <a-dropdown :trigger="['click']">
+                <a-button type="text" class="action-dots">···</a-button>
+                <template #overlay>
+                  <a-menu @click="handleMenuClick($event, record)">
+                    <a-menu-item key="edit">编辑</a-menu-item>
+                    <a-menu-item key="copy">复制</a-menu-item>
+                    <a-menu-item key="rollback">回滚</a-menu-item>
+                  </a-menu>
+                </template>
+              </a-dropdown>
+            </div>
           </template>
           <div
             v-else
@@ -916,6 +918,7 @@ const aTableColumns = computed(() => {
     width?: number
     fixed?: 'left' | 'right'
     align?: 'center' | 'left' | 'right'
+    className?: string
   }> = tableColumns.value.map(col => ({
     title: col.name,
     dataIndex: col.id,
@@ -929,6 +932,8 @@ const aTableColumns = computed(() => {
     width: 72,
     fixed: 'right',
     align: 'center',
+    // 固定右列默认按右对齐渲染，这里给该列加类名强制居中
+    className: 'op-cell',
   })
   return cols
 })
@@ -2287,11 +2292,35 @@ onBeforeUnmount(() => {
 }
 
 /* 操作列三点按钮 */
+/* 三点靠左显示，与表头「操作」文字对齐 */
+.items-table :deep(.op-cell) {
+  text-align: left !important;
+}
+
+.action-cell {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  width: 100%;
+}
+
+/* 三点按钮按 inline 级参与单元格文本居中，避免受 cell 内部宽度影响 */
+.action-cell :deep(.ant-dropdown-trigger),
+.action-cell .action-dots {
+  margin: 0;
+}
+
 .action-dots {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
   font-size: 18px;
   color: #8c8c8c;
   letter-spacing: -1px;
-  padding: 0 4px;
+  padding: 0;
+  border-radius: 4px;
   line-height: 1;
 }
 

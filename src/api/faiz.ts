@@ -17,6 +17,8 @@ import type {
   CreateIssuePayload,
   QueryDetailPayload,
   QueryDetailResult,
+  IssueEditMetaRequest,
+  IssueEditMetaVO,
   AvailableFieldQuery,
   AvailableFieldResult,
   AvailableFieldItem,
@@ -132,6 +134,11 @@ export function fuzzyQueryIssues(data: { issueKey?: string; summary?: string; pa
 /** 查询事项详情（POST /issue/queryDetail） */
 export function queryDetail(payload: QueryDetailPayload): Promise<QueryDetailResult> {
   return request.post(`/issue/queryDetail`, payload)
+}
+
+/** 获取编辑事项弹窗数据：表单结构 + 字段当前值（POST /issue/queryEditMeta，scene=EDIT） */
+export function queryEditMeta(payload: IssueEditMetaRequest): Promise<Result<IssueEditMetaVO>> {
+  return request.post(`/issue/queryEditMeta`, payload)
 }
 
 // ==================== Filter Draft API ====================

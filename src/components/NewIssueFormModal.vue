@@ -111,25 +111,18 @@
                       :key="field.id"
                     >
                       <template #label>
-                        <!-- 「新建」追加的字段：拖拽手柄排在字段名前面 -->
-                        <span
-                          v-if="field.__added"
-                          class="field-drag"
-                          draggable="true"
-                          title="拖动排序"
-                          @dragstart="onFieldDragStart(tab, fi, $event)"
-                          @dragend="onFieldDragEnd"
-                        >
-                          <i v-for="n in 9" :key="n" class="field-drag-dot" />
-                        </span>
                         <span class="field-label-text">{{ field.name }}</span>
                         <span v-if="field.required" class="form-item-required-mark">*</span>
                       </template>
                       <div
                         class="field-row"
-                        :class="{ 'is-dragging': dragFieldIndex === fi && dragTabTitle === tab.title }"
+                        :class="{
+                          'is-dragging': dragFieldIndex === fi && dragTabTitle === tab.title,
+                          'is-drop-before': dragOverIndex === fi && dragInsertBefore && dragTabTitle === tab.title,
+                          'is-drop-after': dragOverIndex === fi && !dragInsertBefore && dragTabTitle === tab.title,
+                        }"
                         @dragover="onFieldDragOver(tab, fi, $event)"
-                        @drop.prevent
+                        @drop="onFieldDrop(tab, fi, $event)"
                       >
                         <div class="form-field-content">
                         <a-input v-if="field.type === FIELD_TYPE.TEXT_BOX_SINGLE_LINE" v-model:value="newFormData[field.id]" :placeholder="field.description || '请输入'" :disabled="!field.editable" style="width: 100%" />
@@ -255,13 +248,23 @@
                         </span>
                         <a-input v-if="!field.type" v-model:value="newFormData[field.id]" :placeholder="field.description || ''" :disabled="!field.editable" style="width: 100%" />
                         </div>
-                        <!-- 「新建」追加的字段：删除图标排在字段后面 -->
+                        <!-- 「新建」追加的字段：删除图标 → 拖拽手柄（上下拖动排序） -->
                         <DeleteOutlined
                           v-if="field.__added"
                           class="field-act field-act-danger field-delete"
                           title="删除"
                           @click="removeField(tab, fi)"
                         />
+                        <span
+                          v-if="field.__added"
+                          class="field-drag"
+                          draggable="true"
+                          title="拖动排序"
+                          @dragstart="onFieldDragStart(tab, fi, $event)"
+                          @dragend="onFieldDragEnd"
+                        >
+                          <i v-for="n in 6" :key="n" class="field-drag-dot" />
+                        </span>
                       </div>
                     </a-form-item>
                   </a-form>
@@ -345,7 +348,7 @@ import type { IDomEditor, IEditorConfig } from '@wangeditor/editor'
 import '@wangeditor/editor/dist/css/style.css'
 import { PlusOutlined, DeleteOutlined, CloseOutlined } from '@ant-design/icons-vue'
 import { Empty, message } from 'ant-design-vue'
-import { createIssue, getAvailableFieldOptions, queryUsers, queryTemplates, getTemplate, getIssueCreateMeta, queryDetail, patchIssue, queryAvailableFieldList, querySpaceOptions, queryIssueTypes, createTemplate, type SpaceItem } from '@/api/faiz'
+import { createIssue, getAvailableFieldOptions, queryUsers, queryTemplates, getTemplate, getIssueCreateMeta, queryEditMeta, patchIssue, queryAvailableFieldList, querySpaceOptions, queryIssueTypes, createTemplate, type SpaceItem } from '@/api/faiz'
 import { issueTypeIconOf } from '@/utils/issueTypeIcons'
 import { personLabel, personAvatar, personInitial, personKey } from '@/utils/person'
 import { FIELD_TYPE, normalizeFieldType, formatTypeLabel } from '@/types/fieldType'
@@ -360,12 +363,14 @@ import type {
   UserItem,
   IssuePatchField,
   DetailLayoutGroup,
+  DetailFieldGroupStructure,
+  IssueEditMetaVO,
   AvailableFieldItem,
 } from '@/types/faiz'
 
 interface Props {
   open: boolean
-  /** 传入 issueKey 时进入编辑模式：调 /issue/queryDetail 获取数据回填 */
+  /** 传入 issueKey 时进入编辑模式：调 POST /issue/queryEditMeta 获取表单结构与当前值回填 */
   issueKey?: string
 }
 
@@ -396,7 +401,7 @@ watch(
       selectedTemplate.value = ''
       customFieldOptionsMap.value = {}
       if (props.issueKey) {
-        // 编辑模式：/issue/queryDetail 获取数据回填
+        // 编辑模式：/issue/queryEditMeta 获取表单结构与字段当前值回填
         // eslint-disable-next-line @typescript-eslint/no-floating-promises
         loadEditDetail(props.issueKey)
       } else {
@@ -765,6 +770,10 @@ async function loadCustomFieldOptions(
         type: widgetType,
         projectId,
         issueTypeCode,
+        // 参数传全：编辑场景带上事项 key（服务端按事项上下文返回）；
+        // pageSize 取大值，避免枚举较多时只回一页导致下拉缺项
+        ...(isEditMode.value && props.issueKey ? { issueKey: props.issueKey } : {}),
+        pageSize: 999,
       })
     }
   }
@@ -939,7 +948,8 @@ const handleTemplateChange = async (val: string) => {
 
 /** 模板字段构建完 Tabs + newFormData 后，补做成员选项预取和自定义字段接口拉取 */
 function postLoadAfterBuildTabs() {
-  const projectId = NEW_FORM_DEFAULT_PROJECT_ID
+  // projectId 用当前空间的编码（服务端枚举按空间取），没有空间时才退回默认值
+  const projectId = currentSpace.value?.spaceCode || NEW_FORM_DEFAULT_PROJECT_ID
   const issueTypeCode = currentIssueTypeCode()
   // member 字段：SELECT_USER_SINGLE / SELECT_USER_MULTI 一律预取用户数据（/user/query），
   // 保证新建弹窗打开时人员下拉即有可选数据（无需输入关键词搜索）
@@ -1046,14 +1056,84 @@ async function loadCreateMeta() {
 }
 
 /**
- * 编辑模式：调用 /issue/queryDetail 获取详情，将 layoutGroup 转为表单 tabs 并回填值
+ * 编辑模式：调用 POST /issue/queryEditMeta（scene=EDIT）拿到「表单结构 + 字段当前值」，转 tabs 并回填
  */
+/** 编辑场景取值：与后端 queryEditMeta 的 scene 一致 */
+const EDIT_SCENE = 'EDIT'
+
+/** 把 queryEditMeta 的返回值转成表单 tab 结构：type + data(tabItems)，复用详情的 tab 转换逻辑 */
+function buildTabsFromEditMeta(meta: IssueEditMetaVO): any[] {
+  const structure = meta?.data
+  if (structure) {
+    // 返回的 type（TAB_CONTAINER/COMMON_LIST）在顶层，data 是对应的 tabItems / 字段数组
+    return buildTabsFromDetail([
+      {
+        type: 'CUSTOM_FIELD',
+        fieldGroupStructure: {
+          type: meta?.type || (Array.isArray(structure) ? 'COMMON_LIST' : 'TAB_CONTAINER'),
+          data: structure as unknown as DetailFieldGroupStructure['data'],
+        } as DetailFieldGroupStructure,
+      },
+    ])
+  }
+  return []
+}
+
+/**
+ * 取枚举字段的「值」：queryEditMeta 会把选中项返回成对象（{ optionId, optionName }），
+ * 而下拉 option 的 value 是枚举值本身（如 'p3'），所以对象要还原成 optionId。
+ */
+function enumValueOf(raw: unknown): string {
+  if (raw == null) return ''
+  if (typeof raw === 'object') {
+    const o = raw as Record<string, unknown>
+    const v = o.optionId ?? o.value ?? o.id ?? o.optionValue
+    return v == null ? '' : String(v)
+  }
+  return String(raw)
+}
+
+/**
+ * 编辑模式：把 queryEditMeta 返回的空间 / 问题类型回显到顶部两个下拉。
+ * 两者都可能在当前下拉选项里查不到（编辑态不重拉类型列表、空间可能不在列表内），
+ * 这时用接口返回的编码与名称临时补一条，保证不是空白。
+ */
+function applyEditHeaderMeta(meta: IssueEditMetaVO) {
+  const spaceCode = String(meta.spaceCode ?? '').trim()
+  if (spaceCode) {
+    let sp = spaceOptions.value.find(s => String(s.spaceCode) === spaceCode)
+    if (!sp) {
+      sp = { id: -1, spaceCode, spaceName: meta.spaceName || spaceCode } as unknown as SpaceItem
+      spaceOptions.value = [sp, ...spaceOptions.value]
+    }
+    newFormSpaceId.value = sp.id
+  }
+  const issueTypeCode = String(meta.issueTypeCode ?? '').trim()
+  if (issueTypeCode) {
+    let opt = issueTypeOptions.value.find(
+      o => o.code === issueTypeCode || `TYPE${o.value}` === issueTypeCode || o.value === issueTypeCode,
+    )
+    if (!opt) {
+      opt = {
+        value: issueTypeCode.replace(/^TYPE/, ''),
+        label: meta.issueTypeName || issueTypeCode,
+        code: issueTypeCode,
+      }
+      issueTypeOptions.value = [opt, ...issueTypeOptions.value]
+    }
+    newFormIssueTypeId.value = opt.value
+  }
+}
+
 async function loadEditDetail(issueKey: string) {
   newFormLoading.value = true
   try {
-    const res = await queryDetail({ key: issueKey })
+    // 空间下拉正在加载时先等它，保证能按 spaceCode 找到对应选项
+    if (spaceLoadingReq) await spaceLoadingReq
+    const res = await queryEditMeta({ issueKey, scene: EDIT_SCENE })
     if (res?.success && res.data) {
-      const tabs = buildTabsFromDetail(res.data.layoutGroup)
+      // 新接口直接返回编辑弹窗的表单结构（TAB_CONTAINER / COMMON_LIST），与详情 layoutGroup 结构一致
+      const tabs = buildTabsFromEditMeta(res.data)
       if (tabs.length) {
         newFormTabs.value = tabs
         newFormActiveTab.value = tabs[0]?.title ?? ''
@@ -1089,6 +1169,14 @@ async function loadEditDetail(issueKey: string) {
               if (userObjs.length) {
                 memberOptionsMap[fid] = userObjs.map(o => ({ ...(o as UserItem) }))
               }
+            } else if (f.type === FIELD_TYPE.SELECT_LIST_SINGLE || f.type === FIELD_TYPE.CASCADER_SINGLE) {
+              // 单选枚举：queryEditMeta 返回的可能是一个对象，如 { optionId: 'p3', optionName: 'P3-较低' }，
+              // 下拉的 option value 是枚举值本身，这里取 optionId，否则下拉匹配不到、显示为空
+              form[fid] = enumValueOf(f.value)
+            } else if (f.type === FIELD_TYPE.SELECT_LIST_MULTI) {
+              // 多选枚举：可能是数组，数组元素同样可能是对象
+              const arr = Array.isArray(f.value) ? f.value : f.value == null ? [] : [f.value]
+              form[fid] = arr.map((v: unknown) => enumValueOf(v)).filter(Boolean)
             } else {
               form[fid] = f.value ?? null
             }
@@ -1102,6 +1190,8 @@ async function loadEditDetail(issueKey: string) {
           }
         }
         newFormData.value = form
+        // 顶部「空间」「问题类型」按接口返回值回显（编辑模式下两个下拉均禁用，仅展示）
+        applyEditHeaderMeta(res.data)
         // 成员选项预取 + 自定义字段选项拉取（保证人员下拉/级联可选）
         postLoadAfterBuildTabs()
       } else {
@@ -1132,7 +1222,6 @@ function buildTabsFromDetail(layoutGroup: DetailLayoutGroup[]): any[] {
       tabs.push({ title, sequence, issueFields: [...fields] })
     }
   }
-  const mapTabTitle = (t: string) => (t === '必填' ? '团队自定义信息' : t === '选填' ? '公司标准信息' : t)
   for (const g of layoutGroup || []) {
     const s = g?.fieldGroupStructure
     if (!s) continue
@@ -1140,7 +1229,8 @@ function buildTabsFromDetail(layoutGroup: DetailLayoutGroup[]): any[] {
       const items = (s.data as any)?.tabItems || []
       for (const it of items) {
         if (it.title === 'C端专用字段') continue
-        appendTab(mapTabTitle(it.title), it.sequence ?? 0, it.issueFields)
+        // Tab 名直接取接口返回的 tabItems.title（如「必填」「选填」），不再本地映射
+        appendTab(it.title, it.sequence ?? 0, it.issueFields)
       }
     } else if (s.type === 'COMMON_LIST') {
       const fields = Array.isArray(s.data) ? s.data : Array.isArray(s.issueFields) ? s.issueFields : []
@@ -1401,7 +1491,7 @@ function handleAddField(f: AvailableFieldItem) {
 
   if (OPTION_WIDGET_TYPE_SET.has(field.type)) {
     // eslint-disable-next-line @typescript-eslint/no-floating-promises
-    loadCustomFieldOptions(NEW_FORM_DEFAULT_PROJECT_ID, currentIssueTypeCode(), [{ issueFields: [field] }])
+    loadCustomFieldOptions(currentSpace.value?.spaceCode || NEW_FORM_DEFAULT_PROJECT_ID, currentIssueTypeCode(), [{ issueFields: [field] }])
   }
   if (field.type === FIELD_TYPE.SELECT_USER_SINGLE || field.type === FIELD_TYPE.SELECT_USER_MULTI) {
     handleMemberSearch(field.id, '')
@@ -1413,6 +1503,9 @@ type TabFields = { title: string; sequence: number; issueFields: any[] }
 // ---------- 追加字段拖动排序（拖动经过目标行时即时插入） ----------
 const dragFieldIndex = ref(-1)
 const dragTabTitle = ref('')
+/** 拖拽经过的行 + 插入方向（true 插在该行之前） */
+const dragOverIndex = ref(-1)
+const dragInsertBefore = ref(false)
 
 function onFieldDragStart(tab: TabFields, index: number, e: DragEvent) {
   dragTabTitle.value = tab.title
@@ -1424,25 +1517,44 @@ function onFieldDragStart(tab: TabFields, index: number, e: DragEvent) {
   }
 }
 
-/** 拖到某个字段上：把正在拖动的字段插到该位置（同一个 Tab 内） */
+/**
+ * 经过某个字段：只记录落点与插入方向（上半插入该行之前，下半插入之后）。
+ * 注意：这里不能去改 issueFields —— 拖动中重排会让被拖的行在 DOM 里被销毁，
+ * 浏览器会当成拖拽源消失而立刻触发 dragend，排序就永远落不下去。真正的移动放在 drop 里做。
+ */
 function onFieldDragOver(tab: TabFields, index: number, e: DragEvent) {
   if (dragFieldIndex.value < 0 || tab.title !== dragTabTitle.value) return
   e.preventDefault()
   if (e.dataTransfer) e.dataTransfer.dropEffect = 'move'
+  const row = e.currentTarget
+  const rect = row instanceof HTMLElement ? row.getBoundingClientRect() : null
+  dragOverIndex.value = index
+  dragInsertBefore.value = !!rect && e.clientY < rect.top + rect.height / 2
+}
+
+/** 松开：把字段移到落点位置 */
+function onFieldDrop(tab: TabFields, index: number, e: DragEvent) {
+  e.preventDefault()
   const from = dragFieldIndex.value
-  if (from === index) return
-  const list = tab.issueFields
-  const [moved] = list.splice(from, 1)
-  list.splice(index, 0, moved)
-  dragFieldIndex.value = index
-  list.forEach((f: any, i: number) => {
-    f.sequence = i
-  })
+  if (from < 0 || tab.title !== dragTabTitle.value) return onFieldDragEnd()
+  let target = dragInsertBefore.value ? index : index + 1
+  if (from < target) target -= 1
+  if (from !== target) {
+    const list = tab.issueFields
+    const [moved] = list.splice(from, 1)
+    list.splice(target, 0, moved)
+    list.forEach((f: any, i: number) => {
+      f.sequence = i
+    })
+  }
+  onFieldDragEnd()
 }
 
 function onFieldDragEnd() {
   dragFieldIndex.value = -1
   dragTabTitle.value = ''
+  dragOverIndex.value = -1
+  dragInsertBefore.value = false
 }
 
 /** 删除：从当前 Tab 移除该字段并清掉已填的值（删除后可在「新建」里重新添加） */
@@ -1537,19 +1649,23 @@ function buildFieldValue(field: CreateMetaField, raw: unknown): unknown {
     const n = Number(raw)
     return Number.isFinite(n) ? n : raw
   }
-  // 单选下拉：传 { optionId, optionName }
+  // 单选下拉：传 { optionId, optionName, color }（与后端 PATCH 入参一致，color 有值才带）
   if (type === FIELD_TYPE.SELECT_LIST_SINGLE) {
     const opts = getFieldOptions(field)
     const found = opts.find(o => String(o.value) === String(raw))
-    return found ? { optionId: found.value, optionName: found.name } : { optionId: String(raw), optionName: String(raw) }
+    return found
+      ? { optionId: found.value, optionName: found.name, ...(found.color ? { color: found.color } : {}) }
+      : { optionId: String(raw), optionName: String(raw) }
   }
-  // 多选下拉：传 [{ optionId, optionName }, ...]
+  // 多选下拉：传 [{ optionId, optionName, color }, ...]
   if (type === FIELD_TYPE.SELECT_LIST_MULTI) {
     const opts = getFieldOptions(field)
     const arr = Array.isArray(raw) ? raw : [raw]
     return arr.map((v: unknown) => {
       const found = opts.find(o => String(o.value) === String(v))
-      return found ? { optionId: found.value, optionName: found.name } : { optionId: String(v), optionName: String(v) }
+      return found
+        ? { optionId: found.value, optionName: found.name, ...(found.color ? { color: found.color } : {}) }
+        : { optionId: String(v), optionName: String(v) }
     })
   }
   // 用户单选：传整个 UserItem
@@ -2249,6 +2365,7 @@ async function saveEditForm() {
 
 /* 「新建」追加字段：最前拖拽手柄 + 字段本体 + 末尾删除图标，同一行 */
 .field-row {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -2261,11 +2378,11 @@ async function saveEditForm() {
   min-width: 0;
 }
 
-/* 拖拽手柄：3×3 九个点 */
+/* 拖拽手柄：2 列 × 3 行 = 六个点 */
 .field-drag {
   flex: none;
   display: grid;
-  grid-template-columns: repeat(3, 3px);
+  grid-template-columns: repeat(2, 3px);
   grid-template-rows: repeat(3, 3px);
   gap: 2px;
   padding: 3px 2px;
@@ -2292,6 +2409,27 @@ async function saveEditForm() {
 /* 拖动中的行置灰 */
 .field-row.is-dragging {
   opacity: 0.45;
+}
+
+/* 松手后的插入位置指示线：行上方 / 下方一条蓝线 */
+.field-row.is-drop-before::before,
+.field-row.is-drop-after::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--c-primary, #3370ff);
+  pointer-events: none;
+}
+
+.field-row.is-drop-before::before {
+  top: -6px;
+}
+
+.field-row.is-drop-after::after {
+  bottom: -6px;
 }
 
 /* 删除图标：悬停该字段时出现在最右侧 */

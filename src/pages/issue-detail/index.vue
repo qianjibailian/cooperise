@@ -1278,10 +1278,13 @@ async function refreshDetail() {
 }
 
 const projectLabel = computed<string>(() => {
-  const f = findField('project')
+  // 顶部优先取 baseInfo 的空间名；没有时回退 SUBJECT 组里的 space / project 字段
+  const name = detailData.value?.baseInfo?.spaceName
+  if (name) return String(name)
+  const f = findField('space') ?? findField('project')
   if (!f?.value) return ''
   const v = f.value as Record<string, unknown>
-  return String(v.name ?? v.key ?? '')
+  return String(v.spaceName ?? v.name ?? v.key ?? v.spaceCode ?? '')
 })
 
 // status
