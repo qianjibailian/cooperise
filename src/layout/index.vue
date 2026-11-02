@@ -46,6 +46,10 @@
               @click="handleLocalMenuClick"
               class="sidebar-menu workspace-top-menu"
             >
+              <a-menu-item key="/workbench/board">
+                <component :is="DashboardOutlined" />
+                <span>我的看板</span>
+              </a-menu-item>
               <a-menu-item key="/workbench/todo">
                 <component :is="CheckSquareOutlined" />
                 <span>我的事项<template v-if="todoCount !== null"> ({{ todoCount }})</template></span>
@@ -265,6 +269,7 @@ import {
   HomeOutlined,
   SettingOutlined,
   CheckSquareOutlined,
+  DashboardOutlined,
   SearchOutlined,
   PlusOutlined,
   FolderOutlined,
@@ -467,7 +472,7 @@ const currentPath = computed(() => {
 function handleSectionClick(key: string) {
   activeSection.value = key
   if (key === 'workspace') {
-    router.push('/workbench/todo')
+    router.push('/workbench/board')
   } else if (key === 'space') {
     router.push('/space')
   } else if (key === 'settings') {

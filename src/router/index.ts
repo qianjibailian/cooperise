@@ -2,6 +2,7 @@ import { defineComponent, h, markRaw, onMounted, ref, watch } from 'vue'
 import { createRouter, createWebHistory, createWebHashHistory, useRoute, type RouteRecordRaw } from 'vue-router'
 import Layout from '@/layout/index.vue'
 import Todo from '@/pages/todo/index.vue'
+import MyBoard from '@/pages/my-board/index.vue'
 import Dashboard from '@/pages/dashboard/index.vue'
 import Users from '@/pages/users/index.vue'
 import Roles from '@/pages/roles/index.vue'
@@ -77,7 +78,9 @@ const routes: RouteRecordRaw[] = [
     component: Layout,
     redirect: '/workbench',
     children: [
-      { path: 'workbench', redirect: '/workbench/todo', name: 'Workbench' },
+      // 工作台默认进入「我的看板」
+      { path: 'workbench', redirect: '/workbench/board', name: 'Workbench' },
+      { path: 'workbench/board', component: MyBoard, name: 'MyBoard', meta: { title: '我的看板' } },
       { path: 'workbench/todo', component: Todo, name: 'Todo', meta: { title: '我的事项' } },
       { path: 'workbench/view/:filterCode', component: ViewEntry, name: 'ViewEntry', meta: { title: '视图' } },
       { path: 'jira/browse/:issueKey', component: IssueDetail, name: 'IssueDetail', meta: { title: '事项详情' } },

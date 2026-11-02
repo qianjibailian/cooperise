@@ -833,6 +833,76 @@ export function queryIssueButtonsForIssue(issueKey: string): Promise<Result<Issu
   return request.post(`/issue-button/issue`, { issueKey })
 }
 
+// ==================== 我的看板 ====================
+
+/** 与我的关系：我经办 / 我创建 / 不限 */
+export type MyBoardRelation = 'ASSIGNEE' | 'CREATOR' | 'ANY'
+/** 状态范围：未结束 / 全部 / 指定状态 */
+export type MyBoardStatusScope = 'UNRESOLVED' | 'ALL' | 'SPECIFIC'
+
+/** 我的看板面板配置（后端 MyBoardPanelVO） */
+export interface MyBoardPanel {
+  id: number
+  title: string
+  /** 问题类型编码；空数组表示全部类型 */
+  issueTypeCodes: string[]
+  relation: MyBoardRelation
+  statusScope: MyBoardStatusScope
+  /** statusScope 为 SPECIFIC 时的状态编码 */
+  statusCodes: string[]
+  /** 面板展示条数 */
+  pageSize: number
+  sort?: number
+}
+
+export type MyBoardPanelSavePayload = Omit<MyBoardPanel, 'id' | 'sort'> & { id?: number }
+
+/** 面板里的一条事项 */
+export interface MyBoardIssue {
+  issueKey: string
+  summary?: string
+  issueTypeCode?: string
+  issueTypeName?: string
+  issueTypeColor?: string
+  issueTypeIcon?: string | null
+  statusCode?: string
+  statusName?: string
+  statusColor?: string
+  updateTime?: string
+}
+
+/** 面板数据：命中总数 + 最近更新的前 N 条 */
+export interface MyBoardPanelData {
+  panelId: number
+  total: number
+  list: MyBoardIssue[]
+}
+
+/** 当前用户的面板（POST /my-board/panels） */
+export function queryMyBoardPanels(): Promise<Result<MyBoardPanel[]>> {
+  return request.post(`/my-board/panels`, {})
+}
+
+/** 新增 / 修改面板（POST /my-board/panel/save） */
+export function saveMyBoardPanel(data: MyBoardPanelSavePayload): Promise<Result<MyBoardPanel>> {
+  return request.post(`/my-board/panel/save`, data)
+}
+
+/** 删除面板（POST /my-board/panel/delete） */
+export function deleteMyBoardPanel(id: number): Promise<Result<void>> {
+  return request.post(`/my-board/panel/delete`, { id })
+}
+
+/** 面板排序：按传入 id 顺序（POST /my-board/panel/sort） */
+export function sortMyBoardPanels(ids: number[]): Promise<Result<void>> {
+  return request.post(`/my-board/panel/sort`, { ids })
+}
+
+/** 面板数据（POST /my-board/panel/data） */
+export function queryMyBoardPanelData(id: number): Promise<Result<MyBoardPanelData>> {
+  return request.post(`/my-board/panel/data`, { id })
+}
+
 // ==================== 空间管理 ====================
 
 /** 空间（后端 SpaceVO） */
