@@ -245,6 +245,8 @@
 
     <!-- 新建弹窗：抽离为独立组件 -->
     <NewIssueFormModal v-model:open="showNewFormModal" @submitted="notifyIssueCreated" />
+    <!-- 右下角发版更新通知 -->
+    <ReleaseNotice />
 
     <!-- 我的视图「+」：新建视图 / 文件夹 -->
     <CreateViewModal
@@ -293,6 +295,7 @@ import { useViewStore } from '@/utils/view-store'
 import type { ViewItem, ViewGroup } from '@/types/faiz'
 import { Modal, message } from 'ant-design-vue'
 import { deleteViewGroup, deleteView } from '@/api/faiz'
+import ReleaseNotice from '@/components/ReleaseNotice.vue'
 
 const iconBarItems = [
   { key: 'workspace', icon: HomeOutlined, label: '工作台' },

@@ -110,6 +110,11 @@
         </div>
       </div>
 
+      <!-- 中英文切换：按钮显示要切换到的语言 -->
+      <button type="button" class="lang-switch" title="切换语言" @click="setLocale(locale === 'en' ? 'zh' : 'en')">
+        {{ locale === 'en' ? '中文' : 'EN' }}
+      </button>
+
       <button class="header-create-btn" @click="$emit('create-click')">
         <PlusOutlined />
         <span>新建</span>
@@ -200,6 +205,7 @@ import {
 import AppLogo from './AppLogo.vue'
 import { useAuth, setAuthUser } from '@/utils/auth'
 import { useTheme } from '@/utils/theme'
+import { useLocale } from '@/i18n'
 import { formatPersonLabel } from '@/utils/person'
 import { logout, getCurrentUser, fuzzyQueryIssues, type FuzzyIssueItem } from '@/api/faiz'
 import { issueTypeIconOf } from '@/utils/issueTypeIcons'
@@ -393,6 +399,7 @@ function handleEnter() {
 /** 登录用户资料（登录接口 data.user / 个人中心同步），姓名缺失时回退占位文案 */
 const { realName, user } = useAuth()
 const { themes, currentTheme, setTheme } = useTheme()
+const { locale, setLocale } = useLocale()
 const username = computed(() => user.value?.realName || realName.value || '用户')
 /** 用户面板展示：realName（coAccount） */
 const userDisplayLabel = computed(() =>
@@ -571,6 +578,28 @@ async function handleLogout() {
   display: flex;
   align-items: center;
   gap: 16px;
+}
+
+/* 中英文切换 */
+.lang-switch {
+  min-width: 44px;
+  height: 30px;
+  padding: 0 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #3a3a3c;
+  background: #f5f5f7;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.lang-switch:hover {
+  color: var(--c-primary);
+  background: #fff;
+  border-color: color-mix(in srgb, var(--c-primary) 35%, transparent);
 }
 
 .header-search {

@@ -239,9 +239,11 @@
                             :default-config="richEditorConfig"
                             mode="default"
                             class="new-form-rich-editor"
-                            style="height: 380px; overflow-y: auto"
+                            :style="{ height: `${richEditorHeights[field.id] ?? RICH_EDITOR_MIN_HEIGHT}px`, overflowY: 'auto' }"
                             @on-created="(editor: IDomEditor) => handleRichEditorCreated(field.id, editor)"
                           />
+                          <!-- 底部拖拽条：上下拖动调整编辑区高度 -->
+                          <div class="rich-editor-resize-handle" @pointerdown="startRichEditorResize($event, field.id)" />
                         </div>
                         <span v-if="field.type === FIELD_TYPE.LABEL" class="display-text-value">
                           {{ newFormData[field.id] != null ? String(newFormData[field.id]) : '' }}
@@ -639,6 +641,13 @@ function applyTemplateToForm(tplId: string | number) {
         form[f.id] = ''
       } else if ((f.type === FIELD_TYPE.DATE_PICKER || f.type === FIELD_TYPE.TIME_PICKER) && f.value && typeof f.value === 'string') {
         form[f.id] = dayjs(f.value)
+      } else if (f.type === FIELD_TYPE.SELECT_LIST_SINGLE) {
+        // 与编辑回填一致：默认值可能是 { optionId, optionName } 对象，统一取 optionId，
+        // 提交时才能匹配到枚举项并带上 color
+        form[f.id] = f.value == null ? null : enumValueOf(f.value) || null
+      } else if (f.type === FIELD_TYPE.SELECT_LIST_MULTI) {
+        const arr = Array.isArray(f.value) ? f.value : f.value == null ? [] : [f.value]
+        form[f.id] = arr.map((v: unknown) => enumValueOf(v)).filter(Boolean)
       } else {
         form[f.id] = f.value ?? null
       }
@@ -671,12 +680,15 @@ function mapJOptionToItem(jopt: CustomFieldJOption): CustomFieldOptionItem {
     Array.isArray(jopt.childJOptions) && jopt.childJOptions.length
       ? jopt.childJOptions.map(mapJOptionToItem)
       : undefined
+  const raw = jopt as CustomFieldJOption & { color?: string; ext?: { color?: string } | null }
+  const color = String(raw.color ?? raw.ext?.color ?? '').trim()
   return {
     id: String(jopt.optionId),
     name: String(jopt.optionName ?? ''),
     value: String(jopt.optionId),
     disabled: !!jopt.obsolete,
     children,
+    ...(color ? { color } : {}),
   }
 }
 
@@ -1388,6 +1400,37 @@ function handleRichEditorCreated(fieldId: string, editor: IDomEditor) {
   richEditorInstances[fieldId] = editor
 }
 
+// 编辑区默认约 4 行高，可通过底部拖拽条调整
+const RICH_EDITOR_MIN_HEIGHT = 120
+const RICH_EDITOR_MAX_HEIGHT = 800
+const richEditorHeights = reactive<Record<string, number>>({})
+
+function startRichEditorResize(e: PointerEvent, fieldId: string) {
+  const handle = e.currentTarget as HTMLElement
+  const startY = e.clientY
+  const startHeight = richEditorHeights[fieldId] ?? RICH_EDITOR_MIN_HEIGHT
+  handle.setPointerCapture(e.pointerId)
+  document.body.style.userSelect = 'none'
+  document.body.style.cursor = 'ns-resize'
+  e.preventDefault()
+
+  const onMove = (ev: PointerEvent) => {
+    const next = startHeight + ev.clientY - startY
+    richEditorHeights[fieldId] = Math.min(RICH_EDITOR_MAX_HEIGHT, Math.max(RICH_EDITOR_MIN_HEIGHT, next))
+  }
+  const onUp = (ev: PointerEvent) => {
+    handle.releasePointerCapture(ev.pointerId)
+    handle.removeEventListener('pointermove', onMove)
+    handle.removeEventListener('pointerup', onUp)
+    handle.removeEventListener('pointercancel', onUp)
+    document.body.style.userSelect = ''
+    document.body.style.cursor = ''
+  }
+  handle.addEventListener('pointermove', onMove)
+  handle.addEventListener('pointerup', onUp)
+  handle.addEventListener('pointercancel', onUp)
+}
+
 function destroyRichEditors() {
   Object.entries(richEditorInstances).forEach(([key, inst]) => {
     if (inst && typeof inst.destroy === 'function') {
@@ -1395,6 +1438,7 @@ function destroyRichEditors() {
     }
     delete richEditorInstances[key]
   })
+  Object.keys(richEditorHeights).forEach((key) => delete richEditorHeights[key])
 }
 
 // 注：旧流程（getIssueCreateMeta）已替换为「选中模板 → 解析 widgetData → 渲染表单」，详见 handleTemplateChange
@@ -1631,6 +1675,22 @@ function buildCascadingValue(raw: unknown): CreateIssueCascadingValue | undefine
 }
 
 /**
+ * 枚举值 → { optionId, optionName, color }：表单值可能是 optionId 字符串，也可能是带 optionId 的对象；
+ * 优先按枚举项补全名称与颜色，查不到时保留原对象里已有的 optionName / color
+ */
+function buildEnumOptionValue(opts: CustomFieldOptionItem[], raw: unknown) {
+  const id = enumValueOf(raw)
+  const found = opts.find(o => String(o.value) === id)
+  if (found) {
+    return { optionId: found.value, optionName: found.name, ...(found.color ? { color: found.color } : {}) }
+  }
+  const obj = raw != null && typeof raw === 'object' ? (raw as Record<string, unknown>) : {}
+  const name = String(obj.optionName ?? obj.name ?? obj.label ?? id)
+  const color = String(obj.color ?? '').trim()
+  return { optionId: id, optionName: name, ...(color ? { color } : {}) }
+}
+
+/**
  * 将表单值按 field.type 转为 POST /issue/create 期望的 value 结构
  * SELECT_LIST_SINGLE / SELECT_LIST_MULTI / SELECT_USER_SINGLE / SELECT_USER_MULTI 传整个选项对象
  */
@@ -1649,24 +1709,15 @@ function buildFieldValue(field: CreateMetaField, raw: unknown): unknown {
     const n = Number(raw)
     return Number.isFinite(n) ? n : raw
   }
-  // 单选下拉：传 { optionId, optionName, color }（与后端 PATCH 入参一致，color 有值才带）
+  // 单选下拉：传 { optionId, optionName, color }（新建与编辑入参一致，color 有值才带）
   if (type === FIELD_TYPE.SELECT_LIST_SINGLE) {
-    const opts = getFieldOptions(field)
-    const found = opts.find(o => String(o.value) === String(raw))
-    return found
-      ? { optionId: found.value, optionName: found.name, ...(found.color ? { color: found.color } : {}) }
-      : { optionId: String(raw), optionName: String(raw) }
+    return buildEnumOptionValue(getFieldOptions(field), raw)
   }
   // 多选下拉：传 [{ optionId, optionName, color }, ...]
   if (type === FIELD_TYPE.SELECT_LIST_MULTI) {
     const opts = getFieldOptions(field)
     const arr = Array.isArray(raw) ? raw : [raw]
-    return arr.map((v: unknown) => {
-      const found = opts.find(o => String(o.value) === String(v))
-      return found
-        ? { optionId: found.value, optionName: found.name, ...(found.color ? { color: found.color } : {}) }
-        : { optionId: String(v), optionName: String(v) }
-    })
+    return arr.map((v: unknown) => buildEnumOptionValue(opts, v))
   }
   // 用户单选：传整个 UserItem
   if (type === FIELD_TYPE.SELECT_USER_SINGLE) {
@@ -2623,7 +2674,7 @@ async function saveEditForm() {
 }
 
 /* ========== 输入控件：Material Filled × Apple Rounded（更紧凑尺寸） ========== */
-.new-form-modal .ant-input,
+.new-form-modal .ant-input:not(textarea),
 .new-form-modal .ant-input-number,
 .new-form-modal .ant-picker,
 .new-form-modal .ant-select-selector {
@@ -2651,9 +2702,12 @@ async function saveEditForm() {
 }
 
 .new-form-modal textarea.ant-input {
+  /* 默认 4 行（:rows="4"），可垂直拖动调整 */
+  min-height: 98px;
   padding: 8px 10px;
   line-height: 1.5;
   font-size: 13px;
+  resize: vertical;
 }
 
 .new-form-modal .ant-input:hover,
@@ -2749,15 +2803,39 @@ async function saveEditForm() {
   }
 }
 
+/* 富文本底部拖拽条：上下拖动调整高度 */
+.rich-editor-resize-handle {
+  position: relative;
+  height: 10px;
+  border-top: 1px solid #f0f0f0;
+  border-radius: 0 0 6px 6px;
+  background: #fafafa;
+  cursor: ns-resize;
+  touch-action: none;
+}
+
+.rich-editor-resize-handle::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 32px;
+  height: 3px;
+  border-radius: 2px;
+  background: #cbd5e1;
+  transform: translate(-50%, -50%);
+  transition: background 0.15s ease;
+}
+
+.rich-editor-resize-handle:hover::after {
+  background: #1677ff;
+}
+
 /* 矮屏（如笔记本 768px 高）：压缩滚动区以避免整体溢出 */
 @media (max-height: 720px) {
   .tab-pane-scroll {
     max-height: calc(90vh - 230px);
     max-height: calc(90dvh - 230px);
-  }
-
-  .new-form-rich-editor {
-    height: 240px !important;
   }
 }
 </style>

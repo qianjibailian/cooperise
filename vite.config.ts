@@ -28,15 +28,11 @@ export default defineConfig(({ mode }) => {
     qiankun('cooperise', {
       useDevMode: process.env.NODE_ENV === 'development',
     }),
+    // 轮询新构建；自带弹窗隐藏，由 src/components/ReleaseNotice.vue 监听 plugin_web_update_notice 展示（含更新说明）
     webUpdateNotice({
       logVersion: true,
       locale: 'zh_CN',
-      notificationProps: {
-        title: '系统更新通知',
-        description: '发现新版本，建议刷新页面获取最新体验',
-        buttonText: '立即刷新',
-        dismissButtonText: '稍后',
-      },
+      hiddenDefaultNotification: true,
     }),
   ],
   optimizeDeps: {

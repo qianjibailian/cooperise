@@ -28,7 +28,7 @@
           size="small"
           placeholder="选择字段"
           :loading="fieldLoading"
-          :options="fieldOptions"
+          :options="fieldOptionsFor(cond)"
           show-search
           option-filter-prop="label"
           @change="(v: unknown) => onFieldChange(cond, String(v))"
@@ -53,13 +53,54 @@
             mode="multiple"
             size="small"
             placeholder="请选择"
-            :options="selectOptionsOf(cond)"
             :loading="optionLoading[cond.field]"
             show-search
             option-filter-prop="label"
             class="value-input"
-            @change="(v: unknown) => setValues(cond, v)"
-          />
+            :dropdown-match-select-width="false"
+            popup-class-name="person-select-popup"
+            @focus="ensureOptions(cond)"
+            @change="(v: unknown) => setSelectValues(cond, v)"
+          >
+            <!-- 选中标签：与人员同款胶囊，前缀为颜色点 / 问题类型图标 -->
+            <template #tagRender="{ value, closable, onClose }">
+              <span class="value-tag" :title="selectOptionOf(cond, String(value)).label">
+                <span
+                  v-if="cond.field === 'issuetype'"
+                  class="value-tag-icon"
+                  :style="{ background: selectOptionOf(cond, String(value)).color || DEFAULT_MARK_COLOR }"
+                ><component :is="issueTypeIconOf(selectOptionOf(cond, String(value)).icon)" /></span>
+                <i
+                  v-else-if="selectOptionOf(cond, String(value)).color"
+                  class="value-tag-dot"
+                  :style="{ background: selectOptionOf(cond, String(value)).color }"
+                />
+                <span class="value-tag-text">{{ selectOptionOf(cond, String(value)).label }}</span>
+                <CloseOutlined
+                  v-if="closable"
+                  class="value-tag-close"
+                  @mousedown.prevent
+                  @click.stop="onClose"
+                />
+              </span>
+            </template>
+            <a-select-option
+              v-for="opt in selectOptionsOf(cond)"
+              :key="opt.value"
+              :value="opt.value"
+              :label="opt.label"
+            >
+              <span class="select-option">
+                <span
+                  v-if="cond.field === 'issuetype'"
+                  class="select-option-icon"
+                  :style="{ background: opt.color || DEFAULT_MARK_COLOR }"
+                ><component :is="issueTypeIconOf(opt.icon)" /></span>
+                <i v-else-if="opt.color" class="select-option-dot" :style="{ background: opt.color }" />
+                <span class="select-option-name">{{ opt.label }}</span>
+              </span>
+            </a-select-option>
+          </a-select>
 
           <a-select
             v-else-if="kindOf(cond) === 'user'"
@@ -78,17 +119,17 @@
           >
             <!-- 选中标签：头像 + realName（coAccount） -->
             <template #tagRender="{ value, closable, onClose }">
-              <span class="user-tag" :title="userTagTitle(cond, String(value))">
+              <span class="value-tag" :title="userTagTitle(cond, String(value))">
                 <a-avatar
                   v-if="String(value) !== CURRENT_USER"
                   :size="16"
                   :src="userTagAvatar(String(value)) || undefined"
-                  class="user-tag-avatar"
+                  class="value-tag-avatar"
                 >{{ userTagName(cond, String(value)).charAt(0) }}</a-avatar>
-                <span class="user-tag-text">{{ userTagName(cond, String(value)) }}</span>
+                <span class="value-tag-text">{{ userTagName(cond, String(value)) }}</span>
                 <CloseOutlined
                   v-if="closable"
-                  class="user-tag-close"
+                  class="value-tag-close"
                   @mousedown.prevent
                   @click.stop="onClose"
                 />
@@ -169,6 +210,7 @@ import {
 import type { AvailableFieldItem, UserItem } from '@/types/faiz'
 import { toFieldOperator, type FieldOperator } from '@/types/fieldOperator'
 import { personLabel, personName, personAccount, personAvatar } from '@/utils/person'
+import { issueTypeIconOf } from '@/utils/issueTypeIcons'
 import {
   OPERATORS,
   OPERATORS_BY_KIND,
@@ -207,14 +249,20 @@ function handleSave() {
   emit('update:visible', false)
 }
 
-/** 选项：人员项额外带头像 / 姓名 / 账号（账号在括号中展示） */
+/** 选项：人员项额外带头像 / 姓名 / 账号（账号在括号中展示）；枚举项带颜色，问题类型带图标 */
 type Option = {
   value: string
   label: string
+  disabled?: boolean
   avatarUrl?: string
   name?: string
   account?: string
+  color?: string
+  icon?: string | null
 }
+
+/** 问题类型图标底色兜底 */
+const DEFAULT_MARK_COLOR = '#8c8c8c'
 
 // ---------- 条件与逻辑：本地编辑，实时同步回父级 ----------
 const conditions = ref<FilterCondition[]>(JSON.parse(JSON.stringify(props.modelValue)))
@@ -266,6 +314,12 @@ const fieldOptions = computed<Option[]>(() => {
   }
   return list
 })
+
+/** 字段下拉：其他条件已选的字段置灰，同一字段不能重复添加（当前条件自身的字段保持可选） */
+function fieldOptionsFor(c: FilterCondition): Option[] {
+  const used = new Set(conditions.value.filter((x) => x !== c && x.field).map((x) => x.field))
+  return fieldOptions.value.map((o) => (used.has(o.value) ? { ...o, disabled: true } : o))
+}
 
 async function loadAvailableFields() {
   fieldLoading.value = true
@@ -351,8 +405,21 @@ function selectOptionsOf(c: FilterCondition): Option[] {
   return [...opts, ...extra]
 }
 
+/** 选中标签回显：选项未加载时用保存时记录的 labels */
+function selectOptionOf(c: FilterCondition, value: string): Option {
+  return optionMap[c.field]?.find((o) => o.value === value) ?? { value, label: c.labels?.[value] ?? value }
+}
+
+/** 选枚举值：与人员一致，同时记下显示名，保存后再次打开（选项未加载前）也能回显 */
+function setSelectValues(c: FilterCondition, v: unknown) {
+  setValues(c, v)
+  const labels: Record<string, string> = {}
+  for (const val of c.values) labels[val] = selectOptionOf(c, val).label
+  c.labels = labels
+}
+
 /** 问题类型列表只拉一次，状态与问题类型选项共用 */
-let issueTypesPromise: Promise<{ id: number; issueTypeName: string; issueTypeCode?: string }[]> | null = null
+let issueTypesPromise: Promise<{ id: number; issueTypeName: string; issueTypeCode?: string; color?: string; iconUri?: string | null }[]> | null = null
 function loadIssueTypes() {
   issueTypesPromise ??= queryIssueTypes({ page: 1, pageSize: 999, status: 1 })
     .then((res) => (res?.success ? res.data?.list || [] : []))
@@ -364,7 +431,7 @@ function loadIssueTypes() {
 async function fetchOptions(field: string): Promise<Option[]> {
   if (field === 'issuetype') {
     const types = await loadIssueTypes()
-    return types.map((t) => ({ value: t.issueTypeCode || String(t.id), label: t.issueTypeName }))
+    return types.map((t) => ({ value: t.issueTypeCode || String(t.id), label: t.issueTypeName, color: t.color, icon: t.iconUri }))
   }
   if (field === 'status') {
     const types = await loadIssueTypes()
@@ -373,7 +440,7 @@ async function fetchOptions(field: string): Promise<Option[]> {
     for (const list of lists) {
       for (const s of list) {
         const value = s.statusCode || String(s.id ?? '')
-        if (value && !seen.has(value)) seen.set(value, { value, label: s.statusName })
+        if (value && !seen.has(value)) seen.set(value, { value, label: s.statusName, color: s.color })
       }
     }
     return [{ value: ALL_NOT_DONE, label: '所有未结束状态' }, ...seen.values()]
@@ -386,7 +453,11 @@ async function fetchOptions(field: string): Promise<Option[]> {
   const raw: any[] = Array.isArray(bucket?.options) ? bucket.options : Array.isArray(bucket?.options?.options) ? bucket.options.options : []
   return raw
     .filter((x) => x != null)
-    .map((x) => ({ value: String(x.value ?? x.id ?? x.label ?? x.name), label: String(x.label ?? x.name ?? x.value ?? '') }))
+    .map((x) => ({
+      value: String(x.value ?? x.id ?? x.label ?? x.name),
+      label: String(x.label ?? x.name ?? x.value ?? ''),
+      ...(x.color ? { color: String(x.color) } : {}),
+    }))
 }
 
 async function ensureOptions(c: FilterCondition) {
@@ -724,8 +795,42 @@ watch(
   color: #8e8e93;
 }
 
-/* 人员选中标签：紧凑胶囊，只显示姓名 */
-.user-tag {
+/* 枚举选项：颜色点 / 问题类型图标 + 名称（与人员选项同样的行高与间距） */
+.select-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+}
+
+.select-option-dot {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  margin: 0 5px;
+  border-radius: 50%;
+}
+
+.select-option-icon {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 5px;
+  font-size: 11px;
+  color: #fff;
+}
+
+.select-option-name {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* 选中标签（人员 / 枚举通用）：紧凑胶囊，前缀头像 / 颜色点 / 类型图标 */
+.value-tag {
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -741,23 +846,43 @@ watch(
   transition: background 0.15s ease;
 }
 
-.user-tag:hover {
+.value-tag:hover {
   background: rgba(118, 118, 128, 0.18);
 }
 
-.user-tag-avatar {
+.value-tag-avatar {
   flex-shrink: 0;
   font-size: 9px;
   line-height: 16px;
   background: var(--c-primary);
 }
-.user-tag-text {
+.value-tag-dot {
+  flex-shrink: 0;
+  width: 6px;
+  height: 6px;
+  margin: 0 1px;
+  border-radius: 50%;
+}
+
+.value-tag-icon {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  font-size: 10px;
+  color: #fff;
+}
+
+.value-tag-text {
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
 }
 
-.user-tag-close {
+.value-tag-close {
   flex-shrink: 0;
   padding: 2px;
   font-size: 10px;
@@ -767,7 +892,7 @@ watch(
   transition: color 0.15s ease, background 0.15s ease;
 }
 
-.user-tag-close:hover {
+.value-tag-close:hover {
   background: rgba(60, 60, 67, 0.1);
   color: #ff3b30;
 }

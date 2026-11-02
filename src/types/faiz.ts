@@ -559,7 +559,7 @@ export interface AvailableFieldItem {
   filedType: string
   type: string
   typeName: string | null
-  /** 字段分组：PERSON/DESCRIPTION/TIME/CUSTOM_FIELD/SUBJECT */
+  /** 字段分组：PERSON/DESCRIPTION/TIME/SUBJECT/TEAM_STANDARD（团队标准字段）/COMPANY_STANDARD（公司标准字段） */
   fieldGroup?: string
   orderAble: boolean
   /** 支持的操作符：系统字段为对象数组 {id,name,code,identifier}，自定义字段为名称字符串 */
@@ -576,6 +576,12 @@ export interface AvailableFieldItem {
   fieldValue?: string | null
   /** 展示场景：CREATE（新建）/ EDIT（编辑）/ DETAIL（详情）/ LIST（列表） */
   displayScene?: string[]
+  /** 必填场景：CREATE / EDIT / DETAIL / LIST，为 displayScene 的子集 */
+  requiredScene?: string[]
+  /** 可编辑场景：CREATE / EDIT / DETAIL / LIST，未配置时为全部展示场景 */
+  editableScene?: string[]
+  /** 关联的问题类型编码（自定义字段至少一个，系统字段为空） */
+  issueTypeCodes?: string[]
 }
 
 /** 枚举选项（单选/下拉/级联通用） */
@@ -604,7 +610,7 @@ export interface AvailableFieldResult {
 export interface AvailableFieldSavePayload {
   fieldNumId?: string
   fieldName?: string
-  /** 字段分组：PERSON/DESCRIPTION/TIME/CUSTOM_FIELD/SUBJECT */
+  /** 字段分组：PERSON/DESCRIPTION/TIME/SUBJECT/TEAM_STANDARD（团队标准字段）/COMPANY_STANDARD（公司标准字段） */
   fieldGroup?: string
   filedType?: string
   type?: string
@@ -623,6 +629,12 @@ export interface AvailableFieldSavePayload {
   fieldValue?: string
   /** 展示场景：CREATE（新建）/ EDIT（编辑）/ DETAIL（详情）/ LIST（列表） */
   displayScene?: string[]
+  /** 必填场景：CREATE / EDIT / DETAIL / LIST，为 displayScene 的子集 */
+  requiredScene?: string[]
+  /** 可编辑场景：CREATE / EDIT / DETAIL / LIST，未配置时为全部展示场景 */
+  editableScene?: string[]
+  /** 关联的问题类型编码（自定义字段至少一个，系统字段为空） */
+  issueTypeCodes?: string[]
 }
 
 // ========== System Fields (POST /systemField/query) ==========
@@ -632,6 +644,22 @@ export interface SystemFieldQuery {
   page?: number
   pageSize?: number
   searchKey?: string
+  /** 字段类型，如 SELECT_LIST_SINGLE */
+  filedType?: string
+  /** 是否必填 */
+  isRequired?: boolean
+  /** 是否系统字段 */
+  isSystem?: boolean
+  /** 是否废弃（列表「状态」列：已废弃 / 生效中） */
+  obsolete?: boolean
+  /** 展示场景包含：CREATE / EDIT / DETAIL / LIST */
+  displayScene?: string
+  /** 必填场景包含 */
+  requiredScene?: string
+  /** 可编辑场景包含 */
+  editableScene?: string
+  /** 关联问题类型（任一命中）；空数组表示无结果 */
+  issueTypeCodes?: string[]
 }
 
 /** 系统字段单项（对应后端 SystemFieldVO） */
@@ -640,7 +668,7 @@ export interface SystemFieldItem {
   id?: string
   fieldName?: string
   fieldValue?: string
-  /** 字段分组：PERSON/DESCRIPTION/TIME/CUSTOM_FIELD/SUBJECT */
+  /** 字段分组：PERSON/DESCRIPTION/TIME/SUBJECT/TEAM_STANDARD（团队标准字段）/COMPANY_STANDARD（公司标准字段） */
   fieldGroup?: string
   isRequired?: boolean
   filedType?: string
@@ -658,6 +686,12 @@ export interface SystemFieldItem {
   configSchema?: string
   /** 展示场景：CREATE（新建）/ EDIT（编辑）/ DETAIL（详情）/ LIST（列表） */
   displayScene?: string[]
+  /** 必填场景：CREATE / EDIT / DETAIL / LIST，为 displayScene 的子集 */
+  requiredScene?: string[]
+  /** 可编辑场景：CREATE / EDIT / DETAIL / LIST，未配置时为全部展示场景 */
+  editableScene?: string[]
+  /** 关联的问题类型编码（自定义字段至少一个，系统字段为空） */
+  issueTypeCodes?: string[]
 }
 
 /** 系统字段分页结果（对应后端 SystemFieldPageVO） */
@@ -675,7 +709,7 @@ export interface SystemFieldSavePayload {
   fieldId?: string
   fieldName?: string
   fieldValue?: string
-  /** 字段分组：PERSON/DESCRIPTION/TIME/CUSTOM_FIELD/SUBJECT */
+  /** 字段分组：PERSON/DESCRIPTION/TIME/SUBJECT/TEAM_STANDARD（团队标准字段）/COMPANY_STANDARD（公司标准字段） */
   fieldGroup?: string
   isRequired?: boolean
   required?: boolean
@@ -686,8 +720,16 @@ export interface SystemFieldSavePayload {
   obsolete?: boolean
   fieldSource?: string
   configSchema?: string
+  /** 是否系统字段：新增时不传按自定义字段处理 */
+  isSystem?: boolean
   /** 展示场景：CREATE（新建）/ EDIT（编辑）/ DETAIL（详情）/ LIST（列表） */
   displayScene?: string[]
+  /** 必填场景：CREATE / EDIT / DETAIL / LIST，为 displayScene 的子集 */
+  requiredScene?: string[]
+  /** 可编辑场景：CREATE / EDIT / DETAIL / LIST，未配置时为全部展示场景 */
+  editableScene?: string[]
+  /** 关联的问题类型编码（自定义字段至少一个，系统字段为空） */
+  issueTypeCodes?: string[]
 }
 
 // ========== Issue Detail (POST /issue/queryDetail) ==========
@@ -729,7 +771,7 @@ export interface DetailFieldGroupStructure {
   isUpdateToDefault?: boolean | null
 }
 
-/** layoutGroup 分组：SUBJECT 主内容 / PERSON 人员 / DESCRIPTION 描述 / TIME 时间 / CUSTOM_FIELD 自定义 */
+/** layoutGroup 分组：SUBJECT 基础信息 / PERSON 人员 / DESCRIPTION 描述 / TIME 时间 / CUSTOM_FIELD 自定义 */
 export interface DetailLayoutGroup {
   type: 'SUBJECT' | 'PERSON' | 'DESCRIPTION' | 'TIME' | 'CUSTOM_FIELD' | string
   fieldGroupStructure: DetailFieldGroupStructure
@@ -758,6 +800,72 @@ export interface QueryDetailResult {
   message: string
   success: boolean
   data: DetailData
+}
+
+// ========== Issue Change Log (POST /issue/changeLogs) ==========
+
+/** 事项变更记录 */
+export interface IssueChangeLog {
+  id: number
+  issueKey: string
+  /** CREATE-创建事项 / UPDATE-修改字段 */
+  changeType: 'CREATE' | 'UPDATE' | string
+  /** 变更的字段ID；创建事项时为 CREATE */
+  fieldId: string
+  /** 字段名称；创建事项时为「创建事项」 */
+  fieldName: string
+  /** 旧值（展示文本） */
+  oldValue?: string | null
+  /** 新值（展示文本）；创建事项时为来源说明，如 复制自 POS-000001 */
+  newValue?: string | null
+  /** 操作人 memberId；系统操作为 system */
+  operatorId: string
+  /** 操作人完整信息（同登录用户结构）；系统操作或用户已不存在时为 null */
+  operator?: Record<string, unknown> | null
+  /** 变更时间 */
+  changeTime: string
+}
+
+// ========== Issue Comment (POST /issue-comment/*) ==========
+
+/** 事项评论 */
+export interface IssueComment {
+  id: number
+  issueKey: string
+  content: string
+  /** 评论人 memberId */
+  authorId: string
+  /** 评论人完整信息（同登录用户结构）；用户已不存在时为 null */
+  author?: Record<string, unknown> | null
+  /** 是否当前登录用户的评论（可编辑 / 删除） */
+  mine: boolean
+  /** 是否编辑过 */
+  edited: boolean
+  createTime: string
+  updateTime: string
+  /** 引用的评论 ID；为空表示不引用 */
+  quoteId?: number | null
+  /** 引用的评论快照；原评论已删除时 deleted=true、不带内容 */
+  quote?: IssueCommentQuote | null
+}
+
+/** 被引用的评论快照 */
+export interface IssueCommentQuote {
+  id: number
+  authorId?: string
+  author?: Record<string, unknown> | null
+  content?: string
+  /** 原评论是否已删除 */
+  deleted?: boolean
+}
+
+/** 发表 / 修改评论：发表传 issueKey，修改传 id */
+export interface IssueCommentSavePayload {
+  id?: number
+  issueKey?: string
+  content: string
+  /** 引用的评论 ID（仅发表时生效） */
+  quoteId?: number
 }
 
 // ========== Edit Meta API（编辑事项弹窗数据）==========

@@ -52,7 +52,7 @@
 
           <section class="attr-card">
             <div class="attr-row-line">
-              <div v-for="n in 5" :key="n" class="attr-item">
+              <div v-for="n in 3" :key="n" class="attr-item">
                 <a-skeleton :paragraph="{ rows: 1, width: ['48px', '100%'] }" :avatar="false" :title="false" />
               </div>
             </div>
@@ -118,19 +118,19 @@
           </template>
         </section>
 
-        <!-- ========== 内联属性卡（5 个属性在同一行） ========== -->
-        <section class="attr-card">
+        <!-- ========== 内联属性卡：基础信息（SUBJECT）组字段，按接口返回渲染，不写死 ========== -->
+        <section v-if="issueTypeField || statusField || priorityField || filteredSummaryGrid.length" class="attr-card">
           <div class="attr-row-line">
-            <div class="attr-item">
-              <span class="attr-label">问题类型</span>
+            <div v-if="issueTypeField" class="attr-item">
+              <span class="attr-label">{{ issueTypeField.name || '问题类型' }}</span>
               <span class="attr-value-block">
                 <component v-if="issueTypeLabel" :is="CheckSquareFilled" class="attr-check" />
                 <span class="attr-value">{{ issueTypeLabel || '—' }}</span>
               </span>
             </div>
 
-            <div class="attr-item">
-              <span class="attr-label">状态</span>
+            <div v-if="statusField" class="attr-item">
+              <span class="attr-label">{{ statusField.name || '状态' }}</span>
               <span class="attr-value-block">
                 <a-tag
                   v-if="statusLabel"
@@ -146,8 +146,8 @@
               </span>
             </div>
 
-            <div class="attr-item">
-              <span class="attr-label">优先级</span>
+            <div v-if="priorityField" class="attr-item">
+              <span class="attr-label">{{ priorityField.name || '优先级' }}</span>
               <span class="attr-value-block">
                 <span class="priority-text" :style="{ color: priorityColorHex }">
                   <span class="priority-dot" :style="{ background: priorityColorHex }"></span>
@@ -156,55 +156,34 @@
               </span>
             </div>
 
-            <div class="attr-item">
-              <span class="attr-label">版本</span>
+            <!-- 基础信息（SUBJECT）组的其余字段：按接口返回顺序展示（如 Sprint / 版本），不写死 -->
+            <div v-for="f in filteredSummaryGrid" :key="f.id" class="attr-item">
+              <span class="attr-label" :title="f.name">{{ f.name }}</span>
               <span class="attr-value-block">
-                <span class="attr-empty">—</span>
+                <FieldValueEditor
+                  v-if="editingFieldId === f.id"
+                  :field="f"
+                  :issue-key="issueKey"
+                  @saved="onFieldSaved(f, $event)"
+                  @cancel="editingFieldId = null"
+                />
+                <template v-else>
+                  <ValueWithBadge :field="f" />
+                  <span v-if="canEditField(f)" class="field-edit-icon" title="编辑" @click="editingFieldId = f.id">
+                    <component :is="EditOutlined" />
+                  </span>
+                </template>
               </span>
             </div>
 
-            <div class="attr-item">
-              <span class="attr-label">Sprint</span>
-              <span class="attr-value-block">
-                <span class="attr-empty">—</span>
-              </span>
-            </div>
+
           </div>
         </section>
 
         <!-- ========== 操作按钮栏 ========== -->
         <section class="action-bar">
           <div class="action-bar-left">
-            <a-button size="small" class="action-btn">
-              编辑
-            </a-button>
-            <a-button size="small" class="action-btn">
-              分配
-            </a-button>
-            <a-dropdown>
-              <a-button size="small" class="action-btn">
-                更多操作
-                <component :is="DownOutlined" class="action-caret" />
-              </a-button>
-              <template #overlay>
-                <a-menu class="action-menu">
-                  <a-menu-item key="copy">
-                    <span>复制</span>
-                  </a-menu-item>
-                  <a-menu-item key="rollback">
-                    <span>回滚</span>
-                  </a-menu-item>
-                </a-menu>
-              </template>
-            </a-dropdown>
-
-            <div class="action-divider" />
-
-            <a-button type="primary" size="small" class="action-btn action-primary">
-              开始处理
-            </a-button>
-            <a-button size="small" class="action-btn">取消</a-button>
-            <a-button size="small" class="action-btn">暂停</a-button>
+            <IssueActionButtons :issue-key="issueKey" :active="open" @changed="handleButtonsChanged" />
           </div>
           <div class="action-bar-right">
             <a-switch v-model:checked="onlyShowValued" size="small" />
@@ -285,20 +264,6 @@
                   </template>
 
                   <template v-else>
-                    <div v-if="filteredSummaryGrid.length > 0" class="kv-list">
-                      <template v-for="(f, i) in filteredSummaryGrid" :key="f.id">
-                        <div class="kv-row" :class="{ 'kv-row-alt': i % 2 === 1 }">
-                          <div class="kv-label">
-                            <span class="kv-label-inner">{{ f.name }}</span>
-                          </div>
-                          <div class="kv-value">
-                            <UserAvatar v-if="isUserField(f)" :user="f.value" />
-                            <ValueWithBadge v-else :field="f" />
-                          </div>
-                        </div>
-                      </template>
-                    </div>
-
                     <div
                       v-if="customFieldPlain && customFieldPlain.fields.length > 0 && filteredFields(customFieldPlain.fields).length > 0"
                       class="kv-list kv-list-extra"
@@ -753,7 +718,49 @@
                 <div class="panel-card-body">
                   <a-tabs size="small" class="nn-activity-tabs">
                     <a-tab-pane key="change" tab="变更记录">
-                      <MiniEmpty text="暂无变更记录" />
+                      <a-spin :spinning="changeLogsLoading">
+                        <a-timeline v-if="changeLogs.length" class="nn-activity-log">
+                          <a-timeline-item
+                            v-for="log in pagedChangeLogs"
+                            :key="log.id"
+                            :color="log.changeType === 'CREATE' ? 'green' : 'blue'"
+                          >
+                            <div class="nn-activity-item">
+                              <div class="nn-activity-meta">
+                                <UserAvatar v-if="log.operator" :user="log.operator" :size="20" />
+                                <span v-else class="nn-activity-name">系统</span>
+                                <span class="nn-activity-status">{{ log.changeType === 'CREATE' ? '创建' : '修改' }}</span>
+                                <span class="nn-activity-time">{{ formatChangeTime(log.changeTime) }}</span>
+                              </div>
+                              <div class="nn-activity-node">
+                                <template v-if="log.changeType === 'CREATE'">
+                                  创建了事项<template v-if="log.newValue">（{{ log.newValue }}）</template>
+                                </template>
+                                <template v-else>
+                                  修改了「{{ log.fieldName }}」：
+                                  <span class="nn-change-old">{{ log.oldValue || '空' }}</span>
+                                  →
+                                  <span class="nn-change-new">{{ log.newValue || '空' }}</span>
+                                </template>
+                              </div>
+                            </div>
+                          </a-timeline-item>
+                        </a-timeline>
+                        <MiniEmpty v-else text="暂无变更记录" />
+                        <a-pagination
+                          v-if="changeLogs.length > CHANGE_LOG_PAGE_SIZE"
+                          v-model:current="changeLogPage"
+                          :page-size="CHANGE_LOG_PAGE_SIZE"
+                          :total="changeLogs.length"
+                          size="small"
+                          :show-size-changer="false"
+                          :show-total="(t: number) => `共 ${t} 条`"
+                          class="nn-activity-pager"
+                        />
+                      </a-spin>
+                    </a-tab-pane>
+                    <a-tab-pane key="comment" tab="评论">
+                      <IssueComments ref="issueCommentsRef" :issue-key="issueKey" />
                     </a-tab-pane>
                   </a-tabs>
                 </div>
@@ -791,7 +798,6 @@ import {
   CheckSquareFilled,
   UserOutlined,
   FileUnknownOutlined,
-  DownOutlined,
   AppstoreOutlined,
   ExclamationCircleOutlined,
   ClockCircleOutlined,
@@ -800,14 +806,16 @@ import {
   HistoryOutlined,
   CheckOutlined,
 } from '@ant-design/icons-vue'
-import { queryDetail, patchIssue } from '@/api/faiz'
+import { queryDetail, patchIssue, queryChangeLogs } from '@/api/faiz'
+import IssueComments from '@/components/IssueComments.vue'
 import { message } from 'ant-design-vue'
-import type { DetailData, DetailField, DetailLayoutGroup } from '@/types/faiz'
+import type { DetailData, DetailField, DetailLayoutGroup, IssueChangeLog } from '@/types/faiz'
 import { FIELD_TYPE } from '@/types/fieldType'
 import { sanitizeHtml } from '@/utils/sanitizeHtml'
 // 暂时隐藏研发活动，恢复时取消注释：import IssueRdActivity from '@/components/IssueRdActivity.vue'
 import FieldValueEditor from '@/components/FieldValueEditor.vue'
 import WorkflowViewModal from '@/components/WorkflowViewModal.vue'
+import IssueActionButtons from '@/components/IssueActionButtons.vue'
 
 // ============================================================
 // 子组件：MiniEmpty 小型空状态
@@ -1076,6 +1084,8 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'update:open', val: boolean): void
+  /** 操作按钮执行后事项已变化（流转 / 编辑保存），列表需刷新 */
+  (e: 'changed'): void
 }>()
 
 const loading = ref(false)
@@ -1094,7 +1104,34 @@ const siblingCollapseKeys = ref<string[]>([])
 const dependencyCollapseKeys = ref<string[]>([])
 const activityCollapseKeys = ref<string[]>(['activity'])
 const onlyShowValued = ref(true)
-/** 活动日志：该事项的任务历史记录 */
+/** 活动日志：该事项的变更记录（创建、字段修改、状态流转），按时间倒序 */
+const changeLogs = ref<IssueChangeLog[]>([])
+const changeLogsLoading = ref(false)
+/** 变更记录前端分页：接口一次返回该事项全部记录，按时间倒序，每页 10 条 */
+const CHANGE_LOG_PAGE_SIZE = 10
+const changeLogPage = ref(1)
+const pagedChangeLogs = computed(() =>
+  changeLogs.value.slice((changeLogPage.value - 1) * CHANGE_LOG_PAGE_SIZE, changeLogPage.value * CHANGE_LOG_PAGE_SIZE))
+/** 评论：抽屉关闭后组件不销毁，重新打开同一事项时需手动刷新 */
+const issueCommentsRef = ref<InstanceType<typeof IssueComments> | null>(null)
+
+async function fetchChangeLogs() {
+  if (!props.issueKey) return
+  changeLogsLoading.value = true
+  try {
+    const res = await queryChangeLogs({ key: props.issueKey })
+    changeLogs.value = res?.success && Array.isArray(res.data) ? res.data : []
+    changeLogPage.value = 1
+  } catch {
+    // 静默失败，保持已有记录
+  } finally {
+    changeLogsLoading.value = false
+  }
+}
+
+function formatChangeTime(t?: string) {
+  return t ? dayjs(t).format('YYYY-MM-DD HH:mm:ss') : ''
+}
 
 // ======================= 描述区富文本组件（WangEditor 可编辑） =======================
 const richTextModels = reactive<Record<string, string>>({})
@@ -1345,6 +1382,12 @@ async function onFieldSaved(f: DetailField, payload: { value: unknown; exportVal
   await refreshDetail()
 }
 
+/** 操作按钮执行后：刷新详情并通知外层列表 */
+function handleButtonsChanged() {
+  refreshDetail()
+  emit('changed')
+}
+
 /** 轻量刷新：重新请求详情数据，不重置折叠面板/标签页状态 */
 async function refreshDetail() {
   try {
@@ -1355,6 +1398,7 @@ async function refreshDetail() {
   } catch {
     // 静默失败，保持已有数据
   }
+  fetchChangeLogs()
 }
 
 const projectLabel = computed<string>(() => {
@@ -1431,7 +1475,8 @@ const workflowViewOpen = ref(false)
 
 // ======================= Summary / Custom / User 分组 =======================
 
-const SUMMARY_EXCLUDED_IDS = new Set(['summary', 'status', 'priority', 'issuetype', 'project'])
+// 已在其他位置展示的字段：概要在标题区，状态 / 优先级 / 问题类型有专门样式，所属空间（space / project）在顶部面包屑
+const SUMMARY_EXCLUDED_IDS = new Set(['summary', 'status', 'priority', 'issuetype', 'project', 'space'])
 
 function isUserField(f: DetailField): boolean {
   if (!f) return false
@@ -1585,7 +1630,6 @@ const filteredSummaryGrid = computed(() => filteredFields(rawSummaryGrid.value))
 
 const hasSummaryPanel = computed(() => {
   if (customFieldTabGroup.value) return true
-  if (filteredSummaryGrid.value.length > 0) return true
   if (customFieldPlain.value && filteredFields(customFieldPlain.value.fields).length > 0) return true
   return !onlyShowValued.value
 })
@@ -1618,6 +1662,9 @@ async function fetchDetail() {
   siblingCollapseKeys.value = []
   dependencyCollapseKeys.value = []
   activityCollapseKeys.value = ['activity']
+  changeLogs.value = []
+  fetchChangeLogs()
+  issueCommentsRef.value?.reload()
   try {
     const res = await queryDetail({ key: props.issueKey })
     if (res?.success && res.data) {
@@ -2010,7 +2057,8 @@ function formatRichText(v: unknown): string {
 }
 .attr-row-line {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr) repeat(3, minmax(0, 1fr));
+  /* 字段数量由接口决定：按宽度自动换行 */
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
   gap: 12px 14px;
   align-items: stretch;
 }
@@ -2418,6 +2466,12 @@ function formatRichText(v: unknown): string {
 }
 
 /* ============ 活动日志 ============ */
+.nn-activity-pager {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 8px;
+}
+
 .nn-activity-log {
   margin: 4px 0 0;
   padding-left: 2px;
@@ -2454,6 +2508,15 @@ function formatRichText(v: unknown): string {
 .nn-activity-time {
   font-size: 11px;
   color: #9ca3af;
+}
+.nn-change-old {
+  color: #9ca3af;
+  text-decoration: line-through;
+  word-break: break-all;
+}
+.nn-change-new {
+  color: #1f2937;
+  word-break: break-all;
 }
 
 /* Tabs inside panel */

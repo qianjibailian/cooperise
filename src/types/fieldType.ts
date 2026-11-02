@@ -33,7 +33,7 @@ export const fieldTypeOptions: ReadonlyArray<{ value: FieldType; label: string }
   { value: FIELD_TYPE.DATE_PICKER, label: '日期选择' },
   { value: FIELD_TYPE.TIME_PICKER, label: '时间选择' },
   { value: FIELD_TYPE.RICH_TEXT, label: '富文本展示' },
-  { value: FIELD_TYPE.LABEL, label: '纯展示标签' },
+  { value: FIELD_TYPE.LABEL, label: '只读文本' },
   { value: FIELD_TYPE.CASCADER_SINGLE, label: '级联单选' },
 ]
 

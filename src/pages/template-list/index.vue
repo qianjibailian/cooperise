@@ -213,9 +213,14 @@
               <div class="available-fields-panel">
                 <div class="afp-title-row">
                   <span class="afp-title">可用字段</span>
-                  <a-button type="text" size="small" @click="loadAvailableFields(true)">
-                    <ReloadOutlined /> 刷新
-                  </a-button>
+                  <span class="afp-title-actions">
+                    <a-button type="text" size="small" @click="openCreateField()">
+                      <PlusOutlined /> 新建字段
+                    </a-button>
+                    <a-button type="text" size="small" @click="loadAvailableFields(true)">
+                      <ReloadOutlined /> 刷新
+                    </a-button>
+                  </span>
                 </div>
                 <div class="afp-filter-row">
                   <a-input
@@ -321,6 +326,9 @@
                     </a-button>
                   </div>
                 </div>
+                <button type="button" class="add-custom-field-btn" @click="openCreateField()">
+                  <PlusOutlined /> 新增自定义字段
+                </button>
               </div>
             </div>
           </div>
@@ -381,6 +389,9 @@
                 <p>暂无表单配置</p>
                 <p class="tab-empty-hint">在下方勾选可选字段 → 点击添加</p>
               </div>
+              <button type="button" class="add-custom-field-btn" @click="openCreateField(tab.id)">
+                <PlusOutlined /> 新增自定义字段
+              </button>
 
               <!-- 当前 Tab 可选字段面板 -->
               <div class="tab-available-fields">
@@ -431,6 +442,9 @@
                     @click="addTabAllAvailable(tab.id)"
                   >
                     全部添加
+                  </a-button>
+                  <a-button size="small" @click="openCreateField(tab.id)">
+                    <PlusOutlined /> 新建字段
                   </a-button>
                   <span class="toolbar-count">
                     可添加 {{ tabFilteredAvailable(tab.id).filter((f: any) => !tabAddedFieldIds(tab.id).has(String(f.fieldId))).length }} / 总 {{ availableFieldsList.length }}
@@ -484,6 +498,17 @@
 
     <!-- ====================== 预览弹窗 ====================== -->
     <template-preview-modal v-model:open="showPreviewModal" :template="previewTemplate" />
+    <!-- 模板编辑里新建字段：固定在「新建」展示，保存后自动加入表单 -->
+    <FieldEditModal
+      v-model:open="fieldCreateOpen"
+      :api="systemFieldEditApi"
+      force-custom
+      :space-code="props.spaceCode"
+      :preset-issue-type-codes="editForm.issueTypeCode ? [editForm.issueTypeCode] : []"
+      lock-shown-scene="CREATE"
+      lock-shown-hint="模板即新建事项表单，模板里新建的字段必须在「新建」中展示"
+      @saved="onFieldCreated"
+    />
   </div>
 </template>
 
@@ -503,6 +528,8 @@ import SpaceTag from '@/components/SpaceTag.vue'
 import { useSpaces } from '@/utils/space-store'
 import { FIELD_TYPE, normalizeFieldType } from '@/types/fieldType'
 import TemplatePreviewModal from '@/components/TemplatePreviewModal.vue'
+import FieldEditModal from '@/components/FieldEditModal.vue'
+import { systemFieldEditApi, type FieldRow } from '@/utils/fieldConfig'
 import { issueTypeIconOf } from '@/utils/issueTypeIcons'
 
 // ---- 类型 ----
@@ -624,17 +651,53 @@ const FIELD_TYPE_OPTIONS = [
   { value: FIELD_TYPE.SELECT_USER_SINGLE, label: '人员单选' },
   { value: FIELD_TYPE.SELECT_USER_MULTI, label: '人员多选' },
   { value: FIELD_TYPE.RICH_TEXT, label: '富文本' },
-  { value: FIELD_TYPE.LABEL, label: '展示文本' },
+  { value: FIELD_TYPE.LABEL, label: '只读文本' },
 ]
+
+/** 模板可选字段的展示场景：新建 */
+const TEMPLATE_FIELD_SCENE = 'CREATE'
+
+// ---- 模板编辑里直接新建字段：建好后刷新可用字段，并加入当前表单 / tab ----
+const fieldCreateOpen = ref(false)
+/** 新建字段要加入的 tab；为空表示单表单 */
+const fieldCreateTabId = ref<string | number | null>(null)
+
+function openCreateField(tabId?: string | number) {
+  fieldCreateTabId.value = tabId ?? null
+  fieldCreateOpen.value = true
+}
+
+async function onFieldCreated({ field }: { isEdit: boolean; field: FieldRow | null }) {
+  await loadAvailableFields(true)
+  const key = field?.fieldId ? String(field.fieldId) : ''
+  const row = key ? availableFieldsList.value.find(f => String(f.fieldId) === key) : undefined
+  if (!row) {
+    // 接口未返回新字段（旧版本后端）或已停用：只刷新列表，由用户手动勾选
+    message.success('字段已创建，可在左侧「可用字段」中勾选添加')
+    return
+  }
+  const widget = availableFieldToWidget(row)
+  if (fieldCreateTabId.value == null) {
+    singleFormTab.value.widgetData = [...(singleFormTab.value.widgetData || []), widget]
+  } else {
+    const tab = editForm.tabs.find((x: TemplateTab) => String(x.id) === String(fieldCreateTabId.value))
+    if (tab) tab.widgetData = [...(tab.widgetData || []), widget]
+  }
+  message.success(`已新建字段「${row.fieldName}」并加入表单`)
+}
 
 async function loadAvailableFields(force = false) {
   if (availableFieldsList.value.length > 0 && !force) return
   availableFieldsLoading.value = true
   try {
-    const res = await queryAvailableFieldList({ page: 1, pageSize: 999, searchKey: '' })
+    // 模板即新建事项表单：只提供展示位置包含「新建」的字段
+    const res = await queryAvailableFieldList({ page: 1, pageSize: 999, searchKey: '', displayScene: TEMPLATE_FIELD_SCENE })
     // 接口返回的 filedType 可能是旧枚举（INPUT_TEXT / CASCADER / USER_SINGLE_SELECT 等），
     // 统一归一化为新枚举，保证左侧类型标签、过滤与右侧组件映射（availableFieldToWidget）一致
-    availableFieldsList.value = (res?.data?.list || []).map(f => ({ ...f, type: normalizeFieldType(f.type || f.filedType) }))
+    availableFieldsList.value = (res?.data?.list || [])
+      // 前端再兜底过滤一次：接口未按场景过滤（旧版本）时也只留新建展示的字段
+      .filter(f => (f.displayScene || []).some(s => String(s).toUpperCase() === TEMPLATE_FIELD_SCENE))
+      .map(f => ({ ...f, type: normalizeFieldType(f.type || f.filedType) }))
   } catch {
     availableFieldsList.value = []
   } finally {
@@ -1566,6 +1629,7 @@ onMounted(() => {
 /* 表单字段面板去掉底部内边距，让列表展示得更靠下 */
 .added-fields-panel { padding-bottom: 0; }
 .afp-title-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.afp-title-actions { display: inline-flex; align-items: center; gap: 2px; }
 .afp-title { font-size: 13px; font-weight: 600; color: #1d1d1f; }
 
 .afp-filter-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
@@ -1594,6 +1658,13 @@ onMounted(() => {
 
 .afp-footer { display: flex; align-items: center; justify-content: space-between; margin-top: 12px; gap: 10px; flex-wrap: wrap; }
 
+/* 表单字段列表下方：新增自定义字段（建好后自动加入当前表单） */
+.add-custom-field-btn {
+  display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%; height: 40px; margin-top: 10px;
+  border: 1px dashed #c7c7cc; border-radius: 10px; background: transparent; color: var(--c-primary);
+  font-size: 13px; font-family: inherit; cursor: pointer; transition: background 0.15s, border-color 0.15s;
+}
+.add-custom-field-btn:hover { border-color: var(--c-primary); background: color-mix(in srgb, var(--c-primary) 6%, transparent); }
 .added-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; flex: 1; text-align: center; color: #aeaeb2; min-height: 320px; padding: 10px; }
 .added-empty-icon { font-size: 36px; margin-bottom: 12px; opacity: 0.55; }
 .added-empty p { font-size: 13px; margin: 0; max-width: 260px; line-height: 1.5; }

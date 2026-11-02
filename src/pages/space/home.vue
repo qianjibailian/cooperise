@@ -36,7 +36,7 @@
           </div>
         </section>
 
-        <!-- 空间内管理：问题类型 / 模板 / 工作流（复用管理页，按当前空间过滤并固定归属） -->
+        <!-- 空间内管理：问题类型 / 模板 / 字段 / 工作流 / 按钮（复用管理页，按当前空间过滤并固定归属） -->
         <section class="mgmt-card">
           <a-tabs v-model:activeKey="activeTab" class="home-tabs">
             <a-tab-pane key="issueType" tab="问题类型">
@@ -45,8 +45,15 @@
             <a-tab-pane key="template" tab="模板管理">
               <TemplateListPage :key="space.spaceCode" :space-code="space.spaceCode" />
             </a-tab-pane>
+            <!-- 只管理自定义字段：列出关联了本空间问题类型的字段，新建的字段必须关联问题类型 -->
+            <a-tab-pane key="field" tab="字段管理">
+              <SystemFieldPage :key="space.spaceCode" :space-code="space.spaceCode" custom-only />
+            </a-tab-pane>
             <a-tab-pane key="workflow" tab="工作流">
               <WorkflowPage :key="space.spaceCode" :space-code="space.spaceCode" />
+            </a-tab-pane>
+            <a-tab-pane key="button" tab="按钮管理">
+              <IssueButtonPage :key="space.spaceCode" :space-code="space.spaceCode" />
             </a-tab-pane>
           </a-tabs>
         </section>
@@ -63,7 +70,9 @@ import { getOrganizationTree, type OrganizationNode } from '@/api/faiz'
 import { useSpaces, spaceAvatarText } from '@/utils/space-store'
 import IssueTypePage from '@/pages/issue-type/index.vue'
 import TemplateListPage from '@/pages/template-list/index.vue'
+import SystemFieldPage from '@/pages/system-field/index.vue'
 import WorkflowPage from '@/pages/workflow/index.vue'
+import IssueButtonPage from '@/pages/issue-button/index.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -98,7 +107,7 @@ function formatTime(v?: string | null): string {
 }
 
 /** 当前 Tab：记在 query 上，刷新 / 分享链接后保持 */
-const TABS = ['issueType', 'template', 'workflow']
+const TABS = ['issueType', 'template', 'field', 'workflow', 'button']
 const activeTab = ref(TABS.includes(String(route.query.tab)) ? String(route.query.tab) : 'issueType')
 watch(activeTab, (tab) => {
   router.replace({ query: { ...route.query, tab } })
@@ -226,6 +235,11 @@ loadOrgTree()
 .mgmt-card {
   margin-top: 12px;
   padding: 4px 16px 16px;
+}
+
+/* 字段管理复用独立页面：去掉页面自带的左右内边距，与其他 tab 对齐 */
+.mgmt-card :deep(.component-list-page) {
+  padding: 0;
 }
 
 

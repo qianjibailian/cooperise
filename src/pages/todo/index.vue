@@ -91,13 +91,25 @@
         <template #bodyCell="{ column, record }">
           <template v-if="column.key === '__op__'">
             <div class="action-cell">
-              <a-dropdown :trigger="['click']">
+              <a-dropdown :trigger="['click']" @open-change="(v: boolean) => v && loadRowButtons(record)">
                 <a-button type="text" class="action-dots">···</a-button>
                 <template #overlay>
                   <a-menu @click="handleMenuClick($event, record)">
-                    <a-menu-item key="edit">编辑</a-menu-item>
-                    <a-menu-item key="copy">复制</a-menu-item>
-                    <a-menu-item key="rollback">回滚</a-menu-item>
+                    <a-menu-item v-if="rowButtonsLoading[getIssueKey(record)]" key="__loading__" disabled>
+                      <a-spin size="small" /> <span class="row-btn-hint">加载中…</span>
+                    </a-menu-item>
+                    <a-menu-item v-else-if="!rowButtons[getIssueKey(record)]?.length" key="__empty__" disabled>
+                      <span class="row-btn-hint">暂无可用操作</span>
+                    </a-menu-item>
+                    <template v-else>
+                      <a-menu-item
+                        v-for="b in rowButtons[getIssueKey(record)]"
+                        :key="String(b.id)"
+                        :danger="b.buttonStyle === 'danger'"
+                      >
+                        {{ b.buttonName }}
+                      </a-menu-item>
+                    </template>
                   </a-menu>
                 </template>
               </a-dropdown>
@@ -311,6 +323,7 @@
     <IssueDetailDrawer
       v-model:open="detailDrawerOpen"
       :issue-key="detailIssueKey"
+      @changed="fetchIssues"
     />
 
     <!-- 列设置抽屉 -->
@@ -392,6 +405,8 @@
     </a-drawer>
     <!-- 编辑弹窗：与顶部新建弹窗同一组件，传入 issueKey 进入编辑模式 -->
     <NewIssueFormModal v-model:open="editFormOpen" :issue-key="editIssueKey" @submitted="handleEditSubmitted" />
+    <AssignIssueModal v-model:open="assignOpen" :issue-key="assignIssueKey" @submitted="fetchIssues" />
+    <SplitIssueModal v-model:open="splitOpen" :issue-key="splitIssueKey" @submitted="fetchIssues" />
     <!-- 状态变更弹窗：点击状态列打开，展示当前节点与下一步节点 -->
     <WorkflowNextStepModal v-model:open="wfModalOpen" :issue-key="wfCurrentIssueKey" @submit="handleWfSubmitted" />
   </div>
@@ -421,7 +436,8 @@ import {
 import dayjs from 'dayjs'
 import type { Dayjs } from 'dayjs'
 import { message } from 'ant-design-vue'
-import { getIssues, queryAvailableFieldList, getFilterDraft, updateFilterDraft, patchIssue, getAvailableFieldOptions, queryUsers } from '@/api/faiz'
+import { getIssues, queryAvailableFieldList, getFilterDraft, updateFilterDraft, patchIssue, getAvailableFieldOptions, queryUsers, queryIssueButtonsForIssue, type IssueButtonItem } from '@/api/faiz'
+import { runIssueButton } from '@/utils/issueButtons'
 import type { IssueRecord, IssueQueryPayload, SortItem, FilterDraft, GlobalFilter, CustomFieldOptionItem, UserItem } from '@/types/faiz'
 import IssueDetailDrawer from '@/components/IssueDetailDrawer.vue'
 import WorkflowNextStepModal from '@/components/WorkflowNextStepModal.vue'
@@ -429,6 +445,8 @@ import FilterPanel from '@/components/FilterPanel.vue'
 import { buildGlobalFilter, parseGlobalFilter, defaultConditions, isConditionComplete, type FilterCondition, type FilterLogic } from '@/utils/issueFilter'
 import SortPanel from '@/components/SortPanel.vue'
 import NewIssueFormModal from '@/components/NewIssueFormModal.vue'
+import AssignIssueModal from '@/components/AssignIssueModal.vue'
+import SplitIssueModal from '@/components/SplitIssueModal.vue'
 import { onIssueCreated } from '@/utils/issue-events'
 import { MY_TODO_VIEW_CODE, setTodoCount } from '@/utils/todo-count'
 import { FIELD_TYPE } from '@/types/fieldType'
@@ -1801,25 +1819,53 @@ async function fetchIssues() {
   }
 }
 
-function handleMenuClick(e: { key: string }, row: IssueRecord) {
-  handleAction(e.key, row)
-}
+// ---------- 行操作「···」：每次展开按事项的问题类型 + 当前状态拉取可用按钮（/issue-button/issue） ----------
+const rowButtons = reactive<Record<string, IssueButtonItem[]>>({})
+const rowButtonsLoading = reactive<Record<string, boolean>>({})
 
-function handleAction(key: string, row: IssueRecord) {
-  switch (key) {
-    case 'edit':
-      // 打开编辑弹窗（复用新建弹窗组件，传入 issueKey 触发 /issue/queryDetail 回填）
-      editIssueKey.value = getIssueKey(row)
-      editFormOpen.value = true
-      break
-    case 'copy':
-      console.log('复制:', row)
-      break
-    case 'rollback':
-      console.log('回滚:', row)
-      break
+async function loadRowButtons(row: IssueRecord) {
+  const key = getIssueKey(row)
+  if (!key) return
+  rowButtonsLoading[key] = true
+  try {
+    const res = await queryIssueButtonsForIssue(key)
+    rowButtons[key] = res?.success ? res.data || [] : []
+  } catch {
+    rowButtons[key] = []
+  } finally {
+    rowButtonsLoading[key] = false
   }
 }
+
+async function handleMenuClick(e: { key: string | number }, row: IssueRecord) {
+  const key = getIssueKey(row)
+  const btn = rowButtons[key]?.find(b => String(b.id) === String(e.key))
+  if (!btn) return
+  const changed = await runIssueButton(btn, key, {
+    // 打开编辑弹窗（复用新建弹窗组件，传入 issueKey 进入编辑模式）
+    onEdit: () => {
+      editIssueKey.value = key
+      editFormOpen.value = true
+    },
+    onAssign: () => {
+      assignIssueKey.value = key
+      assignOpen.value = true
+    },
+    onSplit: () => {
+      splitIssueKey.value = key
+      splitOpen.value = true
+    },
+  })
+  if (changed) fetchIssues()
+}
+
+/** 行操作「分配」：分配经办人弹窗 */
+const assignOpen = ref(false)
+const assignIssueKey = ref('')
+
+/** 行操作「拆分任务」：拆分任务弹窗 */
+const splitOpen = ref(false)
+const splitIssueKey = ref('')
 
 /** 编辑弹窗：与顶部新建弹窗同一组件，传入 issueKey 进入编辑模式 */
 const editFormOpen = ref(false)
@@ -2308,6 +2354,12 @@ onBeforeUnmount(() => {
 .action-cell :deep(.ant-dropdown-trigger),
 .action-cell .action-dots {
   margin: 0;
+}
+
+/* 行操作下拉：加载中 / 无按钮提示 */
+.row-btn-hint {
+  font-size: 13px;
+  color: #8c8c8c;
 }
 
 .action-dots {

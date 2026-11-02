@@ -1,22 +1,25 @@
 <template>
   <!-- 主题色：antd 组件取 antdTheme，自定义样式取 --c-primary 等 CSS 变量（见 @/utils/theme） -->
-  <a-config-provider :theme="antdTheme" :locale="zhCN">
+  <a-config-provider :theme="antdTheme" :locale="antdLocale">
     <router-view />
   </a-config-provider>
 </template>
 
 <script setup lang="ts">
-import { watch } from 'vue'
+import { computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuth } from '@/utils/auth'
 import { useTheme } from '@/utils/theme'
-// 组件语言：日期 / 时间选择器、分页、空状态、弹窗按钮等统一中文
+// 组件语言：日期 / 时间选择器、分页、空状态、弹窗按钮等随中英文切换（见 @/i18n）
 import zhCN from 'ant-design-vue/es/locale/zh_CN'
+import enUS from 'ant-design-vue/es/locale/en_US'
+import { locale } from '@/i18n'
 
 const route = useRoute()
 const router = useRouter()
 const { isLoggedIn } = useAuth()
 const { antdTheme } = useTheme()
+const antdLocale = computed(() => (locale.value === 'en' ? enUS : zhCN))
 
 // 登录态失效（接口 401 / 主动退出）时跳转登录页
 watch(isLoggedIn, (loggedIn) => {

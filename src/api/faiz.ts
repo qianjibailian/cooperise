@@ -17,6 +17,9 @@ import type {
   CreateIssuePayload,
   QueryDetailPayload,
   QueryDetailResult,
+  IssueChangeLog,
+  IssueComment,
+  IssueCommentSavePayload,
   IssueEditMetaRequest,
   IssueEditMetaVO,
   AvailableFieldQuery,
@@ -96,6 +99,21 @@ export function patchIssue(id: string | number, fields: IssuePatchField[]): Prom
   return request.patch(`/issue/${id}`, fields)
 }
 
+/** 复制事项（POST /issue/copy）：沿用空间、问题类型和字段值，状态从流程首节点开始；返回新单号 */
+export function copyIssue(data: { issueKey: string; summary?: string }): Promise<Result<string>> {
+  return request.post(`/issue/copy`, data)
+}
+
+/** 分配经办人（POST /issue/assign） */
+export function assignIssue(data: { issueKey: string; assigneeMemberId: string }): Promise<Result<void>> {
+  return request.post(`/issue/assign`, data)
+}
+
+/** 拆分任务（POST /issue/split）：批量创建子任务（沿用空间、问题类型，父级工单为当前事项）；返回子任务单号 */
+export function splitIssue(data: { issueKey: string; items: { summary: string; assigneeMemberId?: string }[] }): Promise<Result<string[]>> {
+  return request.post(`/issue/split`, data)
+}
+
 /** 新建事项表单元数据（POST /issue/queryCreateMeta） */
 export function getIssueCreateMeta(data: { organizationCode?: string; issueTypeCode: string }): Promise<IssueCreateMetaResult> {
   return request.post(`/issue/queryCreateMeta`, data)
@@ -134,6 +152,31 @@ export function fuzzyQueryIssues(data: { issueKey?: string; summary?: string; pa
 /** 查询事项详情（POST /issue/queryDetail） */
 export function queryDetail(payload: QueryDetailPayload): Promise<QueryDetailResult> {
   return request.post(`/issue/queryDetail`, payload)
+}
+
+/** 事项变更记录：创建、字段修改、状态流转等，按时间倒序（POST /issue/changeLogs） */
+export function queryChangeLogs(payload: QueryDetailPayload): Promise<Result<IssueChangeLog[]>> {
+  return request.post(`/issue/changeLogs`, payload)
+}
+
+/** 事项评论列表，按时间倒序（POST /issue-comment/list） */
+export function queryIssueComments(payload: QueryDetailPayload): Promise<Result<IssueComment[]>> {
+  return request.post(`/issue-comment/list`, payload)
+}
+
+/** 发表评论（POST /issue-comment/create） */
+export function createIssueComment(payload: IssueCommentSavePayload): Promise<Result<IssueComment>> {
+  return request.post(`/issue-comment/create`, payload)
+}
+
+/** 修改评论，只能改自己的（POST /issue-comment/update） */
+export function updateIssueComment(payload: IssueCommentSavePayload): Promise<Result<IssueComment>> {
+  return request.post(`/issue-comment/update`, payload)
+}
+
+/** 删除评论，只能删自己的（POST /issue-comment/delete） */
+export function deleteIssueComment(id: number): Promise<Result<void>> {
+  return request.post(`/issue-comment/delete`, { id })
 }
 
 /** 获取编辑事项弹窗数据：表单结构 + 字段当前值（POST /issue/queryEditMeta，scene=EDIT） */
@@ -276,7 +319,8 @@ export function getSystemFieldDetail(
 /** 新增系统字段（POST /systemField） */
 export function createSystemField(
   data: SystemFieldSavePayload,
-): Promise<Result<void>> {
+): Promise<Result<SystemFieldItem>> {
+  // 返回新建字段（含生成的 fieldId）
   return request.post(`/systemField`, data)
 }
 
@@ -703,6 +747,90 @@ export function saveIssueTypeStatuses(data: { issueTypeCode: string; statuses: I
 /** 删除问题类型（POST /issue-type/delete） */
 export function deleteIssueType(id: number): Promise<Result<void>> {
   return request.post(`/issue-type/delete`, { id })
+}
+
+// ==================== 事项按钮 ====================
+
+/** 按钮动作类型 */
+export type IssueButtonActionType = 'TRANSITION' | 'ROLLBACK' | 'EDIT' | 'COPY' | 'ASSIGN' | 'SPLIT' | 'DELETE' | 'CUSTOM'
+/** 按钮样式 */
+export type IssueButtonStyle = 'primary' | 'default' | 'danger'
+
+/** 事项按钮（后端 IssueButtonVO，配置列表与事项详情按钮共用） */
+export interface IssueButtonItem {
+  id: number
+  /** 按钮标识（后端生成，BTN + 5 位数字） */
+  buttonKey: string
+  buttonName: string
+  actionType: IssueButtonActionType
+  /** 问题类型编码 / 名称：编码为空表示所有类型 */
+  issueTypeCode?: string | null
+  issueTypeName?: string | null
+  /** 适用的问题状态编码 / 名称（一一对应）：为空表示所有状态 */
+  statusCodes?: string[] | null
+  statusNames?: string[] | null
+  /** TRANSITION / ROLLBACK 的目标状态编码 / 名称：空表示流程中的第一个后续（回退）节点 */
+  targetStatusCode?: string | null
+  targetStatusName?: string | null
+  /** 事项详情按钮：解析出的目标流程节点 ID，点击时作为 /workflow/task/change-status 的 targetStatus */
+  targetNodeId?: string | null
+  buttonStyle?: IssueButtonStyle
+  /** 状态：0 停用 / 1 启用 */
+  status: number
+  description?: string | null
+  createdAt?: string
+}
+
+export interface IssueButtonQueryParams {
+  /** 按钮名称 / 标识 */
+  keyword?: string
+  /** 问题类型编码：结果含通用（类型为空）按钮 */
+  issueTypeCode?: string
+  /** 问题状态编码：结果含适用状态包含它的按钮及通用（状态为空）按钮 */
+  statusCode?: string
+  actionType?: IssueButtonActionType
+  status?: number
+  page: number
+  pageSize: number
+}
+
+/** 新增 / 修改按钮请求体（修改时 id 必填；按钮标识由后端生成） */
+export interface IssueButtonSaveParams {
+  id?: number
+  buttonName: string
+  actionType: IssueButtonActionType
+  issueTypeCode?: string | null
+  /** 适用的问题状态编码（可多选）：空数组表示所有状态 */
+  statusCodes?: string[]
+  targetStatusCode?: string | null
+  buttonStyle?: IssueButtonStyle
+  status: number
+  description?: string | null
+}
+
+/** 按钮配置分页列表（POST /issue-button/list） */
+export function queryIssueButtons(data: IssueButtonQueryParams): Promise<Result<{ list: IssueButtonItem[]; total: number }>> {
+  return request.post(`/issue-button/list`, data)
+}
+
+/** 新增按钮（POST /issue-button/create） */
+export function createIssueButton(data: IssueButtonSaveParams): Promise<Result<IssueButtonItem>> {
+  return request.post(`/issue-button/create`, data)
+}
+
+/** 修改按钮（POST /issue-button/update） */
+export function updateIssueButton(data: IssueButtonSaveParams): Promise<Result<IssueButtonItem>> {
+  return request.post(`/issue-button/update`, data)
+}
+
+/** 删除按钮（POST /issue-button/delete） */
+export function deleteIssueButton(id: number): Promise<Result<void>> {
+  return request.post(`/issue-button/delete`, { id })
+}
+
+/** 事项当前可用按钮（POST /issue-button/issue）：按事项的问题类型 + 当前状态匹配，走不到目标状态的流转按钮已过滤 */
+export function queryIssueButtonsForIssue(issueKey: string): Promise<Result<IssueButtonItem[]>> {
+  return request.post(`/issue-button/issue`, { issueKey })
 }
 
 // ==================== 空间管理 ====================
