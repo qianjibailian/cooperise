@@ -512,6 +512,13 @@ export interface UserSaveParams {
   roleIds?: number[]
   /** 初始密码（仅新增） */
   password?: string
+  /** 拥有的空间编码：不传表示按部门自动带出（含下级组织），空数组表示不分配 */
+  spaceCodes?: string[]
+}
+
+/** 用户详情（POST /user/detail），含角色、拥有的空间 */
+export function getUserDetail(id: number): Promise<Result<UserItem>> {
+  return request.post(`/user/detail`, { id })
 }
 
 /** 新增用户（POST /user/create） */

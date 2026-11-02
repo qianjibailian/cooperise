@@ -11,7 +11,11 @@ import { ref } from 'vue'
 import dayjs from 'dayjs'
 import 'dayjs/locale/zh-cn'
 import 'dayjs/locale/en'
+import { VxeUI } from 'vxe-pc-ui'
+import vxePcUiEnUS from 'vxe-pc-ui/es/language/en-US'
+import vxeTableEnUS from 'vxe-table/lib/locale/lang/en-US'
 import en from './en'
+import enServer from './en-server'
 
 export type Locale = 'zh' | 'en'
 
@@ -44,7 +48,8 @@ const norm = (s: string) => s.replace(/\s+/g, ' ').trim()
 
 const exact = new Map<string, string>()
 const patterns: { re: RegExp; tpl: string }[] = []
-for (const [zh, text] of Object.entries(en)) {
+// 后端提示在前、前端文案在后：同一原文以前端词条为准
+for (const [zh, text] of Object.entries({ ...enServer, ...en })) {
   const key = norm(zh)
   if (/\{\d+\}/.test(key)) {
     const source = key
@@ -81,10 +86,26 @@ export function translate(text: string): string | null {
       break
     }
   }
+  // 用「 · 」拼起来的说明（如 需求、任务 · 我经办的 · 未结束）：逐段翻译，有一段命中即可。
+  // 只认「 · 」：单独用「、」的多半是用户写的内容（如事项概要），不拆
+  if (out == null && core.includes(' · ')) out = translateSegments(core)
   const result = out == null ? null : m[1] + out + m[3]
+  if (result == null) recordMissing(core)
   if (cache.size > 5000) cache.clear()
   cache.set(text, result)
   return result
+}
+
+/** 分段翻译：先按「 · 」再按「、」拆开，没命中的段保持原文；一段都没命中返回 null */
+function translateSegments(core: string): string | null {
+  let hit = false
+  const one = (s: string) => {
+    const t = exact.get(norm(s))
+    if (t != null) hit = true
+    return t ?? s
+  }
+  const out = core.split(' · ').map(seg => (seg.includes('、') ? seg.split('、').map(one).join(', ') : one(seg))).join(' · ')
+  return hit ? out : null
 }
 
 /** 「日」：日历表头里是周日，甘特视图切换里是「按日」 */
@@ -92,6 +113,26 @@ function translateDay(node: Text): string {
   const row = node.parentElement?.parentElement
   const weekday = row && Array.from(row.children).some(el => ['一', '六', 'Mon', 'Sat'].includes((el.textContent || '').trim()))
   return weekday ? 'Sun' : 'Day'
+}
+
+/**
+ * 本地开发时记录英文模式下没翻译到的中文，控制台执行 [...window.__i18nMissing] 查看，补到 en.ts / en-server.ts。
+ * 用户数据（姓名、概要等）也会出现在这里，按需挑界面文案补
+ */
+function recordMissing(text: string) {
+  if (!import.meta.env.DEV) return
+  const w = window as unknown as { __i18nMissing?: Set<string> }
+  ;(w.__i18nMissing ??= new Set()).add(text)
+}
+
+// ---------------- 第三方组件语言（vxe 表格 / 甘特） ----------------
+let vxeEnRegistered = false
+function applyVxe(l: Locale) {
+  if (l === 'en' && !vxeEnRegistered) {
+    VxeUI.setI18n('en-US', { ...vxePcUiEnUS, ...vxeTableEnUS, vxe: { ...vxePcUiEnUS.vxe, ...vxeTableEnUS.vxe } })
+    vxeEnRegistered = true
+  }
+  VxeUI.setLanguage(l === 'en' ? 'en-US' : 'zh-CN')
 }
 
 // ---------------- DOM 替换 ----------------
@@ -214,6 +255,7 @@ export function setLocale(l: Locale) {
     // 隐私模式等不可写时只在本次会话生效
   }
   applyDayjs(l)
+  applyVxe(l)
   document.documentElement.lang = l === 'en' ? 'en' : 'zh-CN'
   if (l === 'en') {
     translateTree(document.body)
@@ -229,6 +271,7 @@ export function setLocale(l: Locale) {
 /** 应用启动时调用：恢复上次选择的语言 */
 export function initLocale() {
   applyDayjs(locale.value)
+  applyVxe(locale.value)
   document.documentElement.lang = locale.value === 'en' ? 'en' : 'zh-CN'
   if (locale.value === 'en') {
     startObserver()

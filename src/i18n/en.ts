@@ -832,6 +832,11 @@ const en: Record<string, string> = {
   '暂无可用空间，请先在「空间」中创建': 'No spaces available. Please create one in "Spaces" first',
   '成员': 'Members',
   '成员 ID': 'Member ID',
+  '所选组织及其下级组织的空间': 'Spaces of the selected organization and its sub-organizations',
+  '请先选择组织': 'Please select an organization first',
+  '该组织及下级组织暂无空间': 'No spaces in this organization or its sub-organizations',
+  '已选 {0} / {1}': '{0} / {1} selected',
+  '其他组织': 'Other organization',
 
   // ---------- 组织 / 部门 / 岗位 / 角色 / 用户 / 权限 ----------
   '组织': 'Organization',
@@ -1110,6 +1115,7 @@ const en: Record<string, string> = {
   '修复中': 'Fixing',
   '待测试': 'To test',
   '待技术评审': 'Pending tech review',
+  '暂不修复': 'Won\'t fix',
   '前端开发': 'Frontend developer',
   '后端开发': 'Backend developer',
   '测试经理': 'QA manager',

@@ -136,6 +136,35 @@
             </a-form-item>
           </a-col>
           <a-col :span="24">
+            <a-form-item name="spaceCodes" class="space-form-item">
+              <template #label>
+                <span>空间</span>
+                <span class="space-label-hint">所选组织及其下级组织的空间</span>
+              </template>
+              <a-spin :spinning="spaceLoading" size="small">
+                <div v-if="form.deptId == null" class="space-empty">请先选择组织</div>
+                <div v-else-if="!spaceChoices.length" class="space-empty">该组织及下级组织暂无空间</div>
+                <template v-else>
+                  <div class="space-toolbar">
+                    <a-checkbox
+                      :checked="allSpacesChecked"
+                      :indeterminate="!allSpacesChecked && form.spaceCodes.length > 0"
+                      @change="onToggleAllSpaces"
+                    >全选</a-checkbox>
+                    <span class="space-count">已选 {{ form.spaceCodes.length }} / {{ spaceChoices.length }}</span>
+                  </div>
+                  <a-checkbox-group v-model:value="form.spaceCodes" class="space-grid">
+                    <a-checkbox v-for="s in spaceChoices" :key="s.spaceCode" :value="s.spaceCode" class="space-check">
+                      <span class="space-check-name" :title="s.spaceName">{{ s.spaceName }}</span>
+                      <span v-if="s.outOfScope" class="space-check-tag">其他组织</span>
+                      <span v-else-if="s.orgName" class="space-check-org">{{ s.orgName }}</span>
+                    </a-checkbox>
+                  </a-checkbox-group>
+                </template>
+              </a-spin>
+            </a-form-item>
+          </a-col>
+          <a-col :span="24">
             <a-form-item label="岗位" name="positionId">
               <a-select
                 v-model:value="form.positionId"
@@ -220,7 +249,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, h, onMounted, reactive, ref } from 'vue'
+import { computed, h, nextTick, onMounted, reactive, ref, watch } from 'vue'
 import { Modal, type FormInstance, type TablePaginationConfig } from 'ant-design-vue'
 import type { Rule } from 'ant-design-vue/es/form'
 import {
@@ -228,9 +257,10 @@ import {
   TeamOutlined, CheckOutlined, CloseOutlined, IdcardOutlined,
 } from '@ant-design/icons-vue'
 import {
-  queryUsers, createUser, updateUser, deleteUser, getOrganizationTree, queryRoles, queryPositions,
+  queryUsers, createUser, updateUser, deleteUser, getOrganizationTree, queryRoles, queryPositions, getUserDetail,
   type UserSaveParams, type OrganizationNode,
 } from '@/api/faiz'
+import { useSpaces } from '@/utils/space-store'
 import type { UserItem } from '@/types/faiz'
 import OrgTreeSelect from '@/components/OrgTreeSelect.vue'
 
@@ -357,12 +387,58 @@ async function loadOptions() {
   }
 }
 
+// ---- 空间：所选组织及其所有下级组织的空间（上级组织拥有下级组织的全部空间） ----
+const { spaces: allSpaces, ensureLoaded: ensureSpaces } = useSpaces()
+const spaceLoading = ref(false)
+
+/** 组织 id → 节点（含 children），用于取下级组织 */
+function findOrgNode(nodes: OrganizationNode[], id: number): OrganizationNode | null {
+  for (const n of nodes) {
+    if (n.id === id) return n
+    const hit = n.children?.length ? findOrgNode(n.children, id) : null
+    if (hit) return hit
+  }
+  return null
+}
+
+/** 所选组织及全部下级组织：编码 → 组织名 */
+const scopeOrgs = computed(() => {
+  const map = new Map<string, string>()
+  const node = form.deptId != null ? findOrgNode(orgTree.value, Number(form.deptId)) : null
+  const walk = (n: OrganizationNode) => {
+    if (n.organizationCode) map.set(n.organizationCode, n.organizationName)
+    n.children?.forEach(walk)
+  }
+  if (node) walk(node)
+  return map
+})
+
+/** 可勾选的空间：范围内启用的空间；已拥有但不在范围内的也保留（标「其他组织」），避免保存时被悄悄去掉 */
+const spaceChoices = computed(() => {
+  const scope = scopeOrgs.value
+  const inScope = allSpaces.value
+    .filter(s => s.organizationCode && scope.has(s.organizationCode) && s.status !== 0)
+    .map(s => ({ spaceCode: s.spaceCode, spaceName: s.spaceName, orgName: scope.get(s.organizationCode as string), outOfScope: false }))
+  const extra = form.spaceCodes
+    .filter(code => !inScope.some(s => s.spaceCode === code))
+    .map(code => ({ spaceCode: code, spaceName: allSpaces.value.find(s => s.spaceCode === code)?.spaceName || code, orgName: '', outOfScope: true }))
+  return [...inScope, ...extra]
+})
+
+const allSpacesChecked = computed(() =>
+  spaceChoices.value.length > 0 && spaceChoices.value.every(s => form.spaceCodes.includes(s.spaceCode)))
+
+function onToggleAllSpaces(e: { target: { checked?: boolean } }) {
+  form.spaceCodes = e.target.checked ? spaceChoices.value.map(s => s.spaceCode) : []
+}
+
 // ---- 新增 / 编辑 ----
 const modalOpen = ref(false)
 const saving = ref(false)
 const editingId = ref<number | null>(null)
 const formRef = ref<FormInstance>()
-const emptyForm = (): Omit<UserSaveParams, 'id'> => ({
+/** 表单里空间勾选始终是数组（提交时明确传，空数组表示不分配） */
+const emptyForm = (): Omit<UserSaveParams, 'id'> & { spaceCodes: string[] } => ({
   realName: '',
   coAccount: '',
   email: '',
@@ -372,11 +448,21 @@ const emptyForm = (): Omit<UserSaveParams, 'id'> => ({
   positionId: undefined,
   roleIds: [],
   password: '',
+  spaceCodes: [],
 })
 const form = reactive(emptyForm())
 const activeChecked = computed({
   get: () => form.isActive === 1,
   set: (v: boolean) => { form.isActive = v ? 1 : 0 },
+})
+
+/** 回填表单期间不触发「换组织 → 默认全选」 */
+let fillingForm = false
+/** 换组织：默认勾选新组织（含下级）的全部空间，可再取消。
+ * 必须放在 form 声明之后：watch 创建时会立即读 form.deptId，提前引用会因暂时性死区让整个页面白屏 */
+watch(() => form.deptId, () => {
+  if (fillingForm) return
+  form.spaceCodes = spaceChoices.value.filter(s => !s.outOfScope).map(s => s.spaceCode)
 })
 
 const rules = computed<Record<string, Rule[]>>(() => ({
@@ -393,13 +479,17 @@ const rules = computed<Record<string, Rule[]>>(() => ({
 
 function openCreate() {
   editingId.value = null
+  fillingForm = true
   Object.assign(form, emptyForm())
+  nextTick(() => { fillingForm = false })
   modalOpen.value = true
   loadOptions()
+  ensureSpaces()
 }
 
-function openEdit(u: UserItem) {
+async function openEdit(u: UserItem) {
   editingId.value = u.id ?? null
+  fillingForm = true
   Object.assign(form, {
     ...emptyForm(),
     realName: u.realName || '',
@@ -413,6 +503,17 @@ function openEdit(u: UserItem) {
   })
   modalOpen.value = true
   loadOptions()
+  // 列表不返回空间：拉详情回填已拥有的空间
+  spaceLoading.value = true
+  try {
+    const [res] = await Promise.all([u.id != null ? getUserDetail(u.id) : null, ensureSpaces()])
+    if (res?.success && editingId.value === u.id) form.spaceCodes = (res.data?.spaces || []).map(s => s.spaceCode)
+  } catch {
+    // 请求层已统一提示
+  } finally {
+    spaceLoading.value = false
+    nextTick(() => { fillingForm = false })
+  }
 }
 
 async function handleSubmit() {
@@ -431,6 +532,8 @@ async function handleSubmit() {
       userEnName: form.userEnName?.trim() || undefined,
       deptId: form.deptId != null ? String(form.deptId) : undefined,
       password: editingId.value ? undefined : form.password,
+      // 始终明确提交勾选结果（空数组表示不分配空间）
+      spaceCodes: [...form.spaceCodes],
     }
     const res = editingId.value
       ? await updateUser({ ...payload, id: editingId.value })
@@ -940,4 +1043,85 @@ onMounted(loadUsers)
   border-radius: 999px;
 }
 
+/* 空间勾选：所选组织及下级组织的空间 */
+.space-label-hint {
+  margin-left: 8px;
+  font-size: 12px;
+  font-weight: 400;
+  color: #aeaeb2;
+}
+
+.space-empty {
+  padding: 10px 12px;
+  font-size: 13px;
+  color: #aeaeb2;
+  background: #fafafc;
+  border: 1px dashed #e5e5ea;
+  border-radius: 10px;
+}
+
+.space-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.space-count {
+  font-size: 12px;
+  color: #8e8e93;
+}
+
+.space-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px 12px;
+  width: 100%;
+  max-height: 180px;
+  padding: 10px 12px;
+  overflow-y: auto;
+  background: #fafafc;
+  border: 1px solid #f0f0f5;
+  border-radius: 10px;
+}
+
+.space-check {
+  min-width: 0;
+  margin-inline-start: 0 !important;
+}
+
+.space-check :deep(span:last-child) {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.space-check-name {
+  overflow: hidden;
+  font-size: 13px;
+  color: #1d1d1f;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.space-check-org {
+  flex-shrink: 0;
+  max-width: 96px;
+  overflow: hidden;
+  font-size: 11px;
+  color: #8e8e93;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.space-check-tag {
+  flex-shrink: 0;
+  padding: 0 5px;
+  font-size: 11px;
+  line-height: 16px;
+  color: #c27c0e;
+  background: rgba(255, 159, 10, 0.12);
+  border-radius: 4px;
+}
 </style>

@@ -304,6 +304,8 @@ export interface UserItem {
   /** 已分配角色 */
   roleIds?: number[]
   roleNames?: string[]
+  /** 拥有的空间（仅用户详情返回，列表不填） */
+  spaces?: { spaceCode: string; spaceName?: string; organizationCode?: string }[]
 }
 
 export interface UserListData {
