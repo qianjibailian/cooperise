@@ -13,8 +13,8 @@
       <!-- ========== 顶部工具栏（单号区域，固定） ========== -->
       <header v-if="!loading && detailData" class="top-bar">
         <div class="top-bar-left">
-          <div class="tb-crumb-icon">
-            <component :is="FolderOutlined" />
+          <div class="tb-crumb-icon" :style="issueTypeIconStyle" :title="issueTypeLabel || undefined">
+            <component :is="issueTypeIcon" />
           </div>
           <span class="tb-project">{{ projectLabel || '未命名项目' }}</span>
           <span class="tb-divider">/</span>
@@ -124,7 +124,7 @@
             <div v-if="issueTypeField" class="attr-item">
               <span class="attr-label">{{ issueTypeField.name || '问题类型' }}</span>
               <span class="attr-value-block">
-                <component v-if="issueTypeLabel" :is="CheckSquareFilled" class="attr-check" />
+                <span v-if="issueTypeLabel" class="attr-type-icon" :style="{ background: issueTypeColor || DEFAULT_TYPE_COLOR }"><component :is="issueTypeIcon" /></span>
                 <span class="attr-value">{{ issueTypeLabel || '—' }}</span>
               </span>
             </div>
@@ -789,13 +789,11 @@ import type { IDomEditor, IEditorConfig, IToolbarConfig } from '@wangeditor/edit
 import { Editor, Toolbar } from '@wangeditor/editor-for-vue'
 import '@wangeditor/editor/dist/css/style.css'
 import {
-  FolderOutlined,
   StarOutlined,
   LinkOutlined,
   ShareAltOutlined,
   FullscreenOutlined,
   CloseOutlined,
-  CheckSquareFilled,
   UserOutlined,
   FileUnknownOutlined,
   AppstoreOutlined,
@@ -812,6 +810,7 @@ import { message } from 'ant-design-vue'
 import type { DetailData, DetailField, DetailLayoutGroup, IssueChangeLog } from '@/types/faiz'
 import { FIELD_TYPE } from '@/types/fieldType'
 import { sanitizeHtml } from '@/utils/sanitizeHtml'
+import { issueTypeIconOf } from '@/utils/issueTypeIcons'
 // 暂时隐藏研发活动，恢复时取消注释：import IssueRdActivity from '@/components/IssueRdActivity.vue'
 import FieldValueEditor from '@/components/FieldValueEditor.vue'
 import WorkflowViewModal from '@/components/WorkflowViewModal.vue'
@@ -1462,6 +1461,21 @@ const priorityColorHex = computed(() => {
 // issue type
 const issueTypeField = computed(() => findField('issuetype'))
 const issueTypeValue = computed(() => issueTypeField.value?.value)
+/** 问题类型图标与颜色（接口 issuetype 值带 iconUri / issueTypeColor）：顶部图标、属性卡共用 */
+const DEFAULT_TYPE_COLOR = '#8c8c8c'
+const issueTypeIcon = computed(() => {
+  const v = issueTypeValue.value
+  return issueTypeIconOf(typeof v === 'object' && v !== null ? ((v as Record<string, unknown>).iconUri as string | null) : null)
+})
+const issueTypeColor = computed(() => {
+  const v = issueTypeValue.value
+  const c = typeof v === 'object' && v !== null ? (v as Record<string, unknown>).issueTypeColor : null
+  return typeof c === 'string' && /^#[0-9a-fA-F]{6}$/.test(c) ? c : ''
+})
+/** 顶部图标底色：有类型颜色用类型颜色，否则保持主题色渐变 */
+const issueTypeIconStyle = computed(() => (issueTypeColor.value
+  ? { background: issueTypeColor.value, boxShadow: `0 2px 8px color-mix(in srgb, ${issueTypeColor.value} 28%, transparent)` }
+  : undefined))
 const issueTypeLabel = computed(() => {
   const v = issueTypeValue.value
   if (typeof v === 'object' && v !== null) {
@@ -2106,6 +2120,17 @@ function formatRichText(v: unknown): string {
 .attr-wf-link:hover {
   color: #9254de;
   text-decoration: underline;
+}
+.attr-type-icon {
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  font-size: 11px;
+  color: #fff;
+  border-radius: 5px;
 }
 .attr-check {
   color: #52c41a;
