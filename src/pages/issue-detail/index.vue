@@ -643,7 +643,7 @@
             v-model:activeKey="timeCollapseKeys"
             ghost
             :bordered="false"
-            class="panel-collapse panel-collapse-last"
+            class="panel-collapse"
           >
             <a-collapse-panel key="time">
               <template #header>
@@ -687,6 +687,25 @@
             </a-collapse-panel>
           </a-collapse>
 
+          <!-- 关联工单（折叠板）：父工单 / 子工单 / 同级工单 -->
+          <a-collapse
+            v-model:activeKey="relationCollapseKeys"
+            ghost
+            :bordered="false"
+            class="panel-collapse panel-collapse-last"
+          >
+            <a-collapse-panel key="relation">
+              <template #header>
+                <div class="collapse-header-inner">
+                  <span class="pch-title">关联工单</span>
+                </div>
+              </template>
+              <div class="panel-card-body">
+                <IssueParentChild :issue-key="issueKey" :reload-trigger="detailData" open-mode="route" />
+              </div>
+            </a-collapse-panel>
+          </a-collapse>
+
           </div><!-- end scroll-right -->
         </div>
       </main>
@@ -720,6 +739,7 @@ import { message } from 'ant-design-vue'
 import type { DetailData, DetailField, DetailLayoutGroup, IssueChangeLog } from '@/types/faiz'
 import FieldValueEditor from '@/components/FieldValueEditor.vue'
 import IssueActionButtons from '@/components/IssueActionButtons.vue'
+import IssueParentChild from '@/components/IssueParentChild.vue'
 import { sanitizeHtml } from '@/utils/sanitizeHtml'
 import { issueTypeIconOf } from '@/utils/issueTypeIcons'
 // 暂时隐藏研发活动，恢复时取消注释：import IssueRdActivity from '@/components/IssueRdActivity.vue'
@@ -999,6 +1019,7 @@ const userCollapseKeys = ref<string[]>(['user'])
 const rdCollapseKeys = ref<string[]>(['rd'])
 const okrCollapseKeys = ref<string[]>([])
 const timeCollapseKeys = ref<string[]>(['time'])
+const relationCollapseKeys = ref<string[]>(['relation'])
 const attachmentCollapseKeys = ref<string[]>(['attachment'])
 const parentCollapseKeys = ref<string[]>(['parent'])
 const childCollapseKeys = ref<string[]>([])

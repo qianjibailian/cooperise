@@ -2,7 +2,7 @@
   <a-modal
     v-model:open="visible"
     :title="modalTitle"
-    :width="480"
+    :width="540"
     centered
     destroy-on-close
     :confirm-loading="submitting"
@@ -86,6 +86,7 @@ const viewTypeOptions = [
   { value: 'KAN_BAN', label: '看板' },
   { value: 'gantt', label: '甘特' },
   { value: 'CALENDAR_VIEW', label: '日历' },
+  { value: 'RELEASE_LIST', label: '上线清单' },
 ]
 
 const modalTitle = computed(() => {
@@ -212,7 +213,10 @@ async function handleSubmit() {
 
 .create-view-modal .cv-type-group .ant-radio-button-wrapper {
   flex: 1;
+  min-width: 0;
+  padding-inline: 6px;
   text-align: center;
+  white-space: nowrap;
 }
 
 .create-view-modal .cv-type-group .ant-radio-button-wrapper > span:last-child {

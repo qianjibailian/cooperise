@@ -26,6 +26,7 @@ import SprintBoard from '@/pages/sprint-board/index.vue'
 import TestingCalendar from '@/pages/testing-calendar/index.vue'
 import MemberGantt from '@/pages/member-gantt/index.vue'
 import IssueDetail from '@/pages/issue-detail/index.vue'
+import ReleaseList from '@/pages/release-list/index.vue'
 import Login from '@/pages/auth/Login.vue'
 import { useViewStore } from '@/utils/view-store'
 import { useAuth } from '@/utils/auth'
@@ -36,6 +37,7 @@ const VIEW_TYPE_PAGE: Record<string, { component: unknown; title: string }> = {
   KAN_BAN: { component: SprintBoard, title: '看板' },
   gantt: { component: MemberGantt, title: '甘特图' },
   CALENDAR_VIEW: { component: TestingCalendar, title: '测试平台需求日历' },
+  RELEASE_LIST: { component: ReleaseList, title: '上线清单' },
 }
 
 /** /workbench/view/:filterCode 分发组件：按 viewType 动态渲染对应页面（同步 setup，避免 Suspense 告警） */

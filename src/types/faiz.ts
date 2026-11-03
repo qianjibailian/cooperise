@@ -350,6 +350,10 @@ export interface ViewItem {
   myTodoTotalCount: number | null
   viewType: string
   groupCode: string | null
+  /** 视图配置 JSON（如上线清单的分组字段 / 开发列 / 测试列 / 必填项），各视图类型自行解析 */
+  filterConfig?: string | null
+  /** 当前用户能否删除 / 修改分享设置（仅创建人） */
+  canManage?: boolean
 }
 
 /** 视图分组 */

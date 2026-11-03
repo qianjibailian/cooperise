@@ -452,11 +452,6 @@
 
                       <span class="pch-title">人员信息</span>
                     </div>
-                    <div class="collapse-header-right">
-                      <div class="pch-meta dim">
-                        <component :is="UserOutlined" />
-                      </div>
-                    </div>
                   </div>
                 </template>
                 <div class="panel-card-body">
@@ -514,11 +509,6 @@
 
                       <span class="pch-title">时间信息</span>
                     </div>
-                    <div class="collapse-header-right">
-                      <div class="pch-meta dim">
-                        <component :is="ClockCircleOutlined" />
-                      </div>
-                    </div>
                   </div>
                 </template>
                 <div class="panel-card-body">
@@ -553,6 +543,31 @@
                     </template>
                   </div>
                   <MiniEmpty v-else text="暂无时间信息" />
+                </div>
+              </a-collapse-panel>
+            </a-collapse>
+
+            <!-- 关联工单（折叠板）：父工单 / 子工单 / 同级工单 -->
+            <a-collapse
+              v-model:activeKey="relationCollapseKeys"
+              ghost
+              :bordered="false"
+              class="panel-collapse"
+            >
+              <a-collapse-panel key="relation">
+                <template #header>
+                  <div class="collapse-header-inner">
+                    <span class="pch-title">关联工单</span>
+                  </div>
+                </template>
+                <div class="panel-card-body">
+                  <!-- 抽屉内点击关联事项在新标签页打开详情，不打断当前列表 -->
+                  <IssueParentChild
+                    :issue-key="issueKey"
+                    :reload-trigger="detailData"
+                    open-mode="tab"
+                    @changed="emit('changed')"
+                  />
                 </div>
               </a-collapse-panel>
             </a-collapse>
@@ -708,11 +723,6 @@
 
                       <span class="pch-title">活动日志</span>
                     </div>
-                    <div class="collapse-header-right">
-                      <div class="pch-meta dim">
-                        <component :is="HistoryOutlined" />
-                      </div>
-                    </div>
                   </div>
                 </template>
                 <div class="panel-card-body">
@@ -794,14 +804,11 @@ import {
   ShareAltOutlined,
   FullscreenOutlined,
   CloseOutlined,
-  UserOutlined,
   FileUnknownOutlined,
   AppstoreOutlined,
   ExclamationCircleOutlined,
-  ClockCircleOutlined,
   CopyOutlined,
   EditOutlined,
-  HistoryOutlined,
   CheckOutlined,
 } from '@ant-design/icons-vue'
 import { queryDetail, patchIssue, queryChangeLogs } from '@/api/faiz'
@@ -815,6 +822,7 @@ import { issueTypeIconOf } from '@/utils/issueTypeIcons'
 import FieldValueEditor from '@/components/FieldValueEditor.vue'
 import WorkflowViewModal from '@/components/WorkflowViewModal.vue'
 import IssueActionButtons from '@/components/IssueActionButtons.vue'
+import IssueParentChild from '@/components/IssueParentChild.vue'
 
 // ============================================================
 // 子组件：MiniEmpty 小型空状态
@@ -1096,6 +1104,7 @@ const userCollapseKeys = ref<string[]>(['user'])
 const rdCollapseKeys = ref<string[]>(['rd'])
 const okrCollapseKeys = ref<string[]>([])
 const timeCollapseKeys = ref<string[]>(['time'])
+const relationCollapseKeys = ref<string[]>(['relation'])
 const attachmentCollapseKeys = ref<string[]>(['attachment'])
 const parentCollapseKeys = ref<string[]>(['parent'])
 const childCollapseKeys = ref<string[]>([])

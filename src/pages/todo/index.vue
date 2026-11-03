@@ -118,7 +118,10 @@
           <div
             v-else
             class="editable-cell"
-            :class="{ 'is-editable': isFieldEditable(record, String(column.dataIndex)) }"
+            :class="{
+              'is-editable': isFieldEditable(record, String(column.dataIndex)),
+              'has-actions': column.dataIndex === 'issuekey',
+            }"
             @mouseenter="column.dataIndex === 'summary' && handleCellHover($event, record)"
             @mouseleave="column.dataIndex === 'summary' && handleCellLeave(record)"
           >
@@ -296,6 +299,14 @@
                 @click.stop="startCellEdit(record, String(column.dataIndex))"
               >
                 <component :is="EditOutlined" />
+              </span>
+              <span
+                v-if="column.dataIndex === 'issuekey'"
+                class="cell-edit-icon"
+                title="复制单号"
+                @click.stop="handleCopyIssueKey(record)"
+              >
+                <component :is="CopyOutlined" />
               </span>
               <template v-if="column.dataIndex === 'summary'">
                 <span
@@ -950,7 +961,7 @@ const columnWidths = computed<Record<string, number>>(() => {
     ) {
       extra += 22 // tag 内边距
     } else if (col.id === 'issuekey') {
-      extra += 12
+      extra += 12 + 22 // 链接留白 + 复制 icon 18 + 间隙 4
     }
     if (sample && isFieldEditable(sample, col.id)) {
       extra += 22 // 编辑 icon 18 + 间隙 4
@@ -1712,6 +1723,16 @@ async function handleCopySummary(rec: IssueRecord) {
   } catch {}
 }
 
+/** 复制问题单号到剪贴板 */
+async function handleCopyIssueKey(rec: IssueRecord) {
+  const key = getIssueKey(rec)
+  if (!key) return
+  try {
+    await navigator.clipboard.writeText(key)
+    message.success('单号已复制')
+  } catch {}
+}
+
 /** 获取概要对应事项链接（域名/jira/browse/{issueKey}）并复制到剪贴板 */
 async function handleOpenSummaryLink(rec: IssueRecord) {
   const key = getIssueKey(rec)
@@ -2275,6 +2296,7 @@ onBeforeUnmount(() => {
 }
 
 .editable-cell.is-editable:hover .cell-edit-icon,
+.editable-cell.has-actions:hover .cell-edit-icon,
 .cell-edit-icon.always-visible {
   display: inline-flex;
 }

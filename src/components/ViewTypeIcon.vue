@@ -29,6 +29,11 @@
         <path d="M6 3.3v2.1M10 3.3v2.1" stroke="#fff" stroke-width="1.3" stroke-linecap="round" />
         <rect x="9" y="8.9" width="2" height="2" rx="0.5" fill="#fff" />
       </g>
+      <!-- 上线清单：勾选清单 -->
+      <g v-else-if="kind === 'release'" fill="none" stroke="#fff" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M3.6 5.1l1 1 1.7-1.9M3.6 9.6l1 1 1.7-1.9" stroke-width="1.3" />
+        <path d="M8 5.3h4.4M8 9.8h4.4" stroke-width="1.4" />
+      </g>
       <!-- 其他：四宫格 -->
       <g v-else fill="#fff">
         <rect x="3.6" y="3.6" width="3.6" height="3.6" rx="1" />
@@ -44,7 +49,7 @@
 import { computed } from 'vue'
 
 const props = defineProps<{
-  /** 视图类型：list / KAN_BAN / gantt / CALENDAR_VIEW，其余按「其他」展示 */
+  /** 视图类型：list / KAN_BAN / gantt / CALENDAR_VIEW / RELEASE_LIST，其余按「其他」展示 */
   type?: string | null
 }>()
 
@@ -54,6 +59,7 @@ const VIEW_TYPE_META: Record<string, { kind: string; color: string; label: strin
   KAN_BAN: { kind: 'kanban', color: '#AF52DE', label: '看板' },
   gantt: { kind: 'gantt', color: '#FF9500', label: '甘特' },
   CALENDAR_VIEW: { kind: 'calendar', color: '#FF3B30', label: '日历' },
+  RELEASE_LIST: { kind: 'release', color: '#34C759', label: '上线清单' },
 }
 const FALLBACK = { kind: 'other', color: '#8E8E93', label: '视图' }
 

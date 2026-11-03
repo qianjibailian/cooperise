@@ -140,4 +140,4 @@ export function useViewStore() {
   }
 }
 
-export type ViewTypeKey = 'list' | 'KAN_BAN' | 'gantt' | 'CALENDAR_VIEW' | string
+export type ViewTypeKey = 'list' | 'KAN_BAN' | 'gantt' | 'CALENDAR_VIEW' | 'RELEASE_LIST' | string

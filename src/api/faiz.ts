@@ -119,6 +119,52 @@ export function splitIssue(data: { issueKey: string; items: { summary: string; a
   return request.post(`/issue/split`, data)
 }
 
+/** 父子工单中的一个事项（后端 IssueRelationVO.Item） */
+export interface IssueRelationItem {
+  issueKey: string
+  summary?: string
+  spaceCode?: string
+  spaceName?: string
+  issueTypeCode?: string
+  issueTypeName?: string
+  issueTypeColor?: string
+  issueTypeIcon?: string | null
+  statusCode?: string
+  statusName?: string
+  statusColor?: string
+  /** 状态已结束 */
+  done?: boolean
+  assigneeMemberId?: string
+  assigneeName?: string
+  assigneeAvatar?: string | null
+  planEndDate?: string | null
+}
+
+/** 关联工单：父事项 + 直接子事项 + 同级事项 */
+export interface IssueRelations {
+  parent: IssueRelationItem | null
+  children: IssueRelationItem[]
+  /** 子事项中已结束的数量 */
+  doneCount: number
+  /** 同级事项：同一父事项下的其它事项；没有父事项时为空 */
+  siblings: IssueRelationItem[]
+}
+
+/** 关联工单（POST /issue/relations）：父事项 + 子事项 + 同级事项 */
+export function queryIssueRelations(issueKey: string): Promise<Result<IssueRelations>> {
+  return request.post(`/issue/relations`, { issueKey })
+}
+
+/** 设置父工单（POST /issue/parent）；parentIssueKey 传空串表示解除父子关系 */
+export function setIssueParent(issueKey: string, parentIssueKey: string): Promise<Result<void>> {
+  return request.post(`/issue/parent`, { issueKey, parentIssueKey })
+}
+
+/** 把已有事项关联为子工单（POST /issue/children/add），返回实际关联的单号 */
+export function addIssueChildren(issueKey: string, childIssueKeys: string[]): Promise<Result<string[]>> {
+  return request.post(`/issue/children/add`, { issueKey, childIssueKeys })
+}
+
 /** 新建事项表单元数据（POST /issue/queryCreateMeta） */
 export function getIssueCreateMeta(data: { organizationCode?: string; issueTypeCode: string }): Promise<IssueCreateMetaResult> {
   return request.post(`/issue/queryCreateMeta`, data)
@@ -225,7 +271,7 @@ export function createView(data: { filterName: string; viewType: string; groupCo
 }
 
 /** 编辑视图（POST /view/update） */
-export function updateView(data: { filterCode: string; filterName: string; viewType: string }): Promise<Result<unknown>> {
+export function updateView(data: { filterCode: string; filterName: string; viewType: string; filterConfig?: string }): Promise<Result<unknown>> {
   return request.post(`/view/update`, data)
 }
 
