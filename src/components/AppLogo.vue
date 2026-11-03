@@ -1,7 +1,7 @@
 <template>
   <div class="app-logo" :class="{ clickable: clickable, 'enterprise-mode': isEnterprise }" @click="handleClick">
     <svg width="36" height="36" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg" aria-labelledby="logoTitle">
-      <title id="logoTitle">需求管控平台</title>
+      <title id="logoTitle">Cooperise</title>
       <!-- Redesigned rounded mark -->
       <defs>
         <linearGradient id="logo-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
@@ -27,12 +27,6 @@
         <!-- inner accent dot to give identity -->
         <circle cx="6" cy="-6" r="3.2" fill="url(#accent-grad)"/>
       </g>
-    </svg>
-    <!-- Artistic text logo -->
-    <svg class="logo-text-svg" width="200" height="28" viewBox="0 0 200 28" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
-      <text x="50%" y="20" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-weight="700" font-size="18" fill="#1a1a1a">
-        需求管控平台
-      </text>
     </svg>
   </div>
 </template>
@@ -85,12 +79,6 @@ const handleClick = () => {}
   transition: all 0.3s ease;
 }
 
-.app-logo .logo-text-svg {
-  display: inline-block;
-  vertical-align: middle;
-  margin-left: -15px;
-}
-
 .app-logo.enterprise-mode {
   flex-direction: column;
   align-items: center;
@@ -101,13 +89,5 @@ const handleClick = () => {}
 .app-logo.enterprise-mode > svg:first-child {
   width: 80px !important;
   height: 80px !important;
-}
-
-.app-logo.enterprise-mode .logo-text-svg {
-  width: auto;
-  height: 80px !important;
-  display: inline-block;
-  vertical-align: middle;
-  margin-left: 4px;
 }
 </style>

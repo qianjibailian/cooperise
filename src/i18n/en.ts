@@ -229,8 +229,8 @@ const en: Record<string, string> = {
   '通知偏好': 'Notification preferences',
   '最近访问': 'Recently visited',
   '菜单': 'Menu',
-  // 侧栏标题是 200px 宽的 SVG 文字，英文名需控制在约 15 个字符内
-  '需求管控平台': 'Requirement Hub',
+  // 品牌名：中英文统一为 Cooperise
+  'Cooperise': 'Cooperise',
   '需求到上线 · 一站掌控': 'From requirement to release, all in one place',
   '欢迎回来，这是您的工作概览': 'Welcome back, here is your work overview',
 

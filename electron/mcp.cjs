@@ -1,7 +1,7 @@
 /**
  * 客户端内置 MCP 服务（Model Context Protocol，Streamable HTTP 传输，无状态 JSON 响应）。
  *
- * 让 Claude Code / Cursor 等 AI 工具以「当前在客户端登录的用户」身份查询需求管控平台的事项：
+ * 让 Claude Code / Cursor 等 AI 工具以「当前在客户端登录的用户」身份查询 Cooperise 的事项：
  *   - 只读：搜索事项、我的事项、事项详情 / 评论 / 变更记录 / 关联工单、空间、人员、当前用户
  *   - 写：仅「发表评论」
  * 后端权限与网页端一致（用登录 token 调后端），AI 看不到当前用户看不到的数据。
@@ -30,7 +30,7 @@ const MAX_BODY = 1024 * 1024
  */
 function callBackend(ctx, method, apiPath, body) {
   const token = ctx.getToken()
-  if (!token) return Promise.reject(new Error('客户端未登录：请先在需求管控平台客户端里登录，再让 AI 调用。'))
+  if (!token) return Promise.reject(new Error('客户端未登录：请先在 Cooperise 客户端里登录，再让 AI 调用。'))
   let target
   try {
     target = new URL(ctx.getApiTarget())
@@ -531,9 +531,9 @@ async function handleRpc(ctx, msg) {
       return rpcResult(msg.id, {
         protocolVersion,
         capabilities: { tools: { listChanged: false } },
-        serverInfo: { name: 'cooperise', title: '需求管控平台', version: ctx.version },
+        serverInfo: { name: 'cooperise', title: 'Cooperise', version: ctx.version },
         instructions:
-          '需求管控平台（Cooperise）的事项数据：需求 / 任务 / 缺陷等统称「事项」，单号形如 RD-000042（前缀为空间标识）。' +
+          'Cooperise 的事项数据：需求 / 任务 / 缺陷等统称「事项」，单号形如 RD-000042（前缀为空间标识）。' +
           '先用 search_issues / list_my_issues 找到单号，再用 get_issue 等工具查看详情。所有调用以客户端当前登录用户身份执行；' +
           'add_issue_comment 会真实发表评论，仅在用户明确要求时使用。',
       })

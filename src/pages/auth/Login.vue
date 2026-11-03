@@ -1,5 +1,5 @@
 <template>
-  <AuthLayout title="协作，" highlight="更有序" subtitle="需求到上线 · 一站掌控">
+  <AuthLayout logo-above-card>
     <form novalidate @submit.prevent="handleSubmit">
       <AuthField v-model="form.email" placeholder="电子邮箱" type="email" autocomplete="email" :error="errors.email" />
       <AuthField v-model="form.password" placeholder="密码" type="password" autocomplete="current-password" :error="errors.password" />

@@ -3,7 +3,7 @@
   "private": true,
   "version": "1.0.0",
   "productName": "Cooperise",
-  "description": "需求管控平台",
+  "description": "Cooperise",
   "author": "speedx",
   "main": "electron/main.cjs",
   "type": "module",
@@ -95,7 +95,7 @@
       "artifactName": "Cooperise-${version}-${arch}.${ext}",
       "identity": null,
       "extendInfo": {
-        "CFBundleDisplayName": "需求管控平台",
+        "CFBundleDisplayName": "Cooperise",
         "LSApplicationCategoryType": "public.app-category.productivity"
       }
     },
@@ -109,7 +109,7 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "需求管控平台"
+      "shortcutName": "Cooperise"
     },
     "electronDownload": {
       "mirror": "https://npmmirror.com/mirrors/electron/"

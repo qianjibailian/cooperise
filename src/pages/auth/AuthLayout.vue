@@ -1,29 +1,24 @@
 <template>
   <div class="auth-page">
-    <header class="auth-header">
-      <svg width="28" height="28" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-        <defs>
-          <linearGradient id="auth-logo-grad" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stop-color="#0052D9" />
-            <stop offset="100%" stop-color="#60A8FF" />
-          </linearGradient>
-        </defs>
-        <rect width="48" height="48" rx="12" fill="url(#auth-logo-grad)" />
-        <g transform="translate(24,24)">
-          <path d="M14 0 A14 14 0 1 1 -14 0" stroke="#fff" stroke-width="4.5" stroke-linecap="round" fill="none" />
-          <circle cx="6" cy="-6" r="3.2" fill="#FF9CCF" />
-        </g>
-      </svg>
-      <span class="auth-brand">需求管控平台</span>
+    <!-- 默认：左上角 logo + 品牌名；logoAboveCard 时隐藏，改放到表单上方 -->
+    <header v-if="!logoAboveCard" class="auth-header">
+      <AuthLogo :size="28" />
+      <span class="auth-brand">Cooperise</span>
     </header>
 
     <div class="auth-body">
       <!-- 左侧：标题 + 表单卡片 -->
       <section class="auth-left">
-        <h1 class="auth-title">
+        <!-- 表单上方的品牌标识（登录页用） -->
+        <div v-if="logoAboveCard" class="auth-logo-card">
+          <AuthLogo :size="56" />
+          <span class="auth-brand auth-brand-lg">Cooperise</span>
+        </div>
+
+        <h1 v-if="title || highlight" class="auth-title">
           {{ title }}<span v-if="highlight" class="auth-highlight">{{ highlight }}</span>
         </h1>
-        <p class="auth-subtitle">{{ subtitle }}</p>
+        <p v-if="subtitle" class="auth-subtitle">{{ subtitle }}</p>
 
         <div class="auth-card">
           <slot />
@@ -61,11 +56,17 @@
 </template>
 
 <script setup lang="ts">
+import AuthLogo from './AuthLogo.vue'
+
 defineProps<{
-  title: string
+  /** 标题（不传则不渲染） */
+  title?: string
   /** 标题末尾的强调词，渐变色显示 */
   highlight?: string
-  subtitle: string
+  /** 副标题（不传则不渲染） */
+  subtitle?: string
+  /** true：不渲染左上角 header，logo 改到表单卡片上方 */
+  logoAboveCard?: boolean
 }>()
 
 const columns = [
@@ -120,6 +121,21 @@ const columns = [
   font-size: clamp(17px, 1.4vw, 20px);
   font-weight: 600;
   letter-spacing: 0.2px;
+}
+
+/* 表单上方的品牌标识（logo + 名称），居中 */
+.auth-logo-card {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  margin-bottom: clamp(20px, 3vh, 32px);
+}
+
+/* 表单上方的品牌名比左上角那版更大 */
+.auth-brand-lg {
+  font-size: clamp(24px, 2.2vw, 32px);
+  letter-spacing: 0.4px;
 }
 
 .auth-body {

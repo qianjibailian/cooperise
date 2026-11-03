@@ -320,7 +320,7 @@ function baseWindowOptions() {
     : { titleBarStyle: 'hidden', titleBarOverlay: TITLE_BAR_OVERLAY, icon: ICON }
   return {
     ...chrome,
-    title: '需求管控平台',
+    title: 'Cooperise',
     backgroundColor: '#ffffff',
     minWidth: 1024,
     minHeight: 640,
@@ -537,7 +537,7 @@ function buildMacMenu() {
     {
       label: app.name,
       submenu: [
-        { role: 'about', label: '关于需求管控平台' },
+        { role: 'about', label: '关于 Cooperise' },
         { type: 'separator' },
         { role: 'hide', label: '隐藏' },
         { role: 'hideOthers', label: '隐藏其他' },

@@ -1,16 +1,18 @@
 <template>
   <header class="app-header">
-    <div class="header-left" :class="{ collapsed: sidebarCollapsed }">
-      <AppLogo clickable to="/dashboard" />
+    <div class="header-left" :class="{ collapsed: sidebarCollapsed, 'no-logo': isDesktop }">
+      <!-- 客户端去掉左上角图标，网页版保留 -->
+      <AppLogo v-if="!isDesktop" clickable to="/dashboard" />
+
+      <!-- 空间切换（仅工作台）：与折叠按钮互换 -->
+      <div v-if="isWorkbench" class="header-space">
+        <HeaderSpaceSwitcher />
+      </div>
+
       <div class="header-left-right">
         <a-divider v-if="!hideSidebarToggle" type="vertical" class="header-divider" />
         <component :is="sidebarCollapsed ? MenuUnfoldOutlined : MenuFoldOutlined" v-if="!hideSidebarToggle" class="header-fold-icon" @click="$emit('toggle-sidebar')" />
       </div>
-    </div>
-
-    <!-- 空间切换（仅工作台） -->
-    <div v-if="isWorkbench" class="header-space">
-      <HeaderSpaceSwitcher />
     </div>
 
     <div class="header-center" v-if="false">
@@ -541,7 +543,8 @@ async function handleLogout() {
 .header-left {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  /* 折叠按钮不再被 space-between 顶到最右侧，整体靠左跟随 logo */
+  justify-content: flex-start;
   min-width: calc(280px + 40px);
   padding-right: 8px;
 }
@@ -554,6 +557,7 @@ async function handleLogout() {
   display: flex;
   align-items: center;
   gap: 8px;
+  margin-left: 8px;
 }
 
 .header-fold-icon {
@@ -616,7 +620,17 @@ async function handleLogout() {
 .header-space {
   display: flex;
   align-items: center;
-  margin-left: 8px;
+  /*
+   * 与侧栏二级菜单（我的事项所在面板）左边缘对齐：
+   * 侧栏二级菜单 x = icon-bar 64；顶部 x = header padding 16 + logo 36 + margin-left → margin-left = 12
+   * 配合触发器宽度 216px（280 - 64），顶部这块与下方菜单左右边界完全重合
+   */
+  margin-left: 12px;
+}
+
+/* 客户端不显示 logo，省掉的 36px 用 margin 补回来，保持与侧栏菜单对齐 */
+.header-left.no-logo .header-space {
+  margin-left: 48px;
 }
 
 .header-right {

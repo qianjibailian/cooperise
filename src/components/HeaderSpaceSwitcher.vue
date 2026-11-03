@@ -183,7 +183,9 @@ onMounted(() => {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  max-width: 220px;
+  /* 与侧栏「我的事项」所在的二级菜单同宽：sider 280 - icon-bar 64 = 216px */
+  width: 216px;
+  max-width: 216px;
   height: 32px;
   padding: 0 10px 0 6px;
   font-size: 14px;
@@ -201,11 +203,13 @@ onMounted(() => {
   border-color: #e5e5ea;
 }
 .hs-name {
+  flex: 1;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   font-weight: 500;
+  text-align: left;
 }
 .hs-placeholder-icon {
   font-size: 16px;
