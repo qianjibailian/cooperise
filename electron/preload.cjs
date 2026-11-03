@@ -14,4 +14,7 @@ contextBridge.exposeInMainWorld('cooperiseDesktop', {
   getSavedLogin: () => ipcRenderer.invoke('desktop:login:get'),
   saveLogin: (payload) => ipcRenderer.invoke('desktop:login:save', payload),
   canEncryptPassword: () => ipcRenderer.invoke('desktop:login:can-encrypt'),
+  // 开机自启动
+  getAutoStart: () => ipcRenderer.invoke('desktop:autostart:get'),
+  setAutoStart: (enabled) => ipcRenderer.invoke('desktop:autostart:set', enabled),
 })

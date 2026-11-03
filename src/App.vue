@@ -46,6 +46,13 @@ html.is-desktop .app-header {
   padding-right: calc(var(--desktop-controls-width) + 12px) !important;
   user-select: none;
 }
+/* macOS：红绿灯在左侧（约 52px 宽 + 左边距 18px），右侧无系统按钮 */
+html.is-desktop.is-mac {
+  --desktop-controls-width: 0px;
+}
+html.is-desktop.is-mac .app-header {
+  padding-left: 88px !important;
+}
 html.is-desktop .app-header :is(.header-left > *, .header-left-right > *, .header-space, .header-right > *, a, button, input) {
   -webkit-app-region: no-drag;
 }

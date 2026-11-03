@@ -1,5 +1,5 @@
 /**
- * Cooperise Windows 客户端（Electron 主进程）
+ * Cooperise 桌面客户端（Electron 主进程，Windows / macOS）
  *
  * 思路：客户端启动时在本机 127.0.0.1 起一个与 `vite preview` 等价的小服务——
  *   - 静态托管打包产物 dist（History 路由回退到 index.html）
@@ -9,7 +9,7 @@
  * 外观参考 Apifox：隐藏原生标题栏与菜单栏，系统窗口按钮（最小化 / 最大化 / 关闭）嵌入应用顶栏，顶栏空白处可拖动窗口；
  * 记住窗口大小与位置；右键菜单；客户端设置（后端地址）在头像菜单 →「客户端设置」。
  *
- * 后端地址等配置：%APPDATA%/Cooperise/config.json。
+ * 后端地址等配置：Windows %APPDATA%/Cooperise/config.json；macOS ~/Library/Application Support/Cooperise/config.json。
  * 开发调试：先 `pnpm dev`，再 `pnpm electron:dev`（直接加载 vite dev server）。
  */
 const { app, BrowserWindow, Menu, shell, dialog, screen, ipcMain, safeStorage } = require('electron')
@@ -24,12 +24,17 @@ const ICON = path.join(__dirname, 'assets', 'icon.png')
 const PRELOAD = path.join(__dirname, 'preload.cjs')
 const devUrlArg = process.argv.find((a) => a.startsWith('--dev-url='))
 const DEV_URL = devUrlArg ? devUrlArg.slice('--dev-url='.length) : ''
+/** 开机自启动时带的参数：据此最小化启动，不打扰开机 */
+const AUTOSTART_ARG = '--autostart'
+const IS_MAC = process.platform === 'darwin'
+/** Windows 靠启动参数判断；macOS 登录项不支持参数，用 wasOpenedAtLogin（需 app ready 后读取） */
+let launchedAtLogin = process.argv.includes(AUTOSTART_ARG)
 
 /** 顶栏高度，与前端 .app-header（56px）一致；系统窗口按钮按此高度绘制 */
 const TITLE_BAR_HEIGHT = 56
 const TITLE_BAR_OVERLAY = { color: '#ffffff', symbolColor: '#1d1d1f', height: TITLE_BAR_HEIGHT }
 
-app.setAppUserModelId('com.speedx.cooperise')
+if (process.platform === 'win32') app.setAppUserModelId('com.speedx.cooperise')
 
 // ---------------- 配置 ----------------
 const configPath = () => path.join(app.getPath('userData'), 'config.json')
@@ -233,14 +238,17 @@ function isAppUrl(url) {
   }
 }
 
-/** 所有窗口共用：隐藏原生标题栏，系统按钮嵌入顶栏（Windows Window Controls Overlay） */
+/** 所有窗口共用：隐藏原生标题栏，系统按钮嵌入顶栏
+ *  - Windows：Window Controls Overlay，按钮在右侧
+ *  - macOS：红绿灯在左侧，垂直居中到 56px 顶栏 */
 function baseWindowOptions() {
+  const chrome = IS_MAC
+    ? { titleBarStyle: 'hidden', trafficLightPosition: { x: 18, y: Math.round((TITLE_BAR_HEIGHT - 16) / 2) } }
+    : { titleBarStyle: 'hidden', titleBarOverlay: TITLE_BAR_OVERLAY, icon: ICON }
   return {
-    icon: ICON,
+    ...chrome,
     title: '需求管控平台',
     backgroundColor: '#ffffff',
-    titleBarStyle: 'hidden',
-    titleBarOverlay: TITLE_BAR_OVERLAY,
     minWidth: 1024,
     minHeight: 640,
     webPreferences: {
@@ -280,6 +288,8 @@ function handleShortcut(win, e, input) {
   const wc = win.webContents
   const key = input.key
   let handled = true
+  // macOS 的刷新 / 缩放 / 全屏 / 开发者工具由应用菜单（buildMacMenu）提供，这里只处理 Windows
+  if (IS_MAC) return
   if (key === 'F5' && ctrl) wc.reloadIgnoringCache()
   else if (key === 'F5' || (ctrl && key.toLowerCase() === 'r')) wc.reload()
   else if (key === 'F12' || (ctrl && input.shift && key.toLowerCase() === 'i')) wc.toggleDevTools()
@@ -328,7 +338,14 @@ function createMainWindow(url) {
   })
   mainWindow.once('ready-to-show', () => {
     if (state.maximized) mainWindow.maximize()
-    mainWindow.show()
+    if (launchedAtLogin) {
+      launchedAtLogin = false // 仅首个窗口；macOS 关窗后从 Dock 重新打开时正常显示
+      // 开机自启动：最小化到任务栏 / Dock，不抢焦点
+      mainWindow.showInactive()
+      mainWindow.minimize()
+    } else {
+      mainWindow.show()
+    }
   })
   mainWindow.on('closed', () => {
     mainWindow = null
@@ -401,8 +418,77 @@ function registerIpc() {
     }
   })
   ipcMain.handle('desktop:login:can-encrypt', () => safeStorage.isEncryptionAvailable())
+
+  // 开机自启动：Windows 写入当前用户启动项（HKCU\...\Run，带 --autostart 参数）；macOS 写入「登录项」。启动后最小化
+  const loginItemOpts = IS_MAC ? {} : { args: [AUTOSTART_ARG] }
+  ipcMain.handle('desktop:autostart:get', () => ({
+    supported: app.isPackaged,
+    enabled: app.isPackaged && app.getLoginItemSettings(loginItemOpts).openAtLogin,
+  }))
+  ipcMain.handle('desktop:autostart:set', (_e, enabled) => {
+    // 开发模式下可执行文件是 Electron 本体，注册进去开机会打开空白 Electron，故只在安装版生效
+    if (!app.isPackaged) return { ok: false, message: '仅安装版客户端支持开机自启动' }
+    app.setLoginItemSettings({ openAtLogin: !!enabled, ...loginItemOpts })
+    return { ok: true, enabled: app.getLoginItemSettings(loginItemOpts).openAtLogin }
+  })
   ipcMain.handle('desktop:toggle-devtools', (e) => e.sender.toggleDevTools())
 }
+
+/** macOS 的菜单栏在屏幕顶部而非窗口内，必须保留：否则 ⌘C / ⌘V / ⌘Q 等系统快捷键全部失效 */
+function buildMacMenu() {
+  return Menu.buildFromTemplate([
+    {
+      label: app.name,
+      submenu: [
+        { role: 'about', label: '关于需求管控平台' },
+        { type: 'separator' },
+        { role: 'hide', label: '隐藏' },
+        { role: 'hideOthers', label: '隐藏其他' },
+        { role: 'unhide', label: '全部显示' },
+        { type: 'separator' },
+        { role: 'quit', label: '退出' },
+      ],
+    },
+    {
+      label: '编辑',
+      submenu: [
+        { role: 'undo', label: '撤销' },
+        { role: 'redo', label: '重做' },
+        { type: 'separator' },
+        { role: 'cut', label: '剪切' },
+        { role: 'copy', label: '复制' },
+        { role: 'paste', label: '粘贴' },
+        { role: 'selectAll', label: '全选' },
+      ],
+    },
+    {
+      label: '显示',
+      submenu: [
+        { role: 'reload', label: '重新加载' },
+        { role: 'forceReload', label: '强制重新加载' },
+        { role: 'toggleDevTools', label: '开发者工具' },
+        { type: 'separator' },
+        { role: 'resetZoom', label: '实际大小' },
+        { role: 'zoomIn', label: '放大' },
+        { role: 'zoomOut', label: '缩小' },
+        { type: 'separator' },
+        { role: 'togglefullscreen', label: '切换全屏' },
+      ],
+    },
+    {
+      label: '窗口',
+      submenu: [
+        { role: 'minimize', label: '最小化' },
+        { role: 'zoom', label: '缩放' },
+        { role: 'close', label: '关闭窗口' },
+        { type: 'separator' },
+        { role: 'front', label: '全部置于顶层' },
+      ],
+    },
+  ])
+}
+
+let appUrl = ''
 
 // 单实例：再次双击图标时激活已有窗口
 if (!app.requestSingleInstanceLock()) {
@@ -415,8 +501,9 @@ if (!app.requestSingleInstanceLock()) {
   })
 
   app.whenReady().then(async () => {
-    // 不使用原生菜单栏（参考 Apifox）；快捷键与右键菜单见 attachWindowBehaviors
-    Menu.setApplicationMenu(null)
+    // Windows 不使用原生菜单栏（参考 Apifox），快捷键与右键菜单见 attachWindowBehaviors；macOS 保留屏幕顶部菜单栏
+    Menu.setApplicationMenu(IS_MAC ? buildMacMenu() : null)
+    if (IS_MAC && app.isPackaged) launchedAtLogin = !!app.getLoginItemSettings().wasOpenedAtLogin
     registerIpc()
     let url = DEV_URL
     if (!url) {
@@ -430,8 +517,17 @@ if (!app.requestSingleInstanceLock()) {
       }
     }
     appOrigin = new URL(url).origin
+    appUrl = url
     createMainWindow(url)
   })
 
-  app.on('window-all-closed', () => app.quit())
+  // macOS 习惯：关掉窗口应用仍在 Dock，点 Dock 图标重新打开窗口；⌘Q 才真正退出
+  app.on('window-all-closed', () => {
+    if (!IS_MAC) app.quit()
+  })
+  app.on('activate', () => {
+    if (!appUrl) return
+    if (mainWindow) mainWindow.show()
+    else createMainWindow(appUrl)
+  })
 }

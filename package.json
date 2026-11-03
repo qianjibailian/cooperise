@@ -15,7 +15,8 @@
     "preview:lan": "vite preview --mode lan",
     "electron:dev": "electron . --dev-url=http://localhost:8083",
     "electron:preview": "vite build --mode desktop && electron .",
-    "electron:build": "vite build --mode desktop && electron-builder --win --x64"
+    "electron:build": "vite build --mode desktop && electron-builder --win --x64",
+    "electron:build:mac": "vite build --mode desktop && electron-builder --mac --arm64 --x64"
   },
   "dependencies": {
     "@ant-design/icons-vue": "7.0.1",
@@ -67,6 +68,7 @@
       "!node_modules/**/*"
     ],
     "asar": true,
+    "afterPack": "build/mac-adhoc-sign.cjs",
     "win": {
       "target": [
         {
@@ -77,6 +79,29 @@
         }
       ],
       "artifactName": "Cooperise-Setup-${version}.${ext}"
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon-mac.png",
+      "category": "public.app-category.productivity",
+      "artifactName": "Cooperise-${version}-${arch}.${ext}",
+      "identity": null,
+      "extendInfo": {
+        "CFBundleDisplayName": "需求管控平台",
+        "LSApplicationCategoryType": "public.app-category.productivity"
+      }
+    },
+    "dmg": {
+      "title": "Cooperise ${version}",
+      "artifactName": "Cooperise-${version}-${arch}.${ext}"
     },
     "nsis": {
       "oneClick": false,
