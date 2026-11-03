@@ -1,5 +1,5 @@
 {
-  "apiTarget": "http://172.20.20.223:8080",
+  "apiTarget": "http://localhost:8080",
   "port": 18083,
   "mcpEnabled": false,
   "mcpPort": 18084
