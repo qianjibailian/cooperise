@@ -164,8 +164,113 @@ html, body {
 :root {
   /* 系统最小宽度：窗口更窄时不再压缩布局，改为出现横向滚动条 */
   --app-min-width: 1280px;
+  /* 顶栏高度（含 iOS 刘海安全区），侧栏 / 内容区据此避让 */
+  --app-header-height: 56px;
   /* 页面横向滚动距离（由 layout 同步），供 fixed 定位的顶栏 / 侧栏跟随滚动 */
   --app-scroll-x: 0px;
   --ant-font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+}
+
+/*
+ * iOS 原生壳（Capacitor）：
+ * - 顶栏高度加上刘海 / 底部安全区，避免内容被系统区域遮挡
+ * - 去掉 1280px 的强制最小宽度，手机上不再出现整页横向滚动条（布局按屏幕宽度自适应收缩）
+ */
+html.is-ios {
+  --app-header-height: calc(56px + env(safe-area-inset-top, 0px));
+  --app-min-width: 0px;
+}
+
+html.is-ios .app-header {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
+/*
+ * iOS App：左侧一级菜单（图标栏）改为底部 Tab 栏
+ * 只作用于 App（html.is-ios），网页 / Electron 客户端布局不变
+ */
+html.is-ios .icon-bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: auto;
+  min-width: 0;
+  height: calc(56px + env(safe-area-inset-bottom, 0px));
+  flex-direction: row;
+  align-items: stretch;
+  padding: 0 4px env(safe-area-inset-bottom, 0px);
+  border-right: none;
+  border-top: 1px solid #e8e8e8;
+  box-sizing: border-box;
+  z-index: 200;
+}
+
+html.is-ios .icon-bar-item {
+  flex: 1;
+  width: auto;
+  height: 100%;
+  margin-bottom: 0;
+  border-radius: 0;
+}
+
+html.is-ios .icon-bar-icon {
+  margin-bottom: 2px;
+}
+
+/* 侧栏让出底部 Tab 的高度（Tab 栏由 Teleport 移到 body，不再受侧栏 transform 影响） */
+html.is-ios .sider {
+  height: calc(100dvh - var(--app-header-height, 56px) - 56px - env(safe-area-inset-bottom, 0px));
+  padding-bottom: 0;
+}
+
+html.is-ios .sider-inner {
+  height: 100%;
+}
+
+/* 详情等非工作台页没有二级菜单：侧栏整体隐藏，图标栏已固定在底部 */
+html.is-ios .sider.sider-detail {
+  display: none;
+}
+
+html.is-ios .main-layout-full {
+  margin-left: 0;
+}
+
+/* 内容区底部留白，避免最后一行被 Tab 栏压住；min-height 相应扣减，不额外产生滚动 */
+html.is-ios .main-layout {
+  padding-bottom: calc(56px + env(safe-area-inset-bottom, 0px));
+  min-height: calc(100dvh - 112px - env(safe-area-inset-bottom, 0px));
+}
+
+/* 登录 / 注册等鉴权页：避开刘海与底部手势条 */
+html.is-ios .auth-page {
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* ==========================================================================
+   手机端（H5 / iOS App）
+   基准机型：iPhone 17（402 × 874pt）、iPhone 17 Pro Max（440 × 956pt）
+   断点 767px 覆盖到 iPhone 横屏（956 宽时走桌面布局）
+   ========================================================================== */
+@media (max-width: 767px) {
+  :root {
+    /* 手机不强制 1280 最小宽，否则整页出现横向滚动条 */
+    --app-min-width: 0px;
+  }
+
+  html,
+  body {
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+  }
+
+  /* iOS 聚焦输入框会自动放大页面，字号 >= 16px 可禁用该行为 */
+  html.is-ios input,
+  html.is-ios textarea,
+  html.is-ios select {
+    font-size: 16px !important;
+  }
 }
 </style>

@@ -130,7 +130,7 @@
 
       <button v-if="isWorkbench" class="header-create-btn" @click="$emit('create-click')">
         <PlusOutlined />
-        <span>新建</span>
+        <span class="create-label">新建</span>
       </button>
 
       <!-- 用户菜单：自绘浮层（不受点击页面其它位置影响，仅点头像或菜单项收起） -->
@@ -531,7 +531,8 @@ async function handleLogout() {
   right: 0;
   min-width: var(--app-min-width);
   transform: translateX(calc(-1 * var(--app-scroll-x, 0px)));
-  height: 56px;
+  /* iOS 上高度含刘海安全区，见 App.vue 的 html.is-ios */
+  height: var(--app-header-height, 56px);
   background: #fff;
   display: flex;
   align-items: center;
@@ -756,6 +757,142 @@ async function handleLogout() {
   border: 1px solid #f0f0f0;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
 }
+
+/* ==========================================================================
+   手机端（iPhone 17 / 17 Pro Max 为基准，断点 767px）
+   顶部一行：菜单 + 空间切换 + 搜索 + 新建 + 头像
+   ========================================================================== */
+@media (max-width: 767px) {
+  .app-header {
+    min-width: 0;
+    gap: 6px;
+    padding: 0 8px;
+  }
+
+  .header-left,
+  .header-left.collapsed {
+    /* 桌面端这里是 calc(280px + 40px)（与侧栏同宽），手机必须让位给搜索区 */
+    min-width: 0 !important;
+    /* 不参与收缩，否则后面的菜单按钮会被搜索框挤掉 */
+    flex: 0 0 auto;
+    gap: 4px;
+    padding-right: 0;
+  }
+
+  /* 手机屏幕窄，logo 让位给功能区（保留在平板 / 桌面） */
+  .header-left > .app-logo {
+    display: none;
+  }
+
+  /* 空间切换在手机上固定 116px：桌面端的 216px 会挤掉搜索与右侧操作 */
+  .header-space {
+    margin-left: 0 !important;
+    width: 116px;
+    flex: 0 0 116px;
+    overflow: hidden;
+  }
+
+  .header-space :deep(.header-space-trigger) {
+    width: 100% !important;
+    max-width: 116px !important;
+    height: 30px;
+    padding: 0 8px 0 4px;
+    font-size: 13px;
+  }
+
+  /* 菜单按钮（打开抽屉）必须始终可见，不参与收缩 */
+  .header-left-right {
+    flex: 0 0 auto;
+    margin-left: 2px;
+    gap: 4px;
+  }
+
+  .header-divider {
+    display: none;
+  }
+
+  .header-fold-icon {
+    font-size: 20px;
+    padding: 6px;
+  }
+
+  /* 右侧区域整体收缩，搜索吃掉剩余宽度，超出部分不再把「新建 / 头像」挤到屏幕外 */
+  .header-right {
+    flex: 1 1 0;
+    min-width: 0;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+
+  .header-search-wrap {
+    /* 用 0 作 basis，搜索区严格让出「新建 + 头像」所需宽度，溢出裁掉避免压住按钮 */
+    flex: 1 1 0;
+    min-width: 88px;
+    overflow: hidden;
+  }
+
+  .header-search,
+  .header-search:focus-within {
+    width: 100%;
+    min-width: 0;
+    font-size: 13px;
+  }
+
+  .header-search :deep(.ant-input) {
+    min-width: 0;
+  }
+
+  /* 手机无 hover，搜索面板改为贴顶全宽浮层 */
+  .search-panel {
+    position: fixed;
+    top: calc(var(--app-header-height, 56px) - 4px);
+    left: 8px;
+    right: 8px;
+    width: auto;
+    max-height: 60vh;
+    overflow-y: auto;
+  }
+
+  /* 手机上隐藏语言切换（设置里仍有），新建只留图标 */
+  .lang-switch {
+    display: none;
+  }
+
+  .header-create-btn {
+    flex: 0 0 auto;
+    min-width: 32px;
+    justify-content: center;
+    padding: 0 6px;
+    height: 30px;
+  }
+
+  /* 只隐藏文字，保留 PlusOutlined 图标（anticon 本身也是 span） */
+  .header-create-btn .create-label {
+    display: none;
+  }
+
+  /* 用户菜单只留头像 */
+  .user-trigger {
+    gap: 0;
+    padding: 0;
+  }
+
+  .user-name,
+  .user-caret {
+    display: none;
+  }
+
+  .user-dropdown-popover {
+    position: fixed;
+    top: calc(var(--app-header-height, 56px) + 4px);
+    right: 8px;
+    left: auto;
+    width: min(320px, calc(100vw - 16px));
+    max-height: 70vh;
+    overflow-y: auto;
+  }
+}
+
 </style>
 
 <style>
@@ -1155,4 +1292,5 @@ async function handleLogout() {
 .user-org-card:hover .user-org-switch {
   color: var(--c-primary);
 }
+
 </style>

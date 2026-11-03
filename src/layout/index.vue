@@ -19,21 +19,36 @@
       @menu-click="handleRemoteMenuClick"
     />
 
-    <a-layout-sider :width="isNonWorkbenchRoute ? 64 : (sidebarCollapsed ? 112 : 280)" class="sider" :trigger="null">
+    <!-- 手机端：侧栏以抽屉形式从左侧滑出，点遮罩 / 换页自动收起 -->
+    <div v-if="isMobile && mobileMenuOpen" class="mobile-mask" @click="closeMobileMenu" />
+
+    <a-layout-sider
+      :width="isNonWorkbenchRoute ? 64 : (sidebarCollapsed ? 112 : 280)"
+      class="sider"
+      :class="{ 'sider-mobile-open': mobileMenuOpen, 'sider-detail': isNonWorkbenchRoute }"
+      :trigger="null"
+    >
       <div class="sider-inner">
-        <!-- 左侧图标栏 -->
-        <div class="icon-bar">
-          <div
-            v-for="item in iconBarItems"
-            :key="item.key"
-            class="icon-bar-item"
-            :class="{ active: activeSection === item.key }"
-            @click="handleSectionClick(item.key)"
-          >
-            <component :is="item.icon" class="icon-bar-icon" />
-            <span class="icon-bar-label">{{ item.label }}</span>
+        <!--
+          一级菜单（图标栏）
+          iOS App 下 Teleport 到 body，用底部 Tab 栏呈现：
+          留在 .sider 内会被抽屉的 transform 影响，fixed 定位也会被裁剪
+          网页 / Electron 端 :disabled 生效，DOM 位置保持原样
+        -->
+        <Teleport to="body" :disabled="!isIOSApp">
+          <div class="icon-bar">
+            <div
+              v-for="item in iconBarItems"
+              :key="item.key"
+              class="icon-bar-item"
+              :class="{ active: activeSection === item.key }"
+              @click="handleSectionClick(item.key)"
+            >
+              <component :is="item.icon" class="icon-bar-icon" />
+              <span class="icon-bar-label">{{ item.label }}</span>
+            </div>
           </div>
-        </div>
+        </Teleport>
 
         <!-- 右侧面板 -->
         <div v-if="!isNonWorkbenchRoute" class="side-panel" :class="{ 'side-panel-collapsed': sidebarCollapsed }">
@@ -293,6 +308,7 @@ import NewIssueFormModal from '@/components/NewIssueFormModal.vue'
 import { notifyIssueCreated, onIssueCreated } from '@/utils/issue-events'
 import { useTodoCount, refreshTodoCount } from '@/utils/todo-count'
 import { currentSpaceCode } from '@/utils/current-space'
+import { isIOSApp } from '@/utils/native'
 import { useAuth } from '@/utils/auth'
 import CreateViewModal from '@/components/CreateViewModal.vue'
 import ViewTypeIcon from '@/components/ViewTypeIcon.vue'
@@ -330,7 +346,16 @@ watch(currentSpaceCode, async () => {
 })
 
 const drawerOpen = ref(false)
-const sidebarCollapsed = ref(false)
+// iOS App 在手机屏幕（窄屏）上默认把侧栏收起，避免二级菜单挤占内容区；iPad / 桌面保持展开
+const sidebarCollapsed = ref(isIOSApp && window.innerWidth < 900)
+
+/**
+ * 手机端（≤767px，基准 iPhone 17 / 17 Pro Max）：侧栏改为抽屉，用独立开关控制
+ * 桌面 / 平板：维持原来的展开-收起
+ * 注意：必须在下面 immediate 的 route watch 之前声明，否则初始化时访问会触发 TDZ 报错
+ */
+const isMobile = ref(window.innerWidth <= 767)
+const mobileMenuOpen = ref(false)
 const activeSection = ref('workspace')
 // 设置路由与工作台路由同样展示侧边栏（含二级菜单），仅其余路由（如事项详情）隐藏侧边面板
 const isNonWorkbenchRoute = computed(() => {
@@ -455,6 +480,8 @@ watch(
   () => route.path,
   (path) => {
     if (path.startsWith('/workbench')) fetchViewList()
+    // 手机端：点菜单跳页后自动收起抽屉
+    if (isMobile.value && mobileMenuOpen.value) mobileMenuOpen.value = false
   },
   { immediate: true },
 )
@@ -496,8 +523,26 @@ function handleMenuClick() {
   drawerOpen.value = !drawerOpen.value
 }
 
+function syncViewport() {
+  const next = window.innerWidth <= 767
+  if (next !== isMobile.value) {
+    isMobile.value = next
+    if (!next) mobileMenuOpen.value = false
+  }
+}
+
 function toggleSidebar() {
+  if (isMobile.value) {
+    // 抽屉里要显示完整二级菜单，先确保侧栏是展开态
+    if (!mobileMenuOpen.value) sidebarCollapsed.value = false
+    mobileMenuOpen.value = !mobileMenuOpen.value
+    return
+  }
   sidebarCollapsed.value = !sidebarCollapsed.value
+}
+
+function closeMobileMenu() {
+  mobileMenuOpen.value = false
 }
 
 function handleWorkspaceClick() {
@@ -558,10 +603,13 @@ onMounted(() => {
   syncScrollX()
   window.addEventListener('scroll', syncScrollX, { passive: true })
   window.addEventListener('resize', syncScrollX)
+  syncViewport()
+  window.addEventListener('resize', syncViewport)
 })
 onBeforeUnmount(() => {
   window.removeEventListener('scroll', syncScrollX)
   window.removeEventListener('resize', syncScrollX)
+  window.removeEventListener('resize', syncViewport)
   document.documentElement.style.removeProperty('--app-scroll-x')
 })
 </script>
@@ -576,11 +624,11 @@ onBeforeUnmount(() => {
 
 .sider {
   background: #ffffff !important;
-  height: calc(100vh - 56px);
-  height: calc(100dvh - 56px);
+  height: calc(100vh - var(--app-header-height, 56px));
+  height: calc(100dvh - var(--app-header-height, 56px));
   position: fixed;
   left: 0;
-  top: 56px;
+  top: var(--app-header-height, 56px);
   bottom: 0;
   z-index: 90;
   display: flex;
@@ -1137,7 +1185,7 @@ onBeforeUnmount(() => {
 }
 
 .main-layout {
-  padding-top: 56px;
+  padding-top: var(--app-header-height, 56px);
   margin-left: 280px;
   min-height: 100vh;
   min-height: 100dvh;
@@ -1161,6 +1209,51 @@ onBeforeUnmount(() => {
 
 .content > :deep(*) {
   width: 100%;
+}
+
+/* ==========================================================================
+   手机端（iPhone 17 / 17 Pro Max 基准，断点 767px）
+   侧栏改为抽屉，内容区占满整宽
+   ========================================================================== */
+@media (max-width: 767px) {
+  .layout-container {
+    min-width: 0;
+  }
+
+  /* 抽屉：默认移出屏幕，打开时滑入 */
+  .sider {
+    width: min(280px, 86vw) !important;
+    max-width: 86vw !important;
+    min-width: 0 !important;
+    flex: 0 0 auto !important;
+    z-index: 210;
+    transform: translateX(-100%);
+    transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: none;
+  }
+
+  .sider.sider-mobile-open {
+    transform: translateX(0);
+    box-shadow: 2px 0 16px rgba(0, 0, 0, 0.18);
+  }
+
+  .mobile-mask {
+    position: fixed;
+    inset: 0;
+    z-index: 205;
+    background: rgba(0, 0, 0, 0.35);
+  }
+
+  /* 内容区不再给侧栏让位 */
+  .main-layout,
+  .main-layout-collapsed,
+  .main-layout-full {
+    margin-left: 0 !important;
+  }
+
+  .sider-inner {
+    height: 100%;
+  }
 }
 
 </style>

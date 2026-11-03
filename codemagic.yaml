@@ -1,0 +1,79 @@
+# Codemagic 云构建（macOS 机器，本地不用装 Xcode）
+# 接入方式：Codemagic → Add application → 选 "Other" → 填仓库地址
+#   https://codeup.aliyun.com/6570082810ff56f1fd0604c9/qianjisan/cooperise.git
+#   访问凭证用 Codeup 的「个人访问令牌」（HTTPS 用户名+密码方式）
+#
+# 两个 workflow：
+#   ios-simulator  免签名，只验证能否编译通过，产物是 .app（可装模拟器）
+#   ios-ipa        真机 / 分发用，需要 Apple Developer 账号与签名证书
+workflows:
+  ios-simulator:
+    name: iOS 编译验证（免签名）
+    instance_type: mac_mini_m2
+    max_build_duration: 60
+    environment:
+      node: 22.14.0
+      xcode: latest
+      vars:
+        BUILD_MODE: simulator
+        ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+    scripts:
+      - name: 安装 pnpm
+        script: npm i -g pnpm@10
+      - name: 安装依赖
+        script: pnpm install --frozen-lockfile
+      - name: 构建（前端 + 原生工程 + 模拟器编译）
+        script: ./scripts/ios-build.sh
+    artifacts:
+      - ios/App/build/Build/Products/Release-iphonesimulator/*.app
+
+  ios-ipa:
+    name: iOS 真机包（Ad Hoc / App Store）
+    instance_type: mac_mini_m3
+    max_build_duration: 90
+    integrations:
+      # 需先在 Codemagic（Teams → Integrations → Developer Portal）配置 App Store Connect API Key
+      app_store_connect: Cooperise_ASC
+    environment:
+      node: 22.14.0
+      xcode: latest
+      groups:
+        # 在 Codemagic 环境变量里建一个 ios_signing 组，上传 .p12 证书与密码：
+        #   CM_CERTIFICATE / CM_CERTIFICATE_PASSWORD / CM_PROVISIONING_PROFILE
+        - ios_signing
+      vars:
+        BUNDLE_ID: com.speedx.cooperise
+        BUILD_MODE: device
+        # development | ad-hoc | app-store-connect | enterprise
+        EXPORT_METHOD: ad-hoc
+        ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+    scripts:
+      - name: 安装 pnpm
+        script: npm i -g pnpm@10
+      - name: 安装依赖
+        script: pnpm install --frozen-lockfile
+      - name: 构建前端并同步原生工程
+        script: |
+          pnpm exec vite build --mode ios
+          pnpm exec cap sync ios
+        # 下面三步从 Apple Developer 拉取/复用证书与描述文件（需要上面的 app_store_connect 集成）
+      - name: 初始化钥匙串
+        script: keychain initialize
+      - name: 拉取签名文件
+        script: |
+          app-store-connect fetch-signing-files "$BUNDLE_ID" \
+            --type IOS_APP_ADHOC \
+            --create
+      - name: 应用证书到 Xcode 工程
+        script: |
+          keychain add-certificates
+          xcode-project use-profiles
+      - name: 归档并导出 IPA
+        script: |
+          SKIP_WEB=1 SKIP_SYNC=1 \
+          EXPORT_METHOD="$EXPORT_METHOD" \
+          EXPORT_OPTIONS="$CM_BUILD_DIR/ios/App/exportOptions.plist" \
+          ./scripts/ios-build.sh
+    artifacts:
+      - ios/App/build/ipa/*.ipa
+      - ios/App/build/App.xcarchive

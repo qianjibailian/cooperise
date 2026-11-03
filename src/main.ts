@@ -12,6 +12,7 @@ import { initTheme } from './utils/theme'
 // 中英文切换：dayjs 语言 + 运行时词典翻译（默认中文，记住上次选择）
 import { initLocale } from './i18n'
 import { markDesktop } from './utils/desktop'
+import { markNative } from './utils/native'
 import { syncDesktopSession } from './utils/desktop-session'
 import type { Router } from 'vue-router'
 
@@ -23,6 +24,7 @@ function render(props?: { container?: HTMLElement }) {
 
   initTheme()
   markDesktop()
+  markNative()
   syncDesktopSession()
   routerInstance = setupRouter()
 
