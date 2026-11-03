@@ -88,7 +88,8 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { message } from 'ant-design-vue'
-import { queryAvailableFieldList } from '@/api/faiz'
+import { queryWorkbenchFieldList } from '@/api/faiz'
+import { currentSpaceCode } from '@/utils/current-space'
 import type { AvailableFieldItem, SortItem } from '@/types/faiz'
 
 interface SortRow {
@@ -113,13 +114,21 @@ const availableFields = ref<AvailableFieldItem[]>([])
 /** 下拉选项：只取后端返回的字段 */
 const fieldOptions = computed(() => availableFields.value.map((f) => ({ value: f.fieldId, label: f.fieldName })))
 
-/** 字段列表加载后，移除不在列表中的排序（已删除的字段 / 历史遗留的无效字段），并同步给父级 */
+/**
+ * 字段列表加载后，处理不在列表中的排序：
+ * - 未选空间：是已删除 / 历史遗留的无效字段，移除并同步给父级（原有行为）
+ * - 选了空间：多半是其它空间的字段，只在面板中隐藏、提交时原样保留，避免切换空间把草稿里的排序冲掉
+ */
 function dropUnknownRows() {
   if (!availableFields.value.length) return
   const known = new Set(availableFields.value.map((f) => f.fieldId))
-  const kept = rows.value.filter((r) => !r.fieldId || known.has(r.fieldId))
-  if (kept.length !== rows.value.length) {
-    rows.value = kept
+  const unknown = rows.value.filter((r) => r.fieldId && !known.has(r.fieldId))
+  if (!unknown.length) return
+  rows.value = rows.value.filter((r) => !r.fieldId || known.has(r.fieldId))
+  if (currentSpaceCode.value) {
+    const seen = new Set(hiddenRows.value.map((r) => r.fieldId))
+    hiddenRows.value.push(...unknown.filter((r) => !seen.has(r.fieldId)))
+  } else {
     sync()
   }
 }
@@ -127,7 +136,7 @@ function dropUnknownRows() {
 async function loadAvailableFields() {
   fieldLoading.value = true
   try {
-    const res = await queryAvailableFieldList({ page: 1, pageSize: 500, searchKey: '' })
+    const res = await queryWorkbenchFieldList({ page: 1, pageSize: 500, searchKey: '' })
     if (res?.success && res.data?.list) {
       availableFields.value = res.data.list.filter((f) => !f.obsolete)
       dropUnknownRows()
@@ -150,15 +159,19 @@ watch(
 
 // ---------- 排序条件 ----------
 const rows = ref<SortRow[]>([])
+/** 不属于当前空间的排序：面板中不展示，提交时追加在末尾保留 */
+const hiddenRows = ref<SortRow[]>([])
 
 watch(
   () => props.modelValue,
   (val) => {
     const next = (val || []).map((item) => ({ fieldId: item.field?.id || '', sortTypeCode: item.sortTypeCode || 'ASC' }))
-    // 与本地一致（含未选字段的空行）时不覆盖，避免新增的空行被父级回写冲掉
-    const sameAsLocal = JSON.stringify(next) === JSON.stringify(rows.value.filter((r) => r.fieldId))
+    // 与本地一致（含未选字段的空行、隐藏的其它空间排序）时不覆盖，避免新增的空行被父级回写冲掉
+    const local = [...rows.value.filter((r) => r.fieldId), ...hiddenRows.value]
+    const sameAsLocal = JSON.stringify(next) === JSON.stringify(local)
     if (!sameAsLocal) {
       rows.value = next
+      hiddenRows.value = []
       dropUnknownRows()
     }
   },
@@ -174,8 +187,7 @@ function isUsedByOther(fieldId: string, index: number): boolean {
 function sync() {
   emit(
     'update:modelValue',
-    rows.value
-      .filter((r) => r.fieldId)
+    [...rows.value.filter((r) => r.fieldId), ...hiddenRows.value]
       .map((r) => ({ field: { id: r.fieldId, datasourceId: 0 }, sortTypeCode: r.sortTypeCode })),
   )
 }

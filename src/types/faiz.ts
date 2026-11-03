@@ -550,6 +550,8 @@ export interface AvailableFieldQuery {
   searchKey?: string
   /** 展示位置：CREATE（新建）/ EDIT（编辑）/ DETAIL（详情）/ LIST（列表）；传了则只返回该场景展示的字段 */
   displayScene?: string | string[]
+  /** 空间编码：传了则只返回该空间可用的字段（系统字段 + 关联本空间问题类型的自定义字段） */
+  spaceCode?: string
 }
 
 /** 可用字段单项 */
@@ -898,8 +900,8 @@ export interface IssueEditMetaVO {
   statusName?: string
   statusColor?: string
   statusNode?: string
-  /** 表单分组类型：TAB_CONTAINER（data 为 { tabItems }）/ COMMON_LIST（data 为字段数组） */
-  type?: 'TAB_CONTAINER' | 'COMMON_LIST' | string
+  /** 表单分组类型：TAB_CONTAINER（data 为 { tabItems }）/ COMMON_LIST（data 为字段数组）/ FORM（data 为 { fromItems }，tabItems 为 null） */
+  type?: 'TAB_CONTAINER' | 'COMMON_LIST' | 'FORM' | string
   /** TAB_CONTAINER 时为 { tabItems: [...]，fromItems }；COMMON_LIST 时为字段数组 */
   data?: { tabItems?: IssueEditMetaTabItem[]; fromItems?: unknown | null } | DetailField[] | null
   isUpdateToDefault?: boolean

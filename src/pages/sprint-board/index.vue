@@ -234,7 +234,7 @@ import {
   getIssues,
   getFilterDraft,
   updateFilterDraft,
-  queryAvailableFieldList,
+  queryWorkbenchFieldList,
   getWorkflowNextNodes,
   changeWorkflowTaskStatus,
   type WorkflowNextNode,
@@ -429,7 +429,7 @@ const fieldLoading = ref(false)
 async function loadAvailableFields() {
   fieldLoading.value = true
   try {
-    const res = await queryAvailableFieldList({ page: 1, pageSize: 500, searchKey: '' })
+    const res = await queryWorkbenchFieldList({ page: 1, pageSize: 500, searchKey: '' })
     if (res?.success && res.data?.list) availableFields.value = res.data.list.filter((f) => !f.obsolete)
   } catch {
     // 请求层已统一提示

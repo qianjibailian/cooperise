@@ -292,6 +292,7 @@ import AppSideDrawer from '@/components/AppSideDrawer.vue'
 import NewIssueFormModal from '@/components/NewIssueFormModal.vue'
 import { notifyIssueCreated, onIssueCreated } from '@/utils/issue-events'
 import { useTodoCount, refreshTodoCount } from '@/utils/todo-count'
+import { currentSpaceCode } from '@/utils/current-space'
 import { useAuth } from '@/utils/auth'
 import CreateViewModal from '@/components/CreateViewModal.vue'
 import ViewTypeIcon from '@/components/ViewTypeIcon.vue'
@@ -318,6 +319,15 @@ const { user: authUser } = useAuth()
 const todoUserNo = computed(() => authUser.value?.memberId || '10284941')
 onMounted(() => refreshTodoCount(todoUserNo.value))
 onIssueCreated(() => refreshTodoCount(todoUserNo.value))
+// 顶部切换空间后：「我的事项 (N)」按新空间重新计数；「我的视图」按空间重新加载，
+// 当前打开的视图不属于新空间时回到「我的事项」
+watch(currentSpaceCode, async () => {
+  refreshTodoCount(todoUserNo.value)
+  await fetchViewList(true)
+  const m = route.path.match(/^\/workbench\/view\/([^/?#]+)/)
+  const code = m ? decodeURIComponent(m[1]) : ''
+  if (code && code !== 'group' && !__findViewItem(code)) router.replace('/workbench/todo')
+})
 
 const drawerOpen = ref(false)
 const sidebarCollapsed = ref(false)

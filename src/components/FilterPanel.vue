@@ -1,22 +1,28 @@
 <template>
-  <div class="filter-panel">
+  <div class="filter-panel" :class="{ 'is-embedded': embedded }">
     <div class="filter-panel-header">
-      <span class="filter-title">全局筛选<span class="filter-count">{{ conditions.length }}</span></span>
+      <span class="filter-title">{{ embedded ? '自定义条件' : '全局筛选' }}<span class="filter-count">{{ conditions.length }}</span></span>
       <div class="filter-actions">
         <span class="filter-logic-label">满足</span>
         <a-select v-model:value="logicLocal" size="small" class="filter-logic">
           <a-select-option value="AND">全部条件</a-select-option>
           <a-select-option value="OR">任一条件</a-select-option>
         </a-select>
-        <span class="filter-divider">|</span>
-        <span class="filter-action-link" @click="resetDefault">恢复默认</span>
+        <template v-if="!embedded">
+          <span class="filter-divider">|</span>
+          <span class="filter-action-link" @click="resetDefault">恢复默认</span>
+        </template>
         <span class="filter-divider">|</span>
         <span class="filter-action-link" @click="handleClear">清空</span>
       </div>
     </div>
 
     <div class="filter-conditions">
-      <a-empty v-if="!conditions.length" :image="Empty.PRESENTED_IMAGE_SIMPLE" description="暂无筛选条件，将展示全部事项" />
+      <a-empty
+        v-if="!conditions.length"
+        :image="Empty.PRESENTED_IMAGE_SIMPLE"
+        :description="embedded ? '暂无自定义条件' : '暂无筛选条件，将展示全部事项'"
+      />
 
       <div v-for="(cond, index) in conditions" :key="index" class="filter-row">
         <span class="condition-logic-text">{{ index === 0 ? '当' : logicLocal === 'AND' ? '且' : '或' }}</span>
@@ -188,7 +194,7 @@
       </div>
     </div>
 
-    <div class="filter-footer">
+    <div v-if="!embedded" class="filter-footer">
       <a-button class="fp-btn" size="small" @click="emit('reset')">重置</a-button>
       <a-button class="fp-btn fp-btn-primary" size="small" type="primary" @click="handleSave">保存</a-button>
     </div>
@@ -201,7 +207,7 @@ import dayjs from 'dayjs'
 import { Empty } from 'ant-design-vue'
 import { CloseOutlined } from '@ant-design/icons-vue'
 import {
-  queryAvailableFieldList,
+  queryWorkbenchFieldList,
   queryIssueTypes,
   queryIssueTypeStatuses,
   queryUsers,
@@ -211,6 +217,7 @@ import type { AvailableFieldItem, UserItem } from '@/types/faiz'
 import { toFieldOperator, type FieldOperator } from '@/types/fieldOperator'
 import { personLabel, personName, personAccount, personAvatar } from '@/utils/person'
 import { issueTypeIconOf } from '@/utils/issueTypeIcons'
+import { currentSpaceCode } from '@/utils/current-space'
 import {
   OPERATORS,
   OPERATORS_BY_KIND,
@@ -227,12 +234,15 @@ interface Props {
   visible: boolean
   modelValue?: FilterCondition[]
   logic?: FilterLogic
+  /** 嵌入表单使用（如看板弹窗）：隐藏「恢复默认」与底部「重置 / 保存」，条件实时通过 v-model 回传 */
+  embedded?: boolean
 }
 
 const props = withDefaults(defineProps<Props>(), {
   visible: false,
   modelValue: () => [],
   logic: 'AND',
+  embedded: false,
 })
 
 const emit = defineEmits<{
@@ -325,7 +335,7 @@ async function loadAvailableFields() {
   fieldLoading.value = true
   try {
     // 与日历「分组」「字段」同源：/availableField/list（自定义字段 + 系统字段），一次取全量
-    const res = await queryAvailableFieldList({ page: 1, pageSize: 500, searchKey: '' })
+    const res = await queryWorkbenchFieldList({ page: 1, pageSize: 500, searchKey: '' })
     if (res?.success && res.data?.list) availableFields.value = res.data.list.filter((f) => !f.obsolete)
   } catch {
     // 请求层已统一提示；保留上次结果
@@ -421,7 +431,8 @@ function setSelectValues(c: FilterCondition, v: unknown) {
 /** 问题类型列表只拉一次，状态与问题类型选项共用 */
 let issueTypesPromise: Promise<{ id: number; issueTypeName: string; issueTypeCode?: string; color?: string; iconUri?: string | null }[]> | null = null
 function loadIssueTypes() {
-  issueTypesPromise ??= queryIssueTypes({ page: 1, pageSize: 999, status: 1 })
+  // 顶部选了空间时只列该空间的问题类型（状态选项也随之只取这些类型下的状态）
+  issueTypesPromise ??= queryIssueTypes({ page: 1, pageSize: 999, status: 1, spaceCode: currentSpaceCode.value || undefined })
     .then((res) => (res?.success ? res.data?.list || [] : []))
     .catch(() => [])
   return issueTypesPromise
@@ -646,6 +657,13 @@ watch(
   color: #1d1d1f;
   font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto,
     'Helvetica Neue', 'PingFang SC', 'Microsoft YaHei', Arial, sans-serif;
+}
+
+.filter-panel.is-embedded {
+  padding: 10px 12px;
+  min-height: 0;
+  border: 1px solid rgba(60, 60, 67, 0.12);
+  border-radius: 8px;
 }
 
 .filter-panel-header {

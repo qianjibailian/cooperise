@@ -69,7 +69,12 @@ export function useViewStore() {
     if (!force && loadedOnce.value && viewGroups.value.length > 0) {
       return viewGroups.value
     }
-    if (loadingPromise.value) return loadingPromise.value
+    if (loadingPromise.value) {
+      if (!force) return loadingPromise.value
+      // 强制刷新（如切换空间）时，等进行中的请求结束再按最新条件重拉，避免拿到旧空间的视图
+      await loadingPromise.value.catch(() => undefined)
+      if (loadingPromise.value) return loadingPromise.value
+    }
 
     viewListLoading.value = true
     const work = (async () => {

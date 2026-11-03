@@ -8,6 +8,11 @@
       </div>
     </div>
 
+    <!-- 空间切换（仅工作台） -->
+    <div v-if="isWorkbench" class="header-space">
+      <HeaderSpaceSwitcher />
+    </div>
+
     <div class="header-center" v-if="false">
       <div class="workspace-btn" @click="$emit('workspace-click')">
         <HomeOutlined />
@@ -17,7 +22,7 @@
 
     <div class="header-right">
       <!-- 搜索框 + 自控下拉面板（不用 a-dropdown：受控 open 会被组件内部重置，结果有数据也不弹出） -->
-      <div class="header-search-wrap">
+      <div v-if="isWorkbench" class="header-search-wrap">
         <a-input
           v-model:value="searchValue"
           :placeholder="searchPlaceholder"
@@ -35,7 +40,9 @@
         <div v-if="dropdownOpen" class="search-panel" @mousedown.prevent>
           <!-- 有输入：搜索结果（参考 Google / Spotlight：单行、灰色辅助信息、命中词加粗） -->
           <div v-if="searchValue.trim()" class="sp-body">
-            <div v-if="fuzzyResults.length" class="sp-section">问题</div>
+            <div v-if="fuzzyResults.length" class="sp-section">
+              问题<span v-if="scopeSpaceName" class="sp-scope"> · {{ scopeSpaceName }}</span>
+            </div>
             <div v-if="fuzzyResults.length" class="sp-list">
               <div
                 v-for="(item, i) in fuzzyResults"
@@ -69,11 +76,15 @@
               </div>
             </div>
             <div v-else-if="fuzzyLoading" class="sp-empty">搜索中…</div>
-            <div v-else class="sp-empty">没有找到相关问题</div>
+            <div v-else class="sp-empty">
+              {{ scopeSpaceName ? `在「${scopeSpaceName}」中没有找到相关问题` : '没有找到相关问题' }}
+            </div>
           </div>
           <!-- 未输入：搜索提示 -->
           <div v-else class="sp-body">
-            <div class="sp-empty">输入问题单号或概要</div>
+            <div class="sp-empty">
+              {{ scopeSpaceName ? `在「${scopeSpaceName}」中搜索问题单号或概要` : '输入问题单号或概要' }}
+            </div>
           </div>
           <!-- 最近搜索 / 最近访问：暂时隐藏（数据为占位，待接入真实记录后恢复）
           <div v-else class="search-dropdown">
@@ -115,7 +126,7 @@
         {{ locale === 'en' ? '中文' : 'EN' }}
       </button>
 
-      <button class="header-create-btn" @click="$emit('create-click')">
+      <button v-if="isWorkbench" class="header-create-btn" @click="$emit('create-click')">
         <PlusOutlined />
         <span>新建</span>
       </button>
@@ -189,7 +200,7 @@
 
 <script setup lang="ts">
 import { ref, computed, nextTick, onMounted, onBeforeUnmount, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 
 import {
   HomeOutlined,
@@ -203,6 +214,9 @@ import {
   CheckOutlined,
 } from '@ant-design/icons-vue'
 import AppLogo from './AppLogo.vue'
+import HeaderSpaceSwitcher from './HeaderSpaceSwitcher.vue'
+import { currentSpaceCode } from '@/utils/current-space'
+import { useSpaces } from '@/utils/space-store'
 import { useAuth, setAuthUser } from '@/utils/auth'
 import { useTheme } from '@/utils/theme'
 import { useLocale } from '@/i18n'
@@ -326,6 +340,17 @@ async function runFuzzyQuery(keyword: string) {
   }
 }
 
+/** 搜索范围：顶部选了空间时只搜该空间（fuzzyQueryIssues 自动带 spaceCode），面板里提示当前范围 */
+const { findSpace } = useSpaces()
+const scopeSpaceName = computed(() => (currentSpaceCode.value ? findSpace(currentSpaceCode.value)?.spaceName || '' : ''))
+// 切换空间时，若搜索框有内容，按新空间重新搜索
+watch(currentSpaceCode, () => {
+  const kw = searchValue.value.trim()
+  if (!kw) return
+  fuzzyLoading.value = true
+  runFuzzyQuery(kw)
+})
+
 /** 键盘选中项：↑↓ 切换，回车打开 */
 const activeIndex = ref(0)
 watch(fuzzyResults, () => (activeIndex.value = 0))
@@ -407,6 +432,11 @@ const userDisplayLabel = computed(() =>
 )
 const userInitials = computed(() => username.value.slice(-2).toUpperCase())
 const router = useRouter()
+const route = useRoute()
+/** 空间切换 / 搜索事项 / 新建按钮只在工作台菜单下展示 */
+const isWorkbench = computed(() => route.path.startsWith('/workbench'))
+// 离开工作台时收起搜索面板，避免回来时残留展开状态
+watch(isWorkbench, (v) => { if (!v) closeSearchDropdown() })
 
 /** 头像地址；加载失败后回退为姓名缩写 */
 const avatarFailed = ref(false)
@@ -571,6 +601,12 @@ async function handleLogout() {
 
 .workspace-btn:hover {
   background: #eef1f6;
+}
+
+.header-space {
+  display: flex;
+  align-items: center;
+  margin-left: 8px;
 }
 
 .header-right {
@@ -783,6 +819,11 @@ async function handleLogout() {
   font-size: 12px;
   font-weight: 500;
   color: #8c8c8c;
+}
+
+.sp-scope {
+  font-weight: 400;
+  color: #aeaeb2;
 }
 
 .sp-list {

@@ -352,6 +352,7 @@ import { PlusOutlined, DeleteOutlined, CloseOutlined } from '@ant-design/icons-v
 import { Empty, message } from 'ant-design-vue'
 import { createIssue, getAvailableFieldOptions, queryUsers, queryTemplates, getTemplate, getIssueCreateMeta, queryEditMeta, patchIssue, queryAvailableFieldList, querySpaceOptions, queryIssueTypes, createTemplate, type SpaceItem } from '@/api/faiz'
 import { issueTypeIconOf } from '@/utils/issueTypeIcons'
+import { currentSpaceCode } from '@/utils/current-space'
 import { personLabel, personAvatar, personInitial, personKey } from '@/utils/person'
 import { FIELD_TYPE, normalizeFieldType, formatTypeLabel } from '@/types/fieldType'
 import type {
@@ -440,8 +441,13 @@ function loadSpaceOptions() {
       const res = await querySpaceOptions()
       if (!res?.success) return
       spaceOptions.value = res.data || []
-      // 新建：默认带出上次使用的空间，失效时取第一个
-      if (!isEditMode.value && !spaceOptions.value.some(sp => sp.id === newFormSpaceId.value)) {
+      // 新建：顶部选了空间时默认带出该空间；否则带出上次使用的空间，失效时取第一个
+      const headerSpace = currentSpaceCode.value
+        ? spaceOptions.value.find(sp => String(sp.spaceCode) === currentSpaceCode.value)
+        : undefined
+      if (!isEditMode.value && headerSpace) {
+        newFormSpaceId.value = headerSpace.id
+      } else if (!isEditMode.value && !spaceOptions.value.some(sp => sp.id === newFormSpaceId.value)) {
         let last: number | undefined
         try { last = Number(localStorage.getItem(LAST_SPACE_KEY)) || undefined } catch { /* 存储不可用 */ }
         newFormSpaceId.value = spaceOptions.value.find(sp => sp.id === last)?.id ?? spaceOptions.value[0]?.id
@@ -1076,6 +1082,12 @@ const EDIT_SCENE = 'EDIT'
 /** 把 queryEditMeta 的返回值转成表单 tab 结构：type + data(tabItems)，复用详情的 tab 转换逻辑 */
 function buildTabsFromEditMeta(meta: IssueEditMetaVO): any[] {
   const structure = meta?.data
+  // type=FORM：字段平铺在 data.fromItems（tabItems 为 null），按单 tab 处理（单 tab 不显示 tab 栏）
+  const obj = structure && !Array.isArray(structure) ? structure : null
+  const formItems = obj?.fromItems
+  if (Array.isArray(formItems) && !obj?.tabItems?.length) {
+    return formItems.length ? [{ title: '基本信息', sequence: 0, issueFields: [...formItems] }] : []
+  }
   if (structure) {
     // 返回的 type（TAB_CONTAINER/COMMON_LIST）在顶层，data 是对应的 tabItems / 字段数组
     return buildTabsFromDetail([
@@ -1144,7 +1156,7 @@ async function loadEditDetail(issueKey: string) {
     if (spaceLoadingReq) await spaceLoadingReq
     const res = await queryEditMeta({ issueKey, scene: EDIT_SCENE })
     if (res?.success && res.data) {
-      // 新接口直接返回编辑弹窗的表单结构（TAB_CONTAINER / COMMON_LIST），与详情 layoutGroup 结构一致
+      // 新接口直接返回编辑弹窗的表单结构（TAB_CONTAINER / COMMON_LIST / FORM）
       const tabs = buildTabsFromEditMeta(res.data)
       if (tabs.length) {
         newFormTabs.value = tabs
@@ -1202,14 +1214,15 @@ async function loadEditDetail(issueKey: string) {
           }
         }
         newFormData.value = form
-        // 顶部「空间」「问题类型」按接口返回值回显（编辑模式下两个下拉均禁用，仅展示）
-        applyEditHeaderMeta(res.data)
         // 成员选项预取 + 自定义字段选项拉取（保证人员下拉/级联可选）
         postLoadAfterBuildTabs()
       } else {
         newFormTabs.value = []
         newFormData.value = {}
       }
+      // 顶部「空间」「问题类型」按接口返回值回显（编辑模式下两个下拉均禁用，仅展示）；
+      // 放在字段回填之后、且不依赖字段是否为空，保证以接口返回的 issueTypeCode / spaceCode 为准
+      applyEditHeaderMeta(res.data)
     }
   } catch {
   } finally {

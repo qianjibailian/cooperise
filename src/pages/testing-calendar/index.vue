@@ -318,7 +318,7 @@ import {
   type FilterCondition,
   type FilterLogic,
 } from '@/utils/issueFilter'
-import { getIssues, getFilterDraft, updateFilterDraft, queryAvailableFieldList } from '@/api/faiz'
+import { getIssues, getFilterDraft, updateFilterDraft, queryWorkbenchFieldList } from '@/api/faiz'
 import type { AvailableFieldItem, FilterDraft, GlobalFilter, IssueQueryPayload, IssueRecord } from '@/types/faiz'
 import {
   DATE_TYPES,
@@ -527,7 +527,7 @@ async function fetchFieldPage(page: number) {
   if (more) fieldLoadingMore.value = true
   else fieldLoading.value = true
   try {
-    const res = await queryAvailableFieldList({ page, pageSize: FIELD_PAGE_SIZE, searchKey: fieldKeyword.value.trim() })
+    const res = await queryWorkbenchFieldList({ page, pageSize: FIELD_PAGE_SIZE, searchKey: fieldKeyword.value.trim() })
     if (seq !== fieldReqSeq || !res?.success || !res.data) return
     const list = (res.data.list || []).filter((f) => !f.obsolete)
     for (const f of list) fieldNames.value[f.fieldId] = f.fieldName

@@ -71,7 +71,7 @@
     <a-modal
       v-model:open="modalOpen"
       :title="form.id ? '编辑看板' : '添加看板'"
-      :width="520"
+      :width="720"
       centered
       destroy-on-close
       :ok-text="form.id ? '保存' : '添加'"
@@ -115,6 +115,15 @@
             class="mb-status-select"
           />
         </a-form-item>
+        <a-form-item label="自定义条件" class="mb-custom-filter">
+          <template #extra>与上面的条件同时满足；可按任意字段筛选，如优先级、迭代、自定义字段</template>
+          <FilterPanel
+            :visible="modalOpen"
+            v-model="customConditions"
+            v-model:logic="customLogic"
+            embedded
+          />
+        </a-form-item>
         <a-form-item label="展示条数">
           <a-select v-model:value="form.pageSize" :options="PAGE_SIZE_OPTIONS" style="width: 120px" />
         </a-form-item>
@@ -140,6 +149,16 @@ import {
 } from '@/api/faiz'
 import { issueTypeIconOf } from '@/utils/issueTypeIcons'
 import IssueDetailDrawer from '@/components/IssueDetailDrawer.vue'
+import FilterPanel from '@/components/FilterPanel.vue'
+import { currentSpaceCode } from '@/utils/current-space'
+import {
+  buildGlobalFilter,
+  parseGlobalFilter,
+  isConditionComplete,
+  type FilterCondition,
+  type FilterLogic,
+} from '@/utils/issueFilter'
+import type { GlobalFilter } from '@/types/faiz'
 
 /**
  * 我的看板：当前用户自己配置的卡片面板（配置存后端，跟着账号走）
@@ -202,7 +221,8 @@ const typesLoading = ref(false)
 async function loadIssueTypes() {
   typesLoading.value = true
   try {
-    const res = await queryIssueTypes({ page: 1, pageSize: 999, status: 1 })
+    // 顶部选了空间时只列该空间的问题类型
+    const res = await queryIssueTypes({ page: 1, pageSize: 999, status: 1, spaceCode: currentSpaceCode.value || undefined })
     issueTypes.value = (res?.success ? res.data?.list || [] : []).filter(t => t.issueTypeCode)
   } catch {
     issueTypes.value = []
@@ -251,7 +271,29 @@ function conditionText(p: MyBoardPanel) {
   const scope = p.statusScope === 'SPECIFIC'
     ? p.statusCodes.map(c => statusNames[c] ?? c).join('、')
     : SCOPE_OPTIONS.find(o => o.value === p.statusScope)?.label ?? ''
-  return [types, relation, scope].filter(Boolean).join(' · ')
+  const customCount = customConditionCount(p)
+  return [types, relation, scope, customCount ? `${customCount} 个自定义条件` : ''].filter(Boolean).join(' · ')
+}
+
+// ---- 自定义条件：复用全局筛选的条件编辑器，存为 globalFilter JSON ----
+const customConditions = ref<FilterCondition[]>([])
+const customLogic = ref<FilterLogic>('AND')
+
+function parseFilterConfig(raw?: string | null): { conditions: FilterCondition[]; logic: FilterLogic } {
+  if (!raw) return { conditions: [], logic: 'AND' }
+  try {
+    return parseGlobalFilter(JSON.parse(raw) as GlobalFilter)
+  } catch {
+    return { conditions: [], logic: 'AND' }
+  }
+}
+function customConditionCount(p: MyBoardPanel) {
+  return parseFilterConfig(p.filterConfig).conditions.filter(isConditionComplete).length
+}
+/** 当前编辑的条件 → filterConfig；没有完整条件时传空串（后端存为无） */
+function buildFilterConfig(): string {
+  const complete = customConditions.value.filter(isConditionComplete)
+  return complete.length ? JSON.stringify(buildGlobalFilter(complete, customLogic.value)) : ''
 }
 
 function statusStyle(color?: string) {
@@ -275,6 +317,8 @@ const form = reactive(emptyForm())
 
 function openCreate() {
   Object.assign(form, emptyForm())
+  customConditions.value = []
+  customLogic.value = 'AND'
   modalOpen.value = true
   loadStatuses([])
 }
@@ -289,6 +333,9 @@ function openEdit(p: MyBoardPanel) {
     statusCodes: [...p.statusCodes],
     pageSize: p.pageSize,
   })
+  const parsed = parseFilterConfig(p.filterConfig)
+  customConditions.value = parsed.conditions
+  customLogic.value = parsed.logic
   modalOpen.value = true
   loadStatuses(form.issueTypeCodes)
 }
@@ -311,9 +358,14 @@ async function submit() {
     message.warning('请至少选择一个状态')
     return
   }
+  // 自定义条件里有填了一半的行：提示补全，避免用户以为条件已生效
+  if (customConditions.value.some(c => (c.field || c.operator) && !isConditionComplete(c))) {
+    message.warning('自定义条件未填写完整，请补全或删除')
+    return
+  }
   saving.value = true
   try {
-    const res = await saveMyBoardPanel({ ...form, title: form.title.trim() })
+    const res = await saveMyBoardPanel({ ...form, title: form.title.trim(), filterConfig: buildFilterConfig() })
     if (res?.success && res.data) {
       const saved = res.data
       const idx = panels.value.findIndex(p => p.id === saved.id)

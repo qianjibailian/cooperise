@@ -2,6 +2,7 @@
  * 视图（日历 / 看板等）共用的事项字段解析、分组与草稿解析工具。
  * 字段 ID 一律为 /availableField/list 的 fieldId；/issue/query 只返回 showField 里的字段。
  */
+import { currentSpaceCode } from '@/utils/current-space'
 import dayjs from 'dayjs'
 import {
   queryUsers,
@@ -200,7 +201,8 @@ export async function fetchGroupUniverse(
     })
   }
   if (fieldId === 'issuetype' || fieldId === 'status') {
-    const typeRes = await queryIssueTypes({ page: 1, pageSize: 999, status: 1 })
+    // 顶部选了空间时只取该空间的问题类型 / 状态
+    const typeRes = await queryIssueTypes({ page: 1, pageSize: 999, status: 1, spaceCode: currentSpaceCode.value || undefined })
     const types = typeRes?.success ? typeRes.data?.list || [] : []
     if (fieldId === 'issuetype') {
       return types.map((t) => {

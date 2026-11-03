@@ -294,7 +294,7 @@ import {
   type FilterCondition,
   type FilterLogic,
 } from '@/utils/issueFilter'
-import { getIssues, getFilterDraft, updateFilterDraft, queryAvailableFieldList } from '@/api/faiz'
+import { getIssues, getFilterDraft, updateFilterDraft, queryWorkbenchFieldList } from '@/api/faiz'
 import type { AvailableFieldItem, FilterDraft, GlobalFilter, IssueQueryPayload, IssueRecord } from '@/types/faiz'
 import {
   DATE_TYPES,
@@ -428,7 +428,7 @@ const fieldNames = computed(() => new Map(availableFields.value.map((f) => [f.fi
 async function loadAvailableFields() {
   fieldLoading.value = true
   try {
-    const res = await queryAvailableFieldList({ page: 1, pageSize: 500, searchKey: '' })
+    const res = await queryWorkbenchFieldList({ page: 1, pageSize: 500, searchKey: '' })
     if (res?.success && res.data?.list) availableFields.value = res.data.list.filter((f) => !f.obsolete)
   } catch {
     // 请求层已统一提示

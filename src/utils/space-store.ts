@@ -1,5 +1,6 @@
 import { ref } from 'vue'
 import { querySpaces, type SpaceItem } from '@/api/faiz'
+import { currentSpaceCode, setCurrentSpace } from './current-space'
 
 /** 全部空间（含停用，便于历史数据回显名称）；模块级缓存，多页面共享 */
 const spaces = ref<SpaceItem[]>([])
@@ -53,5 +54,5 @@ async function orgCodeOfSpace(code?: string | null): Promise<string | undefined>
 }
 
 export function useSpaces() {
-  return { spaces, loading, ensureLoaded, findSpace, spaceNameOf, orgCodeOfSpace }
+  return { spaces, loading, ensureLoaded, findSpace, spaceNameOf, orgCodeOfSpace, currentSpaceCode, setCurrentSpace }
 }
