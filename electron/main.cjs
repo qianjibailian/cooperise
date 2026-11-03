@@ -36,6 +36,10 @@ let launchedAtLogin = process.argv.includes(AUTOSTART_ARG)
 const TITLE_BAR_HEIGHT = 56
 const TITLE_BAR_OVERLAY = { color: '#ffffff', symbolColor: '#1d1d1f', height: TITLE_BAR_HEIGHT }
 
+/** 窗口最小尺寸：与前端布局的 --app-min-width(1280px) 对齐，避免整页出现滚动条 */
+const MIN_WINDOW_WIDTH = 1280
+const MIN_WINDOW_HEIGHT = 720
+
 if (process.platform === 'win32') app.setAppUserModelId('com.speedx.cooperise')
 
 // ---------------- 配置 ----------------
@@ -142,22 +146,31 @@ function mcpStatus() {
 // ---------------- 窗口状态（大小 / 位置 / 是否最大化） ----------------
 const statePath = () => path.join(app.getPath('userData'), 'window-state.json')
 
+/** 把记录下来的窗口尺寸拉回最小值，避免旧版本留下的小窗口一启动就有滚动条 */
+function clampToMinSize(size) {
+  return {
+    ...size,
+    width: Math.max(MIN_WINDOW_WIDTH, Math.round(Number(size.width) || 0)),
+    height: Math.max(MIN_WINDOW_HEIGHT, Math.round(Number(size.height) || 0)),
+  }
+}
+
 function loadWindowState() {
   // 默认参考 Apifox：1280×800 居中；小屏按工作区 90% 收缩
   const { width: areaW, height: areaH } = screen.getPrimaryDisplay().workAreaSize
   const fallback = { width: Math.min(1280, Math.round(areaW * 0.9)), height: Math.min(800, Math.round(areaH * 0.9)) }
   try {
     const s = JSON.parse(fs.readFileSync(statePath(), 'utf-8'))
-    if (!(s.width > 0 && s.height > 0)) return fallback
+    if (!(s.width > 0 && s.height > 0)) return clampToMinSize(fallback)
     // 上次所在的显示器已拔掉：不恢复位置，回到居中
     if (typeof s.x === 'number' && typeof s.y === 'number') {
       const visible = screen.getAllDisplays().some(({ workArea: a }) =>
         s.x + 100 > a.x && s.x < a.x + a.width - 100 && s.y >= a.y - 10 && s.y < a.y + a.height - 100)
-      if (!visible) return { width: s.width, height: s.height, maximized: s.maximized }
+      if (!visible) return clampToMinSize({ width: s.width, height: s.height, maximized: s.maximized })
     }
-    return s
+    return clampToMinSize(s)
   } catch {
-    return fallback
+    return clampToMinSize(fallback)
   }
 }
 
@@ -322,8 +335,10 @@ function baseWindowOptions() {
     ...chrome,
     title: 'Cooperise',
     backgroundColor: '#ffffff',
-    minWidth: 1024,
-    minHeight: 640,
+    // 前端布局 min-width 为 1280px（App.vue 的 --app-min-width），窗口再小就会出滚动条，
+    // 所以窗口最小尺寸与之对齐；高度 720 保证表格 + 工具条不被压出纵向滚动条
+    minWidth: MIN_WINDOW_WIDTH,
+    minHeight: MIN_WINDOW_HEIGHT,
     webPreferences: {
       preload: PRELOAD,
       contextIsolation: true,
@@ -338,7 +353,7 @@ function attachWindowBehaviors(win) {
   // window.open / target=_blank：应用内页面开新窗口，外部链接交给系统浏览器
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (isAppUrl(url)) {
-      return { action: 'allow', overrideBrowserWindowOptions: { ...baseWindowOptions(), width: 1200, height: 780 } }
+      return { action: 'allow', overrideBrowserWindowOptions: { ...baseWindowOptions(), width: MIN_WINDOW_WIDTH, height: 800 } }
     }
     if (/^(https?|mailto):/i.test(url)) shell.openExternal(url)
     return { action: 'deny' }
