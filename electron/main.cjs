@@ -10,13 +10,15 @@
  * 记住窗口大小与位置；右键菜单；客户端设置（后端地址）在头像菜单 →「客户端设置」。
  *
  * 后端地址等配置：Windows %APPDATA%/Cooperise/config.json；macOS ~/Library/Application Support/Cooperise/config.json。
- * 开发调试：先 `pnpm dev`，再 `pnpm electron:dev`（直接加载 vite dev server）。
+ * 开发调试：`pnpm electron:dev`（自动启动 / 复用 vite dev server 并加载它）。
  */
 const { app, BrowserWindow, Menu, shell, dialog, screen, ipcMain, safeStorage } = require('electron')
 const http = require('http')
 const https = require('https')
 const fs = require('fs')
 const path = require('path')
+const crypto = require('crypto')
+const { startMcpServer } = require('./mcp.cjs')
 
 const DEFAULT_CONFIG = require('./default-config.json')
 const DIST_DIR = path.join(__dirname, '..', 'dist')
@@ -37,6 +39,8 @@ const TITLE_BAR_OVERLAY = { color: '#ffffff', symbolColor: '#1d1d1f', height: TI
 if (process.platform === 'win32') app.setAppUserModelId('com.speedx.cooperise')
 
 // ---------------- 配置 ----------------
+/** 后端地址暂时写死（default-config.json 的 apiTarget），客户端不展示、不允许修改；放开时改为 false 并去掉 loadConfig 里的覆盖 */
+const API_TARGET_LOCKED = true
 const configPath = () => path.join(app.getPath('userData'), 'config.json')
 
 function loadConfig() {
@@ -48,7 +52,8 @@ function loadConfig() {
     // 首次启动或文件损坏：写一份默认配置，方便用户修改
     writeConfig(DEFAULT_CONFIG)
   }
-  return { ...DEFAULT_CONFIG, ...user }
+  // 后端地址暂时固定为 default-config.json 里的值：忽略本机配置文件中旧的 apiTarget，界面上也不展示
+  return { ...DEFAULT_CONFIG, ...user, apiTarget: DEFAULT_CONFIG.apiTarget }
 }
 
 function writeConfig(next) {
@@ -65,6 +70,74 @@ let config = loadConfig()
 
 /** 记住的登录账号（密码已加密），见 desktop:login:* */
 const credentialsPath = () => path.join(app.getPath('userData'), 'credentials.json')
+
+// ---------------- MCP 服务（供 Claude Code / Cursor 等 AI 工具调用，见 mcp.cjs） ----------------
+/** 页面当前登录 token：由渲染进程登录 / 退出时同步过来，只存内存 */
+let sessionToken = ''
+let mcpServer = null
+let mcpError = ''
+const mcpKeyPath = () => path.join(app.getPath('userData'), 'mcp-key')
+
+/** 访问密钥：首次开启时生成，保存在本机；重置后旧配置立即失效 */
+function getMcpAccessKey(regenerate = false) {
+  if (!regenerate) {
+    try {
+      const k = fs.readFileSync(mcpKeyPath(), 'utf-8').trim()
+      if (k.length >= 32) return k
+    } catch {
+      // 首次生成
+    }
+  }
+  const k = 'cpk_' + crypto.randomBytes(24).toString('base64url')
+  fs.mkdirSync(path.dirname(mcpKeyPath()), { recursive: true })
+  fs.writeFileSync(mcpKeyPath(), k, 'utf-8')
+  return k
+}
+
+const mcpPort = () => Number(config.mcpPort) || DEFAULT_CONFIG.mcpPort
+
+async function startMcp() {
+  if (mcpServer) return
+  mcpError = ''
+  try {
+    getMcpAccessKey() // 确保已生成
+    mcpServer = await startMcpServer(
+      {
+        version: app.getVersion(),
+        getToken: () => sessionToken,
+        getApiTarget: () => config.apiTarget,
+        getAccessKey: () => getMcpAccessKey(),
+      },
+      mcpPort(),
+    )
+  } catch (e) {
+    mcpServer = null
+    // 端口固定不回退：AI 工具里配置的地址依赖这个端口
+    mcpError = e.code === 'EADDRINUSE' ? `端口 ${mcpPort()} 已被占用，可在配置文件中修改 mcpPort` : e.message
+  }
+}
+
+function stopMcp() {
+  return new Promise((resolve) => {
+    if (!mcpServer) return resolve()
+    const s = mcpServer
+    mcpServer = null
+    s.close(() => resolve())
+    s.closeAllConnections?.()
+  })
+}
+
+function mcpStatus() {
+  const enabled = !!config.mcpEnabled
+  return {
+    enabled,
+    running: !!mcpServer,
+    error: mcpError,
+    url: `http://127.0.0.1:${mcpPort()}/mcp`,
+    accessKey: enabled ? getMcpAccessKey() : '',
+    loggedIn: !!sessionToken,
+  }
+}
 
 // ---------------- 窗口状态（大小 / 位置 / 是否最大化） ----------------
 const statePath = () => path.join(app.getPath('userData'), 'window-state.json')
@@ -369,6 +442,7 @@ function registerIpc() {
     configPath: configPath(),
   }))
   ipcMain.handle('desktop:set-api-target', (_e, value) => {
+    if (API_TARGET_LOCKED) return { ok: false, message: '后端地址已固定，暂不支持修改' }
     let url
     try {
       url = new URL(String(value || '').trim())
@@ -432,6 +506,29 @@ function registerIpc() {
     return { ok: true, enabled: app.getLoginItemSettings(loginItemOpts).openAtLogin }
   })
   ipcMain.handle('desktop:toggle-devtools', (e) => e.sender.toggleDevTools())
+
+  // 登录态同步（MCP 以当前登录用户身份调后端）：只接受主窗口的消息
+  ipcMain.handle('desktop:session', (e, token) => {
+    if (!mainWindow || e.sender !== mainWindow.webContents) return false
+    sessionToken = typeof token === 'string' ? token : ''
+    return true
+  })
+  ipcMain.handle('desktop:mcp:get', () => mcpStatus())
+  ipcMain.handle('desktop:mcp:set', async (_e, enabled) => {
+    const next = { ...loadConfig(), mcpEnabled: !!enabled }
+    if (!writeConfig(next)) return { ...mcpStatus(), error: '配置文件写入失败' }
+    config = next
+    if (enabled) await startMcp()
+    else {
+      await stopMcp()
+      mcpError = ''
+    }
+    return mcpStatus()
+  })
+  ipcMain.handle('desktop:mcp:reset-key', () => {
+    getMcpAccessKey(true)
+    return mcpStatus()
+  })
 }
 
 /** macOS 的菜单栏在屏幕顶部而非窗口内，必须保留：否则 ⌘C / ⌘V / ⌘Q 等系统快捷键全部失效 */
@@ -519,6 +616,7 @@ if (!app.requestSingleInstanceLock()) {
     appOrigin = new URL(url).origin
     appUrl = url
     createMainWindow(url)
+    if (config.mcpEnabled) startMcp()
   })
 
   // macOS 习惯：关掉窗口应用仍在 Dock，点 Dock 图标重新打开窗口；⌘Q 才真正退出

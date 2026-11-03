@@ -22,6 +22,23 @@ export interface DesktopBridge {
   /** supported=false：开发模式（未安装）不支持 */
   getAutoStart: () => Promise<{ supported: boolean; enabled: boolean }>
   setAutoStart: (enabled: boolean) => Promise<{ ok: boolean; enabled?: boolean; message?: string }>
+  /** 把当前登录 token 同步给主进程（MCP 服务以该用户身份调后端）；退出登录传空串 */
+  syncSession: (token: string) => Promise<boolean>
+  getMcpStatus: () => Promise<McpStatus>
+  setMcpEnabled: (enabled: boolean) => Promise<McpStatus>
+  resetMcpKey: () => Promise<McpStatus>
+}
+
+export interface McpStatus {
+  enabled: boolean
+  running: boolean
+  /** 启动失败原因（如端口被占用） */
+  error: string
+  /** 如 http://127.0.0.1:18084/mcp */
+  url: string
+  accessKey: string
+  /** 客户端是否已登录（未登录时 AI 调用会提示先登录） */
+  loggedIn: boolean
 }
 
 export const desktop: DesktopBridge | undefined =

@@ -17,4 +17,9 @@ contextBridge.exposeInMainWorld('cooperiseDesktop', {
   // 开机自启动
   getAutoStart: () => ipcRenderer.invoke('desktop:autostart:get'),
   setAutoStart: (enabled) => ipcRenderer.invoke('desktop:autostart:set', enabled),
+  // MCP 服务：同步登录态 + 开关 / 状态 / 重置访问密钥
+  syncSession: (token) => ipcRenderer.invoke('desktop:session', token),
+  getMcpStatus: () => ipcRenderer.invoke('desktop:mcp:get'),
+  setMcpEnabled: (enabled) => ipcRenderer.invoke('desktop:mcp:set', enabled),
+  resetMcpKey: () => ipcRenderer.invoke('desktop:mcp:reset-key'),
 })

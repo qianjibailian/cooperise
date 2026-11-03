@@ -13,7 +13,7 @@
     "preview": "vite preview --port 8083",
     "build:lan": "vue-tsc -b && vite build --mode lan",
     "preview:lan": "vite preview --mode lan",
-    "electron:dev": "electron . --dev-url=http://localhost:8083",
+    "electron:dev": "node scripts/electron-dev.mjs",
     "electron:preview": "vite build --mode desktop && electron .",
     "electron:build": "vite build --mode desktop && electron-builder --win --x64",
     "electron:build:mac": "vite build --mode desktop && electron-builder --mac --arm64 --x64"
