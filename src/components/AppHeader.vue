@@ -180,6 +180,7 @@
             <div class="user-menu-list">
               <div class="user-menu-text" @click="handleMenuSelect('settings')">个人中心</div>
               <div class="user-menu-text" @click="handleMenuSelect('account')">账户设置</div>
+              <div v-if="isDesktop" class="user-menu-text" @click="handleMenuSelect('desktop')">客户端设置</div>
               <div class="user-menu-text" @click="handleMenuSelect('logout')">退出登录</div>
             </div>
 
@@ -195,6 +196,7 @@
         </div>
       </div>
     </div>
+    <DesktopSettingsModal v-if="isDesktop" v-model:open="desktopSettingsOpen" />
   </header>
 </template>
 
@@ -215,6 +217,8 @@ import {
 } from '@ant-design/icons-vue'
 import AppLogo from './AppLogo.vue'
 import HeaderSpaceSwitcher from './HeaderSpaceSwitcher.vue'
+import DesktopSettingsModal from './DesktopSettingsModal.vue'
+import { isDesktop } from '@/utils/desktop'
 import { currentSpaceCode } from '@/utils/current-space'
 import { useSpaces } from '@/utils/space-store'
 import { useAuth, setAuthUser } from '@/utils/auth'
@@ -480,9 +484,15 @@ function handleSearch(value?: string) {
 
 const auth = useAuth()
 
+/** 客户端设置弹窗（仅 Windows 客户端） */
+const desktopSettingsOpen = ref(false)
+
 function handleMenuSelect(key: string) {
   setUserPopoverOpen(false)
   switch (key) {
+    case 'desktop':
+      desktopSettingsOpen.value = true
+      break
     case 'logout':
       nextTick(handleLogout)
       break

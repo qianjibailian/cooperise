@@ -11,6 +11,7 @@ import { setupRouter } from './router'
 import { initTheme } from './utils/theme'
 // 中英文切换：dayjs 语言 + 运行时词典翻译（默认中文，记住上次选择）
 import { initLocale } from './i18n'
+import { markDesktop } from './utils/desktop'
 import type { Router } from 'vue-router'
 
 let appInstance: ReturnType<typeof createApp> | null = null
@@ -20,6 +21,7 @@ function render(props?: { container?: HTMLElement }) {
   const container = props?.container || document.getElementById('app')
 
   initTheme()
+  markDesktop()
   routerInstance = setupRouter()
 
   appInstance = createApp(App)

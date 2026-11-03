@@ -3,6 +3,9 @@
   <a-config-provider :theme="antdTheme" :locale="antdLocale">
     <router-view />
   </a-config-provider>
+  <!-- 客户端：登录页等没有顶栏的页面，顶部留一条可拖动窗口的区域 -->
+  <div v-if="isDesktop && route.meta.public" class="desktop-drag-strip" />
+
 </template>
 
 <script setup lang="ts">
@@ -14,6 +17,7 @@ import { useTheme } from '@/utils/theme'
 import zhCN from 'ant-design-vue/es/locale/zh_CN'
 import enUS from 'ant-design-vue/es/locale/en_US'
 import { locale } from '@/i18n'
+import { isDesktop } from '@/utils/desktop'
 
 const route = useRoute()
 const router = useRouter()
@@ -30,6 +34,34 @@ watch(isLoggedIn, (loggedIn) => {
 </script>
 
 <style>
+/* ===== Windows 客户端标题栏（参考 Apifox）=====
+ * 原生标题栏已隐藏，应用顶栏兼作标题栏：空白处可拖动窗口，右侧给系统窗口按钮（最小化 / 最大化 / 关闭）留位。
+ * Electron 的拖动区域不看层级，盖在顶栏上的弹窗 / 抽屉打开时需关闭拖动，否则这块区域点不动。 */
+html.is-desktop {
+  /* 系统窗口按钮占用的宽度：取 Window Controls Overlay 提供的环境变量，取不到时按 Windows 默认 3×46px */
+  --desktop-controls-width: calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, calc(100vw - 138px)));
+}
+html.is-desktop .app-header {
+  -webkit-app-region: drag;
+  padding-right: calc(var(--desktop-controls-width) + 12px) !important;
+  user-select: none;
+}
+html.is-desktop .app-header :is(.header-left > *, .header-left-right > *, .header-space, .header-right > *, a, button, input) {
+  -webkit-app-region: no-drag;
+}
+html.is-desktop .desktop-drag-strip {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: var(--desktop-controls-width);
+  height: 40px;
+  z-index: 2000;
+  -webkit-app-region: drag;
+}
+html.is-desktop body:has(.ant-modal-wrap:not([style*='display: none']), .ant-drawer-open, .ant-image-preview-wrap) :is(.app-header, .desktop-drag-strip) {
+  -webkit-app-region: no-drag;
+}
+
 * {
   margin: 0;
   padding: 0;
