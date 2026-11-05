@@ -16,7 +16,7 @@
       </div>
 
       <button type="submit" class="auth-btn" :disabled="loading">{{ loading ? '登录中…' : '登录' }}</button>
-      <p class="auth-terms">继续即表示你同意<a>《服务协议》</a>和<a>《隐私政策》</a>。</p>
+      <p class="auth-terms">继续即表示你同意<a>《服务协议》</a>和<a>《隐私政策》</a></p>
     </form>
 
   </AuthLayout>

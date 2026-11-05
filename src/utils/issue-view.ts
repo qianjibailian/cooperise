@@ -33,6 +33,8 @@ export interface GroupValue {
 /** 事项卡片 / 日历条上的一行：按「展示字段」勾选顺序，每个字段一行 */
 export interface FieldLine {
   id: string
+  /** 字段名（展示在值前面） */
+  label: string
   text: string
   isKey: boolean
   /** 以彩色标签展示的字段（单号 / 状态 / 问题类型）的颜色，其余为空 */
@@ -113,8 +115,15 @@ export function tagColorOf(rec: IssueRecord, id: string): string {
   return hexOr(color, TAG_DEFAULT_COLORS[id])
 }
 
-/** 按勾选顺序生成每个字段一行（空值不占行） */
-export function buildFieldLines(rec: IssueRecord, shownIds: string[]): FieldLine[] {
+/**
+ * 按勾选顺序生成每个字段一行（空值不占行）。
+ * 字段名优先取 /issue/query 返回的 name，缺省时取 names（/availableField/list 的 fieldId → fieldName）
+ */
+export function buildFieldLines(
+  rec: IssueRecord,
+  shownIds: string[],
+  names: Record<string, string> = {},
+): FieldLine[] {
   return shownIds
     .map((id) => {
       const f = fieldOf(rec, id)
@@ -122,6 +131,7 @@ export function buildFieldLines(rec: IssueRecord, shownIds: string[]): FieldLine
       const isUser = USER_TYPES.has(String(f?.type ?? '').toUpperCase()) && !!objOf(first)
       return {
         id,
+        label: String(f?.name || names[id] || id),
         text: id === 'issuekey' ? issueKeyOf(rec) : fieldText(f),
         isKey: id === 'issuekey',
         tagColor: tagColorOf(rec, id),
@@ -188,7 +198,7 @@ export async function fetchGroupUniverse(
   opts?: { issueTypeCodes?: string[] },
 ): Promise<GroupValue[]> {
   if (isUserField(meta)) {
-    const res = await queryUsers({ keyword: '', isActive: 1, page: 1, pageSize: 500 })
+    const res = await queryUsers({ keyword: '', isActive: 1, spaceCode: currentSpaceCode.value || undefined, page: 1, pageSize: 500 })
     return (res?.data?.list || []).map((u) => {
       const key = String(u.memberId || u.id || u.userNo)
       return {
@@ -228,7 +238,7 @@ export async function fetchGroupUniverse(
   // 下拉类自定义字段：取字段选项
   const type = fieldTypeOf(meta)
   if (!type.startsWith('SELECT_LIST') && type !== 'CASCADER_SINGLE') return []
-  const res = await getAvailableFieldOptions([{ fieldId, type, projectId: '18701', issueTypeCode: '' }])
+  const res = await getAvailableFieldOptions([{ fieldId, type, projectId: currentSpaceCode.value || '18701', issueTypeCode: '' }])
   const bucket = (res?.data || [])[0] as { options?: unknown } | undefined
   const nested = (bucket?.options as { options?: unknown[] } | undefined)?.options
   const raw = (Array.isArray(bucket?.options) ? bucket.options : Array.isArray(nested) ? nested : []) as Record<string, unknown>[]
@@ -270,3 +280,17 @@ export function parseGroupFieldId(raw?: string | null): string | null {
   if (typeof first === 'string') return first
   return (first as { field?: { id?: string } } | undefined)?.field?.id ?? ''
 }
+
+/**
+ * 详情接口里问题类型字段（issuetype）的值 → 问题类型编码（如 TYPE10001）。
+ * 值可能是对象（issueTypeCode / code / id）或直接是编码 / 数字 ID；纯数字 ID 按 TYPE{id} 换算。
+ */
+export function issueTypeCodeOf(v: unknown): string {
+  const o = (typeof v === 'object' && v !== null ? v : {}) as Record<string, unknown>
+  const raw = typeof v === 'string' || typeof v === 'number' ? v : (o.issueTypeCode ?? o.code ?? o.id ?? '')
+  const s = String(raw ?? '').trim()
+  return /^\d+$/.test(s) ? `TYPE${s}` : s.toUpperCase()
+}
+
+/** 定制：这些问题类型的事项详情（抽屉 / 页面）在「补充信息」上方展示「研发活动」 */
+export const RD_ACTIVITY_TYPE_CODES = new Set(['TYPE10001'])

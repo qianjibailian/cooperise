@@ -160,13 +160,14 @@
                 :class="{ dragging: dragIssue?.id === issue.id, draggable: canDrag, moving: movingKey === issue.issueKey }"
                 :draggable="canDrag"
                 :style="{ '--tc-accent': col.color }"
-                :title="issue.lines.map((l) => l.text).join('\n')"
+                :title="issue.lines.map((l) => `${l.label}：${l.text}`).join('\n')"
                 @dragstart="onDragStart($event, issue)"
                 @dragend="onDragEnd"
                 @click="openIssue(issue.issueKey)"
               >
                 <!-- 按勾选顺序每个字段一行：单号 / 状态 / 类型为彩色标签，概要加粗，其余为次要文字 -->
                 <span v-for="line in issue.lines" :key="line.id" class="card-line">
+                  <span class="card-label" :title="line.label">{{ line.label }}</span>
                   <span v-if="line.tagColor" class="card-tag" :class="`is-${line.id}`" :style="{ '--tag': line.tagColor }">
                     <span v-if="line.id === 'status'" class="card-tag-dot" />{{ line.text }}
                   </span>
@@ -438,6 +439,9 @@ async function loadAvailableFields() {
   }
 }
 
+/** fieldId → 字段名（卡片上字段名兜底） */
+const fieldNameMap = computed(() => Object.fromEntries(availableFields.value.map((f) => [f.fieldId, f.fieldName])))
+
 function fieldMeta(fieldId: string): AvailableFieldItem | undefined {
   return availableFields.value.find((f) => f.fieldId === fieldId)
 }
@@ -591,7 +595,7 @@ const visibleIssues = computed<(BoardIssue & { groupKey: string })[]>(() =>
       issueKey,
       group,
       groupKey: groupFieldId.value ? resolveGroupKey.value(group) : ALL_COLUMN.key,
-      lines: buildFieldLines(rec, shownFieldIds.value),
+      lines: buildFieldLines(rec, shownFieldIds.value, fieldNameMap.value),
     }
   }),
 )
@@ -755,8 +759,8 @@ watch(filterCode, () => {
 <style scoped>
 .board-page {
   /* 与「我的事项」一致：抵消布局内边距，撑满内容区 */
-  height: calc(100vh - 75px);
-  height: calc(100dvh - 75px);
+  height: calc(100vh - var(--app-header-height, 56px) - 19px);
+  height: calc(100dvh - var(--app-header-height, 56px) - 19px);
   width: calc(100% + 1vh);
   max-width: none;
   margin: -2vh -0.5vh;
@@ -1048,10 +1052,12 @@ watch(filterCode, () => {
 }
 
 /* ---- 卡片：白底 + 列色左条，字段上下分布（与日历事项条一致） ---- */
+/* 两列网格：字段名列宽随本卡最长的字段名自适应，值列占满剩余宽度 */
 .board-card {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 5px 8px;
   flex-shrink: 0;
   padding: 10px 12px 10px 13px;
   border-left: 3px solid var(--tc-accent, #8c8c8c);
@@ -1071,9 +1077,25 @@ watch(filterCode, () => {
 .board-card.dragging {
   opacity: 0.45;
 }
+/* 每行的字段名 / 值直接作为网格单元 */
 .card-line {
-  display: flex;
+  display: contents;
+}
+.card-line > :not(.card-label) {
+  justify-self: start;
   min-width: 0;
+  max-width: 100%;
+}
+/* 字段名：宽度自适应，过长（超过 8 个字）时省略 */
+.card-label {
+  align-self: start;
+  max-width: 8em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  line-height: 20px;
+  color: #aeaeb2;
 }
 .card-title {
   min-width: 0;

@@ -6,10 +6,12 @@ import axios, {
 } from 'axios'
 import { message } from 'ant-design-vue'
 import { clearAuth, getToken, useAuth } from '@/utils/auth'
+import { locale } from '@/i18n'
 
 // 本地开发 / 内网部署（VITE_API_DOMAIN 为空）走同源 /api，由 vite（dev / preview）代理转发到后端（去掉 /api），
 // 内网其他人访问时浏览器只请求本服务，无需直连后端也不跨域
-const API_BASE_URL = import.meta.env.DEV || !import.meta.env.VITE_API_DOMAIN ? '/api' : import.meta.env.VITE_API_DOMAIN
+/** 接口前缀：开发环境走 vite 代理 /api，生产取 VITE_API_DOMAIN */
+export const API_BASE_URL = import.meta.env.DEV || !import.meta.env.VITE_API_DOMAIN ? '/api' : import.meta.env.VITE_API_DOMAIN
 
 interface CustomAxiosInstance extends AxiosInstance {
   get<T = any, R = T>(url: string, config?: AxiosRequestConfig): Promise<R>
@@ -29,6 +31,10 @@ request.interceptors.request.use(
     if (token) {
       config.headers.Authorization = `Bearer ${token}`
     }
+    // 当前界面语言（zh / en），后端据此返回对应语言的提示文案
+    config.headers['Accept-Language'] = locale.value
+    // 后端按 language 头翻译返回内容（zh 原样返回中文，en 返回英文）
+    config.headers.language = locale.value
     return config
   },
   (error) => Promise.reject(error)

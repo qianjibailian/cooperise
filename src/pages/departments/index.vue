@@ -145,8 +145,8 @@
       v-model:open="showModal"
       :title="isEdit ? '编辑部门' : '新增部门'"
       :footer="null"
-      :width="520"
-      class="dept-modal"
+      :width="880"
+      class="modal-landscape dept-modal"
     >
       <a-form :model="form" layout="vertical" class="dept-form">
         <a-row :gutter="16">

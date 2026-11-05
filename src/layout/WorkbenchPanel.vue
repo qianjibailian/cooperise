@@ -20,8 +20,8 @@ const scopeKey = computed(() => (route.path.startsWith('/workbench') ? `space:${
 <style scoped>
 .workbench-panel {
   width: 100%;
-  height: calc(100vh - 75px);
-  height: calc(100dvh - 75px);
+  height: calc(100vh - var(--app-header-height, 56px) - 19px);
+  height: calc(100dvh - var(--app-header-height, 56px) - 19px);
   background: #ffffff;
   display: flex;
   flex-direction: column;

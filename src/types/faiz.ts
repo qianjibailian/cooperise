@@ -267,6 +267,10 @@ export interface UserQueryPayload {
   keyword: string
   /** 是否在职：1 是 / 0 否，不传为不限 */
   isActive?: number
+  /** 只查拥有该空间的用户 */
+  spaceCode?: string
+  /** 只查拥有该事项所属空间的用户（同时传 spaceCode 时以 spaceCode 为准） */
+  issueKey?: string
   page: number
   pageSize: number
 }
@@ -567,7 +571,7 @@ export interface AvailableFieldItem {
   filedType: string
   type: string
   typeName: string | null
-  /** 字段分组：PERSON/DESCRIPTION/TIME/SUBJECT/TEAM_STANDARD（团队标准字段）/COMPANY_STANDARD（公司标准字段） */
+  /** 字段分组：PERSON/DESCRIPTION/TIME/SUBJECT/TEAM_STANDARD（团队标准字段）/COMPANY_STANDARD（公司标准字段）/SUPPLEMENT（补充信息） */
   fieldGroup?: string
   orderAble: boolean
   /** 支持的操作符：系统字段为对象数组 {id,name,code,identifier}，自定义字段为名称字符串 */
@@ -618,7 +622,7 @@ export interface AvailableFieldResult {
 export interface AvailableFieldSavePayload {
   fieldNumId?: string
   fieldName?: string
-  /** 字段分组：PERSON/DESCRIPTION/TIME/SUBJECT/TEAM_STANDARD（团队标准字段）/COMPANY_STANDARD（公司标准字段） */
+  /** 字段分组：PERSON/DESCRIPTION/TIME/SUBJECT/TEAM_STANDARD（团队标准字段）/COMPANY_STANDARD（公司标准字段）/SUPPLEMENT（补充信息） */
   fieldGroup?: string
   filedType?: string
   type?: string
@@ -676,7 +680,7 @@ export interface SystemFieldItem {
   id?: string
   fieldName?: string
   fieldValue?: string
-  /** 字段分组：PERSON/DESCRIPTION/TIME/SUBJECT/TEAM_STANDARD（团队标准字段）/COMPANY_STANDARD（公司标准字段） */
+  /** 字段分组：PERSON/DESCRIPTION/TIME/SUBJECT/TEAM_STANDARD（团队标准字段）/COMPANY_STANDARD（公司标准字段）/SUPPLEMENT（补充信息） */
   fieldGroup?: string
   isRequired?: boolean
   filedType?: string
@@ -717,7 +721,7 @@ export interface SystemFieldSavePayload {
   fieldId?: string
   fieldName?: string
   fieldValue?: string
-  /** 字段分组：PERSON/DESCRIPTION/TIME/SUBJECT/TEAM_STANDARD（团队标准字段）/COMPANY_STANDARD（公司标准字段） */
+  /** 字段分组：PERSON/DESCRIPTION/TIME/SUBJECT/TEAM_STANDARD（团队标准字段）/COMPANY_STANDARD（公司标准字段）/SUPPLEMENT（补充信息） */
   fieldGroup?: string
   isRequired?: boolean
   required?: boolean

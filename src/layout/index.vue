@@ -1,9 +1,11 @@
 <template>
   <a-layout class="layout-container">
+    <!-- 客户端：顶栏上方的页签栏（系统窗口按钮也在这一行） -->
+    <DesktopTabBar v-if="isDesktop" />
     <AppHeader
       :drawer-open="drawerOpen"
-      :sidebar-collapsed="sidebarCollapsed"
-      :hide-sidebar-toggle="isNonWorkbenchRoute"
+      :sidebar-collapsed="panelCollapsed"
+      :hide-sidebar-toggle="!isWorkbenchRoute"
       search-placeholder="搜索问题单号或者概要"
       @menu-click="handleMenuClick"
       @workspace-click="handleWorkspaceClick"
@@ -23,7 +25,7 @@
     <div v-if="isMobile && mobileMenuOpen" class="mobile-mask" @click="closeMobileMenu" />
 
     <a-layout-sider
-      :width="isNonWorkbenchRoute ? 64 : (sidebarCollapsed ? 112 : 280)"
+      :width="isNonWorkbenchRoute ? 64 : (panelCollapsed ? 112 : 280)"
       class="sider"
       :class="{ 'sider-mobile-open': mobileMenuOpen, 'sider-detail': isNonWorkbenchRoute }"
       :trigger="null"
@@ -51,7 +53,7 @@
         </Teleport>
 
         <!-- 右侧面板 -->
-        <div v-if="!isNonWorkbenchRoute" class="side-panel" :class="{ 'side-panel-collapsed': sidebarCollapsed }">
+        <div v-if="!isNonWorkbenchRoute" class="side-panel" :class="{ 'side-panel-collapsed': panelCollapsed }">
           <template v-if="activeSection === 'workspace'">
             <a-menu
               theme="light"
@@ -71,11 +73,11 @@
               </a-menu-item>
             </a-menu>
 
-            <a-divider v-if="!sidebarCollapsed" class="panel-divider" />
+            <a-divider v-if="!panelCollapsed" class="panel-divider" />
 
             <!-- 视图区域 -->
-            <div class="panel-section scrollable" :class="{ 'panel-section-collapsed': sidebarCollapsed }">
-              <div v-if="!sidebarCollapsed" class="panel-section-header">
+            <div class="panel-section scrollable" :class="{ 'panel-section-collapsed': panelCollapsed }">
+              <div v-if="!panelCollapsed" class="panel-section-header">
                 <span class="section-title">我的视图</span>
                 <div class="section-header-actions">
                   <component :is="SearchOutlined" class="action-icon" />
@@ -86,7 +88,7 @@
                 theme="light"
                 mode="inline"
                 :selectedKeys="selectedViewKeys"
-                :openKeys="sidebarCollapsed ? [] : viewSubmenuOpenKeys"
+                :openKeys="panelCollapsed ? [] : viewSubmenuOpenKeys"
                 @click="handleLocalMenuClick"
                 class="sidebar-menu view-menu"
               >
@@ -165,7 +167,7 @@
           </template>
 
           <template v-else-if="activeSection === 'system'">
-            <div v-if="!sidebarCollapsed" class="panel-section-header">
+            <div v-if="!panelCollapsed" class="panel-section-header">
               <component :is="SettingOutlined" class="section-icon" />
               <span class="section-title">系统管理</span>
             </div>
@@ -250,13 +252,17 @@
                 <component :is="AppstoreOutlined" />
                 <span>系统字段</span>
               </a-menu-item>
+              <a-menu-item key="/admin/i18n">
+                <component :is="TranslationOutlined" />
+                <span>国际化翻译</span>
+              </a-menu-item>
               <!-- 问题类型 / 模板管理 / 工作流 已移入空间（空间首页 Tab），路由 /admin/* 仍保留 -->
             </a-menu>
           </template>
         </div>
       </div>
     </a-layout-sider>
-    <a-layout class="main-layout" :class="{ 'main-layout-collapsed': sidebarCollapsed && !isNonWorkbenchRoute, 'main-layout-full': isNonWorkbenchRoute }">
+    <a-layout class="main-layout" :class="{ 'main-layout-collapsed': panelCollapsed && !isNonWorkbenchRoute, 'main-layout-full': isNonWorkbenchRoute }">
       <a-layout-content class="content">
         <WorkbenchPanel />
       </a-layout-content>
@@ -300,9 +306,12 @@ import {
   ToolOutlined,
   EditOutlined,
   DeleteOutlined,
+  TranslationOutlined,
 } from '@ant-design/icons-vue'
 import { useRouter, useRoute } from 'vue-router'
 import AppHeader from '@/components/AppHeader.vue'
+import DesktopTabBar from '@/components/DesktopTabBar.vue'
+import { isDesktop } from '@/utils/desktop'
 import AppSideDrawer from '@/components/AppSideDrawer.vue'
 import NewIssueFormModal from '@/components/NewIssueFormModal.vue'
 import { notifyIssueCreated, onIssueCreated } from '@/utils/issue-events'
@@ -358,6 +367,11 @@ const isMobile = ref(window.innerWidth <= 767)
 const mobileMenuOpen = ref(false)
 const activeSection = ref('workspace')
 // 设置路由与工作台路由同样展示侧边栏（含二级菜单），仅其余路由（如事项详情）隐藏侧边面板
+/** 折叠按钮只在工作台出现 */
+const isWorkbenchRoute = computed(() => route.path.startsWith('/workbench'))
+/** 实际折叠状态：设置 / 管理后台没有折叠按钮，始终展开（避免从工作台折叠后带过去无法展开） */
+const panelCollapsed = computed(() => sidebarCollapsed.value && isWorkbenchRoute.value)
+
 const isNonWorkbenchRoute = computed(() => {
   const path = route.path
   if (path.startsWith('/settings') || path.startsWith('/admin')) return false

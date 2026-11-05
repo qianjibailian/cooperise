@@ -821,8 +821,8 @@ watch(filterCode, () => {
 <style scoped>
 .gantt-page {
   /* 与「我的事项」一致：抵消布局内边距，撑满内容区 */
-  height: calc(100vh - 75px);
-  height: calc(100dvh - 75px);
+  height: calc(100vh - var(--app-header-height, 56px) - 19px);
+  height: calc(100dvh - var(--app-header-height, 56px) - 19px);
   width: calc(100% + 1vh);
   max-width: none;
   margin: -2vh -0.5vh;

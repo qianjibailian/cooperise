@@ -2,6 +2,7 @@
   <a-drawer
     :open="open"
     placement="right"
+    root-class-name="issue-detail-drawer"
     :width="drawerWidth"
     :content-wrapper-style="{ '--drawer-min-width': '860px' }"
     :body-style="{ padding: 0, height: '100vh', overflow: 'hidden' }"
@@ -23,6 +24,7 @@
             <div class="tb-icon-btn" title="复制单号"><component :is="CopyOutlined" /></div>
             <div class="tb-icon-btn" title="收藏"><component :is="StarOutlined" /></div>
             <div class="tb-icon-btn" title="复制链接" @click="copyIssueLink"><component :is="LinkOutlined" /></div>
+            <div class="tb-icon-btn" title="打开链接" @click="openIssueInNew"><component :is="ExportOutlined" /></div>
           </div>
         </div>
         <div class="top-bar-right">
@@ -160,8 +162,9 @@
             <div v-for="f in filteredSummaryGrid" :key="f.id" class="attr-item">
               <span class="attr-label" :title="f.name">{{ f.name }}</span>
               <span class="attr-value-block">
+                <RichTextField v-if="isRichText(f)" :field="f" :issue-key="issueKey" @saved="onFieldSaved(f, $event)" />
                 <FieldValueEditor
-                  v-if="editingFieldId === f.id"
+                  v-else-if="editingFieldId === f.id"
                   :field="f"
                   :issue-key="issueKey"
                   @saved="onFieldSaved(f, $event)"
@@ -234,7 +237,8 @@
                                 <span class="kv-label-inner">{{ f.name }}</span>
                               </div>
                               <div class="kv-value">
-                                <template v-if="editingFieldId === f.id">
+                                <RichTextField v-if="isRichText(f)" :field="f" :issue-key="issueKey" @saved="onFieldSaved(f, $event)" />
+                                <template v-else-if="editingFieldId === f.id">
                                   <FieldValueEditor
                                     :field="f"
                                     :issue-key="issueKey"
@@ -277,7 +281,8 @@
                             <span class="kv-label-inner">{{ f.name }}</span>
                           </div>
                           <div class="kv-value">
-                            <UserAvatar v-if="isUserField(f)" :user="f.value" />
+                            <RichTextField v-if="isRichText(f)" :field="f" :issue-key="issueKey" @saved="onFieldSaved(f, $event)" />
+                            <UserAvatar v-else-if="isUserField(f)" :user="f.value" />
                             <ValueWithBadge v-else :field="f" />
                           </div>
                         </div>
@@ -462,7 +467,8 @@
                           <span class="kv-label-inner">{{ f.name }}</span>
                         </div>
                         <div class="kv-value">
-                          <template v-if="editingFieldId === f.id">
+                          <RichTextField v-if="isRichText(f)" :field="f" :issue-key="issueKey" @saved="onFieldSaved(f, $event)" />
+                          <template v-else-if="editingFieldId === f.id">
                             <FieldValueEditor
                               :field="f"
                               :issue-key="issueKey"
@@ -519,7 +525,8 @@
                           <span class="kv-label-inner">{{ f.name }}</span>
                         </div>
                         <div class="kv-value">
-                          <template v-if="editingFieldId === f.id">
+                          <RichTextField v-if="isRichText(f)" :field="f" :issue-key="issueKey" @saved="onFieldSaved(f, $event)" />
+                          <template v-else-if="editingFieldId === f.id">
                             <FieldValueEditor
                               :field="f"
                               :issue-key="issueKey"
@@ -543,6 +550,78 @@
                     </template>
                   </div>
                   <MiniEmpty v-else text="暂无时间信息" />
+                </div>
+              </a-collapse-panel>
+            </a-collapse>
+
+            <!-- 研发活动（折叠板，定制）：仅问题类型 TYPE10001 展示，位于补充信息上方 -->
+            <a-collapse
+              v-if="showRdActivity"
+              v-model:activeKey="rdCollapseKeys"
+              ghost
+              :bordered="false"
+              class="panel-collapse"
+            >
+              <a-collapse-panel key="rd">
+                <template #header>
+                  <div class="collapse-header-inner">
+                    <span class="pch-title">研发活动</span>
+                  </div>
+                </template>
+                <div class="panel-card-body">
+                  <IssueRdActivity :issue-key="issueKey" />
+                </div>
+              </a-collapse-panel>
+            </a-collapse>
+
+            <!-- 补充信息（折叠板）：字段分组为「补充信息」的字段 -->
+            <a-collapse
+              v-model:activeKey="supplementCollapseKeys"
+              ghost
+              :bordered="false"
+              class="panel-collapse"
+            >
+              <a-collapse-panel key="supplement">
+                <template #header>
+                  <div class="collapse-header-inner collapse-header-with-actions">
+                    <div class="collapse-header-left">
+                      <span class="pch-title">补充信息</span>
+                    </div>
+                  </div>
+                </template>
+                <div class="panel-card-body">
+                  <div v-if="filteredSupplementFields.length > 0" class="kv-list">
+                    <template v-for="(f, i) in filteredSupplementFields" :key="f.id">
+                      <div class="kv-row" :class="{ 'kv-row-alt': i % 2 === 1 }">
+                        <div class="kv-label">
+                          <span class="kv-label-inner">{{ f.name }}</span>
+                        </div>
+                        <div class="kv-value">
+                          <RichTextField v-if="isRichText(f)" :field="f" :issue-key="issueKey" @saved="onFieldSaved(f, $event)" />
+                          <template v-else-if="editingFieldId === f.id">
+                            <FieldValueEditor
+                              :field="f"
+                              :issue-key="issueKey"
+                              @saved="onFieldSaved(f, $event)"
+                              @cancel="editingFieldId = null"
+                            />
+                          </template>
+                          <template v-else>
+                            {{ formatFieldValue(f) }}
+                            <span
+                              v-if="canEditField(f)"
+                              class="field-edit-icon"
+                              title="编辑"
+                              @click="editingFieldId = f.id"
+                            >
+                              <component :is="EditOutlined" />
+                            </span>
+                          </template>
+                        </div>
+                      </div>
+                    </template>
+                  </div>
+                  <MiniEmpty v-else text="暂无补充信息" />
                 </div>
               </a-collapse-panel>
             </a-collapse>
@@ -810,7 +889,11 @@ import {
   CopyOutlined,
   EditOutlined,
   CheckOutlined,
+  ExportOutlined,
 } from '@ant-design/icons-vue'
+import { useRouter } from 'vue-router'
+import { openIssueLink } from '@/utils/issue-link'
+import { isDesktop } from '@/utils/desktop'
 import { queryDetail, patchIssue, queryChangeLogs } from '@/api/faiz'
 import IssueComments from '@/components/IssueComments.vue'
 import { message } from 'ant-design-vue'
@@ -818,8 +901,10 @@ import type { DetailData, DetailField, DetailLayoutGroup, IssueChangeLog } from 
 import { FIELD_TYPE } from '@/types/fieldType'
 import { sanitizeHtml } from '@/utils/sanitizeHtml'
 import { issueTypeIconOf } from '@/utils/issueTypeIcons'
-// 暂时隐藏研发活动，恢复时取消注释：import IssueRdActivity from '@/components/IssueRdActivity.vue'
+import IssueRdActivity from '@/components/IssueRdActivity.vue'
+import { issueTypeCodeOf, RD_ACTIVITY_TYPE_CODES } from '@/utils/issue-view'
 import FieldValueEditor from '@/components/FieldValueEditor.vue'
+import RichTextField from '@/components/RichTextField.vue'
 import WorkflowViewModal from '@/components/WorkflowViewModal.vue'
 import IssueActionButtons from '@/components/IssueActionButtons.vue'
 import IssueParentChild from '@/components/IssueParentChild.vue'
@@ -1104,6 +1189,7 @@ const userCollapseKeys = ref<string[]>(['user'])
 const rdCollapseKeys = ref<string[]>(['rd'])
 const okrCollapseKeys = ref<string[]>([])
 const timeCollapseKeys = ref<string[]>(['time'])
+const supplementCollapseKeys = ref<string[]>(['supplement'])
 const relationCollapseKeys = ref<string[]>(['relation'])
 const attachmentCollapseKeys = ref<string[]>(['attachment'])
 const parentCollapseKeys = ref<string[]>(['parent'])
@@ -1372,11 +1458,25 @@ async function copyIssueLink() {
   } catch {}
 }
 
+const router = useRouter()
+/** 打开事项链接：浏览器新开页面；客户端新增页签（先关抽屉，避免遮住新页签内容） */
+function openIssueInNew() {
+  const key = props.issueKey
+  if (!key) return
+  if (isDesktop) handleClose()
+  openIssueLink(key, router)
+}
+
 // ======================= 字段内联编辑 =======================
 /** 当前处于编辑态的字段 id（同一时间只编辑一个字段） */
 const editingFieldId = ref<string | null>(null)
 
 /** 字段是否可编辑：editable 为 true 且非富文本（描述有独立编辑器） */
+/** 富文本字段（type = RICH_TEXT）：用 RichTextField 渲染 HTML / 编辑，与「描述」一致 */
+function isRichText(f: DetailField): boolean {
+  return String(f?.type ?? '') === 'RICH_TEXT'
+}
+
 function canEditField(f: DetailField): boolean {
   if (!f) return false
   return !!f.editable && String(f.type ?? '') !== 'RICH_TEXT'
@@ -1470,6 +1570,8 @@ const priorityColorHex = computed(() => {
 // issue type
 const issueTypeField = computed(() => findField('issuetype'))
 const issueTypeValue = computed(() => issueTypeField.value?.value)
+/** 定制：问题类型为 TYPE10001 时在补充信息上方展示「研发活动」 */
+const showRdActivity = computed(() => RD_ACTIVITY_TYPE_CODES.has(issueTypeCodeOf(issueTypeValue.value)))
 /** 问题类型图标与颜色（接口 issuetype 值带 iconUri / issueTypeColor）：顶部图标、属性卡共用 */
 const DEFAULT_TYPE_COLOR = '#8c8c8c'
 const issueTypeIcon = computed(() => {
@@ -1630,6 +1732,18 @@ const filteredTimeFields = computed(() => {
   return onlyShowValued.value ? allTimeFields.value.filter(hasValue) : allTimeFields.value
 })
 
+// 补充信息字段：取 SUPPLEMENT 组（字段分组选「补充信息」的字段）
+const allSupplementFields = computed<DetailField[]>(() => {
+  if (!detailData.value) return []
+  const g = (detailData.value.layoutGroup ?? []).find((x) => x && x.type === 'SUPPLEMENT')
+  if (!g) return []
+  return flattenGroupFields(g.fieldGroupStructure)
+})
+
+const filteredSupplementFields = computed(() => {
+  return onlyShowValued.value ? allSupplementFields.value.filter(hasValue) : allSupplementFields.value
+})
+
 // 仅展示有值字段过滤
 function hasValue(f: DetailField): boolean {
   if (!f) return false
@@ -1679,6 +1793,7 @@ async function fetchDetail() {
   rdCollapseKeys.value = ['rd']
   okrCollapseKeys.value = []
   timeCollapseKeys.value = ['time']
+  supplementCollapseKeys.value = ['supplement']
   attachmentCollapseKeys.value = ['attachment']
   parentCollapseKeys.value = ['parent']
   childCollapseKeys.value = []
@@ -2639,6 +2754,17 @@ function formatRichText(v: unknown): string {
   min-width: 0;
   display: flex;
   align-items: center;
+}
+
+/* 富文本字段：占满值列，内容多行时顶部对齐 */
+.kv-value > .rtf,
+.attr-value-block > .rtf {
+  flex: 1;
+  align-self: flex-start;
+}
+.attr-value-block:has(> .rtf) {
+  display: flex;
+  overflow: visible;
 }
 
 /* User row */

@@ -13,7 +13,7 @@
         :style="{ background: current.color || '#0A84FF' }"
       >{{ spaceAvatarText(current.spaceName) }}</span>
       <AppstoreOutlined v-else class="hs-placeholder-icon" />
-      <span class="hs-name">{{ current?.spaceName || '全部空间' }}</span>
+      <span class="hs-name">{{ current?.spaceName || (mySpaces.length ? '选择空间' : '暂无空间') }}</span>
       <DownOutlined class="hs-arrow" />
     </button>
 
@@ -32,16 +32,6 @@
 
         <a-spin :spinning="(loading || mineLoading) && !mySpaces.length" size="small">
           <div class="hs-list">
-            <div
-              v-if="!keyword.trim()"
-              class="hs-item"
-              :class="{ selected: !current }"
-              @click="switchTo(undefined)"
-            >
-              <AppstoreOutlined class="hs-all-icon" />
-              <span class="hs-item-name">全部空间</span>
-              <CheckOutlined v-if="!current" class="hs-check" />
-            </div>
             <div
               v-for="sp in filtered"
               :key="sp.spaceCode"
@@ -114,7 +104,7 @@ const mySpaces = computed(() => {
     .sort((a, b) => (a.sort ?? 0) - (b.sort ?? 0))
 })
 
-/** 当前空间：已停用 / 已删除 / 不再属于该用户时视为「全部空间」 */
+/** 当前空间：已停用 / 已删除 / 不再属于该用户时视为未选（随后自动切到第一个空间） */
 const current = computed(() => mySpaces.value.find(s => s.spaceCode === currentSpaceCode.value))
 
 /** 支持按名称 / 标识 / 编码搜索 */
@@ -137,17 +127,16 @@ function onOpenChange(v: boolean) {
 }
 
 /**
- * 切换空间（undefined = 全部空间）：
+ * 切换空间（不再提供「全部空间」，始终落在某个具体空间）：
  * - 工作台：原地切换，页面随空间重新加载（见 WorkbenchPanel）
- * - 空间主页：跳到所选空间的主页；选「全部空间」回到空间列表
+ * - 空间主页：跳到所选空间的主页
  * - 其它页面：只记录当前空间，回到工作台时生效
  */
-function switchTo(sp: SpaceItem | undefined) {
-  setCurrentSpace(sp?.spaceCode)
+function switchTo(sp: SpaceItem) {
+  setCurrentSpace(sp.spaceCode)
   open.value = false
   if (route.name === 'SpaceHome') {
-    if (!sp) router.push({ name: 'Space' })
-    else if (route.params.spaceCode !== sp.spaceCode) router.push({ name: 'SpaceHome', params: { spaceCode: sp.spaceCode } })
+    if (route.params.spaceCode !== sp.spaceCode) router.push({ name: 'SpaceHome', params: { spaceCode: sp.spaceCode } })
   }
 }
 
@@ -165,12 +154,13 @@ watch(
   { immediate: true },
 )
 
-// 当前空间已不可用（停用 / 删除 / 被移出）时清掉，避免工作台带着一个看不到的空间条件查询
+// 没有「全部空间」：未选或当前空间已不可用（停用 / 删除 / 被移出）时，自动切到第一个可用空间；
+// 一个空间都没有时清空，避免工作台带着一个看不到的空间条件查询
 watch([mySpaces, mySpaceCodes, loading], () => {
-  // 空间列表或用户空间尚未取到（含接口失败）时不判断，避免误清
+  // 空间列表或用户空间尚未取到（含接口失败）时不判断，避免误切
   if (loading.value || mySpaceCodes.value === null || !spaces.value.length) return
-  if (currentSpaceCode.value && !current.value) setCurrentSpace('')
-})
+  if (!current.value) setCurrentSpace(mySpaces.value[0]?.spaceCode || '')
+}, { immediate: true })
 
 onMounted(() => {
   ensureLoaded()
@@ -263,12 +253,6 @@ onMounted(() => {
   white-space: nowrap;
   font-size: 13px;
   color: #1d1d1f;
-}
-.header-space-dropdown .hs-all-icon {
-  width: 20px;
-  flex-shrink: 0;
-  font-size: 15px;
-  color: #8e8e93;
 }
 .header-space-dropdown .hs-item-key {
   flex-shrink: 0;

@@ -208,7 +208,7 @@ onMounted(loadProfile)
 
 <style scoped>
 .settings-page {
-  padding: 16px 20px 32px;
+  padding: 20px 24px 32px;
 }
 
 .settings-card {
@@ -402,6 +402,12 @@ onMounted(loadProfile)
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+@media (max-width: 768px) {
+  .settings-page {
+    padding: 16px;
+  }
 }
 
 @media (max-width: 576px) {

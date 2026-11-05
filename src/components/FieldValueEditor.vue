@@ -131,7 +131,8 @@ function handleMemberSearch(keyword: string) {
   memberSearchTimer = setTimeout(async () => {
     memberLoading.value = true
     try {
-      const res = await queryUsers({ keyword, isActive: 1, page: 1, pageSize: 20 })
+      // 只列拥有该事项所属空间的用户
+      const res = await queryUsers({ keyword, isActive: 1, issueKey: props.issueKey || undefined, page: 1, pageSize: 20 })
       if (res?.success) {
         const list = Array.isArray(res.data?.list) ? res.data.list : []
         const cur = editUserValue.value

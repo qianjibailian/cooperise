@@ -577,7 +577,11 @@ watch(newFormSpaceId, (val) => {
   if (val != null && !isEditMode.value) {
     try { localStorage.setItem(LAST_SPACE_KEY, String(val)) } catch { /* 存储不可用 */ }
   }
-  if (visible.value) loadIssueTypesByOrg()
+  if (visible.value) {
+    loadIssueTypesByOrg()
+    // 问题类型没变时表单不会重建：人员选项也要按新空间重拉
+    if (newFormTabs.value.length) postLoadAfterBuildTabs()
+  }
 })
 
 /** 模板下拉：本地缓存已启用模板详情（含解析后的 widgetData），供选中后直接使用 */
@@ -983,17 +987,13 @@ function postLoadAfterBuildTabs() {
     }
     if (!needPrefetch.length) return
     try {
-      const res = await queryUsers({ keyword: '', isActive: 1, page: 1, pageSize: 50 })
+      // 只列拥有所选空间的用户（未选空间时不过滤）
+      const res = await queryUsers({ keyword: '', isActive: 1, spaceCode: currentSpace.value?.spaceCode || undefined, page: 1, pageSize: 50 })
       if (res.success && res.data) {
         const list = res.data.list || []
         for (const fid of needPrefetch) {
-          if (!(fid in memberOptionsMap)) memberOptionsMap[fid] = []
-          // 与编辑回填预置的用户合并去重，避免重复选项/丢失当前选中
-          const merged = [...(memberOptionsMap[fid] || [])]
-          for (const u of list) {
-            if (!merged.some(m => personKey(m) === personKey(u))) merged.push(u)
-          }
-          memberOptionsMap[fid] = merged
+          // 切换空间后不再保留旧空间的人员，只补回当前已选的用户，保证选中值能回显
+          memberOptionsMap[fid] = withSelectedMembers(fid, list)
         }
       }
     } catch { /* ignore */ }
@@ -1333,28 +1333,33 @@ const memberOptionsMap = reactive<Record<string, UserItem[]>>({})
 const memberLoadingMap = reactive<Record<string, boolean>>({})
 const memberSearchTimers = reactive<Record<string, ReturnType<typeof setTimeout> | null>>({})
 
+/** 合并当前已选用户（编辑回填预置/已选标签），保证选中值始终有匹配选项 */
+function withSelectedMembers(fieldId: string, list: UserItem[]): UserItem[] {
+  const merged = [...list]
+  const curVal = newFormData.value[fieldId]
+  const curNos = Array.isArray(curVal)
+    ? curVal.map((v: unknown) => String(v ?? '')).filter(Boolean)
+    : curVal != null && curVal !== ''
+      ? [String(curVal)]
+      : []
+  for (const no of curNos) {
+    if (!merged.some(u => personKey(u) === no)) {
+      const pre = (memberOptionsMap[fieldId] || []).find(u => personKey(u) === no)
+      merged.unshift(pre ? { ...pre } : ({ memberId: no } as UserItem))
+    }
+  }
+  return merged
+}
+
 function handleMemberSearch(fieldId: string, keyword: string) {
   if (memberSearchTimers[fieldId]) clearTimeout(memberSearchTimers[fieldId]!)
   memberSearchTimers[fieldId] = setTimeout(async () => {
     memberLoadingMap[fieldId] = true
     try {
-      const res = await queryUsers({ keyword, isActive: 1, page: 1, pageSize: 20 })
+      // 只列拥有所选空间的用户（未选空间时不过滤）
+      const res = await queryUsers({ keyword, isActive: 1, spaceCode: currentSpace.value?.spaceCode || undefined, page: 1, pageSize: 20 })
       const list = res.success && res.data ? res.data.list || [] : []
-      // 合并当前已选用户（编辑回填预置/已选标签），保证选中值始终有匹配选项
-      const merged = [...list]
-      const curVal = newFormData.value[fieldId]
-      const curNos = Array.isArray(curVal)
-        ? curVal.map((v: unknown) => String(v ?? '')).filter(Boolean)
-        : curVal != null && curVal !== ''
-          ? [String(curVal)]
-          : []
-      for (const no of curNos) {
-        if (!merged.some(u => personKey(u) === no)) {
-          const pre = (memberOptionsMap[fieldId] || []).find(u => personKey(u) === no)
-          merged.unshift(pre ? { ...pre } : ({ memberId: no } as UserItem))
-        }
-      }
-      memberOptionsMap[fieldId] = merged
+      memberOptionsMap[fieldId] = withSelectedMembers(fieldId, list)
     } catch {
       memberOptionsMap[fieldId] = []
     } finally {

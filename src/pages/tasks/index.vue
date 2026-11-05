@@ -180,8 +180,8 @@
       v-model:open="showCreateModal"
       :title="isEdit ? '编辑任务' : '新建任务'"
       :footer="null"
-      :width="640"
-      class="task-modal"
+      :width="880"
+      class="modal-landscape task-modal"
     >
       <a-form :model="form" layout="vertical" class="task-form">
         <a-row :gutter="16">

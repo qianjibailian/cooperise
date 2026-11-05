@@ -215,11 +215,12 @@
                     gridRow: seg.lane + 2,
                     '--tc-accent': chipAccent(seg.issue),
                   }"
-                  :title="[seg.issue.startDate === seg.issue.endDate ? seg.issue.startDate : `${seg.issue.startDate} ~ ${seg.issue.endDate}`, ...seg.issue.chipLines.map((l) => l.text)].join('\n')"
+                  :title="[seg.issue.startDate === seg.issue.endDate ? seg.issue.startDate : `${seg.issue.startDate} ~ ${seg.issue.endDate}`, ...seg.issue.chipLines.map((l) => `${l.label}：${l.text}`)].join('\n')"
                   @click.stop="openIssue(seg.issue.issueKey)"
                 >
                   <!-- 按勾选顺序每个字段占一行（上下分布）：单号 / 状态 / 类型为彩色标签，概要加粗，其余为次要文字 -->
                   <span v-for="line in seg.issue.chipLines" :key="line.id" class="cal-chip-line">
+                    <span class="cal-chip-label" :title="line.label">{{ line.label }}</span>
                     <span
                       v-if="line.tagColor"
                       class="cal-tag"
@@ -406,7 +407,7 @@ function toCalendarIssue(rec: IssueRecord, index: number): CalendarIssue | null 
     startDate: start.format('YYYY-MM-DD'),
     endDate: end.format('YYYY-MM-DD'),
     group: groupFieldId.value ? groupValueOf(rec, groupFieldId.value, groupFieldMeta(groupFieldId.value)) : null,
-    chipLines: buildFieldLines(rec, shownFieldIds.value),
+    chipLines: buildFieldLines(rec, shownFieldIds.value, fieldNames.value),
   }
 }
 
@@ -951,8 +952,8 @@ watch(filterCode, () => {
 <style scoped lang="scss">
 .testing-calendar-page {
   /* 与「我的事项」一致：抵消布局内边距，撑满内容区 */
-  height: calc(100vh - 75px);
-  height: calc(100dvh - 75px);
+  height: calc(100vh - var(--app-header-height, 56px) - 19px);
+  height: calc(100dvh - var(--app-header-height, 56px) - 19px);
   width: calc(100% + 1vh);
   max-width: none;
   margin: -2vh -0.5vh;
@@ -1319,12 +1320,14 @@ watch(filterCode, () => {
   min-height: 0;
 }
 /* 事项条（参考 Apple / Google 日历）：左侧色条 + 同色浅底，标题加粗，标签与次要信息收在下方；跨天时横跨多列 */
+/* 两列网格：字段名列宽随本条最长的字段名自适应，值列占满剩余宽度 */
 .cal-chip {
   position: relative;
   z-index: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 4px 6px;
   min-width: 0;
   margin: 0 6px;
   padding: 5px 8px 6px 8px;
@@ -1354,9 +1357,25 @@ watch(filterCode, () => {
   color: #1d1d1f;
   color: color-mix(in srgb, var(--tc-accent, #8c8c8c) 30%, #1d1d1f);
 }
+/* 每行的字段名 / 值直接作为网格单元 */
 .cal-chip-line {
-  display: flex;
+  display: contents;
+}
+.cal-chip-line > :not(.cal-chip-label) {
+  justify-self: start;
   min-width: 0;
+  max-width: 100%;
+}
+/* 字段名：宽度自适应，过长（超过 6 个字）时省略 */
+.cal-chip-label {
+  max-width: 6em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  font-weight: 400;
+  color: #8e8e93;
+  color: color-mix(in srgb, var(--tc-accent, #8c8c8c) 25%, #8e8e93);
 }
 /* 标签：圆角胶囊，同色浅底 + 加深的同色文字 */
 .cal-tag {

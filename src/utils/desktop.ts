@@ -16,6 +16,10 @@ export interface DesktopBridge {
   setApiTarget: (value: string) => Promise<{ ok: boolean; message?: string; apiTarget?: string }>
   openConfigDir: () => Promise<void>
   toggleDevTools: () => Promise<void>
+  /** 自绘窗口按钮：返回操作后窗口是否最大化；'state' 只查询不操作 */
+  windowAction: (action: 'minimize' | 'toggle-maximize' | 'close' | 'state') => Promise<boolean>
+  /** 订阅最大化状态变化，返回取消订阅函数 */
+  onMaximizedChange: (cb: (maximized: boolean) => void) => () => void
   getSavedLogin: () => Promise<{ email: string; password: string; rememberPassword: boolean } | null>
   saveLogin: (payload: { email: string; password: string; rememberPassword: boolean }) => Promise<boolean>
   canEncryptPassword: () => Promise<boolean>

@@ -38,7 +38,7 @@
         </a-col>
         <a-col :span="12">
           <a-form-item label="字段类型">
-            <a-select v-model:value="editForm.type" placeholder="选择字段类型" size="large" allow-clear style="width: 100%">
+            <a-select v-model:value="editForm.type" placeholder="选择字段类型" size="large" allow-clear style="width: 100%" @change="onTypePicked">
               <a-select-option v-for="t in fieldTypeOptions" :key="t.value" :value="t.value">{{ t.label }}</a-select-option>
             </a-select>
           </a-form-item>
@@ -335,6 +335,7 @@ import {
   FIELD_TYPE, fieldTypeOptions, isEnumFieldType, defaultFieldGroupByType,
 } from '@/types/fieldType'
 import { FIELD_OPERATORS, fieldOperatorName, type RawFieldOperator } from '@/types/fieldOperator'
+import { OPERATORS_BY_KIND, valueKindOf } from '@/utils/issueFilter'
 import {
   SCENE_OPTIONS, SCENE_DESC, DEFAULT_DISPLAY_SCENE, sortScenes, requiredScenesOf, editableScenesOf,
   type FieldEditApi, type FieldRow,
@@ -397,6 +398,7 @@ const fieldGroupOptions = [
   { value: 'SUBJECT', label: '基础信息' },
   { value: 'TEAM_STANDARD', label: '团队标准字段' },
   { value: 'COMPANY_STANDARD', label: '公司标准字段' },
+  { value: 'SUPPLEMENT', label: '补充信息' },
 ]
 
 /** 历史分组值 → 现行编码：原「自定义字段」在详情里归「团队自定义信息」，即团队标准字段 */
@@ -603,6 +605,31 @@ watch(() => editForm.value.type, (val) => {
   }
 })
 
+// ---- 字段类型 → 默认支持的操作（与全局筛选按值类型的兜底一致） ----
+/** 该字段类型默认支持的操作（名称），如 日期 → 等于 / 大于 / 小于 / 为空 / 不为空 */
+function defaultOperatorNames(type?: string | null): string[] {
+  if (!type) return []
+  return OPERATORS_BY_KIND[valueKindOf('', type)]
+    .map((code) => FIELD_OPERATORS.find((o) => o.code === code)?.name)
+    .filter((n): n is string => !!n)
+}
+const sameSet = (a: string[], b: string[]) => a.length === b.length && a.every((x) => b.includes(x))
+
+/**
+ * 用户在下拉里切换字段类型时自动填充「支持的操作」：
+ * 仅当当前为空、或仍是上一个类型的默认值（没手动改过）时覆盖，手动调整过的保留。
+ * 只挂在下拉 change 上，打开编辑回填时不会改动已保存的配置。
+ */
+/** 切换前的字段类型（v-model 在 change 前已更新，需单独记录；打开 / 回填表单时同步） */
+let lastPickedType = ''
+function onTypePicked(type: unknown) {
+  const next = String(type ?? '')
+  const current = editForm.value.supportOperator ?? []
+  const untouched = !current.length || sameSet(current, defaultOperatorNames(lastPickedType))
+  if (untouched) editForm.value.supportOperator = defaultOperatorNames(next)
+  lastPickedType = next
+}
+
 // ---- 打开：新增重置表单；编辑拉详情回填（失败用列表行兜底） ----
 watch(() => props.open, async (open) => {
   if (!open) return
@@ -611,16 +638,19 @@ watch(() => props.open, async (open) => {
   const record = props.record
   if (!record?.id) {
     editForm.value = emptyForm()
+    lastPickedType = ''
     enumOptions.value = []
     return
   }
   editForm.value = formFromRow(record)
+  lastPickedType = editForm.value.type || ''
   enumOptions.value = parseFieldValue(record.fieldValue)
   try {
     const res = await props.api.getDetail(record.id)
     if (res.success && res.data && props.record?.id === record.id) {
       const d = res.data as unknown as AvailableFieldItem
       editForm.value = formFromRow(d)
+      lastPickedType = editForm.value.type || ''
       enumOptions.value = parseFieldValue(d.fieldValue)
     }
   } catch {

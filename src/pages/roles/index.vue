@@ -80,7 +80,8 @@
     <a-modal
       v-model:open="modalOpen"
       :title="editingId ? '编辑角色' : '新增角色'"
-      :width="480"
+      :width="880"
+      class="modal-landscape"
       centered
       destroy-on-close
       :ok-text="editingId ? '保存' : '创建'"

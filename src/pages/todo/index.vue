@@ -323,6 +323,13 @@
                 >
                   <component :is="LinkOutlined" />
                 </span>
+                <span
+                  class="cell-edit-icon"
+                  title="打开链接"
+                  @click.stop="handleOpenIssueInNew(record)"
+                >
+                  <component :is="ExportOutlined" />
+                </span>
               </template>
             </template>
           </div>
@@ -425,7 +432,8 @@
 
 <script setup lang="ts">
 import { ref, reactive, onMounted, onBeforeUnmount, computed, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
+import { openIssueLink } from '@/utils/issue-link'
 import { useAuth } from '@/utils/auth'
 import { useViewStore } from '@/utils/view-store'
 import { personLabel, personAvatar, personInitial } from '@/utils/person'
@@ -443,6 +451,7 @@ import {
   EditOutlined,
   CopyOutlined,
   LinkOutlined,
+  ExportOutlined,
 } from '@ant-design/icons-vue'
 import dayjs from 'dayjs'
 import type { Dayjs } from 'dayjs'
@@ -1298,7 +1307,7 @@ function handleMemberSearch(keyword: string) {
   memberSearchTimer = setTimeout(async () => {
     memberLoading.value = true
     try {
-      const res = await queryUsers({ keyword, isActive: 1, page: 1, pageSize: 20 })
+      const res = await queryUsers({ keyword, isActive: 1, issueKey: editingCell.value?.key || undefined, page: 1, pageSize: 20 })
       if (res?.success) {
         const list = Array.isArray(res.data?.list) ? res.data.list : []
         const cur = editUserValue.value
@@ -1744,6 +1753,12 @@ async function handleOpenSummaryLink(rec: IssueRecord) {
   } catch {}
 }
 
+const router = useRouter()
+/** 打开事项链接：浏览器新开页面；客户端新增页签 */
+function handleOpenIssueInNew(rec: IssueRecord) {
+  openIssueLink(getIssueKey(rec), router)
+}
+
 /** 取 issueKey（用于行标识、详情跳转和单元格更新 URL 路径），优先 issueField，兜底记录顶层字段 */
 function getIssueKey(rec: IssueRecord): string {
   const f = rec.issueField?.find(it => it.id === 'issuekey')
@@ -2051,8 +2066,8 @@ onBeforeUnmount(() => {
 .todo-page {
   padding: 1vh 1vh 1vh;
   background: #ffffff;
-  height: calc(100vh - 75px);
-  height: calc(100dvh - 75px);
+  height: calc(100vh - var(--app-header-height, 56px) - 19px);
+  height: calc(100dvh - var(--app-header-height, 56px) - 19px);
   width: calc(100% + 1vh);
   max-width: none;
   margin: -2vh -0.5vh;

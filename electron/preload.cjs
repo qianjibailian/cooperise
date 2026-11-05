@@ -10,6 +10,13 @@ contextBridge.exposeInMainWorld('cooperiseDesktop', {
   setApiTarget: (value) => ipcRenderer.invoke('desktop:set-api-target', value),
   openConfigDir: () => ipcRenderer.invoke('desktop:open-config-dir'),
   toggleDevTools: () => ipcRenderer.invoke('desktop:toggle-devtools'),
+  // 自绘窗口按钮：minimize / toggle-maximize / close，返回操作后是否最大化（传 'state' 只查询）
+  windowAction: (action) => ipcRenderer.invoke('desktop:window', action),
+  onMaximizedChange: (cb) => {
+    const listener = (_e, maximized) => cb(!!maximized)
+    ipcRenderer.on('desktop:window:maximized', listener)
+    return () => ipcRenderer.removeListener('desktop:window:maximized', listener)
+  },
   // 记住账号 / 密码（密码由主进程用系统加密保存）
   getSavedLogin: () => ipcRenderer.invoke('desktop:login:get'),
   saveLogin: (payload) => ipcRenderer.invoke('desktop:login:save', payload),

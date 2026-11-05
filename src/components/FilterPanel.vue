@@ -428,11 +428,21 @@ function setSelectValues(c: FilterCondition, v: unknown) {
   c.labels = labels
 }
 
-/** 问题类型列表只拉一次，状态与问题类型选项共用 */
+/**
+ * 选项按空间过滤：条件里空间只选了一个时取该空间，否则取顶部所选空间；都没有则不过滤。
+ * 人员只列拥有该空间的用户，问题类型（及状态）只列该空间的类型
+ */
+const optionSpaceCode = computed<string | undefined>(() => {
+  const spaces = conditions.value.find((c) => c.field === 'space' && c.operator === 'BELONG')?.values ?? []
+  if (spaces.length === 1) return spaces[0]
+  return currentSpaceCode.value || undefined
+})
+
+/** 问题类型列表按空间只拉一次，状态与问题类型选项共用 */
 let issueTypesPromise: Promise<{ id: number; issueTypeName: string; issueTypeCode?: string; color?: string; iconUri?: string | null }[]> | null = null
 function loadIssueTypes() {
-  // 顶部选了空间时只列该空间的问题类型（状态选项也随之只取这些类型下的状态）
-  issueTypesPromise ??= queryIssueTypes({ page: 1, pageSize: 999, status: 1, spaceCode: currentSpaceCode.value || undefined })
+  // 选了空间时只列该空间的问题类型（状态选项也随之只取这些类型下的状态）
+  issueTypesPromise ??= queryIssueTypes({ page: 1, pageSize: 999, status: 1, spaceCode: optionSpaceCode.value })
     .then((res) => (res?.success ? res.data?.list || [] : []))
     .catch(() => [])
   return issueTypesPromise
@@ -458,7 +468,7 @@ async function fetchOptions(field: string): Promise<Option[]> {
   }
   const f = fieldById.value.get(field)
   const res = await getAvailableFieldOptions([
-    { fieldId: field, type: String(f?.filedType || f?.type || 'SELECT_LIST_SINGLE').toUpperCase(), projectId: '18701', issueTypeCode: '' },
+    { fieldId: field, type: String(f?.filedType || f?.type || 'SELECT_LIST_SINGLE').toUpperCase(), projectId: optionSpaceCode.value || '18701', issueTypeCode: '' },
   ])
   const bucket = (res?.data || [])[0] as any
   const raw: any[] = Array.isArray(bucket?.options) ? bucket.options : Array.isArray(bucket?.options?.options) ? bucket.options.options : []
@@ -567,7 +577,7 @@ function mapUserOptions(list: UserItem[]): Option[] {
 async function prefetchUsers() {
   if (userOptions.value.length) return
   try {
-    const res = await queryUsers({ keyword: '', isActive: 1, page: 1, pageSize: 200 })
+    const res = await queryUsers({ keyword: '', isActive: 1, spaceCode: optionSpaceCode.value, page: 1, pageSize: 200 })
     userOptions.value = mapUserOptions(res?.data?.list || [])
   } catch {
     // 请求层已统一提示
@@ -580,7 +590,7 @@ function searchUsers(keyword: string) {
     const seq = ++userSeq
     userLoading.value = true
     try {
-      const res = await queryUsers({ keyword: keyword.trim(), page: 1, pageSize: 20 })
+      const res = await queryUsers({ keyword: keyword.trim(), spaceCode: optionSpaceCode.value, page: 1, pageSize: 20 })
       if (seq !== userSeq) return
       userOptions.value = mapUserOptions(res?.data?.list || [])
     } catch {
@@ -590,6 +600,18 @@ function searchUsers(keyword: string) {
     }
   }, 250)
 }
+
+// 空间变化：丢弃按旧空间拉的问题类型 / 状态 / 人员选项，按新空间重拉
+watch(optionSpaceCode, () => {
+  issueTypesPromise = null
+  // 下拉类自定义字段的选项也按空间（projectId）拉取，一并作废
+  for (const k of Object.keys(optionMap)) delete optionMap[k]
+  userOptions.value = []
+  if (props.visible) {
+    prefetchUsers()
+    conditions.value.forEach(ensureOptions)
+  }
+})
 
 /** 选人：同时记下显示名，保存后再次打开仍能正确回显 */
 function setUserValues(c: FilterCondition, v: unknown, opts: unknown) {

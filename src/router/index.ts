@@ -26,6 +26,7 @@ import SprintBoard from '@/pages/sprint-board/index.vue'
 import TestingCalendar from '@/pages/testing-calendar/index.vue'
 import MemberGantt from '@/pages/member-gantt/index.vue'
 import IssueDetail from '@/pages/issue-detail/index.vue'
+import I18nPage from '@/pages/i18n/index.vue'
 import ReleaseList from '@/pages/release-list/index.vue'
 import Login from '@/pages/auth/Login.vue'
 import { useViewStore } from '@/utils/view-store'
@@ -112,6 +113,7 @@ const routes: RouteRecordRaw[] = [
       { path: 'admin/organization', component: Organization, name: 'Organization', meta: { title: '组织管理' } },
       { path: 'admin/issue-type', component: IssueTypes, name: 'AdminIssueTypes', meta: { title: '问题类型' } },
       { path: 'admin/system-field', component: SystemField, name: 'SystemField', meta: { title: '系统字段' } },
+      { path: 'admin/i18n', component: I18nPage, name: 'AdminI18n', meta: { title: '国际化翻译' } },
       { path: 'admin/template-list', component: TemplateList, name: 'TemplateList', meta: { title: '模板管理' } },
       { path: 'admin/workflow', component: Workflow, name: 'Workflow', meta: { title: '工作流' } },
       { path: 'settings/:pathMatch(.*)*', component: EmptyContent, name: 'SettingsDynamic' },

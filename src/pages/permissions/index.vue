@@ -112,8 +112,8 @@
       v-model:open="showModal"
       :title="isEdit ? '编辑权限' : '新增权限'"
       :footer="null"
-      :width="560"
-      class="perm-modal"
+      :width="880"
+      class="modal-landscape perm-modal"
     >
       <a-form :model="form" layout="vertical" class="perm-form">
         <a-row :gutter="16">

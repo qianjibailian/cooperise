@@ -191,7 +191,7 @@ function onMentionSearch(keyword: string) {
   mentionTimer = setTimeout(async () => {
     const seq = ++mentionSeq
     try {
-      const res = await queryUsers({ keyword: keyword.trim(), isActive: 1, page: 1, pageSize: 20 })
+      const res = await queryUsers({ keyword: keyword.trim(), isActive: 1, issueKey: props.issueKey || undefined, page: 1, pageSize: 20 })
       if (seq !== mentionSeq) return
       const seen = new Set<string>()
       mentionOptions.value = (res?.data?.list || []).flatMap((u) => {

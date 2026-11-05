@@ -576,8 +576,6 @@ export interface UserSaveParams {
   isActive: number
   /** 角色 ID 列表 */
   roleIds?: number[]
-  /** 初始密码（仅新增） */
-  password?: string
   /** 拥有的空间编码：不传表示按部门自动带出（含下级组织），空数组表示不分配 */
   spaceCodes?: string[]
 }
@@ -600,6 +598,11 @@ export function updateUser(data: UserSaveParams): Promise<Result<UserItem>> {
 /** 删除用户（POST /user/delete） */
 export function deleteUser(id: number): Promise<Result<void>> {
   return request.post(`/user/delete`, { id })
+}
+
+/** 重置用户密码为默认密码 123456（POST /user/reset-password） */
+export function resetUserPassword(id: number): Promise<Result<void>> {
+  return request.post(`/user/reset-password`, { id })
 }
 
 // ==================== 角色管理 ====================
@@ -718,6 +721,55 @@ export function updatePosition(data: PositionSaveParams): Promise<Result<Positio
 /** 删除岗位（POST /position/delete） */
 export function deletePosition(id: number): Promise<Result<void>> {
   return request.post(`/position/delete`, { id })
+}
+
+// ==================== 国际化翻译（原词为中文，目标语言目前只有 en） ====================
+
+export interface I18nItem {
+  id: number
+  /** 原词（中文），支持 {0} {1} 占位 */
+  sourceText: string
+  lang: string
+  /** 译文 */
+  targetText: string
+  remark?: string
+  createdAt?: string
+  updatedAt?: string
+}
+
+export interface I18nQueryParams {
+  keyword?: string
+  lang?: string
+  page?: number
+  pageSize?: number
+}
+
+export interface I18nSaveParams {
+  id?: number
+  sourceText: string
+  lang?: string
+  targetText: string
+  remark?: string
+}
+
+/** 翻译分页列表（POST /i18n/query） */
+export function queryI18n(data: I18nQueryParams): Promise<Result<{ list: I18nItem[]; total: number }>> {
+  return request.post(`/i18n/query`, data)
+}
+
+/** 新增翻译（POST /i18n/create） */
+export function createI18n(data: I18nSaveParams): Promise<Result<I18nItem>> {
+  return request.post(`/i18n/create`, data)
+}
+
+/** 修改翻译（POST /i18n/update） */
+export function updateI18n(data: I18nSaveParams): Promise<Result<I18nItem>> {
+  return request.post(`/i18n/update`, data)
+}
+
+/** 删除翻译（POST /i18n/delete） */
+export function deleteI18n(id: number): Promise<Result<void>> {
+  return request.post(`/i18n/delete`, { id })
 }
 
 // ==================== 问题类型 ====================
@@ -1019,6 +1071,8 @@ export interface SpaceQueryParams {
   /** 按组织筛选（含下级组织）：organizationId 优先 */
   organizationId?: number
   organizationCode?: string
+  /** 只查当前用户加入的空间 */
+  onlyJoined?: boolean
   page: number
   pageSize: number
 }

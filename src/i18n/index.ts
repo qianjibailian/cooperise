@@ -1,8 +1,10 @@
 /**
  * 中英文一键切换（运行时词典翻译）
  *
- * 页面文案仍写中文；英文模式下用 MutationObserver 监听 DOM，把命中词典（./en.ts）的中文
+ * 页面文案仍写中文；英文模式下用 MutationObserver 监听 DOM，把命中词典的中文
  * 文本节点、placeholder / title 等属性替换成英文，并记下原文，切回中文时原样还原。
+ * - 词典全部来自后端（管理后台「国际化翻译」，GET /i18n/all），前端不再内置；
+ *   最近一次拿到的词典缓存在 localStorage，启动时先用缓存，接口返回后再更新
  * - Vue 重新渲染写回中文时，observer 会再次翻译，因此对页面代码无侵入
  * - 没有词条的文案保持中文；用户输入（输入框、富文本编辑器、评论正文等）不翻译
  * - Ant Design 组件内置文案与 dayjs 日期格式由 App.vue / setLocale 同步切换
@@ -14,8 +16,8 @@ import 'dayjs/locale/en'
 import { VxeUI } from 'vxe-pc-ui'
 import vxePcUiEnUS from 'vxe-pc-ui/es/language/en-US'
 import vxeTableEnUS from 'vxe-table/lib/locale/lang/en-US'
-import en from './en'
-import enServer from './en-server'
+import axios from 'axios'
+import { API_BASE_URL } from '@/utils/request'
 
 export type Locale = 'zh' | 'en'
 
@@ -46,25 +48,55 @@ export const locale = ref<Locale>(readLocale())
 // ---------------- 词典 ----------------
 const norm = (s: string) => s.replace(/\s+/g, ' ').trim()
 
-const exact = new Map<string, string>()
-const patterns: { re: RegExp; tpl: string }[] = []
-// 后端提示在前、前端文案在后：同一原文以前端词条为准
-for (const [zh, text] of Object.entries({ ...enServer, ...en })) {
-  const key = norm(zh)
-  if (/\{\d+\}/.test(key)) {
-    const source = key
-      .split(/(\{\d+\})/)
-      .map(part => (/^\{\d+\}$/.test(part) ? '([\\s\\S]+?)' : part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
-      .join('')
-    patterns.push({ re: new RegExp(`^${source}$`), tpl: text })
-  } else {
-    exact.set(key, text)
+let exact = new Map<string, string>()
+let patterns: { re: RegExp; tpl: string }[] = []
+const cache = new Map<string, string | null>()
+
+/** 用词典重建查找表；带 {0} {1} 占位的词条转成正则 */
+function buildDictionary(dict: Record<string, string>) {
+  const nextExact = new Map<string, string>()
+  const nextPatterns: { re: RegExp; tpl: string }[] = []
+  for (const [zh, text] of Object.entries(dict)) {
+    if (!zh || !text) continue
+    const key = norm(zh)
+    if (/\{\d+\}/.test(key)) {
+      const source = key
+        .split(/(\{\d+\})/)
+        .map(part => (/^\{\d+\}$/.test(part) ? '([\\s\\S]+?)' : part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
+        .join('')
+      nextPatterns.push({ re: new RegExp(`^${source}$`), tpl: text })
+    } else {
+      nextExact.set(key, text)
+    }
+  }
+  // 固定文字越多越具体，优先匹配
+  nextPatterns.sort((a, b) => b.re.source.length - a.re.source.length)
+  exact = nextExact
+  patterns = nextPatterns
+  cache.clear()
+}
+
+/** 上次从后端拿到的词典（localStorage）：启动时先用它，避免等接口期间英文模式显示中文；接口不可用时也靠它兜底 */
+const DICT_CACHE_KEY = 'cooperise_i18n_en'
+function readCachedDictionary(): Record<string, string> {
+  try {
+    const v = JSON.parse(localStorage.getItem(DICT_CACHE_KEY) || '{}')
+    return v && typeof v === 'object' && !Array.isArray(v) ? v : {}
+  } catch {
+    return {}
   }
 }
-// 固定文字越多越具体，优先匹配
-patterns.sort((a, b) => b.re.source.length - a.re.source.length)
-
-const cache = new Map<string, string | null>()
+function writeCachedDictionary(dict: Record<string, string>) {
+  try {
+    localStorage.setItem(DICT_CACHE_KEY, JSON.stringify(dict))
+  } catch {
+    // 存储不可用 / 超出配额：只在本次会话生效
+  }
+}
+const cachedDictionary = readCachedDictionary()
+buildDictionary(cachedDictionary)
+/** 本地是否已有缓存词典（main.ts 据此决定启动时是否等接口） */
+export const hasCachedDictionary = Object.keys(cachedDictionary).length > 0
 
 /** 翻译一段文字；没有词条返回 null。前后空白保留，模板占位里的中文再递归翻译一次 */
 export function translate(text: string): string | null {
@@ -116,7 +148,7 @@ function translateDay(node: Text): string {
 }
 
 /**
- * 本地开发时记录英文模式下没翻译到的中文，控制台执行 [...window.__i18nMissing] 查看，补到 en.ts / en-server.ts。
+ * 本地开发时记录英文模式下没翻译到的中文，控制台执行 [...window.__i18nMissing] 查看，到「管理后台 → 国际化翻译」补。
  * 用户数据（姓名、概要等）也会出现在这里，按需挑界面文案补
  */
 function recordMissing(text: string) {
@@ -277,6 +309,41 @@ export function initLocale() {
     startObserver()
     translateTree(document.body)
   }
+}
+
+// ---------------- 后端译文（管理后台「国际化翻译」维护） ----------------
+let remoteLoading: Promise<void> | null = null
+
+/** 用后端词典重建查找表并缓存；英文模式下立即按新词典重新翻译页面 */
+function applyRemoteDictionary(remote: Record<string, string>) {
+  buildDictionary(remote)
+  writeCachedDictionary(remote)
+  if (locale.value === 'en' && document.body) {
+    restoreTree(document.body)
+    translateTree(document.body)
+    syncTitle()
+  }
+}
+
+/**
+ * 系统初始化时调用：GET /i18n/all?lang=en 拉取全部译文（无需登录）。
+ * 失败时静默沿用本地缓存的词典，不弹错误提示；后台增删改翻译后再调用一次即可刷新
+ */
+export function loadRemoteDictionary(): Promise<void> {
+  if (remoteLoading) return remoteLoading
+  remoteLoading = axios
+    .get(`${API_BASE_URL}/i18n/all`, { params: { lang: 'en' }, headers: { 'Accept-Language': locale.value }, timeout: 8000 })
+    .then((res) => {
+      const data = res.data?.success ? res.data.data : null
+      if (data && typeof data === 'object') applyRemoteDictionary(data as Record<string, string>)
+    })
+    .catch(() => {
+      // 接口不可用：沿用本地缓存的词典
+    })
+    .finally(() => {
+      remoteLoading = null
+    })
+  return remoteLoading
 }
 
 export function useLocale() {

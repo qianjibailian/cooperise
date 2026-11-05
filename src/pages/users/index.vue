@@ -82,6 +82,9 @@
               <a-tooltip title="编辑">
                 <span class="row-action" @click="openEdit(record as UserItem)"><EditOutlined /></span>
               </a-tooltip>
+              <a-tooltip title="重置密码">
+                <span class="row-action" @click="confirmResetPassword(record as UserItem)"><KeyOutlined /></span>
+              </a-tooltip>
               <a-tooltip title="删除">
                 <span class="row-action danger" @click="confirmDelete(record as UserItem)"><DeleteOutlined /></span>
               </a-tooltip>
@@ -95,7 +98,8 @@
     <a-modal
       v-model:open="modalOpen"
       :title="editingId ? '编辑用户' : '新增用户'"
-      :width="560"
+      :width="880"
+      class="modal-landscape"
       centered
       destroy-on-close
       :ok-text="editingId ? '保存' : '创建'"
@@ -232,16 +236,14 @@
               </a-select>
             </a-form-item>
           </a-col>
-          <a-col v-if="!editingId" :span="12">
-            <a-form-item label="初始密码" name="password">
-              <a-input-password v-model:value="form.password" placeholder="6-32 位" autocomplete="new-password" />
-            </a-form-item>
-          </a-col>
           <a-col :span="12">
             <a-form-item label="在职状态" name="isActive">
               <a-switch v-model:checked="activeChecked" checked-children="在职" un-checked-children="离职" />
             </a-form-item>
           </a-col>
+          <div v-if="!editingId" class="pwd-default-tip">
+            <KeyOutlined /> 初始密码默认为 <b>123456</b>，用户登录后可在「账户设置」中修改
+          </div>
         </a-row>
       </a-form>
     </a-modal>
@@ -254,10 +256,10 @@ import { Modal, type FormInstance, type TablePaginationConfig } from 'ant-design
 import type { Rule } from 'ant-design-vue/es/form'
 import {
   PlusOutlined, SearchOutlined, ReloadOutlined, EditOutlined, DeleteOutlined, ApartmentOutlined,
-  TeamOutlined, CheckOutlined, CloseOutlined, IdcardOutlined,
+  TeamOutlined, CheckOutlined, CloseOutlined, IdcardOutlined, KeyOutlined,
 } from '@ant-design/icons-vue'
 import {
-  queryUsers, createUser, updateUser, deleteUser, getOrganizationTree, queryRoles, queryPositions, getUserDetail,
+  queryUsers, createUser, updateUser, deleteUser, resetUserPassword, getOrganizationTree, queryRoles, queryPositions, getUserDetail,
   type UserSaveParams, type OrganizationNode,
 } from '@/api/faiz'
 import { useSpaces } from '@/utils/space-store'
@@ -447,7 +449,6 @@ const emptyForm = (): Omit<UserSaveParams, 'id'> & { spaceCodes: string[] } => (
   isActive: 1,
   positionId: undefined,
   roleIds: [],
-  password: '',
   spaceCodes: [],
 })
 const form = reactive(emptyForm())
@@ -470,10 +471,6 @@ const rules = computed<Record<string, Rule[]>>(() => ({
   email: [
     { required: true, whitespace: true, message: '请输入邮箱' },
     { type: 'email', message: '邮箱格式不正确' },
-  ],
-  password: editingId.value ? [] : [
-    { required: true, message: '请输入初始密码' },
-    { min: 6, max: 32, message: '密码长度需为 6-32 位' },
   ],
 }))
 
@@ -531,7 +528,6 @@ async function handleSubmit() {
       email: form.email.trim(),
       userEnName: form.userEnName?.trim() || undefined,
       deptId: form.deptId != null ? String(form.deptId) : undefined,
-      password: editingId.value ? undefined : form.password,
       // 始终明确提交勾选结果（空数组表示不分配空间）
       spaceCodes: [...form.spaceCodes],
     }
@@ -569,6 +565,26 @@ function confirmDelete(u: UserItem) {
           if (users.value.length === 1 && page.value > 1) page.value--
           loadUsers()
         }
+      } catch {
+        // 请求层已统一提示
+      }
+    },
+  })
+}
+
+// ---- 重置密码：后端重置为默认密码 123456 ----
+function confirmResetPassword(u: UserItem) {
+  if (u.id == null) return
+  const id = u.id
+  Modal.confirm({
+    title: `重置用户「${u.realName || u.coAccount || u.userCoAccount || u.email}」的密码？`,
+    content: '密码将重置为 123456，用户需使用新密码登录。',
+    okText: '重置',
+    cancelText: '取消',
+    centered: true,
+    async onOk() {
+      try {
+        await resetUserPassword(id)
       } catch {
         // 请求层已统一提示
       }
@@ -707,6 +723,23 @@ onMounted(loadUsers)
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.pwd-default-tip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: -4px 0 8px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: #f6f8fb;
+  color: #5c6370;
+  font-size: 12px;
+}
+
+.pwd-default-tip b {
+  color: #1f2329;
+  font-weight: 600;
 }
 
 .text-muted {

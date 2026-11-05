@@ -86,7 +86,8 @@
     <a-modal
       v-model:open="modalOpen"
       :title="editingId ? '编辑问题类型' : '新增问题类型'"
-      :width="480"
+      :width="880"
+      class="modal-landscape"
       centered
       destroy-on-close
       :ok-text="editingId ? '保存' : '创建'"

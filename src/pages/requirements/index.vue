@@ -132,8 +132,8 @@
       v-model:open="showCreateModal"
       :title="isEdit ? '编辑需求' : '新建需求'"
       :footer="null"
-      :width="640"
-      class="requirement-modal"
+      :width="880"
+      class="modal-landscape requirement-modal"
     >
       <a-form :model="form" layout="vertical" class="requirement-form">
         <a-row :gutter="16">

@@ -104,7 +104,8 @@
     <a-modal
       v-model:open="modalOpen"
       :title="editingId ? '编辑空间' : '新建空间'"
-      :width="520"
+      :width="880"
+      class="modal-landscape"
       centered
       destroy-on-close
       :ok-text="editingId ? '保存' : '创建'"
@@ -287,6 +288,8 @@ async function loadSpaces() {
       keyword: keyword.value.trim() || undefined,
       status: statusFilter.value === 'all' ? undefined : Number(statusFilter.value),
       organizationId: orgFilter.value,
+      // 只展示当前用户加入的空间
+      onlyJoined: true,
       page: page.value,
       pageSize: pageSize.value,
     })

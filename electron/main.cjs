@@ -32,13 +32,15 @@ const IS_MAC = process.platform === 'darwin'
 /** Windows 靠启动参数判断；macOS 登录项不支持参数，用 wasOpenedAtLogin（需 app ready 后读取） */
 let launchedAtLogin = process.argv.includes(AUTOSTART_ARG)
 
-/** 顶栏高度，与前端 .app-header（56px）一致；系统窗口按钮按此高度绘制 */
-const TITLE_BAR_HEIGHT = 56
-const TITLE_BAR_OVERLAY = { color: '#ffffff', symbolColor: '#1d1d1f', height: TITLE_BAR_HEIGHT }
+/** 标题栏高度：与前端客户端页签栏（DesktopTabBar，--desktop-tabbar-height 42px）一致 */
+const TITLE_BAR_HEIGHT = 42
 
-/** 窗口最小尺寸：与前端布局的 --app-min-width(1280px) 对齐，避免整页出现滚动条 */
-const MIN_WINDOW_WIDTH = 1280
-const MIN_WINDOW_HEIGHT = 720
+/** 窗口最小尺寸（与 Apifox 一致 960×640）：与客户端下前端布局的 --app-min-width(960px) 对齐，避免整页出现滚动条 */
+const MIN_WINDOW_WIDTH = 960
+const MIN_WINDOW_HEIGHT = 640
+/** 首次启动的默认尺寸（与 Apifox 一致） */
+const DEFAULT_WINDOW_WIDTH = 1280
+const DEFAULT_WINDOW_HEIGHT = 800
 
 if (process.platform === 'win32') app.setAppUserModelId('com.speedx.cooperise')
 
@@ -158,7 +160,10 @@ function clampToMinSize(size) {
 function loadWindowState() {
   // 默认参考 Apifox：1280×800 居中；小屏按工作区 90% 收缩
   const { width: areaW, height: areaH } = screen.getPrimaryDisplay().workAreaSize
-  const fallback = { width: Math.min(1280, Math.round(areaW * 0.9)), height: Math.min(800, Math.round(areaH * 0.9)) }
+  const fallback = {
+    width: Math.min(DEFAULT_WINDOW_WIDTH, Math.round(areaW * 0.9)),
+    height: Math.min(DEFAULT_WINDOW_HEIGHT, Math.round(areaH * 0.9)),
+  }
   try {
     const s = JSON.parse(fs.readFileSync(statePath(), 'utf-8'))
     if (!(s.width > 0 && s.height > 0)) return clampToMinSize(fallback)
@@ -330,13 +335,14 @@ function isAppUrl(url) {
 function baseWindowOptions() {
   const chrome = IS_MAC
     ? { titleBarStyle: 'hidden', trafficLightPosition: { x: 18, y: Math.round((TITLE_BAR_HEIGHT - 16) / 2) } }
-    : { titleBarStyle: 'hidden', titleBarOverlay: TITLE_BAR_OVERLAY, icon: ICON }
+    // Windows：不用原生 Window Controls Overlay（样式不可定制），最小化 / 最大化 / 关闭由前端 WindowControls 自绘
+    : { titleBarStyle: 'hidden', icon: ICON }
   return {
     ...chrome,
     title: 'Cooperise',
     backgroundColor: '#ffffff',
-    // 前端布局 min-width 为 1280px（App.vue 的 --app-min-width），窗口再小就会出滚动条，
-    // 所以窗口最小尺寸与之对齐；高度 720 保证表格 + 工具条不被压出纵向滚动条
+    // 客户端下前端布局 min-width 为 960px（App.vue 的 html.is-desktop --app-min-width），
+    // 窗口再小就会出滚动条，所以窗口最小尺寸与之对齐
     minWidth: MIN_WINDOW_WIDTH,
     minHeight: MIN_WINDOW_HEIGHT,
     webPreferences: {
@@ -353,7 +359,7 @@ function attachWindowBehaviors(win) {
   // window.open / target=_blank：应用内页面开新窗口，外部链接交给系统浏览器
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (isAppUrl(url)) {
-      return { action: 'allow', overrideBrowserWindowOptions: { ...baseWindowOptions(), width: MIN_WINDOW_WIDTH, height: 800 } }
+      return { action: 'allow', overrideBrowserWindowOptions: { ...baseWindowOptions(), width: DEFAULT_WINDOW_WIDTH, height: DEFAULT_WINDOW_HEIGHT } }
     }
     if (/^(https?|mailto):/i.test(url)) shell.openExternal(url)
     return { action: 'deny' }
@@ -365,6 +371,12 @@ function attachWindowBehaviors(win) {
     }
   })
   win.webContents.on('did-create-window', (child) => attachWindowBehaviors(child))
+  // 最大化状态变化通知前端，自绘的「最大化 / 还原」按钮据此切换图标
+  const sendMaximized = () => {
+    if (!win.isDestroyed()) win.webContents.send('desktop:window:maximized', win.isMaximized())
+  }
+  win.on('maximize', sendMaximized)
+  win.on('unmaximize', sendMaximized)
   win.webContents.on('before-input-event', (e, input) => handleShortcut(win, e, input))
   win.webContents.on('context-menu', (_e, params) => showContextMenu(win, params))
 }
@@ -521,6 +533,16 @@ function registerIpc() {
     return { ok: true, enabled: app.getLoginItemSettings(loginItemOpts).openAtLogin }
   })
   ipcMain.handle('desktop:toggle-devtools', (e) => e.sender.toggleDevTools())
+
+  // 自绘窗口按钮（Windows）：作用于发送消息的那个窗口
+  ipcMain.handle('desktop:window', (e, action) => {
+    const win = BrowserWindow.fromWebContents(e.sender)
+    if (!win) return false
+    if (action === 'minimize') win.minimize()
+    else if (action === 'toggle-maximize') win.isMaximized() ? win.unmaximize() : win.maximize()
+    else if (action === 'close') win.close()
+    return win.isMaximized()
+  })
 
   // 登录态同步（MCP 以当前登录用户身份调后端）：只接受主窗口的消息
   ipcMain.handle('desktop:session', (e, token) => {

@@ -72,6 +72,7 @@
         <section v-for="g in visibleGroups" :key="g.key" class="rl-group">
           <button type="button" class="rl-group-head" :aria-expanded="!collapsed[g.key]" @click="toggleGroup(g.key)">
             <RightOutlined class="rl-group-caret" :class="{ open: !collapsed[g.key] }" />
+            <span v-if="config.groupField" class="rl-group-field">{{ fieldName(config.groupField) }}</span>
             <span class="rl-group-dot" :style="{ background: g.color }" />
             <span class="rl-group-name">{{ g.label }}</span>
             <span class="rl-group-count">{{ g.rows.length }}</span>
@@ -144,6 +145,24 @@
                     />
                   </div>
                   <div
+                    v-else-if="isRichCell(record, column.fieldId)"
+                    class="rl-field-cell rl-rich-cell"
+                    :class="{ 'is-missing': isRequired(column.fieldId) && !cellText(record, column.fieldId), editable: canEdit(record, column.fieldId) }"
+                    :title="cellText(record, column.fieldId) || undefined"
+                    @click="canEdit(record, column.fieldId) && openRichEdit(record, column.fieldId)"
+                  >
+                    <template v-if="cellText(record, column.fieldId)">
+                      <div class="rl-rich" v-html="sanitizeHtml(richHtmlOf(record, column.fieldId))" />
+                      <button
+                        type="button"
+                        class="rl-cell-icon"
+                        title="复制"
+                        @click.stop="copyText(cellText(record, column.fieldId))"
+                      ><CopyOutlined /></button>
+                    </template>
+                    <span v-else class="rl-placeholder">{{ isRequired(column.fieldId) ? '待填写' : '—' }}</span>
+                  </div>
+                  <div
                     v-else
                     class="rl-field-cell"
                     :class="{ 'is-missing': isRequired(column.fieldId) && !cellText(record, column.fieldId), editable: canEdit(record, column.fieldId) }"
@@ -181,7 +200,8 @@
     <a-modal
       v-model:open="configOpen"
       title="配置上线清单"
-      :width="560"
+      :width="880"
+      class="modal-landscape"
       centered
       ok-text="保存"
       cancel-text="取消"
@@ -236,6 +256,26 @@
       </a-form>
     </a-modal>
 
+    <!-- 富文本字段编辑：表格单元格太窄放不下工具栏，用弹窗承载（与详情页「描述」一致的编辑器） -->
+    <a-modal
+      :open="!!richEdit"
+      :title="richEdit ? `编辑 · ${richEdit.field.name}（${richEdit.row.issueKey}）` : ''"
+      :footer="null"
+      :width="820"
+      destroy-on-close
+      :mask-closable="false"
+      @cancel="richEdit = null"
+    >
+      <RichTextField
+        v-if="richEdit"
+        :field="richEdit.field"
+        :issue-key="richEdit.row.issueKey"
+        auto-edit
+        @saved="onRichSaved"
+        @cancel="richEdit = null"
+      />
+    </a-modal>
+
     <IssueDetailDrawer v-model:open="detailOpen" :issue-key="detailIssueKey" @changed="reload" />
   </div>
 </template>
@@ -255,6 +295,9 @@ import {
 } from '@ant-design/icons-vue'
 import FilterPanel from '@/components/FilterPanel.vue'
 import FieldValueEditor from '@/components/FieldValueEditor.vue'
+import RichTextField from '@/components/RichTextField.vue'
+import { sanitizeHtml } from '@/utils/sanitizeHtml'
+import { isRichTextType, richToText, richValueOf, toRichHtml } from '@/utils/richText'
 import IssueDetailDrawer from '@/components/IssueDetailDrawer.vue'
 import { getIssues, getFilterDraft, updateFilterDraft, queryWorkbenchFieldList, updateView } from '@/api/faiz'
 import type { AvailableFieldItem, DetailField, FilterDraft, GlobalFilter, IssueQueryPayload, IssueRecord } from '@/types/faiz'
@@ -432,8 +475,22 @@ async function reload() {
 const ASSIGNEE_IDS = ['assignee', 'systemfield_10004', '11714']
 
 function cellText(rec: Row | IssueRecord, fieldId: string): string {
-  const r = 'rec' in rec ? (rec as Row).rec : rec
-  return fieldText(fieldOf(r as IssueRecord, fieldId)).trim()
+  const r = ('rec' in rec ? (rec as Row).rec : rec) as IssueRecord
+  if (isRichField(r, fieldId)) return richToText(richHtmlOf(r, fieldId))
+  return fieldText(fieldOf(r, fieldId)).trim()
+}
+
+/** 富文本字段（RICH_TEXT）：行内字段类型优先，取不到时看字段元数据 */
+function isRichField(rec: IssueRecord, fieldId: string): boolean {
+  const meta = fieldMeta(fieldId)
+  return isRichTextType(fieldOf(rec, fieldId)?.type || meta?.filedType || meta?.type)
+}
+function isRichCell(row: Row, fieldId: string): boolean {
+  return isRichField(row.rec, fieldId)
+}
+function richHtmlOf(rec: Row | IssueRecord, fieldId: string): string {
+  const r = ('rec' in rec ? (rec as Row).rec : rec) as IssueRecord
+  return toRichHtml(richValueOf(fieldOf(r, fieldId)))
 }
 
 interface Row {
@@ -574,6 +631,18 @@ function detailFieldOf(row: Row, fieldId: string): DetailField {
     editable: true,
   }
 }
+const richEdit = ref<{ row: Row; field: DetailField } | null>(null)
+function openRichEdit(row: Row, fieldId: string) {
+  editingCell.value = ''
+  richEdit.value = { row, field: detailFieldOf(row, fieldId) }
+}
+function onRichSaved(payload: { value: unknown; exportValue: unknown }) {
+  const cur = richEdit.value
+  if (!cur) return
+  onCellSaved(cur.row, cur.field.id, payload)
+  richEdit.value = null
+}
+
 function onCellSaved(row: Row, fieldId: string, payload: { value: unknown; exportValue: unknown }) {
   const list = row.rec.issueField || (row.rec.issueField = [])
   const f = list.find((x) => x.id === fieldId)
@@ -706,6 +775,68 @@ onMounted(async () => {
 </script>
 
 <style scoped>
+/* 富文本单元格：完整渲染 HTML，行高随内容撑开 */
+.rl-field-cell.rl-rich-cell {
+  align-items: flex-start;
+}
+.rl-rich {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  line-height: 1.6;
+  word-break: break-word;
+  white-space: normal;
+}
+.rl-rich :deep(p),
+.rl-rich :deep(ul),
+.rl-rich :deep(ol),
+.rl-rich :deep(blockquote),
+.rl-rich :deep(pre),
+.rl-rich :deep(h1),
+.rl-rich :deep(h2),
+.rl-rich :deep(h3) {
+  margin: 0 0 4px;
+}
+.rl-rich :deep(:is(p, ul, ol, blockquote, pre, h1, h2, h3):last-child) {
+  margin-bottom: 0;
+}
+.rl-rich :deep(h1),
+.rl-rich :deep(h2),
+.rl-rich :deep(h3) {
+  font-size: 14px;
+  font-weight: 600;
+}
+.rl-rich :deep(pre) {
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: #f7f8fa;
+  white-space: pre-wrap;
+}
+.rl-rich :deep(blockquote) {
+  padding-left: 8px;
+  border-left: 3px solid #e5e6eb;
+  color: #646a73;
+}
+.rl-rich :deep(a) {
+  color: var(--c-primary, #1677ff);
+}
+.rl-rich :deep(ul),
+.rl-rich :deep(ol) {
+  padding-left: 18px;
+}
+.rl-rich :deep(img) {
+  max-width: 100%;
+  height: auto;
+  vertical-align: middle;
+  border-radius: 4px;
+}
+.rl-rich :deep(code) {
+  padding: 0 3px;
+  border-radius: 3px;
+  background: #f2f3f5;
+  font-size: 12px;
+}
+
 /* 视觉：Apple 分组列表 + 分段控件；Google 式文字按钮与焦点环 */
 .rl-page {
   --rl-text: #1d1d1f;
@@ -955,6 +1086,19 @@ onMounted(async () => {
   height: 8px;
   flex-shrink: 0;
   border-radius: 50%;
+}
+/* 分批字段名：放在分批值左侧，弱化显示 */
+.rl-group-field {
+  flex-shrink: 0;
+  max-width: 10em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  color: #8e8e93;
+}
+.rl-group-field::after {
+  content: '：';
 }
 .rl-group-name {
   overflow: hidden;

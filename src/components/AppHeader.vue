@@ -15,6 +15,9 @@
       </div>
     </div>
 
+    <!-- 公告横幅（上下滚动轮播，内容见 @/config/banner） -->
+    <HeaderBanner />
+
     <div class="header-center" v-if="false">
       <div class="workspace-btn" @click="$emit('workspace-click')">
         <HomeOutlined />
@@ -218,6 +221,7 @@ import {
   CheckOutlined,
 } from '@ant-design/icons-vue'
 import AppLogo from './AppLogo.vue'
+import HeaderBanner from './HeaderBanner.vue'
 import HeaderSpaceSwitcher from './HeaderSpaceSwitcher.vue'
 import DesktopSettingsModal from './DesktopSettingsModal.vue'
 import { isDesktop } from '@/utils/desktop'
@@ -526,13 +530,14 @@ async function handleLogout() {
 <style scoped>
 .app-header {
   position: fixed;
-  top: 0;
+  /* 客户端：顶栏在页签栏下方（--desktop-tabbar-height，网页版为 0） */
+  top: var(--desktop-tabbar-height, 0px);
   left: 0;
   right: 0;
   min-width: var(--app-min-width);
   transform: translateX(calc(-1 * var(--app-scroll-x, 0px)));
-  /* iOS 上高度含刘海安全区，见 App.vue 的 html.is-ios */
-  height: var(--app-header-height, 56px);
+  /* iOS 上高度含刘海安全区，见 App.vue 的 html.is-ios；--app-header-height 为整个顶部区域（含客户端页签栏） */
+  height: calc(var(--app-header-height, 56px) - var(--desktop-tabbar-height, 0px));
   background: #fff;
   display: flex;
   align-items: center;

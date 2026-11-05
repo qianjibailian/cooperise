@@ -65,7 +65,7 @@ async function search(keyword: string) {
   const seq = ++searchSeq
   searching.value = true
   try {
-    const res = await queryUsers({ keyword, isActive: 1, page: 1, pageSize: 50 })
+    const res = await queryUsers({ keyword, isActive: 1, issueKey: props.issueKey || undefined, page: 1, pageSize: 50 })
     if (seq !== searchSeq) return
     const list = res?.success ? res.data?.list || [] : []
     // 保留已选中的用户，避免搜索后选中项显示为原始 memberId
