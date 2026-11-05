@@ -7,7 +7,12 @@
       <a-dropdown v-for="(tab, i) in tabs" :key="tab.key" :trigger="['contextmenu']">
         <div
           class="dt-tab"
-          :class="{ active: tab.key === activeKey }"
+          :class="{ active: tab.key === activeKey, dragging: tab.key === draggingKey }"
+          draggable="true"
+          @dragstart="onDragStart(tab, $event)"
+          @dragover.prevent="onDragOver(tab, $event)"
+          @drop.prevent
+          @dragend="draggingKey = null"
           :title="`${KIND_META[kindOf(tab.key)].label}：${tab.title}`"
           :data-key="tab.key"
           @click="activate(tab)"
@@ -27,15 +32,25 @@
           </a-menu>
         </template>
       </a-dropdown>
-      <span class="dt-add" title="新页签" @click="openHome"><PlusOutlined /></span>
     </div>
+    <!-- 页签操作：放在滚动列表外，页签再多也始终可见 -->
+    <a-dropdown :trigger="['click']" placement="bottomRight">
+      <span class="dt-more" title="页签操作"><EllipsisOutlined /></span>
+      <template #overlay>
+        <a-menu @click="(e: any) => onMoreMenu(String(e.key))">
+          <a-menu-item key="current" :disabled="tabs.length <= 1">关闭当前页签</a-menu-item>
+          <a-menu-item key="others" :disabled="tabs.length <= 1">关闭其他页签</a-menu-item>
+          <a-menu-item key="all" :disabled="onlyHome">关闭全部页签</a-menu-item>
+        </a-menu>
+      </template>
+    </a-dropdown>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
 import { useRoute, useRouter, type RouteLocationNormalizedLoaded } from 'vue-router'
-import { CloseOutlined, PlusOutlined, LinkOutlined, MenuOutlined, FileTextOutlined } from '@ant-design/icons-vue'
+import { CloseOutlined, EllipsisOutlined, LinkOutlined, MenuOutlined, FileTextOutlined } from '@ant-design/icons-vue'
 import { useViewStore } from '@/utils/view-store'
 import { isMacDesktop } from '@/utils/desktop'
 import AppLogo from '@/components/AppLogo.vue'
@@ -161,8 +176,59 @@ function onMenu(key: string, i: number) {
   }
 }
 
-function openHome() {
-  router.push(HOME)
+// ---- 拖动调整页签顺序：拖到某个页签的左半边放在它前面，右半边放在它后面（实时移动，松手即生效） ----
+const draggingKey = ref<string | null>(null)
+
+function onDragStart(tab: Tab, e: DragEvent) {
+  draggingKey.value = tab.key
+  if (e.dataTransfer) {
+    e.dataTransfer.effectAllowed = 'move'
+    e.dataTransfer.setData('text/plain', tab.key)
+  }
+}
+
+function onDragOver(target: Tab, e: DragEvent) {
+  if (e.dataTransfer) e.dataTransfer.dropEffect = 'move'
+  const key = draggingKey.value
+  if (!key || key === target.key) return
+  const list = tabs.value
+  const from = list.findIndex((t) => t.key === key)
+  const to = list.findIndex((t) => t.key === target.key)
+  if (from < 0 || to < 0) return
+  const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+  const after = e.clientX > rect.left + rect.width / 2
+  // 目标插入位置（按移除拖动项之前的下标算）
+  let insert = after ? to + 1 : to
+  if (from < insert) insert--
+  if (insert === from) return
+  const next = [...list]
+  const [moved] = next.splice(from, 1)
+  next.splice(insert, 0, moved)
+  tabs.value = next
+}
+
+/** 只剩首页一个页签时，「关闭全部」没有意义 */
+const onlyHome = computed(() => tabs.value.length === 1 && tabs.value[0].key === HOME)
+
+/** 关闭全部：回到首页（我的看板），只留首页一个页签 */
+function closeAll() {
+  if (route.path === HOME) {
+    tabs.value = tabs.value.filter((t) => t.key === HOME)
+  } else {
+    tabs.value = []
+    router.push(HOME) // 路由监听会把首页页签加回来
+  }
+}
+
+function onMoreMenu(key: string) {
+  const current = tabs.value.find((t) => t.key === activeKey.value)
+  if (key === 'current') {
+    if (current) close(current)
+  } else if (key === 'others') {
+    if (current) closeKeys(new Set(tabs.value.filter((t) => t.key !== current.key).map((t) => t.key)))
+  } else if (key === 'all') {
+    closeAll()
+  }
 }
 
 // ---- 页签过多时横向滚动 ----
@@ -254,6 +320,11 @@ function scrollIntoView(key: string) {
   color: #1f2329;
 }
 
+/* 拖动中的页签：半透明，表示它的新位置 */
+.dt-tab.dragging {
+  opacity: 0.45;
+}
+
 .dt-tab.active {
   background: #fff;
   color: #1f2329;
@@ -330,7 +401,7 @@ function scrollIntoView(key: string) {
   color: #1f2329;
 }
 
-.dt-add {
+.dt-more {
   -webkit-app-region: no-drag;
   flex-shrink: 0;
   align-self: center;
@@ -341,12 +412,12 @@ function scrollIntoView(key: string) {
   align-items: center;
   justify-content: center;
   border-radius: 6px;
-  font-size: 12px;
+  font-size: 16px;
   color: #5c6370;
   cursor: pointer;
 }
 
-.dt-add:hover {
+.dt-more:hover {
   background: rgba(0, 0, 0, 0.06);
   color: #1f2329;
 }

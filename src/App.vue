@@ -68,7 +68,7 @@ html.is-desktop .desktop-drag-strip {
   -webkit-app-region: drag;
 }
 /* 事项详情抽屉在客户端里放在页签栏下方，不盖住页签栏，所以它打开时页签栏仍可拖动 */
-html.is-desktop body:has(.ant-modal-wrap:not([style*='display: none']), .ant-drawer-open:not(.issue-detail-drawer), .ant-image-preview-wrap) :is(.app-header, .desktop-drag-strip, .desktop-tabbar) {
+html.is-desktop body:has(.ant-modal-wrap:not([style*='display: none']), .ant-drawer-open:not(.issue-detail-drawer), .ant-image-preview-wrap, .ant-dropdown:not(.ant-dropdown-hidden)) :is(.app-header, .desktop-drag-strip, .desktop-tabbar) {
   -webkit-app-region: no-drag;
 }
 /* 事项详情抽屉会盖住顶栏（菜单栏），打开时顶栏不再拖动，否则抽屉顶部那块点不动 */

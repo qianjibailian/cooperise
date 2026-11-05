@@ -70,9 +70,27 @@ const STATUS_MESSAGES: Record<number, string> = {
   504: '网关超时，请稍后重试',
 }
 
-/** 同一文案在提示期间只展示一条（并发请求同时失败时不刷屏） */
+/**
+ * 全局提示的展示方式：默认用 ant-design-vue 的 message（网页版 / 客户端）；
+ * 手机 H5 入口（src/h5/main.ts）调用 setRequestNotifier 换成 Vant 的 Toast
+ */
+export interface RequestNotifier {
+  success: (text: string) => void
+  error: (text: string) => void
+  warning: (text: string) => void
+}
+let notifier: RequestNotifier = {
+  success: (text) => message.success(text),
+  // 同一文案在提示期间只展示一条（并发请求同时失败时不刷屏）
+  error: (text) => message.error({ content: text, key: `req-err:${text}` }),
+  warning: (text) => message.warning({ content: text, key: `req-warn:${text}` }),
+}
+export function setRequestNotifier(n: RequestNotifier) {
+  notifier = n
+}
+
 function showError(text: string) {
-  message.error({ content: text, key: `req-err:${text}` })
+  notifier.error(text)
 }
 
 /** axios 错误 / 业务 401 响应 → ApiError */
@@ -97,7 +115,7 @@ function toApiError(error: any): ApiError {
  */
 function handleUnauthorized(err: ApiError) {
   if (useAuth().isLoggedIn.value) {
-    message.warning({ content: '登录已失效，请重新登录', key: 'req-unauthorized' })
+    notifier.warning('登录已失效，请重新登录')
     clearAuth()
   } else {
     showError(err.message)
@@ -115,7 +133,7 @@ request.interceptors.response.use(
     // 统一全局提示：HTTP 2xx 且业务 success=true → message.success(接口 message)；其余 → message.error
     if (data && typeof data === 'object' && 'success' in data) {
       if (data.success === true) {
-        if (data.message) message.success(data.message)
+        if (data.message) notifier.success(data.message)
       } else {
         showError(data.message || '请求失败')
       }

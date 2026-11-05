@@ -1,0 +1,145 @@
+/*
+ * 手机 H5 全局样式（只在 h5.html 入口加载，不影响网页版 / 客户端）
+ *
+ * 目标机型：iPhone 17（402×874 pt）、iPhone 17 Pro Max（440×956 pt），均为灵动岛 + 底部横条：
+ * - 顶部导航栏 / 底部标签栏用 env(safe-area-inset-*) 让出系统区域（h5.html 已设 viewport-fit=cover）
+ * - 内容区按 100% 宽度自适应，不写死设备宽度；402 与 440 两档下字号、间距一致，只多出横向留白
+ * - 输入框字号 ≥ 16px，避免 iOS Safari 聚焦时自动放大页面
+ */
+:root {
+  --h5-bg: #f5f6f8;
+  --h5-card: #ffffff;
+  --h5-text: #1f2329;
+  --h5-text-2: #5c6370;
+  --h5-text-3: #8a919c;
+  --h5-border: #ebedf0;
+  --h5-gutter: 16px;
+  --h5-radius: 12px;
+  /* Vant 主题色跟随系统主题（--c-primary 由 initTheme 写入） */
+  --van-primary-color: var(--c-primary, #1677ff);
+  --van-tabbar-item-active-color: var(--c-primary, #1677ff);
+  --van-nav-bar-icon-color: var(--h5-text);
+  --van-nav-bar-text-color: var(--h5-text);
+  --van-nav-bar-title-font-size: 17px;
+  --van-cell-font-size: 15px;
+  --van-field-input-text-color: var(--h5-text);
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--h5-bg);
+  color: var(--h5-text);
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'PingFang SC', 'Helvetica Neue', 'Microsoft YaHei', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior-y: none;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+input,
+textarea,
+select {
+  font-size: 16px !important;
+}
+
+/* 页面通用骨架 */
+.h5-page {
+  min-height: 100vh;
+  min-height: 100dvh;
+  background: var(--h5-bg);
+}
+
+/* 顶部导航栏：灵动岛下方开始 */
+.h5-page .van-nav-bar {
+  padding-top: env(safe-area-inset-top, 0px);
+  background: rgba(245, 246, 248, 0.92);
+  -webkit-backdrop-filter: saturate(180%) blur(16px);
+  backdrop-filter: saturate(180%) blur(16px);
+}
+
+.h5-page .van-nav-bar::after {
+  border-color: transparent;
+}
+
+/* 无底部标签栏的全屏页：底部内容让出横条区域 */
+.h5-safe-bottom {
+  padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+}
+
+/* 卡片 */
+.h5-card {
+  margin: 12px var(--h5-gutter) 0;
+  padding: 14px 16px;
+  border-radius: var(--h5-radius);
+  background: var(--h5-card);
+}
+
+.h5-section-title {
+  margin: 20px var(--h5-gutter) 8px;
+  font-size: 13px;
+  color: var(--h5-text-3);
+}
+
+.h5-muted {
+  color: var(--h5-text-3);
+}
+
+.h5-ellipsis {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 状态标签：颜色由接口返回的 color 决定，没有时用灰色 */
+.h5-status {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #fff;
+  background: #8a919c;
+  white-space: nowrap;
+}
+
+/* 问题类型小图标 */
+.h5-type-icon {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 5px;
+  color: #fff;
+  font-size: 11px;
+}
+
+/* 底部固定操作栏（详情页、新建页） */
+.h5-action-bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 10;
+  display: flex;
+  gap: 10px;
+  padding: 10px var(--h5-gutter) calc(10px + env(safe-area-inset-bottom, 0px));
+  background: rgba(255, 255, 255, 0.96);
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
+  box-shadow: 0 -1px 0 var(--h5-border);
+}
+
+.h5-action-bar-placeholder {
+  height: calc(64px + env(safe-area-inset-bottom, 0px));
+}

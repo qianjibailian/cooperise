@@ -11,8 +11,8 @@ import { setupRouter } from './router'
 import { initTheme } from './utils/theme'
 // 中英文切换：dayjs 语言 + 运行时词典翻译（默认中文，记住上次选择）
 import { initLocale, loadRemoteDictionary, hasCachedDictionary, locale } from './i18n'
-import { markDesktop } from './utils/desktop'
-import { markNative } from './utils/native'
+import { markDesktop, isDesktop } from './utils/desktop'
+import { markNative, isNativeApp } from './utils/native'
 import { syncDesktopSession } from './utils/desktop-session'
 import type { Router } from 'vue-router'
 
@@ -47,7 +47,30 @@ async function render(props?: { container?: HTMLElement }) {
   initLocale()
 }
 
-if (!(window as unknown as { __POWERED_BY_QIANKUN__?: boolean }).__POWERED_BY_QIANKUN__) {
+/**
+ * 手机浏览器访问网页版 → 跳到手机 H5（/h5/，独立入口，见 src/h5/），地址保持一致（如 /jira/browse/KEY）。
+ * 只认手机（iPhone / Android 手机），iPad、客户端、iOS App 壳、qiankun 嵌入都不跳；
+ * 网址带 ?pc=1 时本次会话坚持用网页版
+ */
+function redirectPhoneToH5(): boolean {
+  if (isDesktop || isNativeApp) return false
+  try {
+    const params = new URLSearchParams(location.search)
+    if (params.get('pc') === '1') sessionStorage.setItem('cooperise.forcePc', '1')
+    if (sessionStorage.getItem('cooperise.forcePc') === '1') return false
+  } catch {
+    // 存储不可用：照常判断
+  }
+  const ua = navigator.userAgent
+  const isPhone = /iPhone|iPod/.test(ua) || (/Android/.test(ua) && /Mobile/.test(ua))
+  if (!isPhone) return false
+  // 事项链接在 H5 有同样的路由；其他页面统一进 H5 首页（我的事项）
+  const path = location.pathname.replace(/^\/+/, '')
+  location.replace(path.startsWith('jira/browse/') ? `/h5/${path}` : '/h5/')
+  return true
+}
+
+if (!(window as unknown as { __POWERED_BY_QIANKUN__?: boolean }).__POWERED_BY_QIANKUN__ && !redirectPhoneToH5()) {
   void render()
 }
 

@@ -2388,12 +2388,22 @@ function formatRichText(v: unknown): string {
 }
 
 /* ============ Scroll area（已并入 detail-body 滚动容器，这里只是内边距容器） ============ */
+/* 内容不多时也撑满抽屉高度：滚动区占满剩余空间，最后一块（活动日志）向下拉伸到底，不留灰色空白 */
 .detail-scroll {
+  flex: 1 0 auto;
+  display: flex;
+  flex-direction: column;
   background: #f5f7fa;
 }
 .scroll-inner {
-  padding: 16px 20px 8px;
+  flex: 1 0 auto;
+  display: flex;
+  flex-direction: column;
+  padding: 16px 20px 0;
   max-width: 100%;
+}
+.scroll-inner > .panel-collapse-last {
+  flex: 1 0 auto;
 }
 
 /* ============ 通用折叠板（描述 / 人员 / 研发 / OKR / 团队管理） ============ */
@@ -2947,7 +2957,8 @@ function formatRichText(v: unknown): string {
   transition: background 0.15s;
 }
 
-.footer-spacer { height: 28px; }
+/* 底部留白与最后一块同为白色、同样通栏，避免底部露出灰条 */
+.footer-spacer { flex-shrink: 0; height: 28px; margin: 0 -20px; background: #ffffff; }
 
 /* Scrollbar（从单号区域顶部开始） */
 .detail-body {
