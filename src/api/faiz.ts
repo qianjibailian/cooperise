@@ -688,7 +688,8 @@ export interface PositionItem {
 export interface PositionQueryParams {
   keyword?: string
   status?: number
-  /** 按组织编码筛选 */
+  /** 按组织筛选（含下级组织）：organizationId 优先 */
+  organizationId?: number
   organizationCode?: string
   page: number
   pageSize: number
@@ -698,7 +699,8 @@ export interface PositionQueryParams {
 export interface PositionSaveParams {
   id?: number
   positionName: string
-  /** 所属组织编码 */
+  /** 所属组织：organizationId 与 organizationCode 二选一，ID 优先；都不传表示不挂组织 */
+  organizationId?: number
   organizationCode?: string
   description?: string
   sort?: number
@@ -1083,8 +1085,8 @@ export interface SpaceQueryParams {
 export interface SpaceSaveParams {
   id?: number
   spaceName: string
-  /** 空间标识：1~5 位大写字母，问题单号前缀 */
-  spaceKey: string
+  /** 空间标识：后端按空间名自动生成，传了也会被忽略，无需提交 */
+  spaceKey?: string
   /** 所属组织：organizationId 与 organizationCode 二选一，ID 优先 */
   organizationId?: number
   organizationCode?: string

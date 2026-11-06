@@ -16,21 +16,10 @@
             required
             :rules="[{ validator: (v: string) => !!v.trim(), message: '请输入空间名称' }]"
           />
-          <!-- 空间标识用于生成问题单号，保存后不可修改 -->
-          <van-field
-            :model-value="form.spaceKey"
-            name="spaceKey"
-            label="空间标识"
-            label-align="top"
-            placeholder="如 RD"
-            maxlength="5"
-            required
-            :disabled="keyLocked"
-            :rules="[{ pattern: /^[A-Z]{1,5}$/, message: '请输入 1~5 位大写字母' }]"
-            @update:model-value="onKeyInput"
-          >
+          <!-- 空间标识（问题单号前缀）由后端按空间名自动生成：新建不展示，编辑时只读 -->
+          <van-field v-if="space" :model-value="form.spaceKey || '-'" label="空间标识" label-align="top" readonly disabled>
             <template #extra>
-              <span class="sf-hint">{{ keyLocked ? '已用于生成单号，不可修改' : `单号如 ${form.spaceKey || 'RD'}-000042` }}</span>
+              <span class="sf-hint">已用于生成单号，不可修改</span>
             </template>
           </van-field>
           <van-field v-if="space" :model-value="space.spaceCode" label="空间编码" label-align="top" readonly disabled />
@@ -134,8 +123,6 @@ const empty = () => ({
 const form = reactive(empty())
 /** 负责人：编辑器用用户对象，提交时取 memberId */
 const owner = ref<Record<string, unknown> | null>(null)
-/** 已有标识的空间不可再改（历史空间没有标识时允许补填） */
-const keyLocked = computed(() => !!props.space?.spaceKey)
 const enabled = computed({
   get: () => form.status === 1,
   set: (v: boolean) => { form.status = v ? 1 : 0 },
@@ -160,10 +147,6 @@ watch(() => props.show, (v) => {
   if (s.ownerMemberId) owner.value = { memberId: s.ownerMemberId, realName: s.ownerName || s.ownerMemberId }
 })
 
-function onKeyInput(v: string) {
-  form.spaceKey = v.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 5)
-}
-
 function onShowChange(v: boolean) {
   emit('update:show', v)
 }
@@ -173,7 +156,6 @@ async function submit() {
   try {
     const payload: SpaceSaveParams = {
       spaceName: form.spaceName.trim(),
-      spaceKey: form.spaceKey,
       organizationCode: findOrgCode(props.orgTree, form.organizationId),
       // 允许清空负责人：传空串，后端置空
       ownerMemberId: owner.value ? personValueOf(owner.value) : '',

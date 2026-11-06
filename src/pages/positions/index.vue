@@ -183,6 +183,8 @@ async function loadPositions() {
     const res = await queryPositions({
       keyword: keyword.value.trim() || undefined,
       status: statusFilter.value === 'all' ? undefined : Number(statusFilter.value),
+      // 组织同时传 ID 与编码：后端按 ID 筛选（含下级组织）
+      organizationId: orgFilter.value,
       organizationCode: findOrgCode(orgTree.value, orgFilter.value),
       page: page.value,
       pageSize: pageSize.value,
@@ -222,6 +224,8 @@ async function toggleStatus(r: PositionItem, checked: boolean) {
     const res = await updatePosition({
       id: r.id,
       positionName: r.positionName,
+      // 快捷启停也要原样带上组织，否则后端会把组织清空
+      organizationId: r.organizationId ?? findOrgIdByCode(orgTree.value, r.organizationCode),
       organizationCode: r.organizationCode ?? findOrgCode(orgTree.value, r.organizationId),
       description: r.description,
       sort: r.sort,
@@ -241,7 +245,7 @@ const saving = ref(false)
 const editingId = ref<number | null>(null)
 const formRef = ref<FormInstance>()
 /** 表单内组织用 ID 选择（组织树），提交时换算成组织编码 */
-const emptyForm = (): Omit<PositionSaveParams, 'id' | 'organizationCode'> & { organizationId?: number; description: string; sort: number } => ({
+const emptyForm = (): Omit<PositionSaveParams, 'id' | 'organizationId' | 'organizationCode'> & { organizationId?: number; description: string; sort: number } => ({
   positionName: '',
   organizationId: undefined,
   description: '',
@@ -287,6 +291,8 @@ async function handleSubmit() {
     const { organizationId, ...rest } = form
     const payload: PositionSaveParams = {
       ...rest,
+      // 组织同时传 ID 与编码（后端以 ID 为准；不传会把岗位的组织清空）
+      organizationId,
       organizationCode: findOrgCode(orgTree.value, organizationId),
       positionName: form.positionName.trim(),
       description: form.description.trim() || undefined,

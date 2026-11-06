@@ -117,15 +117,9 @@
         <a-form-item label="空间名称" name="spaceName">
           <a-input v-model:value="form.spaceName" placeholder="如 研发协作空间" :maxlength="128" />
         </a-form-item>
-        <!-- 空间标识用于生成问题单号，保存后不可修改，避免历史单号前缀不一致 -->
-        <a-form-item label="空间标识" name="spaceKey" :extra="keyLocked ? '空间标识已用于生成问题单号，不可修改' : `问题单号前缀，最多 5 位大写字母，如 ${form.spaceKey || 'RD'}-000042`">
-          <a-input
-            :value="form.spaceKey"
-            placeholder="如 RD"
-            :maxlength="5"
-            :disabled="keyLocked"
-            @update:value="(v: string) => (form.spaceKey = v.toUpperCase().replace(/[^A-Z]/g, ''))"
-          />
+        <!-- 空间标识（问题单号前缀）由后端按空间名自动生成：新建不展示，编辑时只读 -->
+        <a-form-item v-if="editingId" label="空间标识" extra="空间标识已用于生成问题单号，不可修改">
+          <a-input :value="form.spaceKey || '-'" disabled />
         </a-form-item>
         <!-- 空间编码由后端自动生成：新建不展示，编辑时只读 -->
         <a-form-item v-if="editingId" label="空间编码">
@@ -402,8 +396,6 @@ const editingId = ref<number | null>(null)
 const formRef = ref<FormInstance>()
 /** 编辑中空间的编码（只读展示） */
 const editingCode = ref('')
-/** 已保存过标识的空间不可再改标识（历史空间无标识时允许补填） */
-const keyLocked = ref(false)
 /** 表单内组织用 ID 选择（组织树），提交时换算成组织编码 organizationCode */
 const emptyForm = () => ({
   spaceName: '',
@@ -423,16 +415,11 @@ const statusChecked = computed({
 
 const rules: Record<string, Rule[]> = {
   spaceName: [{ required: true, whitespace: true, message: '请输入空间名称' }],
-  spaceKey: [
-    { required: true, message: '请输入空间标识' },
-    { pattern: /^[A-Z]{1,5}$/, message: '最多 5 位大写字母' },
-  ],
   organizationId: [{ required: true, type: 'number', message: '请选择所属组织' }],
 }
 
 function openCreate() {
   editingId.value = null
-  keyLocked.value = false
   Object.assign(form, emptyForm())
   modalOpen.value = true
 }
@@ -440,7 +427,6 @@ function openCreate() {
 function openEdit(r: SpaceItem) {
   editingId.value = r.id
   editingCode.value = r.spaceCode
-  keyLocked.value = !!r.spaceKey
   if (r.ownerMemberId && r.ownerName && !userNameMap[r.ownerMemberId]) userNameMap[r.ownerMemberId] = r.ownerName
   Object.assign(form, {
     spaceName: r.spaceName ?? '',
@@ -465,7 +451,6 @@ async function handleSubmit() {
   try {
     const payload: SpaceSaveParams = {
       spaceName: form.spaceName.trim(),
-      spaceKey: form.spaceKey,
       organizationCode: findOrgCode(orgTree.value, form.organizationId),
       // 允许清空负责人：传空串，后端置空
       ownerMemberId: form.ownerMemberId || '',
