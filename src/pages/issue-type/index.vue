@@ -220,23 +220,15 @@ import {
 import SpaceSelect from '@/components/SpaceSelect.vue'
 import SpaceTag from '@/components/SpaceTag.vue'
 import { useSpaces } from '@/utils/space-store'
+import { PRESET_COLORS } from '@/config/colors'
 import { ISSUE_TYPE_ICONS, DEFAULT_ISSUE_TYPE_ICON, issueTypeIconOf } from '@/utils/issueTypeIcons'
 
 /** 图标颜色候选（Apple 系统色） */
 const COLOR_OPTIONS = ['#0A84FF', '#5E5CE6', '#AF52DE', '#FF375F', '#FF3B30', '#FF9500', '#FFCC00', '#34C759', '#30B0C7', '#8E8E93']
 const DEFAULT_COLOR = COLOR_OPTIONS[0]
 
-/**
- * 问题状态颜色（20 个，弹层每行 5 个）：
- * 前两行为原有的系统色，后两行是对应位置颜色的深色版（灰→深灰、蓝→深蓝、靛→深靛、紫→深紫、橙→深橙 /
- * 黄→棕、绿→深绿、青→深青、粉→深粉、红→深红），状态多时也能选出区分得开的颜色
- */
-const STATUS_COLOR_OPTIONS = [
-  '#8E8E93', '#0A84FF', '#5E5CE6', '#AF52DE', '#FF9500',
-  '#FFCC00', '#34C759', '#30B0C7', '#FF375F', '#FF3B30',
-  '#636366', '#1D4ED8', '#3634A3', '#8944AB', '#C93400',
-  '#A2845E', '#248A3D', '#0071A4', '#D30F45', '#B00012',
-]
+/** 问题状态颜色：与下拉字段选项共用同一套预设色板 */
+const STATUS_COLOR_OPTIONS = PRESET_COLORS
 
 /** 表单内的状态行（_key 仅用于列表渲染） */
 type StatusRow = IssueTypeStatus & { _key: number; color: string }

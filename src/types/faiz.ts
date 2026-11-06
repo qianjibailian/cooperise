@@ -604,7 +604,7 @@ export interface AvailableFieldItem {
 export interface EnumOptionItem {
   label: string
   value: string
-  /** 选项颜色（单选/多选下拉配置用，如 #1677ff） */
+  /** 选项颜色（单选/多选下拉配置用，取值来自预设色板，如 #8E8E93） */
   color?: string
   children?: EnumOptionItem[]
 }

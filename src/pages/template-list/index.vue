@@ -253,7 +253,7 @@
                 </a-tabs>
                 <div class="afp-list">
                   <a-spin :spinning="availableFieldsLoading" size="small">
-                    <a-empty v-if="!availableFieldsLoading && filteredAvailableFields.length === 0" description="暂无匹配字段" />
+                    <a-empty v-if="!availableFieldsLoading && filteredAvailableFields.length === 0" :description="availableFieldsEmptyText" />
                     <a-checkbox-group
                       v-else
                       v-model:value="selectedAvailableFieldIds"
@@ -452,7 +452,7 @@
                 </div>
                 <a-spin :spinning="availableFieldsLoading" size="small">
                   <div class="tab-available-list">
-                    <a-empty v-if="!availableFieldsLoading && tabFilteredAvailable(tab.id).length === 0" description="暂无匹配字段" />
+                    <a-empty v-if="!availableFieldsLoading && tabFilteredAvailable(tab.id).length === 0" :description="availableFieldsEmptyText" />
                     <div
                       v-else
                       v-for="f in tabFilteredAvailable(tab.id)"
@@ -503,7 +503,7 @@
       v-model:open="fieldCreateOpen"
       :api="systemFieldEditApi"
       force-custom
-      :space-code="props.spaceCode"
+      :space-code="editForm.spaceCode || props.spaceCode"
       :preset-issue-type-codes="editForm.issueTypeCode ? [editForm.issueTypeCode] : []"
       lock-shown-scene="CREATE"
       lock-shown-hint="模板即新建事项表单，模板里新建的字段必须在「新建」中展示"
@@ -686,23 +686,83 @@ async function onFieldCreated({ field }: { isEdit: boolean; field: FieldRow | nu
   message.success(`已新建字段「${row.fieldName}」并加入表单`)
 }
 
+/** 模板所属空间：弹窗内选择的优先，其次空间内嵌模式传入的空间 */
+function currentTemplateSpace(): string | undefined {
+  return editForm.spaceCode || props.spaceCode || undefined
+}
+
+/** 可用字段列表对应的空间：空间变化后必须重新拉取，不能用上一个空间的缓存 */
+const availableFieldsSpace = ref<string | undefined>(undefined)
+let availableFieldsSeq = 0
+
 async function loadAvailableFields(force = false) {
-  if (availableFieldsList.value.length > 0 && !force) return
+  const spaceCode = currentTemplateSpace()
+  if (!force && availableFieldsList.value.length > 0 && availableFieldsSpace.value === spaceCode) return
+  // 未选所属空间时无法判断「本空间字段」，先不展示；选好空间后由 onEditSpaceChange 触发加载
+  if (!spaceCode) {
+    availableFieldsSeq++
+    availableFieldsList.value = []
+    availableFieldsSpace.value = undefined
+    availableFieldsLoading.value = false
+    return
+  }
+  const seq = ++availableFieldsSeq
   availableFieldsLoading.value = true
   try {
-    // 模板即新建事项表单：只提供展示位置包含「新建」的字段
-    const res = await queryAvailableFieldList({ page: 1, pageSize: 999, searchKey: '', displayScene: TEMPLATE_FIELD_SCENE })
+    // 模板即新建事项表单：只提供展示位置包含「新建」的字段；
+    // 按所属空间过滤：系统字段（各空间共用）+ 关联本空间问题类型的自定义字段
+    const res = await queryAvailableFieldList({
+      page: 1,
+      pageSize: 999,
+      searchKey: '',
+      displayScene: TEMPLATE_FIELD_SCENE,
+      spaceCode,
+    })
+    if (seq !== availableFieldsSeq) return
     // 接口返回的 filedType 可能是旧枚举（INPUT_TEXT / CASCADER / USER_SINGLE_SELECT 等），
     // 统一归一化为新枚举，保证左侧类型标签、过滤与右侧组件映射（availableFieldToWidget）一致
     availableFieldsList.value = (res?.data?.list || [])
       // 前端再兜底过滤一次：接口未按场景过滤（旧版本）时也只留新建展示的字段
       .filter(f => (f.displayScene || []).some(s => String(s).toUpperCase() === TEMPLATE_FIELD_SCENE))
       .map(f => ({ ...f, type: normalizeFieldType(f.type || f.filedType) }))
+    availableFieldsSpace.value = spaceCode
   } catch {
-    availableFieldsList.value = []
+    if (seq === availableFieldsSeq) {
+      availableFieldsList.value = []
+      availableFieldsSpace.value = undefined
+    }
   } finally {
-    availableFieldsLoading.value = false
+    if (seq === availableFieldsSeq) availableFieldsLoading.value = false
   }
+}
+
+/** 可用字段为空时的提示：未选空间时先提示选空间 */
+const availableFieldsEmptyText = computed(() =>
+  currentTemplateSpace() ? '暂无匹配字段' : '请先选择所属空间',
+)
+
+/**
+ * 切换空间后移除已添加、但不属于新空间的字段，避免模板里残留其他空间的字段。
+ * 可用字段为空（未选空间 / 加载失败）时不裁剪，避免误删。
+ */
+function pruneFieldsOutsideSpace() {
+  const allowed = new Set(availableFieldsList.value.map(f => String(f.fieldId)))
+  if (!allowed.size) return
+  const removed: string[] = []
+  const filterWidgets = (widgets: any[]): any[] => widgets.filter((w) => {
+    if (w?.fieldId && !allowed.has(String(w.fieldId))) {
+      removed.push(w.title || w.field || String(w.fieldId))
+      return false
+    }
+    if (w?.children?.length) w.children = filterWidgets(w.children)
+    return true
+  })
+  // singleFormTab 是 editForm.tabs[0] 的计算属性，直接遍历 tabs 即可覆盖单表单与多 Tab
+  editForm.tabs.forEach((t) => { t.widgetData = filterWidgets(t.widgetData || []) })
+  if (!removed.length) return
+  selectedAvailableFieldIds.value = selectedAvailableFieldIds.value
+    .filter(id => allowed.has(String(id)))
+  message.warning(`已移除不属于当前空间的字段：${removed.join('、')}`)
 }
 
 const filteredAvailableFields = computed(() => {
@@ -1136,12 +1196,16 @@ async function loadEditIssueTypes(spaceCode?: string) {
     if (seq === editIssueTypeSeq) editIssueTypeLoading.value = false
   }
 }
-/** 切换所属空间（独立页面时可选）：重新拉取问题类型，原问题类型不属于新空间时清空 */
+/** 切换所属空间（独立页面时可选）：重新拉取问题类型，原问题类型不属于新空间时清空；可用字段同步按新空间过滤 */
 async function onEditSpaceChange(spaceCode?: string) {
+  // 与 v-model 的事件顺序无关，先同步空间，再按新空间重拉字段
+  editForm.spaceCode = spaceCode
   await loadEditIssueTypes(spaceCode)
   if (editForm.issueTypeCode && !editIssueTypes.value.some(t => t.issueTypeCode === editForm.issueTypeCode)) {
     editForm.issueTypeCode = undefined
   }
+  await loadAvailableFields(true)
+  pruneFieldsOutsideSpace()
 }
 
 /** 同问题类型下除当前编辑模板外的其他默认模板（全量，不受分页/筛选影响） */

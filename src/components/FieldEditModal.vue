@@ -63,7 +63,6 @@
           <div class="enum-options-editor">
             <div class="enum-options-header">
               <span class="opt-col">选项名称</span>
-              <span class="opt-col">选项值</span>
               <span v-if="isColorableType" class="opt-col opt-color-col">颜色</span>
               <span class="opt-col opt-action-col">操作</span>
             </div>
@@ -74,27 +73,35 @@
                   :placeholder="isCascaderType ? '一级选项名称' : '选项名称'"
                   @input="onEnumOptionChange"
                 />
-                <a-input
-                  v-model:value="opt.value"
-                  :placeholder="isCascaderType ? '一级选项值' : '选项值'"
-                  @input="onEnumOptionChange"
-                />
                 <div
                   v-if="isColorableType"
                   class="enum-option-color-wrap"
-                  title="选项颜色"
                 >
-                  <input
-                    type="color"
-                    class="enum-option-color-input"
-                    :value="opt.color || '#1677ff'"
-                    @input="onColorInput(opt, $event)"
-                  />
+                  <a-popover trigger="click" placement="bottom" :overlay-style="{ zIndex: 1100 }">
+                    <template #content>
+                      <div class="enum-color-grid">
+                        <button
+                          v-for="c in PRESET_COLORS"
+                          :key="c"
+                          type="button"
+                          :class="['enum-color-swatch', { active: opt.color === c }]"
+                          :style="{ background: c }"
+                          :aria-label="c"
+                          @click="onColorPick(opt, c)"
+                        >
+                          <CheckOutlined v-if="opt.color === c" />
+                        </button>
+                      </div>
+                    </template>
+                    <button type="button" class="enum-color-btn" title="选项颜色">
+                      <span class="enum-color-dot" :style="{ background: opt.color || '#c7c7cc' }" />
+                    </button>
+                  </a-popover>
                   <span
                     v-if="opt.color"
                     class="enum-option-color-clear"
                     title="清除颜色"
-                    @click="opt.color = ''; onEnumOptionChange()"
+                    @click="onColorClear(opt)"
                   >×</span>
                 </div>
                 <a-button
@@ -113,11 +120,6 @@
                     <a-input
                       v-model:value="child.label"
                       placeholder="二级选项名称"
-                      @input="onEnumOptionChange"
-                    />
-                    <a-input
-                      v-model:value="child.value"
-                      placeholder="二级选项值"
                       @input="onEnumOptionChange"
                     />
                     <a-button
@@ -328,7 +330,8 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import { message } from 'ant-design-vue'
-import { MinusCircleOutlined } from '@ant-design/icons-vue'
+import { MinusCircleOutlined, CheckOutlined } from '@ant-design/icons-vue'
+import { PRESET_COLORS, DEFAULT_PRESET_COLOR } from '@/config/colors'
 import { queryIssueTypes, type IssueTypeItem } from '@/api/faiz'
 import type { AvailableFieldItem, AvailableFieldSavePayload, EnumOptionItem } from '@/types/faiz'
 import {
@@ -539,6 +542,61 @@ function isType(...vals: string[]) {
 // ---- 选项配置（单选/多选/级联） ----
 const enumOptions = ref<EnumOptionItem[]>([])
 
+let optionValueSeq = 0
+/**
+ * 生成选项值：用户只填选项名称，值由系统生成。
+ * 带时间戳而不是简单递增，避免删除选项后新选项复用旧值，导致历史事项的字段值串到新选项上。
+ */
+function genOptionValue(): string {
+  optionValueSeq = (optionValueSeq + 1) % 1296
+  return `opt_${Date.now().toString(36)}${optionValueSeq.toString(36).padStart(2, '0')}`
+}
+
+/** 历史数据里选项值可能为空：保存前补全，避免筛选项因空值无法命中 */
+function ensureOptionValues() {
+  const used = new Set<string>()
+  const collect = (opts: EnumOptionItem[]) => {
+    for (const o of opts) {
+      if (o.value?.trim()) used.add(o.value.trim())
+      if (o.children?.length) collect(o.children)
+    }
+  }
+  collect(enumOptions.value)
+  const fill = (opts: EnumOptionItem[]) => {
+    for (const o of opts) {
+      if (!o.value?.trim()) {
+        let v = genOptionValue()
+        while (used.has(v)) v = genOptionValue()
+        o.value = v
+        used.add(v)
+      }
+      if (o.children?.length) fill(o.children)
+    }
+  }
+  fill(enumOptions.value)
+}
+
+/** 同级选项名称重复（级联的父子层级分别判断） */
+function duplicateNamesInLevel(opts: EnumOptionItem[]): string[] {
+  const seen = new Set<string>()
+  const dup = new Set<string>()
+  for (const o of opts) {
+    const name = o.label?.trim()
+    if (!name) continue
+    if (seen.has(name)) dup.add(name)
+    else seen.add(name)
+  }
+  return [...dup]
+}
+
+function findDuplicateOptionNames(opts: EnumOptionItem[]): string[] {
+  const dup = new Set(duplicateNamesInLevel(opts))
+  for (const o of opts) {
+    if (o.children?.length) duplicateNamesInLevel(o.children).forEach(n => dup.add(n))
+  }
+  return [...dup]
+}
+
 function parseFieldValue(schema: string | null | undefined): EnumOptionItem[] {
   if (!schema) return []
   try {
@@ -558,13 +616,20 @@ function syncFieldValue() {
 }
 
 function addEnumOption() {
-  enumOptions.value.push({ label: '', value: '', color: '' })
+  // 选项值在保存时由系统生成，用户只填名称
+  enumOptions.value.push({ label: '', value: '', color: DEFAULT_PRESET_COLOR })
   syncFieldValue()
 }
 
-/** 选项颜色输入：写入 hex 色值并同步到 fieldValue */
-function onColorInput(opt: EnumOptionItem, e: Event) {
-  opt.color = (e.target as HTMLInputElement).value
+/** 选择预设颜色：写入 hex 色值并同步到 fieldValue */
+function onColorPick(opt: EnumOptionItem, color: string) {
+  opt.color = color
+  syncFieldValue()
+}
+
+/** 清除颜色：选项变为无颜色，展示端回落到默认文字色 */
+function onColorClear(opt: EnumOptionItem) {
+  opt.color = ''
   syncFieldValue()
 }
 
@@ -576,6 +641,7 @@ function removeEnumOption(index: number) {
 function addCascaderChild(parentIndex: number) {
   const parent = enumOptions.value[parentIndex]
   if (!parent.children) parent.children = []
+  // 选项值在保存时由系统生成，用户只填名称
   parent.children.push({ label: '', value: '' })
   syncFieldValue()
 }
@@ -661,6 +727,16 @@ watch(() => props.open, async (open) => {
 async function handleSubmit() {
   if (!editForm.value.fieldName?.trim()) {
     return
+  }
+  if (isEnumType.value) {
+    const dup = findDuplicateOptionNames(enumOptions.value)
+    if (dup.length) {
+      message.warning(`选项名称不能重复：${dup.join('、')}`)
+      return
+    }
+    // 选项值由系统生成（用户只填名称）；历史数据里缺失的值在这里补全
+    ensureOptionValues()
+    syncFieldValue()
   }
   const isCustom = props.forceCustom || !editForm.value.isSystem
   if (isCustom && !(editForm.value.issueTypeCodes ?? []).length) {
@@ -754,15 +830,27 @@ async function handleSubmit() {
 .enum-options-editor { width: 100%; }
 .enum-options-header { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
 .enum-options-header .opt-col { flex: 1; font-size: 12px; color: #86868b; font-weight: 600; }
-.enum-options-header .opt-color-col { flex: 0 0 92px; }
+.enum-options-header .opt-color-col { flex: 0 0 64px; }
 .enum-options-header .opt-action-col { flex: 0 0 40px; }
-.enum-option-color-wrap { flex: 0 0 92px; display: flex; align-items: center; gap: 6px; }
-.enum-option-color-input {
-  width: 36px; height: 26px; padding: 2px; border: 1px solid #d9d9d9; border-radius: 4px;
-  background: transparent; cursor: pointer; flex: none;
+.enum-option-color-wrap { flex: 0 0 64px; display: flex; align-items: center; gap: 4px; }
+.enum-color-btn {
+  width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center;
+  padding: 0; background: #fff; border: 1px solid #d9d9d9; border-radius: 50%; cursor: pointer; flex: none;
+  transition: border-color 0.15s;
 }
-.enum-option-color-input::-webkit-color-swatch-wrapper { padding: 2px; }
-.enum-option-color-input::-webkit-color-swatch { border: none; border-radius: 2px; }
+.enum-color-btn:hover { border-color: #c7c7cc; }
+.enum-color-dot {
+  width: 16px; height: 16px; border-radius: 50%; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.06);
+}
+/* 预设颜色面板：与问题状态色板一致，20 个色块，每行 5 个 */
+.enum-color-grid { display: grid; grid-template-columns: repeat(5, 24px); gap: 8px; }
+.enum-color-swatch {
+  width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center;
+  padding: 0; font-size: 11px; color: #fff; border: none; border-radius: 50%; cursor: pointer;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.06); transition: transform 0.15s, box-shadow 0.15s;
+}
+.enum-color-swatch:hover { transform: scale(1.1); }
+.enum-color-swatch.active { box-shadow: 0 0 0 2px #fff, 0 0 0 4px rgba(15, 23, 42, 0.18); }
 .enum-option-color-clear {
   flex: none; width: 16px; height: 16px; line-height: 14px; text-align: center;
   border-radius: 50%; color: #86868b; cursor: pointer; font-size: 14px; user-select: none;
