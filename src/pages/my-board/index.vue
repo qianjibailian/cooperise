@@ -12,9 +12,14 @@
       </div>
     </header>
 
-    <a-spin :spinning="loading && !panels.length">
+    <!-- 初次加载：骨架占位，数据回来后渲染整页 -->
+    <div v-if="!initialized" class="mb-skeleton">
+      <a-skeleton active :paragraph="{ rows: 8 }" />
+    </div>
+
+    <a-spin v-else :spinning="loading">
       <!-- 空状态：一键添加推荐看板 -->
-      <div v-if="!loading && !panels.length" class="mb-empty">
+      <div v-if="!panels.length" class="mb-empty">
         <AppstoreOutlined class="mb-empty-icon" />
         <div class="mb-empty-title">还没有看板</div>
         <div class="mb-empty-desc">添加看板，把「我的需求」「我的任务」「待我处理」放在一起看</div>
@@ -179,6 +184,8 @@ const PAGE_SIZE_OPTIONS = [5, 10, 20].map(n => ({ label: `${n} 条`, value: n })
 // ---- 面板 ----
 const panels = ref<MyBoardPanel[]>([])
 const loading = ref(false)
+/** 首次数据加载完成前只渲染骨架，避免先出现空页面 */
+const initialized = ref(false)
 const panelData = reactive<Record<number, MyBoardPanelData>>({})
 const panelLoading = reactive<Record<number, boolean>>({})
 
@@ -198,8 +205,8 @@ async function loadPanelData(id: number) {
   }
 }
 
-function reloadAllData() {
-  panels.value.forEach(p => loadPanelData(p.id))
+async function reloadAllData() {
+  await Promise.all(panels.value.map(p => loadPanelData(p.id)))
 }
 
 async function reloadAll() {
@@ -207,12 +214,13 @@ async function reloadAll() {
   try {
     const res = await queryMyBoardPanels()
     panels.value = res?.success ? res.data || [] : []
+    await reloadAllData()
   } catch {
     // 请求层已统一提示
   } finally {
     loading.value = false
+    initialized.value = true
   }
-  reloadAllData()
 }
 
 // ---- 问题类型 / 状态（配置下拉 + 条件说明） ----
@@ -459,6 +467,12 @@ onMounted(async () => {
 <style scoped>
 .my-board {
   padding: 20px 24px 32px;
+}
+
+/* 首次加载占位：保持页面高度稳定，数据回来后整块替换 */
+.mb-skeleton {
+  min-height: 360px;
+  padding: 8px 0;
 }
 
 .mb-header {

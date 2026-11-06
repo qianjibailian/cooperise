@@ -25,7 +25,12 @@
         </div>
 
         <div class="table-wrapper">
+          <!-- 首次加载：骨架占位，数据回来后渲染表格 -->
+          <div v-if="!initialized" class="page-skeleton">
+            <a-skeleton active :paragraph="{ rows: 10 }" />
+          </div>
           <a-table
+            v-else
             :columns="visibleDefColumns"
             :data-source="filteredDefs"
             :loading="defLoading"
@@ -312,6 +317,8 @@ async function handleDefSpaceChange(spaceCode?: string) {
 
 const defList = ref<WorkflowDefinition[]>([])
 const defLoading = ref(false)
+/** 首次数据加载完成前只渲染骨架，避免先出现空表格 */
+const initialized = ref(false)
 const defKeyword = ref('')
 
 const defColumns = [
@@ -360,6 +367,7 @@ async function loadDefinitions() {
     // 错误提示由请求拦截器统一展示后端 message
   } finally {
     defLoading.value = false
+    initialized.value = true
   }
 }
 
@@ -716,6 +724,12 @@ onMounted(() => {
 </script>
 
 <style scoped>
+/* 首次加载占位：保持表格区域高度稳定，数据回来后整块替换 */
+.page-skeleton {
+  min-height: 360px;
+  padding: 12px 0;
+}
+
 .component-list-page {
   padding: 0 24px;
   font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, sans-serif;

@@ -68,7 +68,12 @@
 
     <!-- 表格 -->
     <div class="table-wrapper">
+      <!-- 首次加载：骨架占位，数据回来后渲染表格 -->
+      <div v-if="!initialized" class="page-skeleton">
+        <a-skeleton active :paragraph="{ rows: 10 }" />
+      </div>
       <a-table
+        v-else
         :columns="columns"
         :data-source="tableData"
         :loading="loading"
@@ -287,6 +292,8 @@ const totalCount = ref(0)
 const page = ref(1)
 const pageSize = ref(10)
 const loading = ref(false)
+/** 首次数据加载完成前只渲染骨架，避免先出现空表格 */
+const initialized = ref(false)
 
 const showEditModal = ref(false)
 /** 正在编辑的字段行；为空表示新增 */
@@ -381,6 +388,7 @@ async function loadFields() {
   } catch {
   } finally {
     loading.value = false
+    initialized.value = true
   }
 }
 

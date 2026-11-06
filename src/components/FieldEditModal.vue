@@ -481,8 +481,10 @@ async function loadIssueTypes() {
 }
 const issueTypeOptions = computed(() => {
   const selected = editForm.value.issueTypeCodes ?? []
+  // 指定空间时只允许选择该空间的问题类型（已关联的历史类型仍保留回显）；
+  // 字段的「所属空间」就是靠关联该空间的问题类型表达的
   const list = allIssueTypes.value.filter(t => t.issueTypeCode
-    && (!props.spaceCode || !t.spaceCode || t.spaceCode === props.spaceCode || selected.includes(t.issueTypeCode)))
+    && (!props.spaceCode || t.spaceCode === props.spaceCode || selected.includes(t.issueTypeCode)))
   const opts = list.map(t => ({ value: t.issueTypeCode as string, label: t.issueTypeName }))
   // 已关联但查不到的类型（已删除等）也保留，避免显示为空
   for (const code of selected) {

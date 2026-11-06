@@ -46,7 +46,12 @@
 
     <!-- 模板列表 -->
     <div class="table-card">
+      <!-- 首次加载：骨架占位，数据回来后渲染表格 -->
+      <div v-if="!initialized" class="page-skeleton">
+        <a-skeleton active :paragraph="{ rows: 10 }" />
+      </div>
       <a-table
+        v-else
         :columns="visibleColumns"
         :data-source="filteredTemplates"
         :loading="loading"
@@ -504,7 +509,7 @@
       :api="systemFieldEditApi"
       force-custom
       :space-code="editForm.spaceCode || props.spaceCode"
-      :preset-issue-type-codes="editForm.issueTypeCode ? [editForm.issueTypeCode] : []"
+      :preset-issue-type-codes="fieldPresetIssueTypeCodes"
       lock-shown-scene="CREATE"
       lock-shown-hint="模板即新建事项表单，模板里新建的字段必须在「新建」中展示"
       @saved="onFieldCreated"
@@ -662,7 +667,25 @@ const fieldCreateOpen = ref(false)
 /** 新建字段要加入的 tab；为空表示单表单 */
 const fieldCreateTabId = ref<string | number | null>(null)
 
-function openCreateField(tabId?: string | number) {
+/** 模板里新建字段默认关联的问题类型：优先模板的问题类型；模板未选时关联当前空间的问题类型，保证字段归属该空间 */
+const fieldPresetIssueTypeCodes = computed(() => {
+  if (editForm.issueTypeCode) return [editForm.issueTypeCode]
+  return editIssueTypes.value
+    .map(t => t.issueTypeCode)
+    .filter((c): c is string => !!c)
+})
+
+async function openCreateField(tabId?: string | number) {
+  const spaceCode = editForm.spaceCode || props.spaceCode
+  // 字段归属空间靠关联该空间的问题类型表达：没有空间就无从关联
+  if (!spaceCode) {
+    message.warning('请先选择所属空间，新增字段需要关联到该空间')
+    return
+  }
+  // 模板还没选问题类型时，默认关联该空间的问题类型；先确保列表已加载
+  if (!editForm.issueTypeCode && !editIssueTypes.value.length) {
+    await loadEditIssueTypes(spaceCode)
+  }
   fieldCreateTabId.value = tabId ?? null
   fieldCreateOpen.value = true
 }
@@ -1382,6 +1405,8 @@ function normalizeWidgets(ws: any): any[] {
 
 // ---- 持久化 ----
 const loading = ref(false)
+/** 首次数据加载完成前只渲染骨架，避免先出现空表格 */
+const initialized = ref(false)
 
 /** 模板列表列 */
 const columns = [
@@ -1421,6 +1446,7 @@ async function loadTemplates() {
   } catch {
   } finally {
     loading.value = false
+    initialized.value = true
   }
 }
 

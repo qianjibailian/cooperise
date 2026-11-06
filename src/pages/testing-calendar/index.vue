@@ -148,13 +148,38 @@
               </a-input>
               <a-spin :spinning="fieldLoading">
                 <div class="field-panel-list" @scroll="onFieldListScroll">
-                  <label v-for="f in fieldPickerOptions" :key="f.fieldId" class="field-option">
-                    <a-checkbox :checked="shownFieldIds.includes(f.fieldId)" @change="toggleShownField(f.fieldId)" />
+                  <!-- 已选字段：按展示顺序排列，拖动调整顺序 -->
+                  <div v-if="selectedFieldItems.length" class="field-block">
+                    <div class="field-block-title">
+                      已选字段 <span class="field-block-hint">拖动调整顺序</span>
+                    </div>
+                    <label
+                      v-for="f in selectedFieldItems"
+                      :key="f.fieldId"
+                      class="field-option is-selected"
+                      :class="{ 'is-dragging': draggingFieldId === f.fieldId, 'is-drag-over': dragOverFieldId === f.fieldId }"
+                      draggable="true"
+                      @dragstart="onFieldDragStart(f.fieldId, $event)"
+                      @dragover="onFieldDragOver(f.fieldId, $event)"
+                      @drop.prevent="onFieldDrop(f.fieldId)"
+                      @dragend="onFieldDragEnd"
+                    >
+                      <HolderOutlined class="field-drag-handle" />
+                      <a-checkbox :checked="true" @change="toggleShownField(f.fieldId)" />
+                      <span class="field-option-name" :title="f.fieldName">{{ f.fieldName }}</span>
+                    </label>
+                  </div>
+
+                  <!-- 未选字段：勾选后追加到已选末尾 -->
+                  <div v-if="unselectedFields.length" class="field-block-title field-block-title-sub">可选字段</div>
+                  <label v-for="f in unselectedFields" :key="f.fieldId" class="field-option">
+                    <a-checkbox :checked="false" @change="toggleShownField(f.fieldId)" />
                     <span class="field-option-name" :title="f.fieldName">{{ f.fieldName }}</span>
                   </label>
+
                   <div v-if="fieldLoadingMore" class="field-panel-more">加载中...</div>
-                  <div v-else-if="!fieldLoading && !fieldPickerOptions.length" class="field-panel-empty">暂无可选字段</div>
-                  <div v-else-if="!fieldLoading && !fieldHasMore && fieldPickerOptions.length > 10" class="field-panel-more">已加载全部字段</div>
+                  <div v-else-if="!fieldLoading && !selectedFieldItems.length && !unselectedFields.length" class="field-panel-empty">暂无可选字段</div>
+                  <div v-else-if="!fieldLoading && !fieldHasMore && unselectedFields.length > 10" class="field-panel-more">已加载全部字段</div>
                 </div>
               </a-spin>
             </div>
@@ -167,7 +192,12 @@
       </div>
     </div>
 
-    <div class="page-body">
+    <!-- 首次加载：骨架占位，数据回来后渲染日历 -->
+    <div v-if="!initialized" class="page-skeleton">
+      <a-skeleton active :paragraph="{ rows: 10 }" />
+    </div>
+
+    <div v-else class="page-body">
       <!-- 左：月历（周一开始，每格展示当天事项） -->
       <div class="calendar-panel">
         <a-spin :spinning="loading" wrapper-class-name="cal-spin">
@@ -309,6 +339,7 @@ import {
   SwapOutlined,
   LeftOutlined,
   RightOutlined,
+  HolderOutlined,
 } from '@ant-design/icons-vue'
 import FilterPanel from '@/components/FilterPanel.vue'
 import IssueDetailDrawer from '@/components/IssueDetailDrawer.vue'
@@ -517,8 +548,58 @@ const shownFieldIds = ref<string[]>([])
 const hasShownFields = computed(() => shownFieldIds.value.length > 0)
 
 
-/** 字段列表：接口返回的全部字段，均可勾选 */
-const fieldPickerOptions = computed(() => availableFields.value)
+/** 已选字段：按展示顺序排列，拖动排序的数据源；字段名跨页 / 跨搜索保留 */
+const selectedFieldItems = computed(() =>
+  shownFieldIds.value.map((id) => {
+    const f = availableFields.value.find((x) => x.fieldId === id)
+    return { fieldId: id, fieldName: f?.fieldName || fieldNames.value[id] || id }
+  }),
+)
+
+/** 未选字段：当前已加载（或搜索命中）的字段里排除已选的 */
+const unselectedFields = computed(() =>
+  availableFields.value.filter((f) => !shownFieldIds.value.includes(f.fieldId)),
+)
+
+// ---- 已选字段拖动排序 ----
+const draggingFieldId = ref('')
+const dragOverFieldId = ref('')
+
+function onFieldDragStart(id: string, e: DragEvent) {
+  draggingFieldId.value = id
+  if (e.dataTransfer) {
+    e.dataTransfer.effectAllowed = 'move'
+    e.dataTransfer.setData('text/plain', id)
+  }
+}
+
+function onFieldDragOver(id: string, e: DragEvent) {
+  if (!draggingFieldId.value || draggingFieldId.value === id) return
+  e.preventDefault()
+  if (e.dataTransfer) e.dataTransfer.dropEffect = 'move'
+  dragOverFieldId.value = id
+}
+
+async function onFieldDrop(targetId: string) {
+  const fromId = draggingFieldId.value
+  draggingFieldId.value = ''
+  dragOverFieldId.value = ''
+  if (!fromId || fromId === targetId) return
+  const ids = [...shownFieldIds.value]
+  const fromIdx = ids.indexOf(fromId)
+  const toIdx = ids.indexOf(targetId)
+  if (fromIdx < 0 || toIdx < 0) return
+  ids.splice(fromIdx, 1)
+  ids.splice(fromIdx < toIdx ? toIdx - 1 : toIdx, 0, fromId)
+  shownFieldIds.value = ids
+  await saveDraft({ showField: JSON.stringify({ showFieldItemList: ids }) })
+  reload()
+}
+
+function onFieldDragEnd() {
+  draggingFieldId.value = ''
+  dragOverFieldId.value = ''
+}
 
 let fieldReqSeq = 0
 /** 拉取一页字段；page=1 时替换列表（打开面板 / 搜索），否则追加 */
@@ -712,6 +793,8 @@ watch([groupPanelVisible, mappingPanelVisible], ([groupOpen, mappingOpen]) => {
 // ---------- 查询 ----------
 const allIssues = ref<CalendarIssue[]>([])
 const loading = ref(false)
+/** 首次数据加载完成前只渲染骨架，避免先出现空日历 */
+const initialized = ref(false)
 
 /** /issue/query 入参：筛选取面板条件，showField = 日历自身需要的字段 + 映射的日期字段 + 勾选字段 + 分组字段，按开始日期升序 */
 function buildQueryPayload(): IssueQueryPayload {
@@ -926,9 +1009,14 @@ function pickDefaultDate() {
 // ---------- 生命周期 ----------
 async function init() {
   loadMapping()
-  await loadDraft()
-  await reload()
-  pickDefaultDate()
+  try {
+    await loadDraft()
+    await reload()
+    pickDefaultDate()
+  } finally {
+    // 无论成功失败都结束首次骨架，避免一直停在占位
+    initialized.value = true
+  }
 }
 
 onMounted(() => {
@@ -963,6 +1051,13 @@ watch(filterCode, () => {
   flex-direction: column;
   overflow: hidden;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+}
+
+/* 首次加载占位：保持主体高度稳定，数据回来后整块替换 */
+.page-skeleton {
+  flex: 1;
+  min-height: 360px;
+  padding: 20px;
 }
 
 /* 顶部工具栏：与日历同一白色画布，按钮为浅灰圆角（参考 Apple / Google 日历） */
@@ -1158,6 +1253,44 @@ watch(filterCode, () => {
 }
 .field-option:hover {
   background: #f5f5f7;
+}
+/* 已选字段拖动排序 */
+.field-block-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px 4px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #86868b;
+}
+.field-block-title-sub {
+  margin-top: 6px;
+  padding-top: 8px;
+  border-top: 1px solid #f0f0f2;
+}
+.field-block-hint {
+  font-weight: 400;
+  color: #aeaeb2;
+}
+.field-option.is-selected {
+  cursor: grab;
+}
+.field-option.is-selected:active {
+  cursor: grabbing;
+}
+.field-drag-handle {
+  flex-shrink: 0;
+  font-size: 13px;
+  color: #c7c7cc;
+  cursor: grab;
+}
+.field-option.is-dragging {
+  opacity: 0.45;
+}
+.field-option.is-drag-over {
+  background: var(--c-primary-bg);
+  box-shadow: inset 0 2px 0 var(--c-primary);
 }
 .field-option-name {
   min-width: 0;

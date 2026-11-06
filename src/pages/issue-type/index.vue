@@ -25,7 +25,12 @@
         </a-tooltip>
       </div>
 
+      <!-- 首次加载：骨架占位，数据回来后渲染表格 -->
+      <div v-if="!initialized" class="page-skeleton">
+        <a-skeleton active :paragraph="{ rows: 10 }" />
+      </div>
       <a-table
+        v-else
         :columns="visibleColumns"
         :data-source="issueTypes"
         :loading="loading"
@@ -276,6 +281,8 @@ const visibleColumns = computed(() => props.spaceCode ? columns.filter(c => c.ke
 
 // ---- 列表 ----
 const loading = ref(false)
+/** 首次数据加载完成前只渲染骨架，避免先出现空表格 */
+const initialized = ref(false)
 const issueTypes = ref<IssueTypeItem[]>([])
 const keyword = ref('')
 const statusFilter = ref('all')
@@ -311,6 +318,7 @@ async function loadIssueTypes() {
     // 请求层已统一提示
   } finally {
     loading.value = false
+    initialized.value = true
   }
 }
 
@@ -540,6 +548,12 @@ onMounted(() => {
 </script>
 
 <style scoped>
+/* 首次加载占位：保持表格区域高度稳定，数据回来后整块替换 */
+.page-skeleton {
+  min-height: 360px;
+  padding: 12px 0;
+}
+
 .mgmt-page {
   padding: 20px 24px 32px;
 }

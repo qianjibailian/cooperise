@@ -165,7 +165,11 @@
     </div>
 
     <!-- 甘特图：左侧任务列（吊顶 + 吸左）+ 右侧时间轴，同一个滚动容器保证上下 / 左右同步 -->
-    <a-spin :spinning="loading || universeLoading" wrapper-class-name="gantt-spin">
+    <!-- 首次加载：骨架占位，数据回来后渲染甘特图 -->
+    <div v-if="!initialized" class="page-skeleton">
+      <a-skeleton active :paragraph="{ rows: 10 }" />
+    </div>
+    <a-spin v-else :spinning="loading || universeLoading" wrapper-class-name="gantt-spin">
       <div class="gantt-body">
         <div v-if="!hasShownFields" class="gantt-empty">
           <a-empty description="未勾选展示字段，点击右上角「展示字段」勾选后展示事项" />
@@ -559,6 +563,8 @@ watch([groupPanelVisible, fieldPanelVisible, mappingPanelVisible], ([a, b, c]) =
 // ---------- 查询 ----------
 const rawRecords = ref<IssueRecord[]>([])
 const loading = ref(false)
+/** 首次数据加载完成前只渲染骨架，避免先出现空甘特图 */
+const initialized = ref(false)
 
 function buildQueryPayload(): IssueQueryPayload {
   const d = draftFilter.value
@@ -795,12 +801,16 @@ function scrollToToday() {
 async function init() {
   loadMapping()
   loadScale()
-  await loadDraft()
-  await reload()
-  await nextTick()
-  scrollToToday()
+  try {
+    await loadDraft()
+    await reload()
+    await nextTick()
+    scrollToToday()
+  } finally {
+    // 无论成功失败都结束首次骨架，避免一直停在占位
+    initialized.value = true
+  }
 }
-
 onMounted(() => {
   ensureLoaded()
   loadAvailableFields()
@@ -831,6 +841,13 @@ watch(filterCode, () => {
   flex-direction: column;
   background: #fff;
   font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+}
+
+/* 首次加载占位：保持主体高度稳定，数据回来后整块替换 */
+.page-skeleton {
+  flex: 1;
+  min-height: 360px;
+  padding: 20px;
 }
 
 /* ---- 顶部工具栏（与日历 / 看板一致） ---- */

@@ -2,8 +2,13 @@
   <div class="space-home">
     <button type="button" class="back-link" @click="router.push({ name: 'Space' })"><LeftOutlined /> 空间</button>
 
-    <a-spin :spinning="spaceLoading && !space">
-      <a-result v-if="!space && !spaceLoading" status="404" title="空间不存在" sub-title="该空间可能已被删除，或编码有误">
+    <!-- 首次加载：骨架占位，空间信息回来后渲染 -->
+    <div v-if="!space && spaceLoading" class="page-skeleton">
+      <a-skeleton active :paragraph="{ rows: 8 }" />
+    </div>
+
+    <a-spin v-else :spinning="spaceLoading && !!space">
+      <a-result v-if="!space" status="404" title="空间不存在" sub-title="该空间可能已被删除，或编码有误">
         <template #extra>
           <a-button type="primary" @click="router.push({ name: 'Space' })">返回空间列表</a-button>
         </template>
@@ -131,6 +136,12 @@ loadOrgTree()
 <style scoped>
 .space-home {
   padding: 16px 24px 32px;
+}
+
+/* 首次加载占位：保持页面高度稳定，空间信息回来后整块替换 */
+.page-skeleton {
+  min-height: 320px;
+  padding: 12px 0;
 }
 
 .back-link {

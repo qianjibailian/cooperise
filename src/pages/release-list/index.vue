@@ -55,8 +55,13 @@
       </div>
     </header>
 
+    <!-- 首次加载：骨架占位，数据回来后渲染清单 -->
+    <div v-if="!loaded" class="page-skeleton">
+      <a-skeleton active :paragraph="{ rows: 10 }" />
+    </div>
+
     <!-- ========== 主体 ========== -->
-    <a-spin :spinning="loading && !loaded" class="rl-spin">
+    <a-spin v-else :spinning="loading" class="rl-spin">
       <!-- 尚未配置清单列：引导配置 -->
       <div v-if="!hasColumns" class="rl-onboard">
         <div class="rl-onboard-title">先配置清单要收集哪些信息</div>
@@ -64,7 +69,7 @@
         <button type="button" class="rl-primary-btn" @click="openConfig"><SettingOutlined />配置清单</button>
       </div>
 
-      <div v-else-if="loaded && !visibleGroups.length" class="rl-empty">
+      <div v-else-if="!visibleGroups.length" class="rl-empty">
         {{ quick === 'all' ? '没有符合条件的事项' : quick === 'pending' ? '全部已就绪' : '没有你负责的事项' }}
       </div>
 
@@ -857,6 +862,13 @@ onMounted(async () => {
   color: var(--rl-text);
   font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, 'Helvetica Neue',
     'PingFang SC', 'Microsoft YaHei', sans-serif;
+}
+
+/* 首次加载占位：保持主体高度稳定，数据回来后整块替换 */
+.page-skeleton {
+  flex: 1;
+  min-height: 360px;
+  padding: 20px;
 }
 
 /* ---------- 顶部 ---------- */

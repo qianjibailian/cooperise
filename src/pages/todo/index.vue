@@ -68,7 +68,12 @@
 
     <!-- 表格 -->
     <div ref="tableWrapperRef" class="table-wrapper">
+      <!-- 首次加载：骨架占位，数据回来后渲染表格 -->
+      <div v-if="!initialized" class="table-skeleton">
+        <a-skeleton active :paragraph="{ rows: 10 }" />
+      </div>
       <a-table
+        v-else
         class="items-table"
         :columns="aTableColumns"
         :data-source="dataList"
@@ -900,6 +905,8 @@ const pageSize = ref(50)
 const total = ref(0)
 
 const loading = ref(false)
+/** 首次数据加载完成前只渲染骨架，避免先出现空表格 */
+const initialized = ref(false)
 const dataList = ref<IssueRecord[]>([])
 const rawIssueRecords = ref<IssueRecord[]>([])
 
@@ -1889,6 +1896,7 @@ async function fetchIssues() {
     dataList.value = []
   } finally {
     loading.value = false
+    initialized.value = true
   }
 }
 
@@ -2201,6 +2209,12 @@ onBeforeUnmount(() => {
   flex: 1;
   min-height: 0;
   overflow: hidden;
+}
+
+/* 首次加载占位：保持表格区域高度稳定，数据回来后整块替换 */
+.table-skeleton {
+  min-height: 360px;
+  padding: 16px 8px;
 }
 
 .items-table :deep(.ant-table) {

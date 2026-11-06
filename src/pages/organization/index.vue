@@ -39,8 +39,13 @@
         </a-tooltip>
       </div>
 
-      <a-spin :spinning="loading">
-        <div v-if="!loading && !filteredTree.length" class="org-empty">
+      <!-- 首次加载：骨架占位，数据回来后渲染组织树 -->
+      <div v-if="!initialized" class="page-skeleton">
+        <a-skeleton active :paragraph="{ rows: 10 }" />
+      </div>
+
+      <a-spin v-else :spinning="loading">
+        <div v-if="!filteredTree.length" class="org-empty">
           <div class="org-empty-icon"><component :is="keyword ? ApartmentOutlined : BankOutlined" /></div>
           <div class="org-empty-title">{{ keyword ? '没有匹配的组织' : '还没有公司' }}</div>
           <div class="org-empty-desc">{{ keyword ? '换个关键词试试' : '请先新增公司，再在公司下添加部门' }}</div>
@@ -170,6 +175,8 @@ import {
 const ROOT_ID = 0
 
 const loading = ref(false)
+/** 首次数据加载完成前只渲染骨架，避免先出现空树 */
+const initialized = ref(false)
 const treeData = ref<OrganizationNode[]>([])
 const expandedKeys = ref<number[]>([])
 const keyword = ref('')
@@ -279,6 +286,7 @@ async function loadTree() {
     // 请求层已统一提示
   } finally {
     loading.value = false
+    initialized.value = true
   }
 }
 
@@ -524,6 +532,12 @@ onMounted(loadTree)
 </script>
 
 <style scoped>
+/* 首次加载占位：保持树区域高度稳定，数据回来后整块替换 */
+.page-skeleton {
+  min-height: 360px;
+  padding: 12px 0;
+}
+
 .org-page {
   padding: 20px 24px 32px;
 }

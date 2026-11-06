@@ -84,11 +84,36 @@
               </a-input>
               <a-spin :spinning="fieldLoading">
                 <div class="field-panel-list">
-                  <label v-for="f in filteredFields" :key="f.fieldId" class="field-option">
-                    <a-checkbox :checked="shownFieldIds.includes(f.fieldId)" @change="toggleShownField(f.fieldId)" />
+                  <!-- 已选字段：按展示顺序排列，拖动调整顺序 -->
+                  <div v-if="selectedFieldItems.length" class="field-block">
+                    <div class="field-block-title">
+                      已选字段 <span class="field-block-hint">拖动调整顺序</span>
+                    </div>
+                    <label
+                      v-for="f in selectedFieldItems"
+                      :key="f.fieldId"
+                      class="field-option is-selected"
+                      :class="{ 'is-dragging': draggingFieldId === f.fieldId, 'is-drag-over': dragOverFieldId === f.fieldId }"
+                      draggable="true"
+                      @dragstart="onFieldDragStart(f.fieldId, $event)"
+                      @dragover="onFieldDragOver(f.fieldId, $event)"
+                      @drop.prevent="onFieldDrop(f.fieldId)"
+                      @dragend="onFieldDragEnd"
+                    >
+                      <HolderOutlined class="field-drag-handle" />
+                      <a-checkbox :checked="true" @change="toggleShownField(f.fieldId)" />
+                      <span class="field-option-name" :title="f.fieldName">{{ f.fieldName }}</span>
+                    </label>
+                  </div>
+
+                  <!-- 未选字段：勾选后追加到已选末尾 -->
+                  <div v-if="unselectedFields.length" class="field-block-title field-block-title-sub">可选字段</div>
+                  <label v-for="f in unselectedFields" :key="f.fieldId" class="field-option">
+                    <a-checkbox :checked="false" @change="toggleShownField(f.fieldId)" />
                     <span class="field-option-name" :title="f.fieldName">{{ f.fieldName }}</span>
                   </label>
-                  <div v-if="!fieldLoading && !filteredFields.length" class="field-panel-empty">暂无可选字段</div>
+
+                  <div v-if="!fieldLoading && !selectedFieldItems.length && !unselectedFields.length" class="field-panel-empty">暂无可选字段</div>
                 </div>
               </a-spin>
             </div>
@@ -103,7 +128,11 @@
     </div>
 
     <!-- 看板列 -->
-    <a-spin :spinning="loading || universeLoading" wrapper-class-name="board-spin">
+    <!-- 首次加载：骨架占位，数据回来后渲染看板 -->
+    <div v-if="!initialized" class="page-skeleton">
+      <a-skeleton active :paragraph="{ rows: 10 }" />
+    </div>
+    <a-spin v-else :spinning="loading || universeLoading" wrapper-class-name="board-spin">
       <div
         ref="boardColumnsRef"
         class="board-columns"
@@ -221,6 +250,7 @@ import {
   SearchOutlined,
   InboxOutlined,
   LockOutlined,
+  HolderOutlined,
 } from '@ant-design/icons-vue'
 import FilterPanel from '@/components/FilterPanel.vue'
 import IssueDetailDrawer from '@/components/IssueDetailDrawer.vue'
@@ -453,10 +483,61 @@ const fieldKeyword = ref('')
 const shownFieldIds = ref<string[]>([])
 const hasShownFields = computed(() => shownFieldIds.value.length > 0)
 
-const filteredFields = computed(() => {
+/** 已选字段：按展示顺序排列，拖动排序的数据源 */
+const selectedFieldItems = computed<AvailableFieldItem[]>(() =>
+  shownFieldIds.value.map((id) =>
+    fieldMeta(id) ?? ({ fieldId: id, fieldName: fieldNameMap.value[id] || id } as AvailableFieldItem),
+  ),
+)
+
+/** 未选字段：按字段列表顺序，搜索时过滤 */
+const unselectedFields = computed(() => {
   const kw = fieldKeyword.value.trim().toLowerCase()
-  return kw ? availableFields.value.filter((f) => f.fieldName.toLowerCase().includes(kw)) : availableFields.value
+  return availableFields.value.filter(
+    (f) => !shownFieldIds.value.includes(f.fieldId)
+      && (!kw || f.fieldName.toLowerCase().includes(kw)),
+  )
 })
+
+// ---- 已选字段拖动排序 ----
+const draggingFieldId = ref('')
+const dragOverFieldId = ref('')
+
+function onFieldDragStart(id: string, e: DragEvent) {
+  draggingFieldId.value = id
+  if (e.dataTransfer) {
+    e.dataTransfer.effectAllowed = 'move'
+    e.dataTransfer.setData('text/plain', id)
+  }
+}
+
+function onFieldDragOver(id: string, e: DragEvent) {
+  if (!draggingFieldId.value || draggingFieldId.value === id) return
+  e.preventDefault()
+  if (e.dataTransfer) e.dataTransfer.dropEffect = 'move'
+  dragOverFieldId.value = id
+}
+
+async function onFieldDrop(targetId: string) {
+  const fromId = draggingFieldId.value
+  draggingFieldId.value = ''
+  dragOverFieldId.value = ''
+  if (!fromId || fromId === targetId) return
+  const ids = [...shownFieldIds.value]
+  const fromIdx = ids.indexOf(fromId)
+  const toIdx = ids.indexOf(targetId)
+  if (fromIdx < 0 || toIdx < 0) return
+  ids.splice(fromIdx, 1)
+  ids.splice(fromIdx < toIdx ? toIdx - 1 : toIdx, 0, fromId)
+  shownFieldIds.value = ids
+  await saveDraft({ showField: JSON.stringify({ showFieldItemList: ids }) })
+  reload()
+}
+
+function onFieldDragEnd() {
+  draggingFieldId.value = ''
+  dragOverFieldId.value = ''
+}
 
 async function toggleShownField(id: string) {
   shownFieldIds.value = shownFieldIds.value.includes(id)
@@ -469,6 +550,8 @@ async function toggleShownField(id: string) {
 // ---------- 查询结果（分组的状态列也依赖它，需先声明） ----------
 const rawRecords = ref<IssueRecord[]>([])
 const loading = ref(false)
+/** 首次数据加载完成前只渲染骨架，避免先出现空看板 */
+const initialized = ref(false)
 
 // ---------- 分组（看板列） ----------
 const groupPanelVisible = ref(false)
@@ -735,8 +818,13 @@ async function onDrop(col: GroupValue) {
 
 // ---------- 生命周期 ----------
 async function init() {
-  await loadDraft()
-  await reload()
+  try {
+    await loadDraft()
+    await reload()
+  } finally {
+    // 无论成功失败都结束首次骨架，避免一直停在占位
+    initialized.value = true
+  }
 }
 
 onMounted(() => {
@@ -769,6 +857,13 @@ watch(filterCode, () => {
   flex-direction: column;
   background: #fff;
   font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+}
+
+/* 首次加载占位：保持主体高度稳定，数据回来后整块替换 */
+.page-skeleton {
+  flex: 1;
+  min-height: 360px;
+  padding: 20px;
 }
 
 /* ---- 顶部工具栏（与日历看板一致） ---- */
@@ -890,6 +985,44 @@ watch(filterCode, () => {
 }
 .field-option:hover {
   background: #f5f5f7;
+}
+/* 已选字段拖动排序 */
+.field-block-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px 4px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #86868b;
+}
+.field-block-title-sub {
+  margin-top: 6px;
+  padding-top: 8px;
+  border-top: 1px solid #f0f0f2;
+}
+.field-block-hint {
+  font-weight: 400;
+  color: #aeaeb2;
+}
+.field-option.is-selected {
+  cursor: grab;
+}
+.field-option.is-selected:active {
+  cursor: grabbing;
+}
+.field-drag-handle {
+  flex-shrink: 0;
+  font-size: 13px;
+  color: #c7c7cc;
+  cursor: grab;
+}
+.field-option.is-dragging {
+  opacity: 0.45;
+}
+.field-option.is-drag-over {
+  background: var(--c-primary-bg);
+  box-shadow: inset 0 2px 0 var(--c-primary);
 }
 .field-option-name {
   min-width: 0;

@@ -1,6 +1,10 @@
 <template>
   <div class="settings-page">
-    <a-spin :spinning="loading">
+    <!-- 首次加载：骨架占位，数据回来后渲染 -->
+    <div v-if="!initialized" class="page-skeleton">
+      <a-skeleton active :paragraph="{ rows: 8 }" />
+    </div>
+    <a-spin v-else :spinning="loading">
       <!-- 概览卡片 -->
       <section class="settings-card profile-hero">
         <a-avatar :size="72" :src="profile.avatarUrl || undefined" class="hero-avatar">
@@ -91,6 +95,8 @@ import { getLoginUsername, setAuthUser, setLoginUsername, setRealName, useAuth }
 
 const { realName } = useAuth()
 const loading = ref(false)
+/** 首次数据加载完成前只渲染骨架 */
+const initialized = ref(false)
 /** 姓名 / 邮箱：接口未返回时用登录时保存的信息兜底 */
 const profile = ref<CurrentUserProfile>({ realName: realName.value, email: getLoginUsername() })
 
@@ -200,6 +206,7 @@ async function loadProfile() {
     // 请求层已统一提示，页面仍展示登录时保存的信息
   } finally {
     loading.value = false
+    initialized.value = true
   }
 }
 
@@ -207,6 +214,12 @@ onMounted(loadProfile)
 </script>
 
 <style scoped>
+/* 首次加载占位：保持页面高度稳定，数据回来后整块替换 */
+.page-skeleton {
+  min-height: 360px;
+  padding: 12px 0;
+}
+
 .settings-page {
   padding: 20px 24px 32px;
 }
