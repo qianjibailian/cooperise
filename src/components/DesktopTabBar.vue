@@ -194,6 +194,8 @@ function onPointerDown(tab: Tab, e: PointerEvent) {
   pressX = e.clientX
   pointerId = e.pointerId
   captureEl = e.currentTarget as HTMLElement
+  // 立即捕获指针：避免按下后指针移出页签 / 进入窗口拖动区时丢失 pointermove
+  try { captureEl.setPointerCapture(e.pointerId) } catch { /* 元素已移除 */ }
   window.addEventListener('pointermove', onPointerMove)
   window.addEventListener('pointerup', onPointerUp)
   window.addEventListener('pointercancel', onPointerUp)
@@ -349,6 +351,8 @@ function scrollIntoView(key: string) {
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: none;
+  /* 页签列表整体不参与窗口拖动，避免 Windows 的 app-region 抢占页签 pointer 事件 */
+  -webkit-app-region: no-drag;
 }
 
 .dt-list::-webkit-scrollbar {

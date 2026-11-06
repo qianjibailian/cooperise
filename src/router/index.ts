@@ -86,7 +86,7 @@ const routes: RouteRecordRaw[] = [
       { path: 'workbench', redirect: '/workbench/board', name: 'Workbench' },
       { path: 'workbench/board', component: MyBoard, name: 'MyBoard', meta: { title: '我的看板' } },
       { path: 'workbench/todo', component: Todo, name: 'Todo', meta: { title: '我的事项' } },
-      { path: 'docs', component: Docs, name: 'Docs', meta: { title: '文档' } },
+      { path: 'docs', component: Docs, name: 'Docs', meta: { title: '先蜂云文档' } },
       // 兼容旧链接
       { path: 'workbench/docs', redirect: '/docs' },
       { path: 'workbench/view/:filterCode', component: ViewEntry, name: 'ViewEntry', meta: { title: '视图' } },

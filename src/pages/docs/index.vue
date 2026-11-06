@@ -19,6 +19,9 @@ import {
   BookOutlined,
   LeftOutlined,
   AppstoreOutlined,
+  SortAscendingOutlined,
+  UploadOutlined,
+  DownOutlined,
   ColumnWidthOutlined,
   FullscreenOutlined,
   FullscreenExitOutlined,
@@ -29,7 +32,7 @@ import DocSheetEditor from '@/components/docs/DocSheetEditor.vue'
 import DocMindmapEditor from '@/components/docs/DocMindmapEditor.vue'
 import DocFlowEditor from '@/components/docs/DocFlowEditor.vue'
 import DocTypeIcon from '@/components/docs/DocTypeIcon.vue'
-import AppLogo from '@/components/AppLogo.vue'
+import BeeLogo from '@/components/docs/BeeLogo.vue'
 
 /**
  * 文档（前端本地版）
@@ -472,9 +475,84 @@ function onExport(e: { key?: string | number }) {
   else if (key === 'flow-json') exportFlow(doc)
 }
 
+/** 新建并写入标题 / 内容（上传文件、模板库共用） */
+function createDocWithContent(type: DocType, title: string, content: string) {
+  createDoc(type)
+  const doc = activeDoc.value
+  if (!doc) return
+  doc.title = title
+  doc.content = content
+  doc.updatedAt = Date.now()
+  if (type === 'doc') {
+    nextTick(() => {
+      if (editorRef.value) editorRef.value.innerHTML = content
+      refreshOutline()
+    })
+  }
+}
+
+/** 上传本地文件：读取为文档 */
+const uploadInput = ref<HTMLInputElement | null>(null)
+const uploadAccept = ref('.md,.markdown')
+
+function pickUploadFile(kind = 'md') {
+  uploadAccept.value = kind === 'html' ? '.html,.htm' : kind === 'txt' ? '.txt' : '.md,.markdown'
+  nextTick(() => uploadInput.value?.click())
+}
+
+function onUploadMenu(e: { key?: string | number }) {
+  pickUploadFile(String(e?.key ?? 'md'))
+}
+
+function onFileSelected(e: Event) {
+  const input = e.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+  const reader = new FileReader()
+  reader.onload = () => {
+    const text = String(reader.result || '')
+    const isHtml = /\.html?$/i.test(file.name) || file.type.includes('html')
+    const content = isHtml
+      ? text
+      : `<p>${escapeHtml(text).replace(/\r?\n/g, '</p><p>')}</p>`
+    createDocWithContent('doc', file.name.replace(/\.[^.]+$/, '') || '上传的文档', content)
+    message.success('文件已导入为文档')
+  }
+  reader.readAsText(file)
+  input.value = ''
+}
+
+/** 模板库 */
+const DOC_TEMPLATES: Record<string, { title: string; content: string }> = {
+  meeting: {
+    title: '会议纪要',
+    content: '<h2>会议主题</h2><p></p><h2>参会人</h2><ul><li></li></ul><h2>结论</h2><ul><li></li></ul><h2>待办</h2><ul><li></li></ul>',
+  },
+  weekly: {
+    title: '周报',
+    content: '<h2>本周完成</h2><ul><li></li></ul><h2>下周计划</h2><ul><li></li></ul><h2>风险与需要的支持</h2><p></p>',
+  },
+  prd: {
+    title: '产品需求文档',
+    content: '<h2>背景</h2><p></p><h2>目标</h2><ul><li></li></ul><h2>方案</h2><p></p><h2>验收标准</h2><ul><li></li></ul>',
+  },
+}
+
+function onTemplateMenu(e: { key?: string | number }) {
+  const tpl = DOC_TEMPLATES[String(e?.key ?? '')]
+  if (!tpl) return
+  createDocWithContent('doc', tpl.title, tpl.content)
+}
+
 function selectDoc(doc: DocItem) {
   activeId.value = doc.id
   router.replace({ query: { ...route.query, doc: doc.id } })
+}
+
+/** 主内容区的文档：在新页面 / 页签中打开 */
+function openDocInNewPage(doc: DocItem) {
+  const href = router.resolve({ path: '/docs', query: { doc: doc.id } }).href
+  window.open(href, '_blank')
 }
 
 /** 返回文档列表 */
@@ -773,9 +851,9 @@ function folderNameOf(doc: DocItem | null): string {
     <aside class="docs-side">
       <header class="docs-side-head">
         <div class="docs-side-brand">
-          <AppLogo class="docs-side-logo" />
+          <BeeLogo class="docs-side-logo" />
           <div class="docs-side-brand-text">
-            <span class="docs-side-title">文档</span>
+            <span class="docs-side-title">先蜂云文档</span>
           </div>
         </div>
         <a-dropdown trigger="click" placement="bottomRight">
@@ -986,8 +1064,21 @@ function folderNameOf(doc: DocItem | null): string {
           </div>
         </div>
 
-        <!-- 正文 + 右侧大纲 -->
+        <!-- 正文 + 左侧大纲 -->
         <div class="docs-body">
+          <!-- 文档大纲 -->
+          <aside v-if="!focusMode && activeDoc.type === 'doc' && outline.length" class="docs-outline">
+            <div class="docs-outline-title">目录</div>
+            <button
+              v-for="o in outline"
+              :key="o.id"
+              type="button"
+              class="docs-outline-item"
+              :class="{ 'is-h3': o.level === 3 }"
+              @click="scrollToHeading(o.id)"
+            >{{ o.text }}</button>
+          </aside>
+
           <div class="docs-canvas">
             <div class="docs-canvas-inner" :class="{ 'is-wide': activeDoc.type !== 'doc', 'is-full': wideMode }">
               <input
@@ -1026,19 +1117,6 @@ function folderNameOf(doc: DocItem | null): string {
               />
             </div>
           </div>
-
-          <!-- 语雀式文档大纲 -->
-          <aside v-if="!focusMode && activeDoc.type === 'doc' && outline.length" class="docs-outline">
-            <div class="docs-outline-title">目录</div>
-            <button
-              v-for="o in outline"
-              :key="o.id"
-              type="button"
-              class="docs-outline-item"
-              :class="{ 'is-h3': o.level === 3 }"
-              @click="scrollToHeading(o.id)"
-            >{{ o.text }}</button>
-          </aside>
         </div>
       </template>
 
@@ -1107,11 +1185,18 @@ function folderNameOf(doc: DocItem | null): string {
       <div v-else class="docs-home">
         <header class="docs-home-head">
           <div>
-            <h1 class="docs-home-title">{{ navMode === 'starred' ? '收藏' : '全部文档' }}</h1>
-            <p class="docs-home-sub">共 {{ listDocs.length }} 篇文档</p>
+            <h1 class="docs-home-title">{{ navMode === 'starred' ? '收藏' : '主页' }}</h1>
           </div>
-          <a-dropdown trigger="click" placement="bottomRight">
-            <button type="button" class="docs-home-new"><PlusOutlined /> 新建</button>
+        </header>
+
+        <!-- 快捷入口：新建 / 上传 / 模板库 -->
+        <div class="docs-quick-cards">
+          <a-dropdown trigger="click" placement="bottomLeft">
+            <button type="button" class="docs-quick-card">
+              <span class="docs-quick-icon is-new"><PlusOutlined /></span>
+              <span class="docs-quick-text"><b>新建</b><small>新建文档开始协作</small></span>
+              <DownOutlined class="docs-quick-caret" />
+            </button>
             <template #overlay>
               <a-menu @click="onAddMenu($event)">
                 <a-menu-item key="doc">新建文档</a-menu-item>
@@ -1122,7 +1207,44 @@ function folderNameOf(doc: DocItem | null): string {
               </a-menu>
             </template>
           </a-dropdown>
-        </header>
+
+          <a-dropdown trigger="click" placement="bottomLeft">
+            <button type="button" class="docs-quick-card">
+              <span class="docs-quick-icon is-upload"><UploadOutlined /></span>
+              <span class="docs-quick-text"><b>上传</b><small>上传本地文件</small></span>
+              <DownOutlined class="docs-quick-caret" />
+            </button>
+            <template #overlay>
+              <a-menu @click="onUploadMenu($event)">
+                <a-menu-item key="md">Markdown (.md)</a-menu-item>
+                <a-menu-item key="txt">文本 (.txt)</a-menu-item>
+                <a-menu-item key="html">网页 (.html)</a-menu-item>
+              </a-menu>
+            </template>
+          </a-dropdown>
+
+          <a-dropdown trigger="click" placement="bottomLeft">
+            <button type="button" class="docs-quick-card">
+              <span class="docs-quick-icon is-template"><AppstoreOutlined /></span>
+              <span class="docs-quick-text"><b>模板库</b><small>选择模板快速新建</small></span>
+            </button>
+            <template #overlay>
+              <a-menu @click="onTemplateMenu($event)">
+                <a-menu-item key="meeting">会议纪要</a-menu-item>
+                <a-menu-item key="weekly">周报</a-menu-item>
+                <a-menu-item key="prd">产品需求文档</a-menu-item>
+              </a-menu>
+            </template>
+          </a-dropdown>
+        </div>
+
+        <input
+          ref="uploadInput"
+          type="file"
+          class="docs-upload-input"
+          :accept="uploadAccept"
+          @change="onFileSelected"
+        />
 
         <div class="docs-home-toolbar">
           <div class="docs-home-tabs">
@@ -1130,7 +1252,9 @@ function folderNameOf(doc: DocItem | null): string {
             <button type="button" :class="{ active: navMode === 'starred' }" @click="switchNav('starred')">收藏</button>
           </div>
           <div class="docs-home-right">
-            <a-select v-model:value="sortBy" size="small" :options="SORT_OPTIONS" class="docs-home-sort" />
+            <a-select v-model:value="sortBy" size="small" :options="SORT_OPTIONS" class="docs-home-sort">
+              <template #suffixIcon><SortAscendingOutlined class="docs-sort-icon" /></template>
+            </a-select>
             <div class="docs-view-toggle">
               <button type="button" :class="{ active: listView === 'list' }" title="列表视图" @click="listView = 'list'"><UnorderedListOutlined /></button>
               <button type="button" :class="{ active: listView === 'grid' }" title="网格视图" @click="listView = 'grid'"><AppstoreOutlined /></button>
@@ -1150,7 +1274,7 @@ function folderNameOf(doc: DocItem | null): string {
             </tr>
           </thead>
           <tbody>
-            <tr v-for="d in listDocs" :key="d.id" @click="selectDoc(d)">
+            <tr v-for="d in listDocs" :key="d.id" @click="openDocInNewPage(d)">
               <td>
                 <span class="docs-table-title">
                   <DocTypeIcon :type="d.type" />
@@ -1182,7 +1306,7 @@ function folderNameOf(doc: DocItem | null): string {
         </table>
 
         <div v-else class="docs-grid">
-          <button v-for="d in listDocs" :key="d.id" type="button" class="docs-grid-card" @click="selectDoc(d)">
+          <button v-for="d in listDocs" :key="d.id" type="button" class="docs-grid-card" @click="openDocInNewPage(d)">
             <DocTypeIcon :type="d.type" size="md" />
             <span class="docs-grid-title">{{ d.title || '无标题文档' }}</span>
             <span class="docs-grid-meta">{{ folderNameOf(d) || '未分组' }} · {{ formatSmartTime(d.updatedAt) }}</span>
@@ -1259,13 +1383,17 @@ function folderNameOf(doc: DocItem | null): string {
 .docs-side-logo {
   flex: none;
   display: block;
-  width: 32px;
-  height: 32px;
+  width: 34px;
+  height: 34px;
+  padding: 5px;
+  box-sizing: border-box;
+  background: linear-gradient(135deg, #e8f0fe 0%, #dbeafe 100%);
+  border-radius: 9px;
 }
 .docs-side-logo :deep(svg) {
   display: block;
-  width: 32px;
-  height: 32px;
+  width: 100%;
+  height: 100%;
 }
 .docs-side-brand-text {
   display: flex;
@@ -1671,7 +1799,7 @@ function folderNameOf(doc: DocItem | null): string {
   overflow-y: auto;
   padding: 28px 14px;
   background: #fff;
-  border-left: 1px solid #e9e9e7;
+  border-right: 1px solid #e9e9e7;
 }
 .docs-outline-title {
   padding: 0 8px 8px;
@@ -1952,6 +2080,81 @@ function folderNameOf(doc: DocItem | null): string {
   justify-content: space-between;
   gap: 16px;
 }
+
+/* 快捷入口卡片：新建 / 上传 / 模板库 */
+.docs-quick-cards {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 20px;
+}
+.docs-quick-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 14px 16px;
+  text-align: left;
+  background: #fff;
+  border: 1px solid #eff0f2;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
+}
+.docs-quick-card:hover {
+  background: #fcfcfd;
+  border-color: #dcdde1;
+  box-shadow: 0 4px 16px rgba(31, 35, 41, 0.06);
+}
+.docs-quick-icon {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  font-size: 18px;
+  color: #fff;
+  border-radius: 9px;
+}
+.docs-quick-icon.is-new {
+  background: linear-gradient(135deg, #3370ff, #5b8cff);
+}
+.docs-quick-icon.is-upload {
+  background: linear-gradient(135deg, #f59e0b, #fbbf24);
+}
+.docs-quick-icon.is-template {
+  background: linear-gradient(135deg, #8b5cf6, #a78bfa);
+}
+.docs-quick-text {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.docs-quick-text b {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1f2329;
+}
+.docs-quick-text small {
+  font-size: 11px;
+  color: #8f959e;
+}
+.docs-quick-caret {
+  flex: none;
+  font-size: 11px;
+  color: #b0b3b8;
+}
+.docs-upload-input {
+  display: none;
+}
+@media (max-width: 720px) {
+  .docs-quick-cards {
+    grid-template-columns: 1fr;
+  }
+}
 .docs-home-title {
   margin: 0;
   font-size: 26px;
@@ -2062,8 +2265,28 @@ function folderNameOf(doc: DocItem | null): string {
   margin-bottom: 6px;
 }
 .docs-home-sort {
-  width: 118px;
+  width: 126px;
   margin-bottom: 0;
+}
+.docs-home-sort :deep(.ant-select-selector) {
+  height: 30px !important;
+  padding: 0 28px 0 10px !important;
+  background: #f5f6f7 !important;
+  border-color: transparent !important;
+  border-radius: 8px !important;
+  box-shadow: none !important;
+}
+.docs-home-sort:hover :deep(.ant-select-selector) {
+  background: #eef0f2 !important;
+}
+.docs-home-sort :deep(.ant-select-selection-item) {
+  font-size: 12px;
+  line-height: 28px !important;
+  color: #50565e;
+}
+.docs-sort-icon {
+  font-size: 13px;
+  color: #8f959e;
 }
 .docs-view-toggle {
   display: inline-flex;

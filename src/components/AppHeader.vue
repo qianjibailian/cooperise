@@ -478,7 +478,7 @@ const route = useRoute()
 /** 左上角一级菜单：应用启动器式面板 */
 const NAV_ITEMS = [
   { key: 'workspace', label: '工作台', icon: HomeOutlined, path: '/workbench/board' },
-  { key: 'docs', label: '文档', icon: FileTextOutlined, path: '/docs' },
+  { key: 'docs', label: '先蜂云文档', icon: FileTextOutlined, path: '/docs' },
   { key: 'space', label: '空间', icon: AppstoreOutlined, path: '/space' },
   { key: 'admin', label: '管理后台', icon: ToolOutlined, path: '/admin/users' },
 ]
