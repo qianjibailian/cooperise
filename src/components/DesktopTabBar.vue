@@ -46,9 +46,10 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute, useRouter, type RouteLocationNormalizedLoaded } from 'vue-router'
-import { CloseOutlined, EllipsisOutlined, LinkOutlined, MenuOutlined, FileTextOutlined } from '@ant-design/icons-vue'
+import { CloseOutlined, EllipsisOutlined, LinkOutlined, MenuOutlined, FileTextOutlined, CloudOutlined, AppstoreOutlined } from '@ant-design/icons-vue'
 import { useViewStore } from '@/utils/view-store'
 import { isMacDesktop } from '@/utils/desktop'
+import { getLoginUsername } from '@/utils/auth'
 import AppLogo from '@/components/AppLogo.vue'
 
 interface Tab {
@@ -66,14 +67,18 @@ const HOME = '/workbench/board'
  * - menu：工作台左侧菜单（我的看板 / 我的事项 / 我的视图）
  * - page：其他功能页面（空间、设置、管理后台、个人中心等）
  */
-type TabKind = 'link' | 'menu' | 'page'
+type TabKind = 'link' | 'menu' | 'page' | 'docs' | 'space'
 const KIND_META: Record<TabKind, { label: string; icon: unknown }> = {
   link: { label: '链接', icon: LinkOutlined },
   menu: { label: '菜单', icon: MenuOutlined },
   page: { label: '页面', icon: FileTextOutlined },
+  docs: { label: '云文档', icon: CloudOutlined },
+  space: { label: '空间', icon: AppstoreOutlined },
 }
 function kindOf(path: string): TabKind {
   if (path.startsWith('/jira/browse/')) return 'link'
+  if (path.startsWith('/docs')) return 'docs'
+  if (path.startsWith('/space')) return 'space'
   if (path.startsWith('/workbench/')) return 'menu'
   return 'page'
 }
@@ -96,10 +101,29 @@ watch(tabs, (v) => {
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(v)) } catch { /* 存储不可用时只在本次会话保留 */ }
 }, { deep: true })
 
-const activeKey = computed(() => route.path)
+const activeKey = computed(() => keyOf(route))
+
+/** 页签标识：云文档按完整路径区分（每个文档一个页签），其余页面按 path 区分 */
+function keyOf(r: RouteLocationNormalizedLoaded): string {
+  return r.path === '/docs' ? r.fullPath : r.path
+}
+
+/** 云文档页签标题：从本地文档数据里取文档标题 */
+function docTitleOf(id: string): string {
+  try {
+    const raw = localStorage.getItem(`cooperise_docs:${getLoginUsername() || 'anonymous'}`)
+    const parsed = raw ? JSON.parse(raw) : null
+    const list = Array.isArray(parsed) ? parsed : parsed?.docs
+    const title = list?.find((d: any) => d && String(d.id) === id)?.title
+    return title || '先蜂云文档'
+  } catch {
+    return '先蜂云文档'
+  }
+}
 
 function titleOf(r: RouteLocationNormalizedLoaded): string {
   if (r.name === 'IssueDetail' && r.params.issueKey) return String(r.params.issueKey)
+  if (r.path === '/docs' && r.query.doc) return docTitleOf(String(r.query.doc))
   if (r.name === 'ViewEntry' && r.params.filterCode) {
     return findViewItem(String(r.params.filterCode))?.filterName || '视图'
   }
@@ -112,7 +136,7 @@ watch(
   () => route.fullPath,
   () => {
     if (route.meta?.public || route.matched.length === 0) return
-    const key = route.path
+    const key = keyOf(route)
     const tab = { key, fullPath: route.fullPath, title: titleOf(route) }
     const idx = tabs.value.findIndex((t) => t.key === key)
     if (idx >= 0) tabs.value[idx] = tab
@@ -435,6 +459,16 @@ function scrollIntoView(key: string) {
 .dt-kind-page {
   color: #5c6370;
   background: rgba(92, 99, 112, 0.1);
+}
+
+.dt-kind-docs {
+  color: #3370ff;
+  background: rgba(51, 112, 255, 0.1);
+}
+
+.dt-kind-space {
+  color: #8b5cf6;
+  background: rgba(139, 92, 246, 0.1);
 }
 
 .dt-title {

@@ -33,6 +33,7 @@ import DocMindmapEditor from '@/components/docs/DocMindmapEditor.vue'
 import DocFlowEditor from '@/components/docs/DocFlowEditor.vue'
 import DocTypeIcon from '@/components/docs/DocTypeIcon.vue'
 import BeeLogo from '@/components/docs/BeeLogo.vue'
+import { isDesktop } from '@/utils/desktop'
 
 /**
  * 文档（前端本地版）
@@ -91,7 +92,7 @@ function stripHtml(html: string): string {
 }
 
 /** 左侧导航：主页 / 知识库 / 收藏 */
-const navMode = ref<'all' | 'starred' | 'library' | 'trash'>('all')
+const navMode = ref<'recent' | 'owned' | 'shared' | 'starred' | 'library' | 'trash'>('recent')
 
 /** 分组数据：搜索时平铺；收藏模式只列星标；否则未分组 + 各文件夹（空文件夹也展示） */
 const groups = computed<{ folder: DocFolder | null; docs: DocItem[]; flat?: boolean }[]>(() => {
@@ -552,7 +553,12 @@ function selectDoc(doc: DocItem) {
 /** 主内容区的文档：在新页面 / 页签中打开 */
 function openDocInNewPage(doc: DocItem) {
   const href = router.resolve({ path: '/docs', query: { doc: doc.id } }).href
-  window.open(href, '_blank')
+  if (isDesktop) {
+    // 客户端：由 DesktopTabBar 按完整路径新开页签
+    router.push(href)
+  } else {
+    window.open(href, '_blank')
+  }
 }
 
 /** 返回文档列表 */
@@ -564,9 +570,9 @@ function backToList() {
 }
 
 /** 切换左侧导航：全部 / 收藏 */
-function switchNav(mode: 'all' | 'starred' | 'library' | 'trash') {
+function switchNav(mode: 'recent' | 'owned' | 'shared' | 'starred' | 'library' | 'trash') {
   navMode.value = mode
-  if (mode === 'all') activeFolderId.value = ''
+  if (mode === 'recent' || mode === 'owned' || mode === 'shared') activeFolderId.value = ''
   backToList()
 }
 
@@ -592,7 +598,7 @@ function docsOfFolder(folder: DocFolder): number {
 /** 从知识库视图打开某个知识库（文件夹） */
 function openLibrary(folder: DocFolder) {
   activeFolderId.value = folder.id
-  navMode.value = 'all'
+  navMode.value = 'recent'
   backToList()
 }
 
@@ -601,7 +607,7 @@ const listDocs = computed(() => {
   const kw = keyword.value.trim().toLowerCase()
   let list = docs.value
   if (navMode.value === 'starred') list = list.filter((d) => d.starred)
-  else if (navMode.value === 'library') list = []
+  else if (navMode.value === 'shared' || navMode.value === 'library') list = []
   if (activeFolderId.value) list = list.filter((d) => d.folderId === activeFolderId.value)
   const matched = list.filter((d) => {
     if (!kw) return true
@@ -878,7 +884,7 @@ function folderNameOf(doc: DocItem | null): string {
       </div>
 
       <nav class="docs-nav">
-        <button type="button" class="docs-nav-item" :class="{ active: navMode === 'all' }" @click="switchNav('all')">
+        <button type="button" class="docs-nav-item" :class="{ active: ['recent', 'owned', 'shared'].includes(navMode) }" @click="switchNav('recent')">
           <HomeOutlined />
           <span>主页</span>
         </button>
@@ -1185,7 +1191,7 @@ function folderNameOf(doc: DocItem | null): string {
       <div v-else class="docs-home">
         <header class="docs-home-head">
           <div>
-            <h1 class="docs-home-title">{{ navMode === 'starred' ? '收藏' : '主页' }}</h1>
+            <h1 class="docs-home-title">{{ navMode === 'starred' ? '收藏' : navMode === 'shared' ? '与我共享' : navMode === 'owned' ? '归我所有' : '主页' }}</h1>
           </div>
         </header>
 
@@ -1248,7 +1254,9 @@ function folderNameOf(doc: DocItem | null): string {
 
         <div class="docs-home-toolbar">
           <div class="docs-home-tabs">
-            <button type="button" :class="{ active: navMode === 'all' }" @click="switchNav('all')">全部</button>
+            <button type="button" :class="{ active: navMode === 'recent' }" @click="switchNav('recent')">最近访问</button>
+            <button type="button" :class="{ active: navMode === 'owned' }" @click="switchNav('owned')">归我所有</button>
+            <button type="button" :class="{ active: navMode === 'shared' }" @click="switchNav('shared')">与我共享</button>
             <button type="button" :class="{ active: navMode === 'starred' }" @click="switchNav('starred')">收藏</button>
           </div>
           <div class="docs-home-right">
@@ -1314,7 +1322,7 @@ function folderNameOf(doc: DocItem | null): string {
           </button>
         </div>
         <div v-if="!listDocs.length" class="docs-home-empty">
-          {{ keyword ? '没有匹配的文档' : '还没有文档，点击右上角新建' }}
+          {{ keyword ? '没有匹配的文档' : navMode === 'shared' ? '暂无共享文档' : '还没有文档，点击上方卡片新建' }}
         </div>
       </div>
     </main>
