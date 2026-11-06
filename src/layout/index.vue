@@ -3,9 +3,10 @@
     <!-- 客户端：顶栏上方的页签栏（系统窗口按钮也在这一行） -->
     <DesktopTabBar v-if="isDesktop" />
     <AppHeader
+      :class="{ 'app-header-flush': isDocsRoute }"
       :drawer-open="drawerOpen"
       :sidebar-collapsed="panelCollapsed"
-      :hide-sidebar-toggle="!isWorkbenchRoute"
+      :hide-sidebar-toggle="isNonWorkbenchRoute"
       search-placeholder="搜索问题单号或者概要"
       @menu-click="handleMenuClick"
       @workspace-click="handleWorkspaceClick"
@@ -25,20 +26,19 @@
     <div v-if="isMobile && mobileMenuOpen" class="mobile-mask" @click="closeMobileMenu" />
 
     <a-layout-sider
-      :width="isNonWorkbenchRoute ? 64 : (panelCollapsed ? 112 : 280)"
+      v-if="!isNonWorkbenchRoute && (!panelCollapsed || isIOSApp)"
+      :width="334"
       class="sider"
       :class="{ 'sider-mobile-open': mobileMenuOpen, 'sider-detail': isNonWorkbenchRoute }"
       :trigger="null"
     >
       <div class="sider-inner">
         <!--
-          一级菜单（图标栏）
-          iOS App 下 Teleport 到 body，用底部 Tab 栏呈现：
-          留在 .sider 内会被抽屉的 transform 影响，fixed 定位也会被裁剪
-          网页 / Electron 端 :disabled 生效，DOM 位置保持原样
+          一级菜单（图标栏）：网页 / Electron 端已收进左上角 Logo 下拉；
+          iOS App 仍用底部 Tab 栏呈现（Teleport 到 body 避免被抽屉裁剪）。
         -->
         <Teleport to="body" :disabled="!isIOSApp">
-          <div class="icon-bar">
+          <div v-if="isIOSApp" class="icon-bar">
             <div
               v-for="item in iconBarItems"
               :key="item.key"
@@ -89,6 +89,7 @@
                 mode="inline"
                 :selectedKeys="selectedViewKeys"
                 :openKeys="panelCollapsed ? [] : viewSubmenuOpenKeys"
+                @open-change="onViewOpenChange"
                 @click="handleLocalMenuClick"
                 class="sidebar-menu view-menu"
               >
@@ -97,18 +98,25 @@
                   <a-sub-menu v-if="group.groupName" :key="viewGroupKey(group)">
                     <template #title>
                       <span class="view-item-content">
-                        <component :is="FolderOutlined" />
-                        <a-tooltip :title="group.groupName" placement="right" :mouse-enter-delay="0.4">
-                          <span class="name-ellipsis">{{ group.groupName }}</span>
-                        </a-tooltip>
-                        <span v-if="typeof group.count === 'number'" class="name-count">({{ group.count }})</span>
-                        <a-tag v-if="group.share" class="view-tag external">外</a-tag>
-                        <!-- 悬停文件夹时显示：新建视图 / 编辑 / 删除 -->
-                        <span class="folder-actions" @click.stop>
-                          <component :is="PlusOutlined" class="folder-action-icon" title="新建视图" @click.stop="openCreateInGroup(group)" />
-                          <component :is="EditOutlined" class="folder-action-icon" title="编辑" @click.stop="openRenameGroup(group)" />
-                          <component :is="DeleteOutlined" class="folder-action-icon danger" title="删除" @click.stop="confirmDeleteGroup(group)" />
+                        <component :is="isGroupOpen(group) ? FolderOpenOutlined : FolderOutlined" class="folder-icon" />
+                        <span class="folder-text">
+                          <a-tooltip :title="group.groupName" placement="right" :mouse-enter-delay="0.4">
+                            <span class="name-ellipsis">{{ group.groupName }}</span>
+                          </a-tooltip>
+                          <span v-if="typeof group.count === 'number'" class="name-count">({{ group.count }})</span>
+                          <a-tag v-if="group.share" class="view-tag external">外</a-tag>
                         </span>
+                        <!-- 悬停文件夹时显示：更多操作 -->
+                        <a-dropdown trigger="click" placement="bottomRight" @click.stop>
+                          <span class="item-more" @click.stop><MoreOutlined /></span>
+                          <template #overlay>
+                            <a-menu @click="onFolderAction($event, group)">
+                              <a-menu-item key="create">新建视图</a-menu-item>
+                              <a-menu-item key="edit">编辑</a-menu-item>
+                              <a-menu-item key="delete" danger>删除</a-menu-item>
+                            </a-menu>
+                          </template>
+                        </a-dropdown>
                       </span>
                     </template>
                     <a-menu-item
@@ -124,11 +132,16 @@
                         </a-tooltip>
                         <component v-if="v.isCollect" :is="StarFilled" class="favorite-icon" />
                         <component v-if="v.isShare && v.sortId <= 1" :is="MoreOutlined" class="child-more-icon" />
-                        <!-- 悬停视图时显示：编辑 / 删除 -->
-                        <span class="view-actions" @click.stop>
-                          <component :is="EditOutlined" class="folder-action-icon" title="编辑" @click.stop="openEditView(v)" />
-                          <component :is="DeleteOutlined" class="folder-action-icon danger" title="删除" @click.stop="confirmDeleteView(v)" />
-                        </span>
+                        <!-- 悬停视图时显示：更多操作 -->
+                        <a-dropdown v-if="v.canManage" trigger="click" placement="bottomRight" @click.stop>
+                          <span class="item-more" @click.stop><MoreOutlined /></span>
+                          <template #overlay>
+                            <a-menu @click="onViewAction($event, v)">
+                              <a-menu-item key="edit">编辑</a-menu-item>
+                              <a-menu-item key="delete" danger>删除</a-menu-item>
+                            </a-menu>
+                          </template>
+                        </a-dropdown>
                       </span>
                     </a-menu-item>
                     <!-- 空文件夹占位 -->
@@ -155,10 +168,15 @@
                       <span class="view-name name-ellipsis">{{ v.filterName }}</span>
                     </a-tooltip>
                     <span v-if="typeof v.myTodoTotalCount === 'number'" class="name-count">({{ v.myTodoTotalCount }})</span>
-                    <span class="view-actions" @click.stop>
-                      <component :is="EditOutlined" class="folder-action-icon" title="编辑" @click.stop="openEditView(v)" />
-                      <component :is="DeleteOutlined" class="folder-action-icon danger" title="删除" @click.stop="confirmDeleteView(v)" />
-                    </span>
+                    <a-dropdown v-if="v.canManage" trigger="click" placement="bottomRight" @click.stop>
+                      <span class="item-more" @click.stop><MoreOutlined /></span>
+                      <template #overlay>
+                        <a-menu @click="onViewAction($event, v)">
+                          <a-menu-item key="edit">编辑</a-menu-item>
+                          <a-menu-item key="delete" danger>删除</a-menu-item>
+                        </a-menu>
+                      </template>
+                    </a-dropdown>
                     </a-menu-item>
                   </template>
                 </template>
@@ -263,7 +281,7 @@
       </div>
     </a-layout-sider>
     <a-layout class="main-layout" :class="{ 'main-layout-collapsed': panelCollapsed && !isNonWorkbenchRoute, 'main-layout-full': isNonWorkbenchRoute }">
-      <a-layout-content class="content">
+      <a-layout-content class="content" :class="{ 'content-flush': isDocsRoute }">
         <WorkbenchPanel />
       </a-layout-content>
     </a-layout>
@@ -294,6 +312,7 @@ import {
   SearchOutlined,
   PlusOutlined,
   FolderOutlined,
+  FolderOpenOutlined,
   StarFilled,
   AppstoreOutlined,
   MoreOutlined,
@@ -304,9 +323,8 @@ import {
   IdcardOutlined,
   UserOutlined,
   ToolOutlined,
-  EditOutlined,
-  DeleteOutlined,
   TranslationOutlined,
+  FileTextOutlined,
 } from '@ant-design/icons-vue'
 import { useRouter, useRoute } from 'vue-router'
 import AppHeader from '@/components/AppHeader.vue'
@@ -330,6 +348,7 @@ import ReleaseNotice from '@/components/ReleaseNotice.vue'
 
 const iconBarItems = [
   { key: 'workspace', icon: HomeOutlined, label: '工作台' },
+  { key: 'docs', icon: FileTextOutlined, label: '文档' },
   { key: 'space', icon: AppstoreOutlined, label: '空间' },
   { key: 'settings', icon: SettingOutlined, label: '设置' },
   { key: 'admin', icon: ToolOutlined, label: '管理后台' },
@@ -355,8 +374,18 @@ watch(currentSpaceCode, async () => {
 })
 
 const drawerOpen = ref(false)
-// iOS App 在手机屏幕（窄屏）上默认把侧栏收起，避免二级菜单挤占内容区；iPad / 桌面保持展开
-const sidebarCollapsed = ref(isIOSApp && window.innerWidth < 900)
+const SIDEBAR_COLLAPSED_KEY = 'cooperise_sidebar_collapsed'
+/** 侧栏收起偏好：默认展开；用户收起后记住（iOS 小屏默认收起） */
+function readSidebarCollapsed(): boolean {
+  try {
+    const saved = localStorage.getItem(SIDEBAR_COLLAPSED_KEY)
+    if (saved != null) return saved === '1'
+  } catch {
+    // ignore
+  }
+  return isIOSApp && window.innerWidth < 900
+}
+const sidebarCollapsed = ref(readSidebarCollapsed())
 
 /**
  * 手机端（≤767px，基准 iPhone 17 / 17 Pro Max）：侧栏改为抽屉，用独立开关控制
@@ -367,10 +396,10 @@ const isMobile = ref(window.innerWidth <= 767)
 const mobileMenuOpen = ref(false)
 const activeSection = ref('workspace')
 // 设置路由与工作台路由同样展示侧边栏（含二级菜单），仅其余路由（如事项详情）隐藏侧边面板
-/** 折叠按钮只在工作台出现 */
-const isWorkbenchRoute = computed(() => route.path.startsWith('/workbench'))
-/** 实际折叠状态：设置 / 管理后台没有折叠按钮，始终展开（避免从工作台折叠后带过去无法展开） */
-const panelCollapsed = computed(() => sidebarCollapsed.value && isWorkbenchRoute.value)
+/** 文档页需要贴边展示：去掉内容区四周留白 */
+const isDocsRoute = computed(() => route.path.startsWith('/docs'))
+/** 收起状态：整个侧栏（一级图标栏 + 二级面板）隐藏，内容区全宽 */
+const panelCollapsed = computed(() => sidebarCollapsed.value)
 
 const isNonWorkbenchRoute = computed(() => {
   const path = route.path
@@ -469,10 +498,34 @@ function confirmDeleteGroup(group: ViewGroup) {
   })
 }
 
+/** 文件夹「更多」菜单：新建视图 / 编辑 / 删除 */
+function onFolderAction(e: { key?: string | number }, group: ViewGroup) {
+  const key = String(e?.key ?? '')
+  if (key === 'create') openCreateInGroup(group)
+  else if (key === 'edit') openRenameGroup(group)
+  else if (key === 'delete') confirmDeleteGroup(group)
+}
+
+/** 视图「更多」菜单：编辑 / 删除 */
+function onViewAction(e: { key?: string | number }, v: ViewItem) {
+  const key = String(e?.key ?? '')
+  if (key === 'edit') openEditView(v)
+  else if (key === 'delete') confirmDeleteView(v)
+}
+
+
+/** 文件夹是否展开：切换打开/关闭图标，并驱动展开态样式 */
+function isGroupOpen(group: ViewGroup): boolean {
+  return viewSubmenuOpenKeys.value.includes(viewGroupKey(group))
+}
+
+/** 点击文件夹展开 / 收起（受控菜单必须同步 openKeys） */
+function onViewOpenChange(keys: string[]) {
+  viewSubmenuOpenKeys.value = keys
+}
 
 // 加载完后计算 sub-menu 默认展开的分组
-function syncSubmenuOpenKeys() {
-  viewSubmenuOpenKeys.value = viewGroups.value
+function syncSubmenuOpenKeys() {  viewSubmenuOpenKeys.value = viewGroups.value
     .filter((g) => g.groupName)
     .map((g) => viewGroupKey(g))
 }
@@ -501,6 +554,10 @@ watch(
 )
 
 const currentPath = computed(() => {
+  if (route.path.startsWith('/docs')) {
+    activeSection.value = 'docs'
+    return route.path
+  }
   if (route.path.startsWith('/users') || route.path.startsWith('/roles') || route.path.startsWith('/permissions') || route.path.startsWith('/departments')) {
     activeSection.value = 'system'
     return route.path
@@ -524,6 +581,8 @@ function handleSectionClick(key: string) {
   activeSection.value = key
   if (key === 'workspace') {
     router.push('/workbench/board')
+  } else if (key === 'docs') {
+    router.push('/docs')
   } else if (key === 'space') {
     router.push('/space')
   } else if (key === 'settings') {
@@ -553,6 +612,11 @@ function toggleSidebar() {
     return
   }
   sidebarCollapsed.value = !sidebarCollapsed.value
+  try {
+    localStorage.setItem(SIDEBAR_COLLAPSED_KEY, sidebarCollapsed.value ? '1' : '0')
+  } catch {
+    // ignore
+  }
 }
 
 function closeMobileMenu() {
@@ -721,11 +785,12 @@ onBeforeUnmount(() => {
   flex-direction: column;
   overflow: hidden;
   background: #ffffff;
+  padding-top: 18px;
 }
 
-/* 工作台顶部菜单（我的事项）：与面板顶部留出间距 */
+/* 工作台顶部菜单：与设置 / 管理后台菜单保持同一上间距（间距统一由 side-panel 控制） */
 .workspace-top-menu {
-  padding-top: 12px !important;
+  padding-top: 0 !important;
 }
 
 .side-panel-collapsed {
@@ -928,6 +993,15 @@ onBeforeUnmount(() => {
   white-space: nowrap;
 }
 
+/* 文件夹文字区：名称 + 数量 + 标签紧跟在一起，整体占满中间空间，三点按钮靠右 */
+.sidebar-menu :deep(.view-item-content > .folder-text) {
+  display: flex;
+  align-items: center;
+  flex: 1 1 auto;
+  min-width: 0;
+  margin-inline-start: 10px;
+}
+
 .name-count {
   flex-shrink: 0;
   margin-left: 2px;
@@ -936,6 +1010,9 @@ onBeforeUnmount(() => {
 
 .sidebar-menu :deep(.view-item-content),
 .sidebar-menu :deep(.child-item) {
+  display: flex;
+  align-items: center;
+  flex: 1;
   min-width: 0;
   overflow: hidden;
 }
@@ -950,17 +1027,33 @@ onBeforeUnmount(() => {
   flex-shrink: 0;
 }
 
-/* 文件夹悬停操作：始终占位（名称截断宽度不随悬停变化），默认透明，悬停文件夹标题时显示 */
-.folder-actions {
+/* 文件夹 / 视图悬停「更多」：默认透明，悬停时显示 */
+.item-more {
   display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  margin-left: auto;
+  flex-shrink: 0;
+  font-size: 14px;
+  color: #64748b;
+  border-radius: 6px;
   opacity: 0;
   pointer-events: none;
-  transition: opacity 0.15s ease;
-  align-items: center;
-  gap: 4px;
-  margin-left: auto;
-  padding-left: 8px;
-  flex-shrink: 0;
+  cursor: pointer;
+  transition: opacity 0.15s ease, background-color 0.15s ease, color 0.15s ease;
+}
+
+.sidebar-menu :deep(.ant-menu-submenu-title:hover .item-more),
+.sidebar-menu :deep(.view-menu-item:hover .item-more) {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.item-more:hover {
+  color: #0f172a;
+  background: rgba(15, 23, 42, 0.06);
 }
 
 /* 文件夹标题内容撑满，操作图标才能靠右（折叠态有 !important 规则覆盖） */
@@ -968,24 +1061,6 @@ onBeforeUnmount(() => {
   display: flex;
   flex: 1;
   min-width: 0;
-}
-
-.sidebar-menu :deep(.ant-menu-submenu-title:hover .folder-actions) {
-  opacity: 1;
-  pointer-events: auto;
-}
-
-/* 视图悬停操作：与文件夹一致，始终占位，默认透明，悬停视图项时显示 */
-.view-actions {
-  display: inline-flex;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.15s ease;
-  align-items: center;
-  gap: 4px;
-  margin-left: auto;
-  padding-left: 8px;
-  flex-shrink: 0;
 }
 
 .sidebar-menu :deep(.view-menu-item > .ant-menu-title-content) {
@@ -1000,53 +1075,6 @@ onBeforeUnmount(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.sidebar-menu :deep(.view-menu-item:hover .view-actions) {
-  opacity: 1;
-  pointer-events: auto;
-}
-
-/* 悬停操作按钮：Apple / Material 风格的圆角小按钮，悬停浅底高亮 */
-.folder-actions,
-.view-actions {
-  gap: 2px;
-  padding-left: 6px;
-}
-
-.sidebar-menu :deep(.folder-action-icon.anticon) {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
-  min-width: 22px;
-  /* 覆盖 antd 菜单 `.anticon + span` 的 10px 左间距，保证三个按钮间距一致 */
-  margin: 0 !important;
-  border-radius: 6px;
-  font-size: 13px;
-  line-height: 1;
-  color: #64748b;
-  cursor: pointer;
-  transition: background-color 0.15s ease, color 0.15s ease;
-}
-
-.sidebar-menu :deep(.folder-action-icon.anticon:hover) {
-  background: rgba(15, 23, 42, 0.06);
-  color: #0f172a;
-}
-
-.sidebar-menu :deep(.folder-action-icon.anticon:active) {
-  background: rgba(15, 23, 42, 0.1);
-}
-
-.sidebar-menu :deep(.folder-action-icon.anticon.danger) {
-  color: #ef4444;
-}
-
-.sidebar-menu :deep(.folder-action-icon.anticon.danger:hover) {
-  background: rgba(239, 68, 68, 0.1);
-  color: #dc2626;
 }
 
 .sidebar-menu :deep(.view-empty-item) {
@@ -1073,13 +1101,19 @@ onBeforeUnmount(() => {
   height: 36px;
   line-height: 36px;
   color: #595959;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 400;
   display: flex;
   align-items: center;
   gap: 0px;
   position: relative;
   transition: all 0.15s ease;
+}
+
+.sidebar-menu :deep(.ant-menu-submenu-title) {
+  height: 40px !important;
+  line-height: 40px !important;
+  font-size: 14px;
 }
 
 .sidebar-menu :deep(.ant-menu-item:hover) {
@@ -1100,6 +1134,9 @@ onBeforeUnmount(() => {
 .sidebar-menu :deep(.ant-menu-item .anticon) {
   font-size: 16px;
   color: inherit;
+}
+.sidebar-menu :deep(.view-item-content > .anticon) {
+  font-size: 16px;
 }
 
 .view-item-content {
@@ -1188,6 +1225,15 @@ onBeforeUnmount(() => {
   margin: 1px 8px;
 }
 
+/* 文件夹展开态：标题浅灰背景 + 图标变主色，展开 / 收起更明显 */
+.view-menu :deep(.ant-menu-submenu-open > .ant-menu-submenu-title) {
+  background: #f2f2f7;
+  border-radius: 8px;
+}
+.view-menu :deep(.ant-menu-submenu-open > .ant-menu-submenu-title .folder-icon) {
+  color: var(--c-primary);
+}
+
 /* 我的视图：文件夹 / 视图整体左移（覆盖 antd inline 缩进 24px / 48px），折叠态不受影响 */
 .side-panel:not(.side-panel-collapsed) .view-menu :deep(.ant-menu-item),
 .side-panel:not(.side-panel-collapsed) .view-menu :deep(.ant-menu-submenu-title) {
@@ -1200,18 +1246,18 @@ onBeforeUnmount(() => {
 
 .main-layout {
   padding-top: var(--app-header-height, 56px);
-  margin-left: 280px;
+  margin-left: 334px;
   min-height: 100vh;
   min-height: 100dvh;
   transition: margin-left 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .main-layout-collapsed {
-  margin-left: 112px;
+  margin-left: 0;
 }
 
 .main-layout-full {
-  margin-left: 64px;
+  margin-left: 0;
 }
 
 .content {
@@ -1219,6 +1265,19 @@ onBeforeUnmount(() => {
   background: #f4f5f8;
   width: 100%;
   box-sizing: border-box;
+}
+/* 文档页：去掉顶部菜单投下的阴影分割线，与主内容融成一体 */
+.app-header-flush {
+  box-shadow: none !important;
+}
+/* 文档页：内容区不留白，页面自身贴满 */
+.content.content-flush {
+  padding: 0;
+}
+/* 文档页：工作台面板撑到视口底部（去掉通用页面预留的 19px） */
+.content.content-flush :deep(.workbench-panel) {
+  height: calc(100vh - var(--app-header-height, 56px));
+  height: calc(100dvh - var(--app-header-height, 56px));
 }
 
 .content > :deep(*) {
@@ -1236,7 +1295,7 @@ onBeforeUnmount(() => {
 
   /* 抽屉：默认移出屏幕，打开时滑入 */
   .sider {
-    width: min(280px, 86vw) !important;
+    width: min(334px, 86vw) !important;
     max-width: 86vw !important;
     min-width: 0 !important;
     flex: 0 0 auto !important;

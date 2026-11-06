@@ -221,7 +221,7 @@ onMounted(loadProfile)
 }
 
 .settings-page {
-  padding: 20px 24px 32px;
+  padding: 80px 24px 32px;
 }
 
 .settings-card {
@@ -419,7 +419,7 @@ onMounted(loadProfile)
 
 @media (max-width: 768px) {
   .settings-page {
-    padding: 16px;
+    padding: 80px 16px 24px;
   }
 }
 

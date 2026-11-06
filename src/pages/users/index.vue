@@ -620,7 +620,7 @@ onMounted(loadUsers)
 }
 
 .mgmt-page {
-  padding: 20px 24px 32px;
+  padding: 80px 24px 32px;
 }
 
 .mgmt-header {
@@ -918,7 +918,7 @@ onMounted(loadUsers)
 
 @media (max-width: 768px) {
   .mgmt-page {
-    padding: 16px;
+    padding: 80px 16px 24px;
   }
 
   .mgmt-toolbar {

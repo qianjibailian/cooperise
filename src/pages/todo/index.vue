@@ -63,6 +63,12 @@
             </a-menu>
           </template>
         </a-dropdown>
+
+        <!-- 视图分享：仅创建人可见 -->
+        <a-button v-if="listViewItem?.canManage" class="tool-btn" @click="shareOpen = true">
+          <ShareAltOutlined />
+          分享
+        </a-button>
       </div>
     </div>
 
@@ -432,6 +438,14 @@
     <SplitIssueModal v-model:open="splitOpen" :issue-key="splitIssueKey" @submitted="fetchIssues" />
     <!-- 状态变更弹窗：点击状态列打开，展示当前节点与下一步节点 -->
     <WorkflowNextStepModal v-model:open="wfModalOpen" :issue-key="wfCurrentIssueKey" @submit="handleWfSubmitted" />
+
+    <!-- 视图分享 -->
+    <ViewShareDrawer
+      v-model:open="shareOpen"
+      :filter-code="listViewItem?.filterCode || ''"
+      :filter-name="listViewItem?.filterName || pageTitle"
+      @saved="refreshViews"
+    />
   </div>
 </template>
 
@@ -457,6 +471,7 @@ import {
   CopyOutlined,
   LinkOutlined,
   ExportOutlined,
+  ShareAltOutlined,
 } from '@ant-design/icons-vue'
 import dayjs from 'dayjs'
 import type { Dayjs } from 'dayjs'
@@ -467,6 +482,7 @@ import { runIssueButton } from '@/utils/issueButtons'
 import type { IssueRecord, IssueQueryPayload, SortItem, FilterDraft, GlobalFilter, CustomFieldOptionItem, UserItem } from '@/types/faiz'
 import IssueDetailDrawer from '@/components/IssueDetailDrawer.vue'
 import WorkflowNextStepModal from '@/components/WorkflowNextStepModal.vue'
+import ViewShareDrawer from '@/components/ViewShareDrawer.vue'
 import FilterPanel from '@/components/FilterPanel.vue'
 import { buildGlobalFilter, parseGlobalFilter, defaultConditions, isConditionComplete, type FilterCondition, type FilterLogic } from '@/utils/issueFilter'
 import SortPanel from '@/components/SortPanel.vue'
@@ -788,6 +804,16 @@ const pageTitle = computed(() => {
   const code = String(route.query.filterCode || '')
   return (code && findViewItem(code)?.filterName) || '我的事项'
 })
+const listViewItem = computed(() => {
+  const code = String(route.query.filterCode || '')
+  return code ? findViewItem(code) : null
+})
+const shareOpen = ref(false)
+
+/** 分享保存后刷新侧边栏视图列表（可见范围变化） */
+async function refreshViews() {
+  await ensureViewsLoaded(true)
+}
 /** 草稿归属人：登录用户工号（缺省兜底） */
 const { user: authUser } = useAuth()
 const draftUserNo = computed(() => authUser.value?.memberId || '10284941')

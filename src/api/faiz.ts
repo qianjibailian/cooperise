@@ -32,6 +32,7 @@ import type {
   SystemFieldItem,
   SystemFieldSavePayload,
   ViewListResult,
+  ViewItem,
   FilterDraft,
   IssuePatchField,
   WorkflowDefinition,
@@ -270,9 +271,24 @@ export function createView(data: { filterName: string; viewType: string; groupCo
   return request.post(`/view/create`, { spaceCode: currentSpaceCode.value || undefined, ...data })
 }
 
-/** 编辑视图（POST /view/update） */
-export function updateView(data: { filterCode: string; filterName: string; viewType: string; filterConfig?: string }): Promise<Result<unknown>> {
+/** 编辑视图（POST /view/update）：groupCode 传空字符串表示移到未分组 */
+export function updateView(data: { filterCode: string; filterName: string; viewType: string; filterConfig?: string; groupCode?: string }): Promise<Result<unknown>> {
   return request.post(`/view/update`, data)
+}
+
+/** 视图详情（POST /view/detail）：含分享范围与分享对象（仅创建人可见） */
+export function getViewDetail(filterCode: string): Promise<Result<ViewItem>> {
+  return request.post(`/view/detail`, { filterCode })
+}
+
+/** 设置视图分享（POST /view/share，仅创建人）：NONE / MEMBERS / ORG / SPACE / ALL */
+export function shareView(data: {
+  filterCode: string
+  shareScope: string
+  /** MEMBERS=memberId，ORG=organizationCode，SPACE=spaceCode */
+  values?: string[]
+}): Promise<Result<ViewItem>> {
+  return request.post(`/view/share`, data)
 }
 
 /** 删除视图（POST /view/delete） */

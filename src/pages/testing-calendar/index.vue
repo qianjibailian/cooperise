@@ -189,6 +189,12 @@
             展示字段({{ shownFieldIds.length }})
           </a-button>
         </a-popover>
+
+        <!-- 视图分享：仅创建人可见 -->
+        <a-button v-if="viewItem?.canManage" class="tool-btn" @click="shareOpen = true">
+          <ShareAltOutlined />
+          分享
+        </a-button>
       </div>
     </div>
 
@@ -323,6 +329,14 @@
 
     <!-- 事项详情抽屉：点击日历中的事项打开 -->
     <IssueDetailDrawer v-model:open="detailOpen" :issue-key="detailIssueKey" />
+
+    <!-- 视图分享 -->
+    <ViewShareDrawer
+      v-model:open="shareOpen"
+      :filter-code="filterCode"
+      :filter-name="pageTitle"
+      @saved="refreshViews"
+    />
   </div>
 </template>
 
@@ -340,8 +354,10 @@ import {
   LeftOutlined,
   RightOutlined,
   HolderOutlined,
+  ShareAltOutlined,
 } from '@ant-design/icons-vue'
 import FilterPanel from '@/components/FilterPanel.vue'
+import ViewShareDrawer from '@/components/ViewShareDrawer.vue'
 import IssueDetailDrawer from '@/components/IssueDetailDrawer.vue'
 import {
   isConditionComplete,
@@ -462,6 +478,13 @@ const route = useRoute()
 const { ensureLoaded, findViewItem } = useViewStore()
 const filterCode = computed(() => (route.params.filterCode as string) || '')
 const pageTitle = computed<string>(() => findViewItem(filterCode.value)?.filterName || '测试平台需求日历')
+const viewItem = computed(() => findViewItem(filterCode.value))
+const shareOpen = ref(false)
+
+/** 分享保存后刷新侧边栏视图列表（可见范围变化） */
+async function refreshViews() {
+  await ensureLoaded(true)
+}
 
 // ---------- 草稿（筛选条件 + 展示字段，按视图保存） ----------
 const { user } = useAuth()

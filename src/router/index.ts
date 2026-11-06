@@ -2,6 +2,7 @@ import { defineComponent, h, markRaw, onMounted, ref, watch } from 'vue'
 import { createRouter, createWebHistory, createWebHashHistory, useRoute, type RouteRecordRaw } from 'vue-router'
 import Layout from '@/layout/index.vue'
 import Todo from '@/pages/todo/index.vue'
+import Docs from '@/pages/docs/index.vue'
 import MyBoard from '@/pages/my-board/index.vue'
 import Dashboard from '@/pages/dashboard/index.vue'
 import Users from '@/pages/users/index.vue'
@@ -85,6 +86,9 @@ const routes: RouteRecordRaw[] = [
       { path: 'workbench', redirect: '/workbench/board', name: 'Workbench' },
       { path: 'workbench/board', component: MyBoard, name: 'MyBoard', meta: { title: '我的看板' } },
       { path: 'workbench/todo', component: Todo, name: 'Todo', meta: { title: '我的事项' } },
+      { path: 'docs', component: Docs, name: 'Docs', meta: { title: '文档' } },
+      // 兼容旧链接
+      { path: 'workbench/docs', redirect: '/docs' },
       { path: 'workbench/view/:filterCode', component: ViewEntry, name: 'ViewEntry', meta: { title: '视图' } },
       { path: 'jira/browse/:issueKey', component: IssueDetail, name: 'IssueDetail', meta: { title: '事项详情' } },
       // 「新筛选器」菜单已下线：旧链接回到我的事项

@@ -49,8 +49,13 @@
           </button>
         </a-popover>
 
-        <button type="button" class="rl-tool-btn" @click="openConfig">
+        <button v-if="viewItem?.canManage" type="button" class="rl-tool-btn" @click="openConfig">
           <SettingOutlined />配置清单
+        </button>
+
+        <!-- 视图分享：仅创建人可见 -->
+        <button v-if="viewItem?.canManage" type="button" class="rl-tool-btn" @click="shareOpen = true">
+          <ShareAltOutlined />分享
         </button>
       </div>
     </header>
@@ -66,7 +71,7 @@
       <div v-if="!hasColumns" class="rl-onboard">
         <div class="rl-onboard-title">先配置清单要收集哪些信息</div>
         <div class="rl-onboard-desc">选择「开发填写」和「测试填写」的字段（如代码分支、脚本、上线链接），以及按哪个字段分批（如 Sprint）</div>
-        <button type="button" class="rl-primary-btn" @click="openConfig"><SettingOutlined />配置清单</button>
+        <button v-if="viewItem?.canManage" type="button" class="rl-primary-btn" @click="openConfig"><SettingOutlined />配置清单</button>
       </div>
 
       <div v-else-if="!visibleGroups.length" class="rl-empty">
@@ -282,6 +287,14 @@
     </a-modal>
 
     <IssueDetailDrawer v-model:open="detailOpen" :issue-key="detailIssueKey" @changed="reload" />
+
+    <!-- 视图分享 -->
+    <ViewShareDrawer
+      v-model:open="shareOpen"
+      :filter-code="filterCode"
+      :filter-name="pageTitle"
+      @saved="refreshViews"
+    />
   </div>
 </template>
 
@@ -297,8 +310,10 @@ import {
   ReloadOutlined,
   RightOutlined,
   SettingOutlined,
+  ShareAltOutlined,
 } from '@ant-design/icons-vue'
 import FilterPanel from '@/components/FilterPanel.vue'
+import ViewShareDrawer from '@/components/ViewShareDrawer.vue'
 import FieldValueEditor from '@/components/FieldValueEditor.vue'
 import RichTextField from '@/components/RichTextField.vue'
 import { sanitizeHtml } from '@/utils/sanitizeHtml'
@@ -346,6 +361,12 @@ const { ensureLoaded, findViewItem } = useViewStore()
 const filterCode = computed(() => (route.params.filterCode as string) || '')
 const viewItem = computed(() => findViewItem(filterCode.value))
 const pageTitle = computed(() => viewItem.value?.filterName || '上线清单')
+const shareOpen = ref(false)
+
+/** 分享保存后刷新侧边栏视图列表（可见范围变化） */
+async function refreshViews() {
+  await ensureLoaded(true)
+}
 
 const config = computed<ReleaseConfig>(() => {
   const raw = safeParse<Partial<ReleaseConfig> | null>(viewItem.value?.filterConfig ?? null, null)

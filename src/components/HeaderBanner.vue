@@ -53,15 +53,18 @@ function dismiss() {
 <style scoped>
 /* 极简样式：无底色无边框，灰色小图标 + 灰色文字，关闭按钮悬停才出现 */
 .header-banner {
-  flex: 0 1 440px;
-  min-width: 0;
-  height: 28px;
-  margin-left: 8px;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 1;
   display: flex;
   align-items: center;
   gap: 6px;
+  width: min(440px, 38vw);
+  height: 28px;
   color: #8a919c;
   font-size: 12px;
+  transform: translate(-50%, -50%);
   -webkit-app-region: no-drag;
 }
 

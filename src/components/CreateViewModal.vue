@@ -33,6 +33,14 @@
             </a-radio-button>
           </a-radio-group>
         </a-form-item>
+        <a-form-item v-if="action === 'editView'" label="所属文件夹">
+          <a-select v-model:value="form.groupCode" placeholder="选择所属文件夹">
+            <a-select-option value="">未分组</a-select-option>
+            <a-select-option v-for="g in folderOptions" :key="g.groupCode || ''" :value="g.groupCode || ''">
+              {{ g.groupName }}
+            </a-select-option>
+          </a-select>
+        </a-form-item>
       </template>
       <a-form-item v-else label="文件夹名称" name="groupName" :rules="[{ required: true, whitespace: true, message: '请输入文件夹名称' }]">
         <a-input v-model:value="form.groupName" placeholder="请输入文件夹名称" :maxlength="50" show-count />
@@ -48,6 +56,7 @@ import type { FormInstance } from 'ant-design-vue'
 import { FolderOutlined } from '@ant-design/icons-vue'
 import ViewTypeIcon from '@/components/ViewTypeIcon.vue'
 import { createView, createViewGroup, updateViewGroup, updateView } from '@/api/faiz'
+import { useViewStore } from '@/utils/view-store'
 import type { ViewGroup, ViewItem } from '@/types/faiz'
 
 const props = withDefaults(defineProps<{
@@ -101,8 +110,14 @@ const form = reactive({
   filterName: '',
   viewType: 'list',
   groupName: '',
+  /** 编辑视图时：所属文件夹，空字符串表示未分组 */
+  groupCode: '',
 })
 const submitting = ref(false)
+
+/** 可选的文件夹（只有命名分组才是侧边栏文件夹） */
+const { viewGroups } = useViewStore()
+const folderOptions = computed(() => viewGroups.value.filter(g => !!g.groupCode && !!g.groupName))
 
 // 每次打开重置为「新建视图」初始状态
 watch(
@@ -113,6 +128,7 @@ watch(
     form.filterName = props.action === 'editView' ? (props.view?.filterName ?? '') : ''
     form.viewType = props.action === 'editView' ? (props.view?.viewType || 'list') : 'list'
     form.groupName = props.action === 'renameGroup' ? (props.group?.groupName ?? '') : ''
+    form.groupCode = props.action === 'editView' ? (props.view?.groupCode || '') : ''
   },
 )
 
@@ -130,7 +146,12 @@ async function handleSubmit() {
       res = await updateViewGroup({ groupCode: props.group?.groupCode ?? '', groupName: form.groupName.trim() })
       okText = '文件夹已更新'
     } else if (props.action === 'editView') {
-      res = await updateView({ filterCode: props.view?.filterCode ?? '', filterName: form.filterName.trim(), viewType: form.viewType })
+      res = await updateView({
+        filterCode: props.view?.filterCode ?? '',
+        filterName: form.filterName.trim(),
+        viewType: form.viewType,
+        groupCode: form.groupCode ?? '',
+      })
       okText = '视图已更新'
     } else if (mode.value === 'view') {
       const groupCode = props.action === 'createInGroup' ? (props.group?.groupCode ?? undefined) : undefined

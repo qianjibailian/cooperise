@@ -360,6 +360,12 @@ export interface ViewItem {
   groupCode: string | null
   /** 视图配置 JSON（如上线清单的分组字段 / 开发列 / 测试列 / 必填项），各视图类型自行解析 */
   filterConfig?: string | null
+  /** 分享范围：NONE / MEMBERS（指定用户）/ ORG（指定组织）/ SPACE（指定空间）/ ALL（链接分享） */
+  shareScope?: string
+  /** 分享范围对应的值（仅创建人可见）：MEMBERS=memberId，ORG=organizationCode，SPACE=spaceCode */
+  shareValues?: string[] | null
+  /** 兼容旧字段：shareScope=MEMBERS 时的分享人员 */
+  shareMemberIds?: string[] | null
   /** 当前用户能否删除 / 修改分享设置（仅创建人） */
   canManage?: boolean
 }

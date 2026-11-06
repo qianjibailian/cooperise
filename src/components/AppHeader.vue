@@ -1,11 +1,42 @@
 <template>
   <header class="app-header">
     <div class="header-left" :class="{ collapsed: sidebarCollapsed, 'no-logo': isDesktop }">
-      <!-- 客户端去掉左上角图标，网页版保留 -->
-      <AppLogo v-if="!isDesktop" clickable to="/dashboard" />
+      <!-- 左上角菜单入口：点击弹出一级菜单 -->
+      <a-popover
+        v-model:open="navOpen"
+        trigger="click"
+        placement="bottomLeft"
+        :arrow="false"
+        :overlay-inner-style="{ padding: 0 }"
+        overlay-class-name="logo-nav-popover"
+      >
+        <span class="logo-nav-trigger" title="菜单">
+          <AppstoreOutlined class="logo-nav-menu-icon" />
+        </span>
+        <template #content>
+          <div class="nav-panel">
+            <div class="nav-panel-title">切换模块</div>
+            <div class="nav-panel-grid">
+              <button
+                v-for="item in NAV_ITEMS"
+                :key="item.key"
+                type="button"
+                class="nav-card"
+                :class="[`is-${item.key}`, { active: isActiveNav(item.key) }]"
+                @click="goNav(item.key, item.path)"
+              >
+                <span class="nav-card-icon"><component :is="item.icon" /></span>
+                <span class="nav-card-text">
+                  <b>{{ item.label }}</b>
+                </span>
+              </button>
+            </div>
+          </div>
+        </template>
+      </a-popover>
 
-      <!-- 空间切换（仅工作台）：与折叠按钮互换 -->
-      <div v-if="isWorkbench" class="header-space">
+      <!-- 空间切换（仅工作台）：与折叠按钮互换；文档页也保留空间切换 -->
+      <div v-if="isWorkbench || isDocs" class="header-space">
         <HeaderSpaceSwitcher />
       </div>
 
@@ -126,11 +157,6 @@
         </div>
       </div>
 
-      <!-- 中英文切换：按钮显示要切换到的语言 -->
-      <button type="button" class="lang-switch" title="切换语言" @click="setLocale(locale === 'en' ? 'zh' : 'en')">
-        {{ locale === 'en' ? '中文' : 'EN' }}
-      </button>
-
       <button v-if="isWorkbench" class="header-create-btn" @click="$emit('create-click')">
         <PlusOutlined />
         <span class="create-label">新建</span>
@@ -183,6 +209,9 @@
             <div class="user-divider" />
 
             <div class="user-menu-list">
+              <div class="user-menu-text" @click="setLocale(locale === 'en' ? 'zh' : 'en')">
+                {{ locale === 'en' ? '切换到中文' : 'Switch to English' }}
+              </div>
               <div class="user-menu-text" @click="handleMenuSelect('settings')">个人中心</div>
               <div class="user-menu-text" @click="handleMenuSelect('account')">账户设置</div>
               <div v-if="isDesktop" class="user-menu-text" @click="handleMenuSelect('desktop')">客户端设置</div>
@@ -218,9 +247,11 @@ import {
   // DragOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
+  AppstoreOutlined,
+  FileTextOutlined,
+  ToolOutlined,
   CheckOutlined,
 } from '@ant-design/icons-vue'
-import AppLogo from './AppLogo.vue'
 import HeaderBanner from './HeaderBanner.vue'
 import HeaderSpaceSwitcher from './HeaderSpaceSwitcher.vue'
 import DesktopSettingsModal from './DesktopSettingsModal.vue'
@@ -443,8 +474,31 @@ const userDisplayLabel = computed(() =>
 const userInitials = computed(() => username.value.slice(-2).toUpperCase())
 const router = useRouter()
 const route = useRoute()
+
+/** 左上角一级菜单：应用启动器式面板 */
+const NAV_ITEMS = [
+  { key: 'workspace', label: '工作台', icon: HomeOutlined, path: '/workbench/board' },
+  { key: 'docs', label: '文档', icon: FileTextOutlined, path: '/docs' },
+  { key: 'space', label: '空间', icon: AppstoreOutlined, path: '/space' },
+  { key: 'admin', label: '管理后台', icon: ToolOutlined, path: '/admin/users' },
+]
+const navOpen = ref(false)
+
+function goNav(key: string, path: string) {
+  navOpen.value = false
+  if (key === 'workspace') router.push('/workbench/board')
+  else router.push(path)
+}
+
+function isActiveNav(key: string): boolean {
+  if (key === 'workspace') return route.path.startsWith('/workbench')
+  return route.path.startsWith(`/${key}`)
+}
 /** 空间切换 / 搜索事项 / 新建按钮只在工作台菜单下展示 */
 const isWorkbench = computed(() => route.path.startsWith('/workbench'))
+
+/** 文档页：保留顶栏空间切换，但不显示搜索 / 新建 */
+const isDocs = computed(() => route.path.startsWith('/docs'))
 // 离开工作台时收起搜索面板，避免回来时残留展开状态
 watch(isWorkbench, (v) => { if (!v) closeSearchDropdown() })
 
@@ -544,6 +598,117 @@ async function handleLogout() {
   padding: 0 16px;
   z-index: 1000;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+}
+
+.logo-nav-trigger {
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+.logo-nav-trigger:hover {
+  opacity: 0.85;
+}
+.logo-nav-menu-icon {
+  padding: 4px;
+  font-size: 18px;
+  color: #595959;
+  border-radius: 6px;
+}
+.logo-nav-menu-icon:hover {
+  background: #f2f2f7;
+}
+
+/* 一级菜单启动器面板 */
+:global(.logo-nav-popover .ant-popover-inner) {
+  padding: 0;
+  overflow: hidden;
+  border-radius: 16px;
+  box-shadow: 0 12px 40px rgba(15, 23, 42, 0.16), 0 2px 8px rgba(15, 23, 42, 0.06);
+}
+.nav-panel {
+  width: 328px;
+  padding: 16px;
+  background: #fff;
+}
+.nav-panel-title {
+  padding: 0 4px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: #9ca3af;
+}
+.nav-panel-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.nav-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 16px 12px;
+  text-align: center;
+  background: #fafafa;
+  border: 1px solid #f0f0f0;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: transform 0.15s, box-shadow 0.15s, border-color 0.15s, background 0.15s;
+}
+.nav-card:hover {
+  background: #fff;
+  border-color: #e5e5e5;
+  box-shadow: 0 8px 20px rgba(31, 35, 41, 0.08);
+  transform: translateY(-2px);
+}
+.nav-card.active {
+  background: #fff;
+  border-color: #3370ff;
+  box-shadow: 0 0 0 2px rgba(51, 112, 255, 0.12);
+}
+.nav-card-icon {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  font-size: 18px;
+  color: #fff;
+  border-radius: 10px;
+}
+.is-workspace .nav-card-icon {
+  background: linear-gradient(135deg, #3370ff, #5b8cff);
+}
+.is-docs .nav-card-icon {
+  background: linear-gradient(135deg, #00b96b, #34d399);
+}
+.is-space .nav-card-icon {
+  background: linear-gradient(135deg, #8b5cf6, #c4b5fd);
+}
+.is-settings .nav-card-icon {
+  background: linear-gradient(135deg, #f59e0b, #fbbf24);
+}
+.is-admin .nav-card-icon {
+  background: linear-gradient(135deg, #64748b, #94a3b8);
+}
+.nav-card-text {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+}
+.nav-card-text b {
+  font-size: 13px;
+  font-weight: 600;
+  color: #1f2329;
+}
+.nav-card-text small {
+  font-size: 11px;
+  color: #8f959e;
 }
 
 .header-left {
@@ -646,27 +811,8 @@ async function handleLogout() {
   gap: 16px;
 }
 
-/* 中英文切换 */
-.lang-switch {
-  min-width: 44px;
-  height: 30px;
-  padding: 0 10px;
-  font-size: 13px;
-  font-weight: 600;
-  color: #3a3a3c;
-  background: #f5f5f7;
-  border: 1px solid transparent;
-  border-radius: 8px;
-  cursor: pointer;
-  font-family: inherit;
-  transition: background 0.15s, border-color 0.15s, color 0.15s;
-}
+/* 中英文切换已移入用户下拉菜单 */
 
-.lang-switch:hover {
-  color: var(--c-primary);
-  background: #fff;
-  border-color: color-mix(in srgb, var(--c-primary) 35%, transparent);
-}
 
 .header-search {
   width: 220px;
@@ -858,11 +1004,7 @@ async function handleLogout() {
     overflow-y: auto;
   }
 
-  /* 手机上隐藏语言切换（设置里仍有），新建只留图标 */
-  .lang-switch {
-    display: none;
-  }
-
+  /* 手机上新建只留图标 */
   .header-create-btn {
     flex: 0 0 auto;
     min-width: 32px;
