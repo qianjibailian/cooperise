@@ -18,7 +18,13 @@
             <component :is="KIND_META[kindOf(tab.key)].icon" />
           </span>
           <span class="dt-title">{{ tab.title }}</span>
-          <span v-if="tabs.length > 1" class="dt-close" @click.stop="onCloseClick(tab)"><CloseOutlined /></span>
+          <span
+            v-if="tabs.length > 1"
+            class="dt-close"
+            title="关闭页签"
+            @pointerdown.stop
+            @click.stop="onCloseClick(tab)"
+          ><CloseOutlined /></span>
         </div>
         <template #overlay>
           <a-menu @click="(e: any) => onMenu(String(e.key), i)">
