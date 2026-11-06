@@ -1,7 +1,8 @@
 <template>
   <div class="h5-page">
     <van-sticky>
-      <header class="is-head">
+      <header class="h5-large-title is-head">
+        <h1>事项</h1>
         <SpaceSwitcher />
       </header>
       <van-search v-model="keyword" placeholder="搜索概要" shape="round" background="transparent" @search="reload" @clear="reload" />
@@ -185,9 +186,6 @@ onActivated(() => {
 
 <style scoped>
 .is-head {
-  display: flex;
-  align-items: center;
-  padding: calc(env(safe-area-inset-top, 0px) + 10px) var(--h5-gutter) 2px;
   background: var(--h5-bg);
 }
 

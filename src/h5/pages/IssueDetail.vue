@@ -23,7 +23,7 @@
         </div>
         <h1 class="dt-summary" data-no-i18n @click="editSummary">{{ summary || '未填写概要，点击填写' }}</h1>
         <div class="dt-status-row">
-          <span class="h5-status dt-status" :style="{ background: statusColor }" @click="openTransition">
+          <span class="h5-status dt-status" :style="{ '--tone': statusColor }" @click="openTransition">
             {{ statusName || '无状态' }}<van-icon name="arrow-down" />
           </span>
           <span v-if="detail.workflowName" class="h5-muted dt-wf h5-ellipsis">{{ detail.workflowName }}</span>

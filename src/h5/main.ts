@@ -6,20 +6,19 @@
  * - UI 用 Vant 4（移动端组件库），适配 iPhone 17（402×874）/ 17 Pro Max（440×956）：刘海 / 灵动岛 / 底部横条用安全区留白
  */
 import { createApp } from 'vue'
-import Vant, { Locale, showFailToast, showSuccessToast, showToast } from 'vant'
-import enUS from 'vant/es/locale/lang/en-US'
-import zhCN from 'vant/es/locale/lang/zh-CN'
+import Vant, { showFailToast, showSuccessToast, showToast } from 'vant'
 import 'vant/lib/index.css'
-import { watch } from 'vue'
 import App from './App.vue'
 import { createH5Router } from './router'
-import { initLocale, loadRemoteDictionary, locale } from '@/i18n'
+import { initLocale, loadRemoteDictionary } from '@/i18n'
 import { initTheme } from '@/utils/theme'
 import { setRequestNotifier } from '@/utils/request'
 import './styles.css'
 
-// Vant 组件内置文案（加载中、确认、取消等）跟随界面语言
-watch(locale, (l) => Locale.use(l === 'en' ? 'en-US' : 'zh-CN', l === 'en' ? enUS : zhCN), { immediate: true })
+/*
+ * 国际化：英文全部取接口（GET /i18n/all，管理后台「国际化翻译」维护），前端不带任何翻译。
+ * Vant 组件始终输出中文（默认 zh-CN），与页面文案一样由 @/i18n 按接口词典翻译，不使用 Vant 自带的英文语言包
+ */
 
 // 接口提示（成功 / 失败 / 登录失效）用 Vant 的轻提示，替代网页版的 ant-design-vue message
 setRequestNotifier({

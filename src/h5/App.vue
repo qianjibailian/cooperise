@@ -5,12 +5,15 @@
       <component :is="Component" :key="r.matched[0]?.path === '/' ? 'tabs' : r.fullPath" />
     </keep-alive>
   </router-view>
+  <!-- 底部标签栏固定在根部：页面怎么跳都在（登录页除外） -->
+  <H5TabBar v-if="!route.meta.public" />
 </template>
 
 <script setup lang="ts">
 import { watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuth } from '@/utils/auth'
+import H5TabBar from './layout/H5TabBar.vue'
 
 const route = useRoute()
 const router = useRouter()

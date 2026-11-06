@@ -1,6 +1,10 @@
 <template>
   <div class="h5-page">
-    <van-nav-bar :title="viewName" left-arrow fixed placeholder @click-left="goBack" />
+    <van-nav-bar :title="viewName" left-arrow fixed placeholder @click-left="goBack">
+      <template v-if="view" #right>
+        <van-icon name="ellipsis" size="20" @click="menuOpen = true" />
+      </template>
+    </van-nav-bar>
 
     <!-- 看板视图：按状态分页签（手机上不做横向多列） -->
     <van-tabs
@@ -31,18 +35,31 @@
       </van-list>
       <div class="h5-safe-bottom" />
     </van-pull-refresh>
+
+    <!-- 视图操作：编辑名称 / 类型、删除 -->
+    <van-action-sheet
+      v-model:show="menuOpen"
+      :title="viewName"
+      :actions="MENU_ACTIONS"
+      cancel-text="取消"
+      close-on-click-action
+      @select="onMenu"
+    />
+    <ViewForm v-model:show="formOpen" action="editView" :view="view" @saved="onEdited" />
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { getFilterDraft, getIssues } from '@/api/faiz'
+import { showConfirmDialog } from 'vant'
+import { deleteView, getFilterDraft, getIssues } from '@/api/faiz'
 import type { FilterDraft } from '@/types/faiz'
 import { safeParse } from '@/utils/issue-view'
 import { defaultConditions, buildGlobalFilter } from '@/utils/issueFilter'
 import { useViewStore } from '@/utils/view-store'
 import IssueCard from '../components/IssueCard.vue'
+import ViewForm from '../components/ViewForm.vue'
 import { LIST_FIELDS, briefOf, myMemberId, type IssueBrief } from '../utils'
 
 const route = useRoute()
@@ -130,6 +147,48 @@ function reload() {
   error.value = false
   loading.value = true
   void loadMore()
+}
+
+// ---- 视图操作 ----
+const MENU_ACTIONS = [
+  { name: '编辑视图', key: 'edit' },
+  { name: '删除视图', key: 'delete', color: '#ee0a24' },
+]
+const menuOpen = ref(false)
+const formOpen = ref(false)
+
+async function onMenu(a: { key: string }) {
+  if (a.key === 'edit') {
+    formOpen.value = true
+    return
+  }
+  const v = view.value
+  if (!v) return
+  try {
+    await showConfirmDialog({
+      title: `删除视图「${v.filterName}」？`,
+      message: '删除后无法恢复。',
+      confirmButtonText: '删除',
+      confirmButtonColor: '#ee0a24',
+    })
+  } catch {
+    return
+  }
+  try {
+    const res = await deleteView({ filterCode: v.filterCode })
+    if (res?.success) {
+      await ensureLoaded(true)
+      router.replace('/boards')
+    }
+  } catch {
+    // 请求层已统一提示
+  }
+}
+
+/** 编辑后刷新视图名称 / 类型（看板视图会切换成按状态分组） */
+async function onEdited() {
+  await ensureLoaded(true)
+  reload()
 }
 
 function goBack() {

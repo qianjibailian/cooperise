@@ -288,6 +288,8 @@ export interface UserItem {
   userAvatar?: string
   isActive: boolean | number
   userEnName?: string
+  /** 企业微信成员 userid */
+  wecomUserid?: string
   deptId?: string
   deptInfo?: string
   userDeptInfo?: string
@@ -330,6 +332,8 @@ export interface ViewOwner {
   userAvatar?: string
   isActive: boolean | number
   userEnName?: string
+  /** 企业微信成员 userid */
+  wecomUserid?: string
   deptId?: string
   deptInfo?: string
   userDeptInfo?: string

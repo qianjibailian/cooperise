@@ -1,28 +1,119 @@
 /*
  * 手机 H5 全局样式（只在 h5.html 入口加载，不影响网页版 / 客户端）
  *
- * 目标机型：iPhone 17（402×874 pt）、iPhone 17 Pro Max（440×956 pt），均为灵动岛 + 底部横条：
- * - 顶部导航栏 / 底部标签栏用 env(safe-area-inset-*) 让出系统区域（h5.html 已设 viewport-fit=cover）
- * - 内容区按 100% 宽度自适应，不写死设备宽度；402 与 440 两档下字号、间距一致，只多出横向留白
- * - 输入框字号 ≥ 16px，避免 iOS Safari 聚焦时自动放大页面
+ * 设计语言：苹果 iOS 的层级与质感 + 谷歌 Material 的色调与反馈 + 微信的克制与信息密度
+ * - 背景用 iOS 分组灰（#f2f2f7），内容放在大圆角白卡片里，分隔线用 0.5px 细线
+ * - 文字四级层级（主 / 次 / 辅助 / 占位），标题用 SF Pro / 苹方，数字等宽
+ * - 顶部导航、底部标签栏为毛玻璃；按压有轻微缩放 + 变暗反馈；动效 200ms 标准缓动
+ * - 状态 / 类型标签用「浅底 + 同色字」的色调标签（Material 3 tonal），不用大面积实色
+ *
+ * 底部标签栏常驻（App 根部，登录页除外）：页面底部留白、底部操作栏都以它为基准，安全区由标签栏负责
+ *
+ * 目标机型：iPhone 17（402×874 pt）、iPhone 17 Pro Max（440×956 pt），灵动岛 + 底部横条：
+ * - 顶部 / 底部用 env(safe-area-inset-*) 让出系统区域（h5.html 已设 viewport-fit=cover）
+ * - 按宽度自适应，不写死设备宽度；输入框字号 ≥ 16px，避免 iOS 聚焦时放大页面
  */
 :root {
-  --h5-bg: #f5f6f8;
+  /* ---- 颜色 ---- */
+  --h5-bg: #f2f2f7;
   --h5-card: #ffffff;
-  --h5-text: #1f2329;
-  --h5-text-2: #5c6370;
-  --h5-text-3: #8a919c;
-  --h5-border: #ebedf0;
+  --h5-fill: #f2f2f7;
+  --h5-fill-2: #e9e9ef;
+  --h5-text: #1c1c1e;
+  --h5-text-2: #48484d;
+  --h5-text-3: #8e8e93;
+  --h5-text-4: #c7c7cc;
+  --h5-border: rgba(60, 60, 67, 0.12);
+  --h5-danger: #ff3b30;
+  --h5-primary: var(--c-primary, #0a84ff);
+
+  /* ---- 尺寸 ---- */
   --h5-gutter: 16px;
-  --h5-radius: 12px;
-  /* Vant 主题色跟随系统主题（--c-primary 由 initTheme 写入） */
-  --van-primary-color: var(--c-primary, #1677ff);
-  --van-tabbar-item-active-color: var(--c-primary, #1677ff);
-  --van-nav-bar-icon-color: var(--h5-text);
-  --van-nav-bar-text-color: var(--h5-text);
+  --h5-radius: 14px;
+  --h5-radius-sm: 10px;
+  /* 底部标签栏高度（不含安全区），与 --van-tabbar-height 一致 */
+  --h5-tabbar-h: 52px;
+
+  /* ---- 阴影（很轻，只用来区分层级） ---- */
+  --h5-shadow-1: 0 1px 2px rgba(0, 0, 0, 0.04), 0 1px 1px rgba(0, 0, 0, 0.02);
+  --h5-shadow-2: 0 4px 16px rgba(0, 0, 0, 0.06), 0 1px 3px rgba(0, 0, 0, 0.04);
+  --h5-ease: cubic-bezier(0.2, 0, 0, 1);
+
+  /* ---- Vant 主题 ---- */
+  --van-primary-color: var(--h5-primary);
+  --van-danger-color: var(--h5-danger);
+  --van-text-color: var(--h5-text);
+  --van-text-color-2: var(--h5-text-3);
+  --van-text-color-3: var(--h5-text-4);
+  --van-border-color: var(--h5-border);
+  --van-background: var(--h5-bg);
+  --van-background-2: var(--h5-card);
+  --van-active-color: var(--h5-fill);
+  --van-font-bold: 600;
+
+  --van-nav-bar-height: 44px;
+  --van-nav-bar-icon-color: var(--h5-primary);
+  --van-nav-bar-text-color: var(--h5-primary);
   --van-nav-bar-title-font-size: 17px;
-  --van-cell-font-size: 15px;
+  --van-nav-bar-title-text-color: var(--h5-text);
+
+  --van-tabbar-height: 52px;
+  --van-tabbar-item-font-size: 10px;
+  --van-tabbar-item-icon-size: 24px;
+  --van-tabbar-item-text-color: var(--h5-text-3);
+  --van-tabbar-item-active-color: var(--h5-primary);
+  --van-tabbar-item-active-background: transparent;
+
+  --van-cell-font-size: 16px;
+  --van-cell-line-height: 22px;
+  --van-cell-vertical-padding: 12px;
+  --van-cell-horizontal-padding: 16px;
+  --van-cell-label-font-size: 13px;
+  --van-cell-value-color: var(--h5-text-3);
+  --van-cell-group-inset-radius: var(--h5-radius);
+  --van-cell-group-inset-padding: 0 var(--h5-gutter);
+  --van-cell-group-title-color: var(--h5-text-3);
+  --van-cell-group-title-font-size: 13px;
+
   --van-field-input-text-color: var(--h5-text);
+  --van-field-placeholder-text-color: var(--h5-text-4);
+  --van-field-label-color: var(--h5-text-2);
+
+  --van-button-default-height: 44px;
+  --van-button-default-font-size: 16px;
+  --van-button-small-height: 32px;
+  --van-button-small-font-size: 14px;
+  --van-button-radius: 12px;
+  --van-button-default-border-color: var(--h5-border);
+
+  --van-popup-round-radius: 20px;
+  --van-action-sheet-item-height: 56px;
+  --van-action-sheet-item-font-size: 17px;
+  --van-action-sheet-header-font-size: 15px;
+  --van-action-sheet-cancel-padding-top: 8px;
+  --van-action-sheet-cancel-padding-color: var(--h5-bg);
+
+  --van-search-content-background: var(--h5-fill-2);
+  --van-search-input-height: 36px;
+
+  --van-tabs-line-height: 40px;
+  --van-tab-font-size: 15px;
+  --van-tab-text-color: var(--h5-text-3);
+  --van-tab-active-text-color: var(--h5-text);
+  --van-tabs-bottom-bar-color: var(--h5-primary);
+  --van-tabs-bottom-bar-height: 3px;
+
+  --van-dialog-radius: 16px;
+  --van-dialog-header-font-weight: 600;
+  --van-dialog-message-font-size: 15px;
+  --van-dialog-confirm-button-text-color: var(--h5-primary);
+
+  --van-toast-radius: 12px;
+  --van-toast-background: rgba(28, 28, 30, 0.86);
+  --van-empty-description-color: var(--h5-text-3);
+  --van-skeleton-paragraph-background: var(--h5-fill-2);
+  --van-switch-on-background: #34c759;
+  --van-checkbox-checked-icon-color: var(--h5-primary);
 }
 
 html,
@@ -31,12 +122,17 @@ body {
   padding: 0;
   background: var(--h5-bg);
   color: var(--h5-text);
-  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'PingFang SC', 'Helvetica Neue', 'Microsoft YaHei', sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', 'PingFang SC', 'Helvetica Neue', 'Microsoft YaHei', 'Roboto', sans-serif;
+  font-size: 15px;
+  line-height: 1.45;
+  letter-spacing: -0.01em;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
   -webkit-tap-highlight-color: transparent;
   overscroll-behavior-y: none;
+  font-variant-numeric: tabular-nums;
 }
 
 * {
@@ -49,44 +145,95 @@ select {
   font-size: 16px !important;
 }
 
-/* 页面通用骨架 */
+::selection {
+  background: color-mix(in srgb, var(--h5-primary) 24%, transparent);
+}
+
+/* ================= 页面骨架 ================= */
 .h5-page {
   min-height: 100vh;
   min-height: 100dvh;
   background: var(--h5-bg);
 }
 
-/* 顶部导航栏：灵动岛下方开始 */
+/* 主页面（带标签栏）的大标题：iOS Large Title */
+.h5-large-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 52px;
+  padding: calc(env(safe-area-inset-top, 0px) + 8px) var(--h5-gutter) 4px;
+}
+
+.h5-large-title h1 {
+  margin: 0;
+  font-size: 32px;
+  line-height: 1.15;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--h5-text);
+}
+
+/* 顶部导航栏：灵动岛下方开始，毛玻璃，底部 0.5px 细线 */
 .h5-page .van-nav-bar {
   padding-top: env(safe-area-inset-top, 0px);
-  background: rgba(245, 246, 248, 0.92);
-  -webkit-backdrop-filter: saturate(180%) blur(16px);
-  backdrop-filter: saturate(180%) blur(16px);
+  background: rgba(249, 249, 251, 0.82);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  backdrop-filter: saturate(180%) blur(20px);
 }
 
 .h5-page .van-nav-bar::after {
-  border-color: transparent;
+  border-bottom-width: 0.5px;
+  border-color: var(--h5-border);
 }
 
-/* 无底部标签栏的全屏页：底部内容让出横条区域 */
+.h5-page .van-nav-bar__title {
+  font-weight: 600;
+}
+
+/* 页面底部留白（标签栏占位由 van-tabbar placeholder 负责，这里只留一点呼吸空间） */
 .h5-safe-bottom {
-  padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  padding-bottom: 16px;
 }
 
-/* 卡片 */
+/* ================= 卡片 / 分组 ================= */
 .h5-card {
   margin: 12px var(--h5-gutter) 0;
   padding: 14px 16px;
   border-radius: var(--h5-radius);
   background: var(--h5-card);
+  box-shadow: var(--h5-shadow-1);
 }
 
 .h5-section-title {
-  margin: 20px var(--h5-gutter) 8px;
+  margin: 24px calc(var(--h5-gutter) + 4px) 8px;
   font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
   color: var(--h5-text-3);
 }
 
+/* 分组列表：去掉 Vant 默认的粗边，用细线 + 圆角卡片 */
+.van-cell-group--inset {
+  box-shadow: var(--h5-shadow-1);
+}
+
+.van-cell::after {
+  border-bottom-width: 0.5px !important;
+  left: var(--van-cell-horizontal-padding) !important;
+}
+
+.van-cell--clickable:active,
+.van-cell.van-cell--clickable:active {
+  background: var(--h5-fill);
+}
+
+.van-cell__title {
+  color: var(--h5-text);
+}
+
+/* ================= 文字工具类 ================= */
 .h5-muted {
   color: var(--h5-text-3);
 }
@@ -97,21 +244,32 @@ select {
   white-space: nowrap;
 }
 
-/* 状态标签：颜色由接口返回的 color 决定，没有时用灰色 */
+/* ================= 色调标签（状态 / 类型） =================
+ * 颜色由接口返回，写在 --tone 上：浅色底 + 加深的同色字，比实色块更柔和、更易读 */
 .h5-status {
+  --tone: #8e8e93;
   display: inline-flex;
   align-items: center;
+  gap: 4px;
   height: 22px;
   padding: 0 8px;
   border-radius: 6px;
   font-size: 12px;
-  font-weight: 500;
-  color: #fff;
-  background: #8a919c;
+  font-weight: 600;
+  line-height: 1;
   white-space: nowrap;
+  color: color-mix(in srgb, var(--tone) 82%, #000);
+  background: color-mix(in srgb, var(--tone) 14%, #fff);
 }
 
-/* 问题类型小图标 */
+.h5-status::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--tone);
+}
+
 .h5-type-icon {
   flex-shrink: 0;
   width: 18px;
@@ -124,22 +282,99 @@ select {
   font-size: 11px;
 }
 
-/* 底部固定操作栏（详情页、新建页） */
+/* ================= 按压反馈 ================= */
+.h5-pressable {
+  transition: transform 0.2s var(--h5-ease), background-color 0.2s var(--h5-ease), box-shadow 0.2s var(--h5-ease);
+}
+
+.h5-pressable:active {
+  transform: scale(0.98);
+  background-color: #fafafc;
+}
+
+/* ================= 按钮 ================= */
+.van-button {
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+.van-button--primary:not(.van-button--plain) {
+  box-shadow: 0 6px 16px -6px color-mix(in srgb, var(--h5-primary) 55%, transparent);
+}
+
+.van-button--plain.van-button--default,
+.van-button--default {
+  background: var(--h5-card);
+}
+
+/* ================= 弹层 ================= */
+.van-popup--bottom.van-popup--round {
+  box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.08);
+}
+
+/* 底部弹层顶部的拖动把手（iOS Sheet） */
+.van-popup--bottom.van-popup--round::before {
+  content: '';
+  position: absolute;
+  top: 6px;
+  left: 50%;
+  width: 36px;
+  height: 5px;
+  margin-left: -18px;
+  border-radius: 3px;
+  background: var(--h5-text-4);
+  opacity: 0.6;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.van-action-sheet__header {
+  font-weight: 600;
+  color: var(--h5-text-2);
+}
+
+.van-action-sheet__item {
+  font-weight: 400;
+}
+
+.van-overlay {
+  background: rgba(0, 0, 0, 0.32);
+}
+
+/* ================= 搜索框 ================= */
+.van-search__content {
+  border-radius: 10px !important;
+}
+
+.van-search__content--round {
+  border-radius: 10px !important;
+}
+
+/* ================= 底部固定操作栏（详情页、新建页） ================= */
+/* 固定在标签栏正上方 */
 .h5-action-bar {
   position: fixed;
   left: 0;
   right: 0;
-  bottom: 0;
+  bottom: calc(var(--h5-tabbar-h) + env(safe-area-inset-bottom, 0px));
   z-index: 10;
   display: flex;
   gap: 10px;
-  padding: 10px var(--h5-gutter) calc(10px + env(safe-area-inset-bottom, 0px));
-  background: rgba(255, 255, 255, 0.96);
-  -webkit-backdrop-filter: blur(16px);
-  backdrop-filter: blur(16px);
-  box-shadow: 0 -1px 0 var(--h5-border);
+  padding: 10px var(--h5-gutter);
+  background: rgba(249, 249, 251, 0.86);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  backdrop-filter: saturate(180%) blur(20px);
+  box-shadow: 0 -0.5px 0 var(--h5-border);
 }
 
 .h5-action-bar-placeholder {
-  height: calc(64px + env(safe-area-inset-bottom, 0px));
+  height: 68px;
+}
+
+/* ================= 减弱动态效果 ================= */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
 }

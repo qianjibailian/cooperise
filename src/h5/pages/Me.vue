@@ -9,20 +9,54 @@
       </div>
     </section>
 
-    <van-cell-group inset class="me-group">
-      <van-cell title="工号" :value="String(profile?.coAccount || '—')" />
-      <van-cell title="英文名" :value="String(profile?.userEnName || '—')" />
+    <!-- 个人信息：姓名 / 英文名 / 登录邮箱可修改（与网页版「个人中心」同一接口），工号只读 -->
+    <van-cell-group inset class="me-group me-info-group">
+      <van-cell
+        v-for="f in EDIT_FIELDS"
+        :key="f.key"
+        :title="f.label"
+        is-link
+        @click="openEdit(f.key)"
+      >
+        <template #value>
+          <span class="me-value h5-ellipsis" :class="{ 'h5-muted': !profileText(f.key) }" data-no-i18n>{{ profileText(f.key) || '未填写' }}</span>
+        </template>
+      </van-cell>
+      <van-cell title="工号">
+        <template #value>
+          <span class="me-value" data-no-i18n>{{ String(profile?.coAccount || '—') }}</span>
+        </template>
+      </van-cell>
     </van-cell-group>
 
     <van-cell-group inset class="me-group">
       <van-cell title="语言" is-link :value="locale === 'en' ? 'English' : '中文'" @click="langOpen = true" />
       <van-cell title="修改密码" is-link to="/password" />
-      <van-cell title="电脑版" label="在手机上打开网页版" is-link @click="openPc" />
     </van-cell-group>
 
     <div class="me-logout">
       <van-button block round :loading="loggingOut" @click="confirmLogout">退出登录</van-button>
     </div>
+
+    <!-- 修改个人信息 -->
+    <van-popup v-model:show="editOpen" position="bottom" round closeable safe-area-inset-bottom class="me-edit-sheet">
+      <div class="me-edit-title">修改{{ editingField?.label }}</div>
+      <van-cell-group inset class="me-edit-group">
+        <van-field
+          v-model="editValue"
+          :type="editingKey === 'email' ? 'email' : 'text'"
+          :placeholder="editingField?.placeholder"
+          :maxlength="editingField?.maxlength"
+          clearable
+          autofocus
+          data-no-i18n
+        />
+      </van-cell-group>
+      <p v-if="editingKey === 'email'" class="me-edit-tip h5-muted">登录邮箱即登录账号，修改后请用新邮箱登录</p>
+      <div class="me-edit-foot">
+        <van-button type="primary" block round :disabled="!dirty" :loading="saving" @click="saveEdit">保存</van-button>
+      </div>
+    </van-popup>
 
     <van-action-sheet
       v-model:show="langOpen"
@@ -35,11 +69,11 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { showConfirmDialog } from 'vant'
-import { getCurrentUser, logout, type CurrentUserProfile } from '@/api/faiz'
-import { setAuthUser, useAuth } from '@/utils/auth'
+import { showConfirmDialog, showToast } from 'vant'
+import { getCurrentUser, logout, updatePersonalCenter, type CurrentUserProfile } from '@/api/faiz'
+import { setAuthUser, setLoginUsername, setRealName, useAuth } from '@/utils/auth'
 import { useLocale } from '@/i18n'
 import UserAvatar from '../components/UserAvatar.vue'
 
@@ -52,7 +86,7 @@ const profile = ref<CurrentUserProfile | Record<string, unknown> | null>((user.v
 const langOpen = ref(false)
 const loggingOut = ref(false)
 
-onMounted(async () => {
+async function loadProfile() {
   try {
     const res = await getCurrentUser()
     if (res?.success && res.data) {
@@ -68,16 +102,64 @@ onMounted(async () => {
   } catch {
     // 请求层已统一提示；先用本地登录信息
   }
-})
+}
+onMounted(loadProfile)
+
+// ---------------- 修改个人信息 ----------------
+type EditKey = 'realName' | 'userEnName' | 'email'
+const EDIT_FIELDS: { key: EditKey; label: string; placeholder: string; maxlength: number }[] = [
+  { key: 'realName', label: '姓名', placeholder: '请输入姓名', maxlength: 32 },
+  { key: 'userEnName', label: '英文名', placeholder: '例如 Allen Shen', maxlength: 64 },
+  { key: 'email', label: '登录邮箱', placeholder: '请输入登录邮箱', maxlength: 128 },
+]
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
+const profileText = (k: EditKey) => String((profile.value as Record<string, unknown> | null)?.[k] ?? '').trim()
+
+const editOpen = ref(false)
+const editingKey = ref<EditKey | null>(null)
+const editingField = computed(() => EDIT_FIELDS.find((f) => f.key === editingKey.value))
+const editValue = ref('')
+const saving = ref(false)
+const dirty = computed(() => !!editingKey.value && editValue.value.trim() !== profileText(editingKey.value))
+
+function openEdit(k: EditKey) {
+  editingKey.value = k
+  editValue.value = profileText(k)
+  editOpen.value = true
+}
+
+async function saveEdit() {
+  const k = editingKey.value
+  if (!k || !dirty.value) return
+  const v = editValue.value.trim()
+  // 校验规则与网页版个人中心一致
+  if (k === 'realName' && !v) return void showToast('请输入姓名')
+  if (k === 'email' && !v) return void showToast('请输入登录邮箱')
+  if (k === 'email' && !EMAIL_RE.test(v)) return void showToast('邮箱格式不正确')
+  saving.value = true
+  try {
+    // 接口按整份提交：没改的字段原样带上
+    const payload = { realName: profileText('realName'), userEnName: profileText('userEnName'), email: profileText('email'), [k]: v }
+    const res = await updatePersonalCenter(payload)
+    if (res?.success) {
+      editOpen.value = false
+      // 以服务端最新数据为准，并同步登录态（顶部姓名、登录账号）
+      await loadProfile()
+      const p = profile.value as Record<string, unknown> | null
+      if (p?.realName) setRealName(String(p.realName))
+      if (p?.email) setLoginUsername(String(p.email))
+    }
+  } catch {
+    // 请求层已统一提示
+  } finally {
+    saving.value = false
+  }
+}
 
 const LANG_ACTIONS = [{ name: '中文' }, { name: 'English' }]
 function onLangSelect(a: { name: string }) {
   setLocale(a.name === 'English' ? 'en' : 'zh')
-}
-
-/** 手机上坚持用网页版（本次会话不再自动跳回 H5） */
-function openPc() {
-  location.href = '/workbench?pc=1'
 }
 
 async function confirmLogout() {
@@ -124,6 +206,52 @@ async function confirmLogout() {
 
 .me-group {
   margin-top: 12px;
+}
+
+/* 标签按内容宽，值占剩余空间（长邮箱尽量显示全） */
+.me-info-group :deep(.van-cell__title) {
+  flex: 0 0 auto;
+  margin-right: 16px;
+}
+
+.me-info-group :deep(.van-cell__value) {
+  flex: 1;
+  min-width: 0;
+}
+
+.me-value {
+  display: inline-block;
+  max-width: 100%;
+  color: var(--h5-text-2);
+}
+
+.me-edit-sheet {
+  padding-top: 8px;
+}
+
+.me-edit-title {
+  padding: 12px 48px 8px 16px;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.me-edit-group {
+  margin-top: 4px;
+  background: var(--h5-fill);
+  box-shadow: none;
+}
+
+.me-edit-group :deep(.van-cell) {
+  background: var(--h5-fill);
+}
+
+.me-edit-tip {
+  margin: 10px 32px 0;
+  font-size: 12px;
+}
+
+.me-edit-foot {
+  padding: 16px;
 }
 
 .me-logout {

@@ -1,6 +1,6 @@
 <template>
   <!-- 客户端顶部页签栏（参考 Apifox / 浏览器）：每个打开过的页面一个页签，空白处可拖动窗口，右侧给系统窗口按钮留位 -->
-  <div class="desktop-tabbar">
+  <div class="desktop-tabbar" :class="{ reordering: !!draggingKey }">
     <!-- 系统 logo：占一级菜单（图标栏，64px）的宽度，页签从二级菜单左边缘开始；macOS 左侧是红绿灯，不显示 -->
     <div v-if="!isMacDesktop" class="dt-logo"><AppLogo /></div>
     <div ref="listRef" class="dt-list" @wheel.passive="onWheel">
@@ -8,11 +8,7 @@
         <div
           class="dt-tab"
           :class="{ active: tab.key === activeKey, dragging: tab.key === draggingKey }"
-          draggable="true"
-          @dragstart="onDragStart(tab, $event)"
-          @dragover.prevent="onDragOver(tab, $event)"
-          @drop.prevent
-          @dragend="draggingKey = null"
+          @pointerdown="onPointerDown(tab, $event)"
           :title="`${KIND_META[kindOf(tab.key)].label}：${tab.title}`"
           :data-key="tab.key"
           @click="activate(tab)"
@@ -22,7 +18,7 @@
             <component :is="KIND_META[kindOf(tab.key)].icon" />
           </span>
           <span class="dt-title">{{ tab.title }}</span>
-          <span v-if="tabs.length > 1" class="dt-close" @click.stop="close(tab)"><CloseOutlined /></span>
+          <span v-if="tabs.length > 1" class="dt-close" @click.stop="onCloseClick(tab)"><CloseOutlined /></span>
         </div>
         <template #overlay>
           <a-menu @click="(e: any) => onMenu(String(e.key), i)">
@@ -48,7 +44,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute, useRouter, type RouteLocationNormalizedLoaded } from 'vue-router'
 import { CloseOutlined, EllipsisOutlined, LinkOutlined, MenuOutlined, FileTextOutlined } from '@ant-design/icons-vue'
 import { useViewStore } from '@/utils/view-store'
@@ -140,6 +136,7 @@ watch(viewGroups, () => {
 }, { deep: true })
 
 function activate(tab: Tab) {
+  if (suppressClick) return
   if (tab.key !== activeKey.value) router.push(tab.fullPath)
 }
 
@@ -176,27 +173,61 @@ function onMenu(key: string, i: number) {
   }
 }
 
-// ---- 拖动调整页签顺序：拖到某个页签的左半边放在它前面，右半边放在它后面（实时移动，松手即生效） ----
+// ---- 拖动调整页签顺序 ----
+// 不用 HTML5 原生拖拽（draggable / dragover）：页签栏是窗口拖动区（-webkit-app-region: drag），
+// Windows 上原生拖拽会被系统的窗口拖动抢走，时灵时不灵。改用 pointer 事件自己实现：
+// - 按下后移动超过 5px 才算拖动（普通点击照常切换页签）
+// - 拖动中整栏关闭窗口拖动区（.reordering），指针经过页签间隙也不会被系统接管
+// - 指针在哪个页签的左半边就放到它前面，右半边放到它后面；实时移动，松手即生效
+const DRAG_THRESHOLD = 5
 const draggingKey = ref<string | null>(null)
+let pressKey = ''
+let pressX = 0
+let pointerId = -1
+let captureEl: HTMLElement | null = null
+/** 刚拖完：吞掉松手后触发的那次 click，避免拖完又切换页签 */
+let suppressClick = false
 
-function onDragStart(tab: Tab, e: DragEvent) {
-  draggingKey.value = tab.key
-  if (e.dataTransfer) {
-    e.dataTransfer.effectAllowed = 'move'
-    e.dataTransfer.setData('text/plain', tab.key)
-  }
+function onPointerDown(tab: Tab, e: PointerEvent) {
+  if (e.button !== 0) return
+  pressKey = tab.key
+  pressX = e.clientX
+  pointerId = e.pointerId
+  captureEl = e.currentTarget as HTMLElement
+  window.addEventListener('pointermove', onPointerMove)
+  window.addEventListener('pointerup', onPointerUp)
+  window.addEventListener('pointercancel', onPointerUp)
 }
 
-function onDragOver(target: Tab, e: DragEvent) {
-  if (e.dataTransfer) e.dataTransfer.dropEffect = 'move'
+function onPointerMove(e: PointerEvent) {
+  if (e.pointerId !== pointerId) return
+  if (!draggingKey.value) {
+    if (Math.abs(e.clientX - pressX) < DRAG_THRESHOLD) return
+    draggingKey.value = pressKey
+    // 指针移出页签栏也继续收到事件
+    try { captureEl?.setPointerCapture(e.pointerId) } catch { /* 元素已移除 */ }
+  }
+  moveDraggingTo(e.clientX)
+}
+
+/** 按指针横坐标找到目标页签，把拖动中的页签移到它前面 / 后面 */
+function moveDraggingTo(x: number) {
   const key = draggingKey.value
-  if (!key || key === target.key) return
+  const el = listRef.value
+  if (!key || !el) return
+  const nodes = Array.from(el.querySelectorAll<HTMLElement>('.dt-tab[data-key]'))
+  const target = nodes.find((n) => {
+    const r = n.getBoundingClientRect()
+    return x >= r.left && x <= r.right
+  })
+  const targetKey = target?.dataset.key
+  if (!target || !targetKey || targetKey === key) return
   const list = tabs.value
   const from = list.findIndex((t) => t.key === key)
-  const to = list.findIndex((t) => t.key === target.key)
+  const to = list.findIndex((t) => t.key === targetKey)
   if (from < 0 || to < 0) return
-  const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
-  const after = e.clientX > rect.left + rect.width / 2
+  const r = target.getBoundingClientRect()
+  const after = x > r.left + r.width / 2
   // 目标插入位置（按移除拖动项之前的下标算）
   let insert = after ? to + 1 : to
   if (from < insert) insert--
@@ -205,6 +236,32 @@ function onDragOver(target: Tab, e: DragEvent) {
   const [moved] = next.splice(from, 1)
   next.splice(insert, 0, moved)
   tabs.value = next
+}
+
+/** 页签上的 ×：拖动结束时松手落在 × 上不算点击 */
+function onCloseClick(tab: Tab) {
+  if (!suppressClick) close(tab)
+}
+
+function removePointerListeners() {
+  window.removeEventListener('pointermove', onPointerMove)
+  window.removeEventListener('pointerup', onPointerUp)
+  window.removeEventListener('pointercancel', onPointerUp)
+}
+onBeforeUnmount(removePointerListeners)
+
+function onPointerUp(e: PointerEvent) {
+  if (e.pointerId !== pointerId) return
+  removePointerListeners()
+  try { captureEl?.releasePointerCapture(e.pointerId) } catch { /* 已释放 */ }
+  if (draggingKey.value) {
+    suppressClick = true
+    setTimeout(() => { suppressClick = false }, 0)
+  }
+  draggingKey.value = null
+  pressKey = ''
+  pointerId = -1
+  captureEl = null
 }
 
 /** 只剩首页一个页签时，「关闭全部」没有意义 */
@@ -321,6 +378,13 @@ function scrollIntoView(key: string) {
 }
 
 /* 拖动中的页签：半透明，表示它的新位置 */
+/* 拖动中：整栏关闭窗口拖动区，鼠标变成抓手 */
+.desktop-tabbar.reordering,
+.desktop-tabbar.reordering .dt-list {
+  -webkit-app-region: no-drag;
+  cursor: grabbing;
+}
+
 .dt-tab.dragging {
   opacity: 0.45;
 }

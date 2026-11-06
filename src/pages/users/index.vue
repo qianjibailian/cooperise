@@ -134,6 +134,11 @@
               <a-input v-model:value="form.email" placeholder="登录邮箱" :maxlength="128" />
             </a-form-item>
           </a-col>
+          <a-col :span="12">
+            <a-form-item label="企业微信 userid" name="wecomUserid">
+              <a-input v-model:value="form.wecomUserid" placeholder="事项通知发到该成员，不填则收不到" :maxlength="64" />
+            </a-form-item>
+          </a-col>
           <a-col :span="24">
             <a-form-item label="组织" name="deptId">
               <OrgTreeSelect v-model="form.deptId" :tree-data="orgTree" />
@@ -445,6 +450,7 @@ const emptyForm = (): Omit<UserSaveParams, 'id'> & { spaceCodes: string[] } => (
   coAccount: '',
   email: '',
   userEnName: '',
+  wecomUserid: '',
   deptId: undefined,
   isActive: 1,
   positionId: undefined,
@@ -493,6 +499,7 @@ async function openEdit(u: UserItem) {
     coAccount: u.coAccount || u.userCoAccount || '',
     email: u.email || '',
     userEnName: u.userEnName || '',
+    wecomUserid: u.wecomUserid || '',
     deptId: u.deptId ? (Number.isNaN(Number(u.deptId)) ? u.deptId : Number(u.deptId)) : undefined,
     isActive: isActiveUser(u) ? 1 : 0,
     positionId: u.positionId ?? undefined,
@@ -527,6 +534,8 @@ async function handleSubmit() {
       coAccount: undefined,
       email: form.email.trim(),
       userEnName: form.userEnName?.trim() || undefined,
+      // 编辑时空串表示清空，新增时不填则不传
+      wecomUserid: editingId.value ? (form.wecomUserid?.trim() ?? '') : form.wecomUserid?.trim() || undefined,
       deptId: form.deptId != null ? String(form.deptId) : undefined,
       // 始终明确提交勾选结果（空数组表示不分配空间）
       spaceCodes: [...form.spaceCodes],

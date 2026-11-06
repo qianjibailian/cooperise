@@ -32,7 +32,13 @@ if (await isServing(DEV_URL)) {
   server.printUrls()
 }
 
-const child = spawn(electronBin, ['.', `--dev-url=${DEV_URL}`], { stdio: 'inherit', windowsHide: false })
+// 开发时关掉 Electron 的安全提示（Insecure Content-Security-Policy）：
+// 它只在开发环境出现——vite 热更新需要 eval，开发服务也不带 CSP；打包后的客户端不会出现
+const child = spawn(electronBin, ['.', `--dev-url=${DEV_URL}`], {
+  stdio: 'inherit',
+  windowsHide: false,
+  env: { ...process.env, ELECTRON_DISABLE_SECURITY_WARNINGS: 'true' },
+})
 
 async function shutdown(code) {
   if (server) await server.close().catch(() => {})

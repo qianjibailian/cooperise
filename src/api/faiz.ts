@@ -568,6 +568,8 @@ export interface UserSaveParams {
   coAccount?: string
   email: string
   userEnName?: string
+  /** 企业微信成员 userid：事项通知接收人 */
+  wecomUserid?: string
   /** 部门（组织）ID */
   deptId?: string
   /** 岗位 ID */

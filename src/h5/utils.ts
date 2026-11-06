@@ -265,6 +265,18 @@ export interface FilterFieldMeta {
   type: string
 }
 
+/** 常用系统字段（字段 id 与网页版筛选一致） */
+const BUILTIN_FIELDS: FilterFieldMeta[] = [
+  { id: 'summary', name: '概要', type: 'TEXT_BOX_SINGLE_LINE' },
+  { id: 'status', name: '状态', type: 'SELECT_LIST_SINGLE' },
+  { id: 'issuetype', name: '问题类型', type: 'SELECT_LIST_SINGLE' },
+  { id: 'priority', name: '优先级', type: 'SELECT_LIST_SINGLE' },
+  { id: 'assignee', name: '经办人', type: 'SELECT_USER_SINGLE' },
+  { id: 'creator', name: '创建人', type: 'SELECT_USER_SINGLE' },
+  { id: 'createtime', name: '创建时间', type: 'DATE_PICKER' },
+  { id: 'updated', name: '更新时间', type: 'DATE_PICKER' },
+]
+
 /** 可筛选 / 排序的字段：/availableField/list（系统字段 + 自定义字段，按当前空间），同一空间只拉一次 */
 let fieldsPromise: Promise<FilterFieldMeta[]> | null = null
 let fieldsSpace = ''
@@ -273,9 +285,14 @@ export function loadFilterFields(): Promise<FilterFieldMeta[]> {
   if (!fieldsPromise || fieldsSpace !== space) {
     fieldsSpace = space
     fieldsPromise = queryWorkbenchFieldList({ page: 1, pageSize: 500, searchKey: '' })
-      .then((res) => (res?.success ? res.data?.list || [] : [])
-        .filter((f) => !f.obsolete && f.fieldId)
-        .map((f) => ({ id: f.fieldId, name: f.fieldName || f.fieldId, type: f.filedType || f.type || '' })))
+      .then((res) => {
+        const list = (res?.success ? res.data?.list || [] : [])
+          .filter((f) => !f.obsolete && f.fieldId)
+          .map((f) => ({ id: f.fieldId, name: f.fieldName || f.fieldId, type: f.filedType || f.type || '' }))
+        // 接口不一定返回这些常用系统字段（如经办人），缺的补上：默认条件能显示名称，也能在字段列表里选到
+        const have = new Set(list.map((f) => f.id))
+        return [...BUILTIN_FIELDS.filter((f) => !have.has(f.id)), ...list]
+      })
       .catch(() => {
         fieldsPromise = null
         return []

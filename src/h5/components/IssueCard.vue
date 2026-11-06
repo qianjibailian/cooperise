@@ -3,7 +3,7 @@
   <div class="issue-card" @click="open">
     <div class="ic-top">
       <span class="ic-key" data-no-i18n>{{ issue.key }}</span>
-      <span v-if="issue.statusName" class="h5-status" :style="{ background: issue.statusColor }">{{ issue.statusName }}</span>
+      <span v-if="issue.statusName" class="h5-status" :style="{ '--tone': issue.statusColor }">{{ issue.statusName }}</span>
     </div>
     <div class="ic-summary" data-no-i18n>{{ issue.summary }}</div>
     <div class="ic-meta">
@@ -36,15 +36,16 @@ function open() {
 <style scoped>
 .issue-card {
   margin: 10px var(--h5-gutter) 0;
-  padding: 12px 14px;
+  padding: 14px 16px;
   border-radius: var(--h5-radius);
   background: var(--h5-card);
-  transition: transform 0.1s, background 0.1s;
+  box-shadow: var(--h5-shadow-1);
+  transition: transform 0.2s var(--h5-ease), background-color 0.2s var(--h5-ease);
 }
 
 .issue-card:active {
-  transform: scale(0.99);
-  background: #fafbfc;
+  transform: scale(0.98);
+  background-color: #fafafc;
 }
 
 .ic-top {

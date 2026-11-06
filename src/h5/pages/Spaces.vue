@@ -1,7 +1,7 @@
 <template>
   <div class="h5-page">
-    <header class="sp-head">
-      <h1 class="sp-title">空间</h1>
+    <header class="h5-large-title">
+      <h1>空间</h1>
       <van-button type="primary" size="small" round icon="plus" @click="openCreate">新建空间</van-button>
     </header>
 
@@ -283,18 +283,6 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.sp-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: calc(env(safe-area-inset-top, 0px) + 14px) var(--h5-gutter) 2px;
-}
-
-.sp-title {
-  margin: 0;
-  font-size: 26px;
-  font-weight: 700;
-}
 
 .sp-filters {
   background: var(--h5-bg);
