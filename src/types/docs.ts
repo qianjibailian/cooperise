@@ -45,4 +45,6 @@ export interface DocItem {
   folderId?: string
   /** 是否收藏 */
   starred?: boolean
+  /** 创建人（作者），旧数据可能为空 */
+  author?: string
 }

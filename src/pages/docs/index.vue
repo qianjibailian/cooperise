@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import type { Component } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Modal, message } from 'ant-design-vue'
 import {
@@ -10,21 +11,47 @@ import {
   FolderFilled,
   FolderOpenFilled,
   RightOutlined,
-  OrderedListOutlined,
+  DownOutlined,
   UnorderedListOutlined,
+  OrderedListOutlined,
+  BoldOutlined,
+  ItalicOutlined,
+  UnderlineOutlined,
+  StrikethroughOutlined,
+  ClearOutlined,
+  CheckSquareOutlined,
+  PictureOutlined,
+  PaperClipOutlined,
+  TableOutlined,
+  LayoutOutlined,
+  BgColorsOutlined,
+  LinkOutlined,
+  CodeOutlined,
+  MinusOutlined,
   DownloadOutlined,
   StarOutlined,
   StarFilled,
   HomeOutlined,
   BookOutlined,
-  LeftOutlined,
   AppstoreOutlined,
   SortAscendingOutlined,
   UploadOutlined,
-  DownOutlined,
   ColumnWidthOutlined,
   FullscreenOutlined,
   FullscreenExitOutlined,
+  MenuFoldOutlined,
+  MenuUnfoldOutlined,
+  HolderOutlined,
+  AlignLeftOutlined,
+  FontColorsOutlined,
+  ScissorOutlined,
+  CopyOutlined,
+  CommentOutlined,
+  TranslationOutlined,
+  ShareAltOutlined,
+  FileAddOutlined,
+  SnippetsOutlined,
+  PlusSquareOutlined,
 } from '@ant-design/icons-vue'
 import { getLoginUsername, useAuth } from '@/utils/auth'
 import type { DocType, DocFolder, DocItem, MindNode, SheetData, MindmapData, FlowData } from '@/types/docs'
@@ -32,12 +59,32 @@ import DocSheetEditor from '@/components/docs/DocSheetEditor.vue'
 import DocMindmapEditor from '@/components/docs/DocMindmapEditor.vue'
 import DocFlowEditor from '@/components/docs/DocFlowEditor.vue'
 import DocTypeIcon from '@/components/docs/DocTypeIcon.vue'
-import BeeLogo from '@/components/docs/BeeLogo.vue'
+import AppLogo from '@/components/AppLogo.vue'
 import { isDesktop } from '@/utils/desktop'
+import { docsSideCollapsed, docsEditMode, docsActiveDoc } from '@/utils/docs-layout'
+import {
+  createDoc as createDocApi,
+  createDocFolder,
+  deleteDocFolder,
+  emptyTrash as emptyTrashApi,
+  listDocFolders,
+  listDocs as listDocsApi,
+  listTrashDocs,
+  moveDoc as moveDocApi,
+  purgeDoc as purgeDocApi,
+  renameDocFolder,
+  restoreDoc as restoreDocApi,
+  saveDocContent,
+  starDoc as starDocApi,
+  starDocFolder,
+  trashDoc as trashDocApi,
+} from '@/api/docs'
 
 /**
- * 文档（前端本地版）
- * 后端暂无文档接口：文档 / 文件夹按登录用户存 localStorage，后续接接口时替换 loadDocs / saveDocs 即可。
+ * 文档（后端接口版）
+ * 数据全部来自 src/api/docs.ts 定义的文档系统接口：
+ * 列表 / 回收站走查询接口，编辑内容 400ms 防抖走 PUT /docs/{id}/content，
+ * 新建 / 重命名 / 移动 / 收藏 / 删除等写操作均等接口成功后再更新本地状态。
  */
 
 const folders = ref<DocFolder[]>([])
@@ -62,15 +109,18 @@ const SORT_OPTIONS = [
 const listView = ref<'list' | 'grid'>('list')
 
 const { user: authUser } = useAuth()
-const ownerName = computed(
-  () => authUser.value?.realName || authUser.value?.coAccount || getLoginUsername() || '-',
-)
+const ownerName = computed(() => {
+  const raw = authUser.value?.realName || authUser.value?.coAccount || getLoginUsername() || ''
+  return toDisplayName(raw) || '-'
+})
 /** 当前新建文档默认归属的文件夹（点击文件夹标题时更新） */
 const activeFolderId = ref('')
 /** 文件夹展开状态 */
 const expanded = reactive<Record<string, boolean>>({})
 
 const activeDoc = computed(() => docs.value.find((d) => d.id === activeId.value) || null)
+// 同步当前文档给顶栏（分享 / 编辑按钮使用）
+watch(activeDoc, (d) => { docsActiveDoc.value = d }, { immediate: true })
 
 /** 语雀式大纲：解析正文 h2 / h3 */
 interface OutlineItem {
@@ -84,8 +134,7 @@ const outline = ref<OutlineItem[]>([])
 const wideMode = ref(false)
 const focusMode = ref(false)
 
-/** 按登录用户隔离，避免同一浏览器不同账号看到彼此的本地文档 */
-const storageKey = computed(() => `cooperise_docs:${getLoginUsername() || 'anonymous'}`)
+
 
 function stripHtml(html: string): string {
   return (html || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()
@@ -148,6 +197,15 @@ function ensureDocData(doc: DocItem) {
 
 function normalizeDoc(d: any): DocItem {
   const type: DocType = ['doc', 'sheet', 'mindmap', 'flow'].includes(d.type) ? d.type : 'doc'
+  // 后端可能把表格 / 脑图 / 流程图 data 存成 JSON 字符串，这里统一反序列化
+  let data: unknown = d.data
+  if (typeof data === 'string' && data) {
+    try {
+      data = JSON.parse(data)
+    } catch {
+      data = undefined
+    }
+  }
   const doc: DocItem = {
     id: String(d.id),
     title: String(d.title || DOC_TYPE_TITLE[type]),
@@ -156,214 +214,82 @@ function normalizeDoc(d: any): DocItem {
     updatedAt: Number(d.updatedAt) || Date.now(),
     createdAt: Number(d.createdAt) || Number(d.updatedAt) || Date.now(),
     folderId: d.folderId ? String(d.folderId) : undefined,
-    data: d.data && typeof d.data === 'object' ? d.data : undefined,
+    author: d.author ? String(d.author) : undefined,
+    data: (data && typeof data === 'object' ? data : undefined) as SheetData | MindmapData | FlowData | undefined,
     starred: !!d.starred,
   }
   ensureDocData(doc)
   return doc
 }
 
-/** 示例数据：首次进入时生成一次，方便直接看到列表效果 */
-function seedDemoData() {
-  try {
-    if (localStorage.getItem(storageKey.value + ':seeded')) return
-    localStorage.setItem(storageKey.value + ':seeded', '1')
-  } catch {
-    return
+function normalizeFolder(f: any): DocFolder {
+  return {
+    id: String(f.id),
+    name: String(f.name || '未命名文件夹'),
+    createdAt: Number(f.createdAt) || Date.now(),
+    starred: !!f.starred,
   }
-  const now = Date.now()
-  const day = 86_400_000
-  const fProduct: DocFolder = { id: genDocId('folder'), name: '产品文档', createdAt: now - 40 * day }
-  const fTech: DocFolder = { id: genDocId('folder'), name: '技术方案', createdAt: now - 35 * day }
-  folders.value.push(fProduct, fTech)
-
-  const samples: DocItem[] = [
-    {
-      id: genDocId('doc'),
-      title: '产品需求文档 PRD',
-      type: 'doc',
-      content:
-        '<h2>背景</h2><p>当前协作平台的文档能力需要支持产品、研发、测试共同维护需求资料。</p><h2>目标</h2><ul><li>统一文档入口</li><li>支持多种文档类型</li><li>支持文件夹归档</li></ul><h2>方案</h2><p>文档中心提供富文本、表格、思维导图与流程图，并按文件夹组织。</p><h2>后续计划</h2><p>接入后端接口，支持多人协作与权限分享。</p>',
-      folderId: fProduct.id,
-      starred: true,
-      createdAt: now - 12 * day,
-      updatedAt: now - 2 * 3600_000,
-    },
-    {
-      id: genDocId('doc'),
-      title: '2026 Q2 迭代规划',
-      type: 'sheet',
-      content: '',
-      data: {
-        rows: [
-          ['模块', '负责人', '状态', '计划完成'],
-          ['文档首页', 'Shenyuan', '进行中', '2026-11-10'],
-          ['表格编辑器', 'Shenyuan', '待开始', '2026-11-16'],
-          ['思维导图', 'Shenyuan', '待开始', '2026-11-20'],
-          ['流程图', 'Shenyuan', '待开始', '2026-11-24'],
-          ['权限分享', 'Shenyuan', '待开始', '2026-11-28'],
-        ],
-      },
-      folderId: fProduct.id,
-      createdAt: now - 9 * day,
-      updatedAt: now - 5 * 3600_000,
-    },
-    {
-      id: genDocId('doc'),
-      title: '系统架构思维导图',
-      type: 'mindmap',
-      content: '',
-      data: {
-        root: {
-          id: genDocId('root'),
-          text: '文档中心',
-          children: [
-            {
-              id: genDocId('m'),
-              text: '文档类型',
-              children: [
-                { id: genDocId('m'), text: '富文本', children: [] },
-                { id: genDocId('m'), text: '表格', children: [] },
-                { id: genDocId('m'), text: '思维导图', children: [] },
-                { id: genDocId('m'), text: '流程图', children: [] },
-              ],
-            },
-            {
-              id: genDocId('m'),
-              text: '组织方式',
-              children: [
-                { id: genDocId('m'), text: '文件夹', children: [] },
-                { id: genDocId('m'), text: '收藏', children: [] },
-              ],
-            },
-          ],
-        },
-      },
-      folderId: fTech.id,
-      starred: true,
-      createdAt: now - 7 * day,
-      updatedAt: now - day,
-    },
-    {
-      id: genDocId('doc'),
-      title: '登录流程',
-      type: 'flow',
-      content: '',
-      data: { graph: null },
-      folderId: fTech.id,
-      createdAt: now - 6 * day,
-      updatedAt: now - 2 * day,
-    },
-    {
-      id: genDocId('doc'),
-      title: '会议纪要 10-26',
-      type: 'doc',
-      content:
-        '<h2>会议主题</h2><p>文档中心二期需求评审</p><h2>参会人</h2><ul><li>产品：Shenyuan</li><li>研发：Allen</li><li>测试：Li Si</li></ul><h2>结论</h2><ul><li>本期先支持在线新建与编辑</li><li>导出格式采用兼容格式</li><li>权限分享后续迭代补充</li></ul>',
-      createdAt: now - 5 * day,
-      updatedAt: now - 3 * day,
-    },
-    {
-      id: genDocId('doc'),
-      title: 'API 接口说明',
-      type: 'doc',
-      content:
-        '<h2>查询文档列表</h2><pre>GET /api/docs</pre><h2>新建文档</h2><pre>POST /api/docs</pre><h2>更新文档</h2><pre>PUT /api/docs/:id</pre>',
-      folderId: fTech.id,
-      createdAt: now - 4 * day,
-      updatedAt: now - 4 * day,
-    },
-    {
-      id: genDocId('doc'),
-      title: '竞品调研',
-      type: 'doc',
-      content:
-        '<h2>调研范围</h2><p>飞书文档、语雀、Notion。</p><h2>结论</h2><ul><li>左侧文件树 + 右侧编辑是共同形态</li><li>目录大纲、宽屏、专注模式使用频率高</li><li>收藏与最近访问是高频入口</li></ul>',
-      createdAt: now - 3 * day,
-      updatedAt: now - 5 * 3600_000,
-    },
-    {
-      id: genDocId('doc'),
-      title: '数据分析日报',
-      type: 'sheet',
-      content: '',
-      data: {
-        rows: [
-          ['日期', '访问量', '新增文档', '活跃用户'],
-          ['2026-11-01', '1280', '12', '86'],
-          ['2026-11-02', '1420', '18', '92'],
-          ['2026-11-03', '1365', '9', '88'],
-          ['2026-11-04', '1590', '21', '101'],
-          ['2026-11-05', '1712', '16', '110'],
-        ],
-      },
-      createdAt: now - 2 * day,
-      updatedAt: now - 6 * 3600_000,
-    },
-  ]
-  docs.value = [...samples, ...docs.value]
 }
 
-// ---- 本地存取（兼容旧版纯文档数组） ----
-function loadDocs() {
+
+// ---- 数据加载（后端接口） ----
+const loading = ref(false)
+/** 按登录用户区分数据归属（后端从 token 解析身份，这里只用于切换账号时重新拉取） */
+const ownerKey = computed(() => getLoginUsername() || 'anonymous')
+
+/** 拉取文件夹 / 文档 / 回收站列表 */
+async function loadDocs() {
+  loading.value = true
   try {
-    const raw = localStorage.getItem(storageKey.value)
-    const parsed = raw ? JSON.parse(raw) : null
-    if (Array.isArray(parsed)) {
-      docs.value = parsed.filter((d: any) => d && typeof d.id === 'string').map(normalizeDoc)
-      folders.value = []
-      trash.value = []
-    } else if (parsed && Array.isArray(parsed.docs)) {
-      folders.value = (Array.isArray(parsed.folders) ? parsed.folders : [])
-        .filter((f: any) => f && typeof f.id === 'string')
-        .map((f: any) => ({
-          id: String(f.id),
-          name: String(f.name || '未命名文件夹'),
-          createdAt: Number(f.createdAt) || Date.now(),
-          starred: !!f.starred,
-        }))
-      docs.value = parsed.docs.filter((d: any) => d && typeof d.id === 'string').map(normalizeDoc)
-      trash.value = (Array.isArray(parsed.trash) ? parsed.trash : [])
-        .filter((d: any) => d && typeof d.id === 'string')
-        .map(normalizeDoc)
-    } else {
-      docs.value = []
-      folders.value = []
-      trash.value = []
-    }
+    const [fRes, dRes, tRes] = await Promise.all([listDocFolders(), listDocsApi(), listTrashDocs()])
+    if (fRes.success) folders.value = (fRes.data || []).map(normalizeFolder)
+    if (dRes.success) docs.value = (dRes.data || []).map(normalizeDoc)
+    if (tRes.success) trash.value = (tRes.data || []).map(normalizeDoc)
+    // 默认展开全部文件夹
+    for (const f of folders.value) expanded[f.id] = expanded[f.id] ?? true
+    // 从 URL 恢复当前文档；没有则停留在列表页
+    const target = String(route.query.doc || '')
+    activeId.value = target && docs.value.some((d) => d.id === target) ? target : ''
   } catch {
-    docs.value = []
-    folders.value = []
-    trash.value = []
+    // 失败提示由 request 拦截器统一展示；保留现有数据
+  } finally {
+    loading.value = false
   }
-  // 首次进入生成示例数据
-  seedDemoData()
-  // 默认展开全部文件夹
-  for (const f of folders.value) expanded[f.id] = expanded[f.id] ?? true
-  // 从 URL 恢复当前文档；没有则停留在列表页
-  const target = String(route.query.doc || '')
-  activeId.value = target && docs.value.some((d) => d.id === target) ? target : ''
 }
 
+/** 切换登录用户时重新拉取 */
+watch(ownerKey, loadDocs, { immediate: true })
+
+// ---- 内容自动保存（400ms 防抖 PUT /docs/{id}/content） ----
 let saveTimer: ReturnType<typeof setTimeout> | undefined
-
-function saveDocs() {
-  try {
-    localStorage.setItem(storageKey.value, JSON.stringify({ folders: folders.value, docs: docs.value, trash: trash.value }))
-    saved.value = true
-  } catch {
-    // 本地存储不可用时静默，编辑内容仍保留在当前页面
-  }
-}
+/** 防抖期间记录待保存的文档：避免落库前切换文档导致存错对象 */
+let pendingDoc: DocItem | null = null
 
 function scheduleSave() {
+  pendingDoc = activeDoc.value
   saved.value = false
   clearTimeout(saveTimer)
-  saveTimer = setTimeout(saveDocs, 400)
+  saveTimer = setTimeout(flushSave, 400)
 }
 
-watch([docs, folders, trash], scheduleSave, { deep: true })
-watch(storageKey, loadDocs, { immediate: true })
+async function flushSave() {
+  const doc = pendingDoc
+  pendingDoc = null
+  if (!doc) return
+  try {
+    const res = await saveDocContent(doc.id, { title: doc.title, content: doc.content, data: doc.data })
+    if (res.success && res.data?.updatedAt) doc.updatedAt = res.data.updatedAt
+    saved.value = true
+  } catch {
+    // 保存失败保持「未保存」状态，下次修改会再次尝试
+  }
+}
+
+/** 文档内容 / 标题 / 表格脑图数据变化：刷新时间 + 防抖落库 */
+function onDocChanged(doc: DocItem) {
+  touch(doc)
+  scheduleSave()
+}
 
 /** 语雀式快捷键：⌘K / Ctrl+K 聚焦搜索 */
 function onGlobalKeydown(e: KeyboardEvent) {
@@ -378,7 +304,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKeydown))
 
 onBeforeUnmount(() => {
   clearTimeout(saveTimer)
-  if (!saved.value) saveDocs()
+  if (!saved.value) flushSave()
 })
 
 // ---- 文档操作 ----
@@ -388,20 +314,16 @@ function createDoc(type: DocType = 'doc', folderId?: string) {
       : type === 'mindmap' ? defaultMindmap()
         : type === 'flow' ? { graph: null }
           : undefined
-  const doc: DocItem = {
-    id: genDocId('doc'),
-    title: DOC_TYPE_TITLE[type],
-    type,
-    content: '',
-    data,
-    updatedAt: Date.now(),
-    createdAt: Date.now(),
-    folderId: folderId || undefined,
-  }
-  docs.value.unshift(doc)
-  selectDoc(doc)
-  if (folderId) expanded[folderId] = true
-  if (type === 'doc') nextTick(() => editorRef.value?.focus())
+  createDocApi({ title: DOC_TYPE_TITLE[type], type, folderId: folderId || undefined, data })
+    .then((res) => {
+      if (!res.success || !res.data) return
+      const doc = normalizeDoc(res.data)
+      docs.value.unshift(doc)
+      selectDoc(doc)
+      if (folderId) expanded[folderId] = true
+      if (type === 'doc') nextTick(() => editorRef.value?.focus())
+    })
+    .catch(() => {})
 }
 
 // ---- 各类型数据 / 展示 ----
@@ -421,7 +343,8 @@ function flowGraph(doc: DocItem): any | null {
 
 function onFlowChange(doc: DocItem, graph: any) {
   doc.data = { graph }
-  doc.updatedAt = Date.now()
+  touch(doc)
+  scheduleSave()
 }
 
 // ---- 导出（兼容格式） ----
@@ -478,18 +401,23 @@ function onExport(e: { key?: string | number }) {
 
 /** 新建并写入标题 / 内容（上传文件、模板库共用） */
 function createDocWithContent(type: DocType, title: string, content: string) {
-  createDoc(type)
-  const doc = activeDoc.value
-  if (!doc) return
-  doc.title = title
-  doc.content = content
-  doc.updatedAt = Date.now()
-  if (type === 'doc') {
-    nextTick(() => {
-      if (editorRef.value) editorRef.value.innerHTML = content
-      refreshOutline()
+  createDocApi({ type, title, content })
+    .then((res) => {
+      if (!res.success || !res.data) return
+      const doc = normalizeDoc(res.data)
+      docs.value.unshift(doc)
+      selectDoc(doc)
+      if (type === 'doc') {
+        nextTick(() => {
+          if (editorRef.value) {
+            editorRef.value.innerHTML = content
+            normalizeTodoOrder(editorRef.value)
+          }
+          refreshOutline()
+        })
+      }
     })
-  }
+    .catch(() => {})
 }
 
 /** 上传本地文件：读取为文档 */
@@ -627,6 +555,37 @@ function formatDate(ts?: number): string {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
 }
 
+/** 详情页顶栏 / 作者行使用的中文长日期，如 2025年11月26日 */
+function formatLongDate(ts?: number): string {
+  if (!ts) return '-'
+  const d = new Date(ts)
+  return `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`
+}
+
+/** 邮箱转显示名：取 @ 前的部分并首字母大写，非邮箱原样返回 */
+function toDisplayName(raw: string): string {
+  const s = (raw || '').trim()
+  if (!s) return ''
+  if (s.includes('@')) {
+    const local = s.split('@')[0]
+    return local.charAt(0).toUpperCase() + local.slice(1)
+  }
+  return s
+}
+
+/** 文档作者展示名：优先创建人姓名，邮箱降级为本地名，不展示完整邮箱 */
+const docAuthor = computed(() => {
+  const raw = activeDoc.value?.author || authUser.value?.realName || getLoginUsername() || ''
+  return toDisplayName(raw) || '匿名'
+})
+const AVATAR_COLORS = ['#3370ff', '#00b96b', '#d4a72c', '#f5222d', '#722ed1', '#13c2c2']
+const docAvatarStyle = computed(() => {
+  const name = docAuthor.value || ''
+  let h = 0
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0
+  return { background: AVATAR_COLORS[h % AVATAR_COLORS.length] }
+})
+
 /** 最近访问：今天 / 昨天显示时间，更早显示日期 */
 function formatSmartTime(ts?: number): string {
   if (!ts) return '-'
@@ -656,20 +615,26 @@ function confirmDelete(doc: DocItem) {
     okText: '移到回收站',
     okType: 'danger',
     cancelText: '取消',
-    onOk: () => {
-      docs.value = docs.value.filter((d) => d.id !== doc.id)
-      trash.value.unshift(doc)
-      if (activeId.value === doc.id) backToList()
-      message.success('已移到回收站')
+    onOk: async () => {
+      try {
+        const res = await trashDocApi(doc.id)
+        if (!res.success) return
+        docs.value = docs.value.filter((d) => d.id !== doc.id)
+        trash.value.unshift({ ...doc, deletedAt: Date.now() } as DocItem)
+        if (activeId.value === doc.id) backToList()
+      } catch {}
     },
   })
 }
 
 /** 从回收站恢复 */
-function restoreDoc(doc: DocItem) {
-  trash.value = trash.value.filter((d) => d.id !== doc.id)
-  docs.value.unshift(doc)
-  message.success('已恢复')
+async function restoreDoc(doc: DocItem) {
+  try {
+    const res = await restoreDocApi(doc.id)
+    if (!res.success) return
+    trash.value = trash.value.filter((d) => d.id !== doc.id)
+    docs.value.unshift(doc)
+  } catch {}
 }
 
 /** 彻底删除 */
@@ -680,9 +645,12 @@ function purgeDoc(doc: DocItem) {
     okText: '彻底删除',
     okType: 'danger',
     cancelText: '取消',
-    onOk: () => {
-      trash.value = trash.value.filter((d) => d.id !== doc.id)
-      message.success('已彻底删除')
+    onOk: async () => {
+      try {
+        const res = await purgeDocApi(doc.id)
+        if (!res.success) return
+        trash.value = trash.value.filter((d) => d.id !== doc.id)
+      } catch {}
     },
   })
 }
@@ -696,18 +664,25 @@ function emptyTrash() {
     okText: '清空',
     okType: 'danger',
     cancelText: '取消',
-    onOk: () => {
-      trash.value = []
-      message.success('回收站已清空')
+    onOk: async () => {
+      try {
+        const res = await emptyTrashApi()
+        if (!res.success) return
+        trash.value = []
+      } catch {}
     },
   })
 }
 
-function moveDoc(doc: DocItem, folderId: string) {
-  doc.folderId = folderId === 'none' ? undefined : folderId
-  doc.updatedAt = Date.now()
-  if (doc.folderId) expanded[doc.folderId] = true
-  message.success('已移动')
+async function moveDoc(doc: DocItem, folderId: string) {
+  const target = folderId === 'none' ? undefined : folderId
+  try {
+    const res = await moveDocApi({ id: doc.id, folderId: target || null })
+    if (!res.success) return
+    doc.folderId = target
+    doc.updatedAt = res.data?.updatedAt || doc.updatedAt
+    if (doc.folderId) expanded[doc.folderId] = true
+  } catch {}
 }
 
 function onDocMenu(e: { key?: string | number }, doc: DocItem) {
@@ -740,21 +715,26 @@ function submitFolder() {
     return
   }
   if (folderForm.id) {
-    const f = folders.value.find((x) => x.id === folderForm.id)
-    if (f) f.name = name
-    message.success('文件夹已重命名')
+    renameDocFolder({ id: folderForm.id, name })
+      .then((res) => {
+        if (!res.success) return
+        const f = folders.value.find((x) => x.id === folderForm.id)
+        if (f) f.name = name
+        folderModalOpen.value = false
+      })
+      .catch(() => {})
   } else {
-    const folder: DocFolder = {
-      id: `folder_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 5)}`,
-      name,
-      createdAt: Date.now(),
-    }
-    folders.value.push(folder)
-    expanded[folder.id] = true
-    activeFolderId.value = folder.id
-    message.success('文件夹已创建')
+    createDocFolder({ name })
+      .then((res) => {
+        if (!res.success || !res.data) return
+        const folder = normalizeFolder(res.data)
+        folders.value.push(folder)
+        expanded[folder.id] = true
+        activeFolderId.value = folder.id
+        folderModalOpen.value = false
+      })
+      .catch(() => {})
   }
-  folderModalOpen.value = false
 }
 
 function deleteFolder(folder: DocFolder) {
@@ -764,21 +744,31 @@ function deleteFolder(folder: DocFolder) {
     okText: '删除',
     okType: 'danger',
     cancelText: '取消',
-    onOk: () => {
-      docs.value.forEach((d) => {
-        if (d.folderId === folder.id) d.folderId = undefined
-      })
-      folders.value = folders.value.filter((f) => f.id !== folder.id)
-      if (activeFolderId.value === folder.id) activeFolderId.value = ''
-      message.success('文件夹已删除')
+    onOk: async () => {
+      try {
+        const res = await deleteDocFolder(folder.id)
+        if (!res.success) return
+        // 文件夹内文档移到未分组（后端同步把 folderId 置空）
+        docs.value.forEach((d) => {
+          if (d.folderId === folder.id) d.folderId = undefined
+        })
+        folders.value = folders.value.filter((f) => f.id !== folder.id)
+        if (activeFolderId.value === folder.id) activeFolderId.value = ''
+      } catch {}
     },
   })
 }
 
 function onFolderMenu(e: { key?: string | number }, folder: DocFolder) {
   const key = String(e?.key ?? '')
-  if (key === 'star') folder.starred = !folder.starred
-  else if (key === 'rename') openRenameFolder(folder)
+  if (key === 'star') {
+    const next = !folder.starred
+    starDocFolder({ id: folder.id, starred: next })
+      .then((res) => {
+        if (res.success) folder.starred = next
+      })
+      .catch(() => {})
+  } else if (key === 'rename') openRenameFolder(folder)
   else if (key === 'delete') deleteFolder(folder)
 }
 
@@ -791,20 +781,20 @@ function onAddMenu(e: { key?: string | number }) {
 }
 
 // ---- 编辑器 ----
-/** 解析正文 h2 / h3 生成右侧大纲 */
+/** 解析正文 h1 / h2 / h3 生成右侧大纲 */
 function refreshOutline() {
   if (!editorRef.value || activeDoc.value?.type !== 'doc') {
     outline.value = []
     return
   }
-  const nodes = Array.from(editorRef.value.querySelectorAll<HTMLElement>('h2, h3'))
+  const nodes = Array.from(editorRef.value.querySelectorAll<HTMLElement>('h1, h2, h3'))
   outline.value = nodes.map((el, i) => {
     const id = `doc-h-${i}`
     el.id = id
     return {
       id,
       text: (el.textContent || '').trim() || `标题 ${i + 1}`,
-      level: el.tagName === 'H2' ? 2 : 3,
+      level: Number(el.tagName.slice(1)) || 2,
     }
   })
 }
@@ -817,31 +807,1311 @@ watch(activeDoc, (doc) => {
   nextTick(() => {
     if (doc?.type === 'doc' && editorRef.value) {
       editorRef.value.innerHTML = doc.content || ''
+      normalizeTodoOrder(editorRef.value)
       refreshOutline()
+      refreshEmptyState()
     } else {
       outline.value = []
+      editorEmpty.value = false
     }
   })
 }, { immediate: true })
 
-function onEditorInput() {
-  const doc = activeDoc.value
-  if (!doc || !editorRef.value) return
-  doc.content = editorRef.value.innerHTML
-  doc.updatedAt = Date.now()
-  refreshOutline()
+/** 编辑器是否为空（无文字，最多残留一个 br） */
+function isEditorEmpty(ed: HTMLElement): boolean {
+  return !ed.textContent?.trim() && ed.children.length <= 1
 }
 
-function execCmd(cmd: string, value?: string) {
-  editorRef.value?.focus()
-  document.execCommand(cmd, false, value)
+/** 正文数据为空时显示占位提示（类名驱动，兼容 <p><br></p> 等残留空结构） */
+const editorEmpty = ref(false)
+/** 有实际内容的元素：图片 / 表格 / 分割线 / 代码块 / 列表 / 待办 / 高亮块 / 分栏 */
+const RICH_CONTENT_SELECTOR = 'img, table, hr, pre, ul, ol, .docs-todo, .docs-callout, .docs-cols'
+
+/** 正文是否没有数据（无文字，也没有图片、表格等富文本元素） */
+function isDocContentEmpty(ed: HTMLElement): boolean {
+  return !(ed.textContent || '').trim() && !ed.querySelector(RICH_CONTENT_SELECTOR)
+}
+
+/**
+ * 空文档收拢成一个真正的空编辑器：
+ * 残留的 <p><br></p> / <div><br></div> 会让占位提示独占第一行、光标掉到第二行，清掉后光标与提示同一行
+ */
+function normalizeEmptyEditor(ed: HTMLElement) {
+  if (ed.innerHTML === '') return
+  const hadFocus = document.activeElement === ed
+  ed.innerHTML = ''
+  if (!hadFocus) return
+  const sel = window.getSelection()
+  const range = document.createRange()
+  range.selectNodeContents(ed)
+  range.collapse(true)
+  sel?.removeAllRanges()
+  sel?.addRange(range)
+}
+
+function refreshEmptyState() {
+  const ed = editorRef.value
+  if (!ed) {
+    editorEmpty.value = false
+    return
+  }
+  const empty = isDocContentEmpty(ed)
+  if (empty) normalizeEmptyEditor(ed)
+  editorEmpty.value = empty
+}
+
+/** 编辑器输入入口：先跑飞书式输入增强（Markdown 快捷转换 / 斜杠菜单），再落盘 */
+function onEditorInput(e?: Event) {
+  const doc = activeDoc.value
+  const editor = editorRef.value
+  if (!doc || !editor) return
+  const inputEvent = e as InputEvent | undefined
+  // 行首 Markdown 快捷输入（“# ”→标题 等），转换成功直接落盘
+  if (inputEvent?.data === ' ' && tryMarkdownShortcut(editor)) {
+    onEditorChange(editor, doc)
+    return
+  }
+  handleSlashInput(inputEvent)
+  onEditorChange(editor, doc)
+}
+
+/** 落盘 / 刷新界面状态（原 onEditorInput 主体） */
+function onEditorChange(editor: HTMLElement, doc: DocItem) {
+  // 先收拢空结构，落盘的 HTML 也保持干净
+  refreshEmptyState()
+  doc.content = editor.innerHTML
+  doc.updatedAt = Date.now()
+  refreshOutline()
+  // 首行"+"：空文档保持显示（配合输入提示），有内容后收起、由悬停接管
+  if (isEditorEmpty(editor)) {
+    hoverBlock.value = editor
+    hoverBlockType.value = 'p'
+    plusTop.value = 16 // 与编辑器首行（输入提示）对齐
+    plusVisible.value = true
+  } else if (hoverBlock.value === editor) {
+    plusVisible.value = false
+  }
+}
+
+/** 打开文档时：空文档默认在首行显示"+"（参考飞书，与输入提示并排） */
+watch(activeDoc, async (d) => {
+  await nextTick()
+  const ed = editorRef.value
+  if (!d || !ed) return
+  refreshEmptyState()
+  if (isEditorEmpty(ed)) {
+    hoverBlock.value = ed
+    hoverBlockType.value = 'p'
+    plusTop.value = 16 // 与编辑器首行（输入提示）对齐
+    plusVisible.value = true
+  } else {
+    plusVisible.value = false
+  }
+})
+
+/** 块级"+"插入菜单：悬停行定位 */
+const plusVisible = ref(false)
+const plusMenuOpen = ref(false)
+const plusTop = ref(0)
+const hoverBlock = ref<HTMLElement | null>(null)
+const plusBtnRef = ref<HTMLElement | null>(null)
+/** 悬停块的富文本类型：普通段落前面显示"+"，其余富文本块显示块类型手柄 */
+const hoverBlockType = ref('p')
+/** 手柄上的类型文字（H1 / • / “ / {} ...） */
+const BLOCK_HANDLE_LABEL: Record<string, string> = {
+  h1: 'H1',
+  h2: 'H2',
+  h3: 'H3',
+  ul: '•',
+  ol: '1.',
+  todo: '☑',
+  quote: '“',
+  pre: '{}',
+  table: '▦',
+  columns: '栏',
+  callout: '高亮',
+  img: '图',
+  hr: '—',
+}
+const hoverBlockLabel = computed(() => BLOCK_HANDLE_LABEL[hoverBlockType.value] || '')
+/** 富文本块（非普通段落）不展示"+"，改展示块类型手柄 */
+const plusMode = computed<'plus' | 'block'>(() => (hoverBlockType.value === 'p' ? 'plus' : 'block'))
+
+/** 判断块级元素属于哪种富文本类型 */
+function blockTypeOf(el: HTMLElement | null): string {
+  const editor = editorRef.value
+  if (!el || el === editor) return 'p'
+  const tag = el.tagName
+  if (tag === 'H1' || tag === 'H2' || tag === 'H3') return tag.toLowerCase()
+  if (tag === 'LI') return el.parentElement?.tagName === 'OL' ? 'ol' : 'ul'
+  if (tag === 'BLOCKQUOTE') return 'quote'
+  if (tag === 'PRE') return 'pre'
+  if (tag === 'TABLE') return 'table'
+  if (tag === 'HR') return 'hr'
+  if (tag === 'IMG') return 'img'
+  if (tag === 'DIV') {
+    if (el.classList.contains('docs-todo')) return 'todo'
+    if (el.classList.contains('docs-cols')) return 'columns'
+    if (el.classList.contains('docs-callout')) return 'callout'
+  }
+  return 'p'
+}
+
+/** 块类型手柄面板：块转换 */
+const blockConvertBtns = [
+  { key: 'p', title: '正文', glyph: 'T' },
+  { key: 'h1', title: '一级标题', glyph: 'H1' },
+  { key: 'h2', title: '二级标题', glyph: 'H2' },
+  { key: 'h3', title: '三级标题', glyph: 'H3' },
+  { key: 'ol', title: '有序列表', icon: OrderedListOutlined },
+  { key: 'ul', title: '无序列表', icon: UnorderedListOutlined },
+]
+const blockExtraBtns = [
+  { key: 'todo', title: '任务列表', icon: CheckSquareOutlined },
+  { key: 'inline-code', title: '行内代码', glyph: '{}' },
+  { key: 'quote', title: '引用', glyph: '“' },
+  { key: 'pre', title: '代码块', icon: CodeOutlined },
+]
+const blockSubItems = [
+  {
+    key: 'indent',
+    label: '缩进和对齐',
+    icon: AlignLeftOutlined,
+    sub: [
+      { key: 'indent', label: '增加缩进' },
+      { key: 'outdent', label: '减少缩进' },
+      { key: 'left', label: '左对齐' },
+      { key: 'center', label: '居中对齐' },
+      { key: 'right', label: '右对齐' },
+    ],
+  },
+  { key: 'color', label: '颜色', icon: FontColorsOutlined, sub: [] as { key: string; label: string }[] },
+]
+interface BlockRowItem {
+  key: string
+  label: string
+  icon: Component
+  danger?: boolean
+}
+const blockClipItems: BlockRowItem[] = [
+  { key: 'comment', label: '评论', icon: CommentOutlined },
+  { key: 'cut', label: '剪切', icon: ScissorOutlined },
+  { key: 'copy', label: '复制', icon: CopyOutlined },
+  { key: 'translate', label: '翻译', icon: TranslationOutlined },
+  { key: 'delete', label: '删除', icon: DeleteOutlined, danger: true },
+]
+/** 文档级操作（分享 / 子文档 / 模板 / 链接） */
+const blockDocItems: BlockRowItem[] = [
+  { key: 'share', label: '分享', icon: ShareAltOutlined },
+  { key: 'subdoc', label: '转换为子文档', icon: FileAddOutlined },
+  { key: 'template', label: '保存为模板', icon: SnippetsOutlined },
+  { key: 'copyLink', label: '复制链接', icon: LinkOutlined },
+]
+/** 在下方添加：可插入的块类型 */
+const blockAddItems = [
+  { key: 'p', label: '正文' },
+  { key: 'h1', label: '一级标题' },
+  { key: 'h2', label: '二级标题' },
+  { key: 'h3', label: '三级标题' },
+  { key: 'ul', label: '无序列表' },
+  { key: 'ol', label: '有序列表' },
+  { key: 'todo', label: '任务列表' },
+  { key: 'quote', label: '引用' },
+  { key: 'pre', label: '代码块' },
+]
+/** 块类型面板当前展开的二级菜单 */
+const activeBlockSub = ref('')
+
+/** "+"面板：基础排版（图标网格，枚举富文本块类型） */
+interface InsertBasic {
+  key: string
+  title: string
+  glyph?: string
+  icon?: Component
+}
+const insertBasics: InsertBasic[] = [
+  { key: 'h1', title: '一级标题', glyph: 'H1' },
+  { key: 'h2', title: '二级标题', glyph: 'H2' },
+  { key: 'h3', title: '三级标题', glyph: 'H3' },
+  { key: 'ol', title: '有序列表', icon: OrderedListOutlined },
+  { key: 'ul', title: '无序列表', icon: UnorderedListOutlined },
+  { key: 'todo', title: '任务列表', icon: CheckSquareOutlined },
+  { key: 'code', title: '行内代码', glyph: '{}' },
+  { key: 'quote', title: '引用', glyph: '“' },
+  { key: 'pre', title: '代码块', icon: CodeOutlined },
+  { key: 'attach', title: '视频或文件', icon: PaperClipOutlined },
+  { key: 'hr', title: '分割线', icon: MinusOutlined },
+  { key: 'link', title: '链接', icon: LinkOutlined },
+]
+
+/** "+"面板：常用富文本元素（含二级菜单） */
+interface InsertCommon {
+  key: string
+  label: string
+  icon: Component
+  color: string
+  sub?: { key: string; label: string }[]
+}
+const insertCommons: InsertCommon[] = [
+  { key: 'todo', label: '任务', icon: CheckSquareOutlined, color: '#3370ff' },
+  { key: 'image', label: '图片', icon: PictureOutlined, color: '#ffb400' },
+  { key: 'attach', label: '视频或文件', icon: PaperClipOutlined, color: '#3370ff' },
+  {
+    key: 'table',
+    label: '表格',
+    icon: TableOutlined,
+    color: '#34c724',
+    sub: [
+      { key: 'table:3', label: '3 × 3 表格' },
+      { key: 'table:4', label: '4 × 4 表格' },
+      { key: 'table:5x6', label: '5 × 6 表格' },
+    ],
+  },
+  {
+    key: 'columns',
+    label: '分栏',
+    icon: LayoutOutlined,
+    color: '#7f3bf5',
+    sub: [
+      { key: 'columns:2', label: '两栏' },
+      { key: 'columns:3', label: '三栏' },
+    ],
+  },
+  { key: 'callout', label: '高亮块', icon: BgColorsOutlined, color: '#ff8800' },
+]
+/** 当前展开的二级菜单 */
+const activeInsertSub = ref('')
+/** 图片 / 文件选择框 */
+const imageInputRef = ref<HTMLInputElement | null>(null)
+const fileInputRef = ref<HTMLInputElement | null>(null)
+
+function onEditorHover(e: MouseEvent) {
+  if (!docsEditMode.value) return
+  const editor = editorRef.value
+  if (!editor) return
+  const target = e.target as HTMLElement
+  if (!editor.contains(target)) return
+  // 向上找到编辑器直属的块级元素（段落 / 标题 / 列表 / 引用 / 代码块）
+  let block: HTMLElement = target
+  while (block !== editor && block.parentElement !== editor && !/^(P|H[1-6]|LI|BLOCKQUOTE|PRE)$/.test(block.tagName)) {
+    block = block.parentElement
+  }
+  if (block === editor) {
+    // 编辑器空白区：仅空文档（只有占位符）时在首行位置显示加号
+    if (isEditorEmpty(editor)) {
+      hoverBlock.value = editor
+      hoverBlockType.value = 'p'
+      plusTop.value = 16 // 与编辑器首行（输入提示）对齐
+      plusVisible.value = true
+    } else {
+      plusVisible.value = false
+    }
+    return
+  }
+  hoverBlock.value = block
+  hoverBlockType.value = blockTypeOf(block)
+  plusTop.value = block.offsetTop
+  plusVisible.value = true
+}
+
+function onEditorLeave(e: MouseEvent) {
+  const rt = e.relatedTarget as HTMLElement | null
+  // 移向加号按钮或插入菜单时不隐藏，否则加号永远点不到
+  if (rt && plusBtnRef.value?.contains(rt)) return
+  if (rt && rt.closest?.('.ant-dropdown')) return
+  if (!plusMenuOpen.value) plusVisible.value = false
+}
+watch(plusMenuOpen, (open) => {
+  if (!open) {
+    plusVisible.value = false
+    activeInsertSub.value = ''
+  }
+})
+
+/** 在光标处插入 HTML 片段，光标无落点时追加到末尾 */
+function insertHtmlAtCaret(editor: HTMLElement, html: string) {
+  const sel = window.getSelection()
+  if (!sel || sel.rangeCount === 0 || !sel.anchorNode || !editor.contains(sel.anchorNode)) {
+    editor.insertAdjacentHTML('beforeend', html)
+    return
+  }
+  const range = sel.getRangeAt(0)
+  range.deleteContents()
+  const frag = range.createContextualFragment(html)
+  const last = frag.lastChild
+  range.insertNode(frag)
+  if (last) {
+    const after = document.createRange()
+    after.setStartAfter(last)
+    after.collapse(true)
+    sel.removeAllRanges()
+    sel.addRange(after)
+  }
+}
+
+/** 插入表格 */
+function insertTable(editor: HTMLElement, rowCount: number, colCount: number) {
+  const cell = '<td><br></td>'
+  const row = `<tr>${cell.repeat(colCount)}</tr>`
+  insertHtmlAtCaret(editor, `<table class="docs-insert-table"><tbody>${row.repeat(rowCount)}</tbody></table><p><br></p>`)
+}
+
+/** 插入分栏 */
+function insertColumns(editor: HTMLElement, count: number) {
+  const cols = Array.from({ length: count }, (_, i) => `<div class="docs-col">栏 ${i + 1}</div>`).join('')
+  insertHtmlAtCaret(
+    editor,
+    `<div class="docs-cols" style="grid-template-columns:repeat(${count},1fr)">${cols}</div><p><br></p>`,
+  )
+}
+
+/** "+"菜单：把枚举的富文本元素应用到悬停的块 */
+function applyInsert(key: string) {
+  const editor = editorRef.value
+  if (!editor) return
+  plusMenuOpen.value = false
+  activeInsertSub.value = ''
+  const [cmd, arg] = key.split(':')
+  // 图片 / 文件走系统选择框，插入在文件选中后完成
+  if (cmd === 'image' || cmd === 'attach') {
+    const input = cmd === 'image' ? imageInputRef.value : fileInputRef.value
+    input?.click()
+    return
+  }
+  editor.focus()
+  // 光标落回悬停块（点击菜单会夺走焦点），保证命令作用于该块
+  if (hoverBlock.value && editor.contains(hoverBlock.value)) {
+    const sel = window.getSelection()
+    const range = document.createRange()
+    range.selectNodeContents(hoverBlock.value)
+    range.collapse(true)
+    sel?.removeAllRanges()
+    sel?.addRange(range)
+  }
+  // 与斜杠菜单共用同一套插入命令；表格保留 5x6 特例
+  if (cmd === 'table' && key === 'table:5x6') insertTable(editor, 5, 6)
+  else runInsertCommand(editor, cmd, arg)
   onEditorInput()
 }
 
+/**
+ * 块类型手柄：对悬停的富文本块执行转换 / 缩进 / 对齐 / 颜色 / 剪切复制删除
+ * 普通段落仍然走"+"插入面板，这里只处理 H1/H2/H3、列表、引用、代码块等已有内容的块
+ */
+function applyBlockCmd(cmd: string, arg?: string) {
+  const editor = editorRef.value
+  const block = hoverBlock.value
+  plusMenuOpen.value = false
+  activeBlockSub.value = ''
+  if (!editor || !block) return
+  const isEditorRoot = block === editor
+  editor.focus()
+  const range = document.createRange()
+  if (!isEditorRoot) range.selectNodeContents(block)
+  /** 把光标放到块首（块转换命令的作用位置） */
+  const caretToBlock = () => {
+    if (isEditorRoot) return
+    range.collapse(true)
+    const sel = window.getSelection()
+    sel?.removeAllRanges()
+    sel?.addRange(range.cloneRange())
+  }
+  /** 选中整个块（缩进 / 对齐 / 颜色 / 复制） */
+  const selectBlock = () => {
+    if (isEditorRoot) return
+    const sel = window.getSelection()
+    sel?.removeAllRanges()
+    sel?.addRange(range)
+  }
+  /** 非标准块（待办 / 高亮块 / 表格等）转换成文本块：直接替换节点 */
+  const replaceWith = (tag: string) => {
+    if (isEditorRoot) return
+    block.outerHTML = `<${tag}>${escapeHtml((block.textContent || '').trim())}</${tag}>`
+  }
+  const textBlock = /^(P|H1|H2|H3|H4|LI|BLOCKQUOTE|PRE)$/.test(block.tagName)
+
+  switch (cmd) {
+    case 'p':
+    case 'h1':
+    case 'h2':
+    case 'h3':
+      if (textBlock) {
+        caretToBlock()
+        document.execCommand('formatBlock', false, cmd)
+      } else {
+        replaceWith(cmd)
+      }
+      break
+    case 'quote':
+      if (textBlock) {
+        caretToBlock()
+        document.execCommand('formatBlock', false, 'blockquote')
+      } else {
+        replaceWith('blockquote')
+      }
+      break
+    case 'pre':
+      if (textBlock) {
+        caretToBlock()
+        document.execCommand('formatBlock', false, 'pre')
+      } else {
+        replaceWith('pre')
+      }
+      break
+    case 'ul':
+      caretToBlock()
+      document.execCommand('insertUnorderedList')
+      break
+    case 'ol':
+      caretToBlock()
+      document.execCommand('insertOrderedList')
+      break
+    case 'todo': {
+      const text = escapeHtml((block.textContent || '').trim() || '待办事项')
+      const tpl = document.createElement('template')
+      tpl.innerHTML = `<div class="docs-todo"><span class="docs-todo-text">${text}</span><span class="docs-todo-box" contenteditable="false"></span></div>`
+      const el = tpl.content.firstElementChild as HTMLElement
+      if (isEditorRoot) editor.appendChild(el)
+      else block.replaceWith(el)
+      // 转换后光标落进任务文字里，与勾选框同一行
+      focusTodoText(el)
+      break
+    }
+    case 'inline-code': {
+      const text = escapeHtml((block.textContent || '').trim())
+      const html = `<code>${text}</code>`
+      if (isEditorRoot) editor.insertAdjacentHTML('beforeend', `<p>${html}</p>`)
+      else if (textBlock && block.tagName === 'P') block.outerHTML = `<p>${html}</p>`
+      else block.outerHTML = `<p>${html}</p>`
+      break
+    }
+    case 'indent':
+    case 'outdent': {
+      // 用左外边距实现缩进，避免 execCommand('indent') 在列表里另起嵌套结构
+      if (isEditorRoot) return
+      const cur = parseInt(block.style.marginLeft || '0', 10) || 0
+      const next = cmd === 'indent' ? cur + 32 : Math.max(0, cur - 32)
+      block.style.marginLeft = next ? `${next}px` : ''
+      break
+    }
+    case 'left':
+    case 'center':
+    case 'right':
+      selectBlock()
+      document.execCommand('styleWithCSS', false, 'true')
+      document.execCommand(`justify${cmd === 'left' ? 'Left' : cmd === 'center' ? 'Center' : 'Right'}`)
+      break
+    case 'highlight':
+      selectBlock()
+      document.execCommand('styleWithCSS', false, 'true')
+      document.execCommand('hiliteColor', false, arg || bubbleColors[0])
+      break
+    case 'unhighlight':
+      selectBlock()
+      document.execCommand('styleWithCSS', false, 'true')
+      document.execCommand('hiliteColor', false, 'transparent')
+      break
+    case 'cut':
+      selectBlock()
+      document.execCommand('cut')
+      break
+    case 'copy':
+      selectBlock()
+      document.execCommand('copy')
+      message.success('已复制')
+      break
+    case 'comment':
+      message.info('评论功能开发中')
+      break
+    case 'translate':
+      message.info('翻译功能开发中')
+      break
+    case 'delete':
+      if (isEditorRoot) return
+      block.remove()
+      if (!editor.innerHTML.trim()) editor.innerHTML = '<p><br></p>'
+      plusVisible.value = false
+      break
+    case 'share':
+      message.info('分享功能开发中')
+      break
+    case 'subdoc':
+      message.info('转换为子文档功能开发中')
+      break
+    case 'template':
+      message.info('保存为模板功能开发中')
+      break
+    case 'copyLink':
+      navigator.clipboard
+        ?.writeText(`${window.location.origin}/docs`)
+        .then(() => message.success('文档链接已复制'))
+        .catch(() => message.warning('复制失败，请手动复制'))
+      break
+    case 'below':
+      insertBlockBelow(editor, block, arg || 'p')
+      break
+  }
+  onEditorInput()
+}
+
+/** 在当前块下方插入一个空块，并把光标放进去 */
+function insertBlockBelow(editor: HTMLElement, block: HTMLElement, kind: string) {
+  const html =
+    kind === 'ul'
+      ? '<ul><li><br></li></ul>'
+      : kind === 'ol'
+        ? '<ol><li><br></li></ol>'
+        : kind === 'todo'
+          ? '<div class="docs-todo"><span class="docs-todo-text">待办事项</span><span class="docs-todo-box" contenteditable="false"></span></div>'
+          : `<${kind}><br></${kind}>`
+  if (block === editor) editor.insertAdjacentHTML('beforeend', html)
+  else block.insertAdjacentHTML('afterend', html)
+  // 光标落到新块内，方便直接输入
+  const next = (block === editor ? editor.lastElementChild : block.nextElementSibling) as HTMLElement | null
+  if (!next) return
+  editor.focus()
+  if (next.matches('.docs-todo')) {
+    // 任务块：光标放进文字里，与勾选框同一行
+    focusTodoText(next)
+    plusVisible.value = false
+    return
+  }
+  const target = next.matches('ul, ol') ? next.querySelector('li') : next
+  if (!target) return
+  const range = document.createRange()
+  range.selectNodeContents(target)
+  range.collapse(true)
+  const sel = window.getSelection()
+  sel?.removeAllRanges()
+  sel?.addRange(range)
+  plusVisible.value = false
+}
+
+/** 图片选择完成：读成 dataURL 插入正文 */
+function onImagePicked(e: Event) {
+  const input = e.target as HTMLInputElement
+  const file = input.files?.[0]
+  const editor = editorRef.value
+  input.value = ''
+  if (!file || !editor) return
+  const reader = new FileReader()
+  reader.onload = () => {
+    editor.focus()
+    insertHtmlAtCaret(editor, `<img class="docs-img" src="${String(reader.result)}" alt="${escapeAttr(file.name)}" /><p><br></p>`)
+    onEditorInput()
+  }
+  reader.readAsDataURL(file)
+}
+
+/** 视频 / 文件选择完成：插入附件信息 */
+function onAttachPicked(e: Event) {
+  const input = e.target as HTMLInputElement
+  const file = input.files?.[0]
+  const editor = editorRef.value
+  input.value = ''
+  if (!file || !editor) return
+  const size = file.size >= 1024 * 1024
+    ? `${(file.size / 1024 / 1024).toFixed(1)} MB`
+    : `${Math.max(1, Math.round(file.size / 1024))} KB`
+  const kind = file.type.startsWith('video/') ? '视频' : '文件'
+  editor.focus()
+  insertHtmlAtCaret(
+    editor,
+    `<span class="docs-attach" contenteditable="false">${kind} · ${escapeHtml(file.name)} · ${size}</span><p><br></p>`,
+  )
+  onEditorInput()
+}
+
+/** 任务列表勾选 */
+function onEditorClick(e: MouseEvent) {
+  const target = e.target as HTMLElement
+  if (!target.classList?.contains('docs-todo-box')) return
+  target.parentElement?.classList.toggle('is-done')
+  onEditorInput()
+}
+
+/**
+ * 归一化待办结构：勾选框必须在文字之后。
+ * Chrome 把“元素偏移 0”的光标画在第一个子元素上，勾选框在前会导致
+ * 点击勾选框 / 按 Home / 回车新建待办时光标落在勾选框上而不是文字行首。
+ */
+function normalizeTodoOrder(ed: HTMLElement) {
+  ed.querySelectorAll<HTMLElement>('.docs-todo').forEach((todo) => {
+    const box = todo.querySelector<HTMLElement>('.docs-todo-box')
+    if (box && todo.lastElementChild !== box) todo.appendChild(box)
+  })
+}
+
+/** 把光标放进任务块的文字里（末尾），保证光标与勾选框同一行 */
+function focusTodoText(todo: HTMLElement) {
+  const text = todo.querySelector<HTMLElement>('.docs-todo-text') || todo
+  const sel = window.getSelection()
+  const range = document.createRange()
+  range.selectNodeContents(text)
+  range.collapse(false)
+  sel?.removeAllRanges()
+  sel?.addRange(range)
+}
+
+/**
+ * 在光标处插入任务块：直接操作 DOM（execCommand/range.insertNode 会把 div 塞进 p，
+ * 或把任务文字拆到下一行），插完把光标放进任务文字里
+ */
+function insertTodoAtCaret(editor: HTMLElement, text: string) {
+  const sel = window.getSelection()
+  let block: HTMLElement | null = null
+  if (sel && sel.rangeCount > 0 && sel.anchorNode && editor.contains(sel.anchorNode)) {
+    const n = sel.getRangeAt(0).startContainer
+    block = (n.nodeType === 1 ? n : n.parentElement) as HTMLElement | null
+    while (block && block !== editor && block.parentElement !== editor) block = block.parentElement
+  }
+  const tpl = document.createElement('template')
+  tpl.innerHTML = `<div class="docs-todo"><span class="docs-todo-text">${escapeHtml(text)}</span><span class="docs-todo-box" contenteditable="false"></span></div>`
+  const el = tpl.content.firstElementChild as HTMLElement
+  if (!block || block === editor) editor.appendChild(el)
+  // 空块直接替换，避免留下空行；非空块插到它下方
+  else if (!(block.textContent || '').trim()) block.replaceWith(el)
+  else block.after(el)
+  focusTodoText(el)
+}
+
+// ==================== 飞书式编辑增强：Markdown 快捷输入 / 斜杠菜单 / 按键 / 粘贴 ====================
+
+/** 行首 Markdown 快捷规则：输入前缀 + 空格触发块转换 */
+const MD_RULES: { re: RegExp; type: string }[] = [
+  { re: /^# $/, type: 'h1' },
+  { re: /^## $/, type: 'h2' },
+  { re: /^### $/, type: 'h3' },
+  { re: /^[-*+] $/, type: 'ul' },
+  { re: /^\d+[.)] $/, type: 'ol' },
+  { re: /^\[\]\s$|^\[ \]\s$|^\[[xX]\]\s$/, type: 'todo' },
+  { re: /^> $/, type: 'quote' },
+  { re: /^``` $/, type: 'pre' },
+  { re: /^(---|\*\*\*) $/, type: 'hr' },
+]
+
+/**
+ * Markdown 快捷输入（参考飞书 / Notion）：在正文 / 标题行行首输入
+ * “# ”“## ”“### ”“- ”“1. ”“[] ”“> ”“``` ”“--- ”并空格，自动转换成对应块。
+ * 返回是否发生了转换。
+ */
+function tryMarkdownShortcut(editor: HTMLElement): boolean {
+  const sel = window.getSelection()
+  if (!sel || sel.rangeCount === 0 || !sel.isCollapsed) return false
+  const node = sel.anchorNode
+  if (!node || !editor.contains(node)) return false
+  // 找到光标所在的顶层块
+  let block: HTMLElement | null = node.nodeType === Node.TEXT_NODE ? node.parentElement : (node as HTMLElement)
+  while (block && block.parentElement !== editor) block = block.parentElement
+  if (!block || block === editor) return false
+  // 仅正文 / 标题行触发；列表、代码块、待办各有自己的默认行为
+  if (!['P', 'H1', 'H2', 'H3'].includes(block.tagName)) return false
+  // 取「块首 → 光标」的文本（刚输入的空格已包含在内）
+  const range = document.createRange()
+  range.setStart(block, 0)
+  range.setEnd(sel.anchorNode, sel.anchorOffset)
+  const prefix = range.toString()
+  const rule = MD_RULES.find((r) => r.re.test(prefix))
+  if (!rule) return false
+  // 删除快捷前缀字符
+  range.deleteContents()
+  switch (rule.type) {
+    case 'h1':
+    case 'h2':
+    case 'h3':
+      document.execCommand('formatBlock', false, rule.type)
+      break
+    case 'ul':
+      document.execCommand('insertUnorderedList')
+      break
+    case 'ol':
+      document.execCommand('insertOrderedList')
+      break
+    case 'quote':
+      document.execCommand('formatBlock', false, 'blockquote')
+      break
+    case 'pre':
+      document.execCommand('formatBlock', false, 'pre')
+      break
+    case 'todo': {
+      // [x] 开头直接勾选；剩余文字保留为任务内容
+      const rest = (block.textContent || '').trim()
+      const tpl = document.createElement('template')
+      tpl.innerHTML = `<div class="docs-todo"><span class="docs-todo-text">${escapeHtml(rest)}</span><span class="docs-todo-box" contenteditable="false"></span></div>`
+      const el = tpl.content.firstElementChild as HTMLElement
+      if (/^\[[xX]\]/.test(prefix)) el.classList.add('is-done')
+      block.replaceWith(el)
+      focusTodoText(el)
+      break
+    }
+    case 'hr':
+      document.execCommand('insertHorizontalRule')
+      // 分割线后补空段落承接光标，继续输入
+      document.execCommand('insertHTML', false, '<p><br></p>')
+      break
+  }
+  return true
+}
+
+/** 斜杠菜单插入项（label 支持关键词 / 拼音过滤） */
+interface SlashItem {
+  key: string
+  label: string
+  keywords?: string
+  icon?: Component
+  glyph?: string
+}
+const slashItems: SlashItem[] = [
+  { key: 'p', label: '正文', keywords: 'text zhengwen', glyph: 'T' },
+  { key: 'h1', label: '一级标题', keywords: '标题 biaoti', glyph: 'H1' },
+  { key: 'h2', label: '二级标题', keywords: '标题 biaoti', glyph: 'H2' },
+  { key: 'h3', label: '三级标题', keywords: '标题 biaoti', glyph: 'H3' },
+  { key: 'ul', label: '无序列表', keywords: '列表 liebiao', icon: UnorderedListOutlined },
+  { key: 'ol', label: '有序列表', keywords: '列表 liebiao', icon: OrderedListOutlined },
+  { key: 'todo', label: '任务列表', keywords: '待办 daiban renwu', icon: CheckSquareOutlined },
+  { key: 'code', label: '行内代码', keywords: '代码 daima', glyph: '{}' },
+  { key: 'quote', label: '引用', keywords: 'yinyong', glyph: '“' },
+  { key: 'pre', label: '代码块', keywords: '代码 daima', icon: CodeOutlined },
+  { key: 'callout', label: '高亮块', keywords: '提示 gaoliangkuai', glyph: '▎' },
+  { key: 'table:3', label: '表格', keywords: 'biaoge', icon: TableOutlined },
+  { key: 'columns:2', label: '分栏', keywords: 'fenlan', glyph: '▤' },
+  { key: 'hr', label: '分割线', keywords: '分隔 fengexian', icon: MinusOutlined },
+  { key: 'link', label: '链接', keywords: 'lianjie', icon: LinkOutlined },
+  { key: 'image', label: '图片', keywords: 'tupian', icon: PictureOutlined },
+]
+
+/** 斜杠菜单状态：anchor 记录 “/” 之后的光标位置，用于组装关键词与回删 */
+const slash = reactive({
+  visible: false,
+  top: 0,
+  left: 0,
+  keyword: '',
+  active: 0,
+  anchor: null as Range | null,
+})
+const slashFiltered = computed(() => {
+  const kw = slash.keyword.trim().toLowerCase()
+  if (!kw) return slashItems
+  return slashItems.filter(
+    (it) => it.label.toLowerCase().includes(kw) || (it.keywords || '').toLowerCase().includes(kw),
+  )
+})
+
+function closeSlash() {
+  slash.visible = false
+  slash.keyword = ''
+  slash.anchor = null
+}
+
+/** 斜杠面板定位在光标下方，越界时翻到上方并做视口避让 */
+function positionSlash(editor: HTMLElement, range: Range) {
+  let rect = range.getBoundingClientRect()
+  if (!rect || (!rect.width && !rect.height)) rect = editor.getBoundingClientRect()
+  const width = 272
+  slash.left = Math.min(Math.max(rect.left, 12), window.innerWidth - width - 12)
+  let top = rect.bottom + 6
+  if (rect.bottom + 360 > window.innerHeight) top = rect.top - 330
+  slash.top = Math.max(top, 12)
+}
+
+/** 输入事件驱动斜杠菜单：输入 “/” 唤起，继续输入实时过滤 */
+function handleSlashInput(e: InputEvent | undefined) {
+  const editor = editorRef.value
+  const sel = window.getSelection()
+  if (!editor || !sel || sel.rangeCount === 0 || !docsEditMode.value) return
+  if (!slash.visible) {
+    if (e?.data === '/') {
+      const range = sel.getRangeAt(0)
+      slash.anchor = range.cloneRange()
+      slash.keyword = ''
+      slash.active = 0
+      positionSlash(editor, range)
+      slash.visible = true
+    }
+    return
+  }
+  // 菜单已打开：把 “/” 之后到光标的文本作为过滤关键词
+  const anchor = slash.anchor
+  if (!anchor || !editor.contains(anchor.startContainer)) {
+    closeSlash()
+    return
+  }
+  let kw = ''
+  try {
+    if (!sel.anchorNode) {
+      closeSlash()
+      return
+    }
+    const kwRange = document.createRange()
+    kwRange.setStart(anchor.startContainer, anchor.startOffset)
+    kwRange.setEnd(sel.anchorNode, sel.anchorOffset)
+    kw = kwRange.toString()
+  } catch {
+    closeSlash()
+    return
+  }
+  // 出现空白 / 超长 / 把 “/” 删掉了：关闭菜单
+  if (/\s/.test(kw) || kw.length > 20 || (!kw && e?.inputType === 'deleteContentBackward')) {
+    closeSlash()
+    return
+  }
+  slash.keyword = kw
+  slash.active = 0
+  positionSlash(editor, sel.getRangeAt(0))
+}
+
+function moveSlashActive(delta: number) {
+  const len = slashFiltered.value.length
+  if (!len) return
+  slash.active = (slash.active + delta + len) % len
+}
+
+/** 应用斜杠菜单选中项：先删掉 “/关键词”，再执行插入命令 */
+function applySlashInsert(it: SlashItem) {
+  const editor = editorRef.value
+  if (!editor) return
+  const anchor = slash.anchor
+  closeSlash()
+  const sel = window.getSelection()
+  if (anchor && sel && sel.rangeCount > 0 && editor.contains(anchor.startContainer)) {
+    try {
+      const cur = sel.getRangeAt(0)
+      const del = document.createRange()
+      del.setStart(anchor.startContainer, anchor.startOffset)
+      del.setEnd(cur.endContainer, cur.endOffset)
+      del.deleteContents()
+    } catch {
+      // 光标已不在锚点之后，忽略
+    }
+  }
+  editor.focus()
+  if (it.key === 'image') {
+    imageInputRef.value?.click()
+    onEditorInput()
+    return
+  }
+  const [cmd, arg] = it.key.split(':')
+  runInsertCommand(editor, cmd, arg)
+  onEditorInput()
+}
+
+/** 插入命令执行体（"+"菜单与斜杠菜单共用） */
+function runInsertCommand(editor: HTMLElement, cmd: string, arg?: string) {
+  switch (cmd) {
+    case 'p':
+    case 'h1':
+    case 'h2':
+    case 'h3':
+      document.execCommand('formatBlock', false, cmd)
+      break
+    case 'quote':
+      document.execCommand('formatBlock', false, 'blockquote')
+      break
+    case 'pre':
+      document.execCommand('formatBlock', false, 'pre')
+      break
+    case 'ul':
+      document.execCommand('insertUnorderedList')
+      break
+    case 'ol':
+      document.execCommand('insertOrderedList')
+      break
+    case 'hr':
+      document.execCommand('insertHorizontalRule')
+      // 分割线后补空段落承接光标
+      document.execCommand('insertHTML', false, '<p><br></p>')
+      break
+    case 'code': {
+      // 行内代码：包裹当前选中文本，无选中时插入占位文本
+      const text = window.getSelection()?.toString() || '行内代码'
+      document.execCommand('insertHTML', false, `<code>${escapeHtml(text)}</code>`)
+      break
+    }
+    case 'link':
+      document.execCommand('insertHTML', false, '<a href="#" target="_blank" rel="noopener">链接地址</a>')
+      break
+    case 'todo':
+      // 直接操作 DOM 插入，光标落在任务文字里（与勾选框同一行）
+      insertTodoAtCaret(editor, '待办事项')
+      break
+    case 'callout':
+      insertHtmlAtCaret(editor, '<div class="docs-callout">高亮块内容</div><p><br></p>')
+      break
+    case 'table':
+      insertTable(editor, Number(arg) || 3, Number(arg) || 3)
+      break
+    case 'columns':
+      insertColumns(editor, Number(arg) || 2)
+      break
+  }
+}
+
+/** 编辑器按键（参考飞书）：斜杠菜单导航 / Tab 缩进列表 / 空待办退格转正文 */
+function onEditorKeyDown(e: KeyboardEvent) {
+  // 斜杠菜单打开时接管导航键
+  if (slash.visible) {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      moveSlashActive(1)
+      return
+    }
+    if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      moveSlashActive(-1)
+      return
+    }
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      const it = slashFiltered.value[slash.active]
+      if (it) applySlashInsert(it)
+      else closeSlash()
+      return
+    }
+    if (e.key === 'Escape') {
+      e.preventDefault()
+      closeSlash()
+      return
+    }
+  }
+  const editor = editorRef.value
+  if (!editor || !docsEditMode.value) return
+  const sel = window.getSelection()
+  const node = sel?.anchorNode
+  const el = node ? (node.nodeType === Node.TEXT_NODE ? node.parentElement : (node as HTMLElement)) : null
+  if (!el || !editor.contains(el)) return
+
+  // Tab / Shift+Tab：列表项缩进 / 反缩进；其他位置插入空格（避免 Tab 把焦点移出编辑器）
+  if (e.key === 'Tab') {
+    e.preventDefault()
+    if (el.closest('li')) document.execCommand(e.shiftKey ? 'outdent' : 'indent')
+    else document.execCommand('insertText', false, '  ')
+    onEditorInput()
+    return
+  }
+
+  // Backspace：空待办块转回正文（空列表项浏览器已有默认行为）
+  if (e.key === 'Backspace' && sel && sel.isCollapsed) {
+    const todo = el.closest<HTMLElement>('.docs-todo')
+    const text = todo?.querySelector<HTMLElement>('.docs-todo-text')
+    if (todo && text && !(text.textContent || '').trim()) {
+      e.preventDefault()
+      const p = document.createElement('p')
+      p.innerHTML = '<br>'
+      todo.replaceWith(p)
+      const range = document.createRange()
+      range.selectNodeContents(p)
+      range.collapse(true)
+      sel.removeAllRanges()
+      sel.addRange(range)
+      onEditorInput()
+    }
+  }
+}
+
+/** 粘贴 HTML 结构白名单：保留常用结构标签，其余拆壳保留文字 */
+const PASTE_ALLOWED_TAGS = new Set([
+  'P', 'H1', 'H2', 'H3', 'H4', 'UL', 'OL', 'LI', 'BLOCKQUOTE', 'PRE', 'CODE',
+  'B', 'STRONG', 'I', 'EM', 'U', 'S', 'DEL', 'BR', 'HR', 'A', 'TABLE', 'THEAD',
+  'TBODY', 'TR', 'TD', 'TH', 'IMG', 'SPAN', 'DIV',
+])
+
+/** 粘贴清洗：去脚本 / 事件属性，a/img 只留安全属性（并校验协议），自家 docs-* 类名保留 */
+function sanitizePasteHtml(html: string): string {
+  const tpl = document.createElement('template')
+  tpl.innerHTML = html
+  tpl.content
+    .querySelectorAll('script, style, link, meta, iframe, object, embed, audio, video')
+    .forEach((n) => n.remove())
+  const clean = (root: Node) => {
+    Array.from(root.childNodes).forEach((n) => {
+      if (n.nodeType === Node.COMMENT_NODE) {
+        n.remove()
+        return
+      }
+      if (n.nodeType !== Node.ELEMENT_NODE) return
+      const el = n as HTMLElement
+      clean(el)
+      if (!PASTE_ALLOWED_TAGS.has(el.tagName)) {
+        // 白名单外的标签：拆壳保留（已清洗过的）内容
+        const parent = el.parentNode
+        while (el.firstChild) parent?.insertBefore(el.firstChild, el)
+        el.remove()
+        return
+      }
+      const keep =
+        el.tagName === 'A'
+          ? ['href']
+          : el.tagName === 'IMG'
+            ? ['src', 'alt']
+            : el.tagName === 'TD' || el.tagName === 'TH'
+              ? ['colspan', 'rowspan']
+              : []
+      Array.from(el.attributes).forEach((attr) => {
+        const val = attr.value || ''
+        if (!keep.includes(attr.name)) el.removeAttribute(attr.name)
+        else if (attr.name === 'href' && !/^(https?:|mailto:)/i.test(val)) el.removeAttribute('href')
+        else if (attr.name === 'src' && !/^(https?:|data:image\/)/i.test(val)) el.removeAttribute('src')
+      })
+      // docs-* 类名是自家富文本块的样式钩子，外部类名一律去掉
+      const cls = el.getAttribute('class') || ''
+      if (!cls.startsWith('docs-')) el.removeAttribute('class')
+      if (el.tagName === 'A') {
+        el.setAttribute('target', '_blank')
+        el.setAttribute('rel', 'noopener')
+      }
+    })
+  }
+  clean(tpl.content)
+  return tpl.innerHTML
+}
+
+/** 粘贴（参考飞书）：HTML 清洗后插入；纯文本多行转段落；URL 智能成链 */
+function onEditorPaste(e: ClipboardEvent) {
+  const editor = editorRef.value
+  if (!editor || !docsEditMode.value) return
+  const dt = e.clipboardData
+  if (!dt) return
+  const html = dt.getData('text/html')
+  const text = dt.getData('text/plain')
+  const url = (text || '').trim()
+  const isUrl = /^https?:\/\/\S+$/.test(url)
+  if (html) {
+    e.preventDefault()
+    insertHtmlAtCaret(editor, sanitizePasteHtml(html))
+  } else if (text) {
+    e.preventDefault()
+    if (isUrl) {
+      // 粘贴链接：有选中文本时把选区变成超链接，否则插入链接文字
+      const label = window.getSelection()?.toString().trim() || url
+      document.execCommand(
+        'insertHTML',
+        false,
+        `<a href="${escapeAttr(url)}" target="_blank" rel="noopener">${escapeHtml(label)}</a>`,
+      )
+    } else {
+      const lines = text.replace(/\r\n?/g, '\n').split('\n')
+      if (lines.length > 1) {
+        // 多行纯文本：每行一个段落
+        insertHtmlAtCaret(editor, lines.map((l) => `<p>${escapeHtml(l) || '<br>'}</p>`).join(''))
+      } else {
+        insertHtmlAtCaret(editor, escapeHtml(text))
+      }
+    }
+  }
+}
+
+// ---- 选中文字的浮动格式工具栏 ----
+type BubbleMenu = '' | 'heading' | 'list' | 'color'
+const bubble = reactive({
+  visible: false,
+  top: 0,
+  left: 0,
+  menu: '' as BubbleMenu,
+  /** 当前光标所在块的标签：正文 / H1 / H2 / H3 */
+  block: '正文',
+})
+const bubbleRef = ref<HTMLElement | null>(null)
+const bubbleColors = ['#ffe58f', '#ffd6e7', '#d3e5ff', '#d9f7be', '#ffccc7']
+const bubbleColorNames = ['柠檬黄', '樱花粉', '天空蓝', '青草绿', '珊瑚红']
+const bubbleHeadings = [
+  { key: 'p', label: '正文' },
+  { key: 'h1', label: '一级标题' },
+  { key: 'h2', label: '二级标题' },
+  { key: 'h3', label: '三级标题' },
+]
+const bubbleLists = [
+  { key: 'ul', label: '无序列表' },
+  { key: 'ol', label: '有序列表' },
+  { key: 'todo', label: '任务列表' },
+]
+/** 记录选区，点击工具栏时不丢选区 */
+let bubbleRange: Range | null = null
+
+function hideBubble() {
+  bubble.visible = false
+  bubble.menu = ''
+}
+
+/** 选区变化时刷新工具栏位置 / 显隐 */
+function updateBubble() {
+  const editor = editorRef.value
+  const sel = window.getSelection()
+  // 斜杠菜单：光标离开 “/” 锚点之后（点击了别处 / 选区扩大）即关闭
+  if (slash.visible) {
+    const anchor = slash.anchor
+    if (
+      !sel || sel.rangeCount === 0 || !anchor ||
+      !editor?.contains(anchor.startContainer) ||
+      anchor.startContainer !== sel.anchorNode ||
+      sel.anchorOffset < anchor.startOffset
+    ) {
+      closeSlash()
+    }
+  }
+  if (!editor || !docsEditMode.value || !sel || sel.rangeCount === 0 || sel.isCollapsed) {
+    hideBubble()
+    return
+  }
+  const range = sel.getRangeAt(0)
+  if (!editor.contains(range.commonAncestorContainer)) {
+    hideBubble()
+    return
+  }
+  const rect = range.getBoundingClientRect()
+  if (!rect || (!rect.width && !rect.height)) {
+    hideBubble()
+    return
+  }
+  bubbleRange = range.cloneRange()
+  // 工具栏最大宽度按 470px 估算，居中于选区并做视口内避让
+  const half = 235
+  const center = rect.left + rect.width / 2
+  const maxLeft = Math.max(window.innerWidth - half - 12, half + 12)
+  bubble.left = Math.min(Math.max(center, half + 12), maxLeft)
+  // 选区上方空间不足时翻到下方
+  bubble.top = rect.top > 64 ? rect.top - 52 : rect.bottom + 10
+  const startEl = (range.startContainer.nodeType === 1
+    ? range.startContainer
+    : range.startContainer.parentElement) as HTMLElement | null
+  const heading = startEl?.closest('h1, h2, h3')?.tagName || ''
+  bubble.block = heading || '正文'
+  bubble.visible = true
+}
+
+/** 恢复工具栏记录下来的选区（点击按钮会夺走焦点） */
+function restoreBubbleRange() {
+  if (!bubbleRange) return
+  try {
+    const sel = window.getSelection()
+    sel?.removeAllRanges()
+    sel?.addRange(bubbleRange)
+  } catch {
+    // 选区所在的 DOM 已被替换，忽略
+  }
+}
+
+function toggleBubbleMenu(menu: Exclude<BubbleMenu, ''>) {
+  bubble.menu = bubble.menu === menu ? '' : menu
+}
+
+/** 工具栏命令：作用于当前选中的文字 */
+function applyBubble(cmd: string, value?: string) {
+  const editor = editorRef.value
+  if (!editor) return
+  editor.focus()
+  restoreBubbleRange()
+  switch (cmd) {
+    case 'bold':
+      document.execCommand('bold')
+      break
+    case 'italic':
+      document.execCommand('italic')
+      break
+    case 'underline':
+      document.execCommand('underline')
+      break
+    case 'strike':
+      document.execCommand('strikeThrough')
+      break
+    case 'link': {
+      const text = window.getSelection()?.toString() || '链接地址'
+      document.execCommand('insertHTML', false, `<a href="#" target="_blank" rel="noopener">${escapeHtml(text)}</a>`)
+      break
+    }
+    case 'inline-code': {
+      const text = window.getSelection()?.toString() || '行内代码'
+      document.execCommand('insertHTML', false, `<code>${escapeHtml(text)}</code>`)
+      break
+    }
+    case 'highlight':
+      document.execCommand('styleWithCSS', false, 'true')
+      document.execCommand('hiliteColor', false, value || bubbleColors[0])
+      break
+    case 'unhighlight':
+      document.execCommand('styleWithCSS', false, 'true')
+      document.execCommand('hiliteColor', false, 'transparent')
+      break
+    case 'clear':
+      document.execCommand('removeFormat')
+      break
+    case 'p':
+    case 'h1':
+    case 'h2':
+    case 'h3':
+      document.execCommand('formatBlock', false, cmd)
+      break
+    case 'ul':
+      document.execCommand('insertUnorderedList')
+      break
+    case 'ol':
+      document.execCommand('insertOrderedList')
+      break
+    case 'todo': {
+      // 选中的文字转成任务块（替换所在块），光标落在任务文字里
+      const text = window.getSelection()?.toString().trim() || '待办事项'
+      const ed = editorRef.value
+      if (!ed) break
+      const sel = window.getSelection()
+      let block: HTMLElement | null = null
+      if (sel && sel.rangeCount > 0 && sel.anchorNode && ed.contains(sel.anchorNode)) {
+        const n = sel.getRangeAt(0).startContainer
+        block = (n.nodeType === 1 ? n : n.parentElement) as HTMLElement | null
+        while (block && block !== ed && block.parentElement !== ed) block = block.parentElement
+      }
+      const tpl = document.createElement('template')
+      tpl.innerHTML = `<div class="docs-todo"><span class="docs-todo-text">${escapeHtml(text)}</span><span class="docs-todo-box" contenteditable="false"></span></div>`
+      const el = tpl.content.firstElementChild as HTMLElement
+      if (!block || block === ed) ed.appendChild(el)
+      else block.replaceWith(el)
+      focusTodoText(el)
+      break
+    }
+  }
+  bubble.menu = ''
+  onEditorInput()
+  nextTick(updateBubble)
+}
+
+/** 点击工具栏 / 编辑器以外的地方收起工具栏 */
+function onDocMouseDown(e: MouseEvent) {
+  const target = e.target as HTMLElement
+  if (bubbleRef.value?.contains(target)) return
+  if (editorRef.value?.contains(target)) return
+  hideBubble()
+}
+
+onMounted(() => {
+  document.addEventListener('selectionchange', updateBubble)
+  document.addEventListener('mousedown', onDocMouseDown, true)
+  document.addEventListener('scroll', hideFloatPanels, true)
+  window.addEventListener('resize', hideFloatPanels)
+})
+onBeforeUnmount(() => {
+  document.removeEventListener('selectionchange', updateBubble)
+  document.removeEventListener('mousedown', onDocMouseDown, true)
+  document.removeEventListener('scroll', hideFloatPanels, true)
+  window.removeEventListener('resize', hideFloatPanels)
+})
+
+/** 滚动 / 缩放 / 切换文档时收起所有浮动面板（工具栏 + 斜杠菜单） */
+function hideFloatPanels() {
+  hideBubble()
+  closeSlash()
+}
+
+/** 切换文档 / 退出编辑时收起工具栏 */
+watch([activeDoc, docsEditMode], hideFloatPanels)
+
 /** 收藏 / 取消收藏 */
 function toggleStar(doc: DocItem) {
-  doc.starred = !doc.starred
-  doc.updatedAt = Date.now()
+  const next = !doc.starred
+  starDocApi({ id: doc.id, starred: next })
+    .then((res) => {
+      if (!res.success) return
+      doc.starred = next
+      doc.updatedAt = res.data?.updatedAt || doc.updatedAt
+    })
+    .catch(() => {})
 }
 
 /** 当前文档所属文件夹名称 */
@@ -852,28 +2122,25 @@ function folderNameOf(doc: DocItem | null): string {
 </script>
 
 <template>
-  <div class="docs-page" :class="{ 'is-focus': focusMode }">
+  <div class="docs-page" :class="{ 'is-focus': focusMode, 'is-side-collapsed': docsSideCollapsed }">
     <!-- 左侧：文件夹 + 文档 -->
     <aside class="docs-side">
       <header class="docs-side-head">
-        <div class="docs-side-brand">
-          <BeeLogo class="docs-side-logo" />
+        <button
+          type="button"
+          class="docs-side-fold"
+          :title="docsSideCollapsed ? '展开菜单' : '折叠菜单'"
+          @click="docsSideCollapsed = !docsSideCollapsed"
+        >
+          <MenuUnfoldOutlined v-if="docsSideCollapsed" />
+          <MenuFoldOutlined v-else />
+        </button>
+        <div v-if="!docsSideCollapsed" class="docs-side-brand">
+          <AppLogo class="docs-side-logo" />
           <div class="docs-side-brand-text">
             <span class="docs-side-title">先蜂云文档</span>
           </div>
         </div>
-        <a-dropdown trigger="click" placement="bottomRight">
-          <button type="button" class="docs-add" title="新建"><PlusOutlined /></button>
-          <template #overlay>
-            <a-menu @click="onAddMenu($event)">
-              <a-menu-item key="doc">新建文档</a-menu-item>
-              <a-menu-item key="sheet">新建表格</a-menu-item>
-              <a-menu-item key="mindmap">新建思维导图</a-menu-item>
-              <a-menu-item key="flow">新建流程图</a-menu-item>
-              <a-menu-item key="folder">新建文件夹</a-menu-item>
-            </a-menu>
-          </template>
-        </a-dropdown>
       </header>
 
       <div class="docs-search-wrap">
@@ -895,39 +2162,32 @@ function folderNameOf(doc: DocItem | null): string {
       </nav>
 
       <div class="docs-list">
-        <!-- 置顶文档 -->
-        <div v-if="pinnedDocs.length" class="docs-group">
-          <div class="docs-group-title">置顶文档</div>
-          <button
-            v-for="d in pinnedDocs"
-            :key="`pin-${d.id}`"
-            type="button"
-            class="docs-item"
-            :class="{ active: d.id === activeId }"
-            @click="selectDoc(d)"
-          >
-            <DocTypeIcon :type="d.type" mono />
-            <span class="docs-item-main">
-              <span class="docs-item-title">
-                <span class="docs-item-title-text">{{ d.title || '无标题文档' }}</span>
-                <StarFilled class="docs-item-star" />
-              </span>
-            </span>
-          </button>
-        </div>
-
-        <!-- 置顶知识库 -->
-        <div v-if="pinnedFolders.length" class="docs-group">
-          <div class="docs-group-title">置顶知识库</div>
-          <div
-            v-for="f in pinnedFolders"
-            :key="`pinf-${f.id}`"
-            class="docs-folder"
-            @click="openLibrary(f)"
-          >
-            <FolderFilled class="docs-folder-icon" />
-            <span class="docs-folder-name">{{ f.name }}</span>
-            <span class="docs-folder-count">{{ docsOfFolder(f) }}</span>
+        <!-- 置顶：文档 + 知识库，左右两列分布 -->
+        <div v-if="pinnedDocs.length || pinnedFolders.length" class="docs-group">
+          <div class="docs-group-title">置顶</div>
+          <div class="docs-pinned-grid">
+            <button
+              v-for="d in pinnedDocs"
+              :key="`pin-${d.id}`"
+              type="button"
+              class="docs-pinned-item"
+              :class="{ active: d.id === activeId }"
+              :title="d.title || '无标题文档'"
+              @click="selectDoc(d)"
+            >
+              <DocTypeIcon :type="d.type" mono />
+              <span class="docs-pinned-name">{{ d.title || '无标题文档' }}</span>
+            </button>
+            <div
+              v-for="f in pinnedFolders"
+              :key="`pinf-${f.id}`"
+              class="docs-pinned-item"
+              :title="f.name"
+              @click="openLibrary(f)"
+            >
+              <FolderFilled class="docs-folder-icon" />
+              <span class="docs-pinned-name">{{ f.name }}</span>
+            </div>
           </div>
         </div>
 
@@ -1015,61 +2275,6 @@ function folderNameOf(doc: DocItem | null): string {
     <!-- 右侧编辑区 -->
     <main class="docs-main">
       <template v-if="activeDoc">
-        <!-- 顶部工具条 -->
-        <div class="docs-toolbar">
-          <button type="button" class="docs-back" @click="backToList"><LeftOutlined /> 文档</button>
-          <div class="docs-toolbar-pill">
-            <template v-if="activeDoc.type === 'doc'">
-              <button type="button" class="docs-tool" title="加粗" @mousedown.prevent @click="execCmd('bold')"><b>B</b></button>
-              <button type="button" class="docs-tool" title="斜体" @mousedown.prevent @click="execCmd('italic')"><i>I</i></button>
-              <button type="button" class="docs-tool" title="下划线" @mousedown.prevent @click="execCmd('underline')"><u>U</u></button>
-              <span class="docs-tool-sep" />
-              <button type="button" class="docs-tool docs-tool-text" title="一级标题" @mousedown.prevent @click="execCmd('formatBlock', 'h2')">H2</button>
-              <button type="button" class="docs-tool docs-tool-text" title="二级标题" @mousedown.prevent @click="execCmd('formatBlock', 'h3')">H3</button>
-              <button type="button" class="docs-tool docs-tool-text" title="引用" @mousedown.prevent @click="execCmd('formatBlock', 'blockquote')">❝</button>
-              <button type="button" class="docs-tool docs-tool-text" title="代码块" @mousedown.prevent @click="execCmd('formatBlock', 'pre')">&lt;/&gt;</button>
-              <button type="button" class="docs-tool" title="无序列表" @mousedown.prevent @click="execCmd('insertUnorderedList')"><UnorderedListOutlined /></button>
-              <button type="button" class="docs-tool" title="有序列表" @mousedown.prevent @click="execCmd('insertOrderedList')"><OrderedListOutlined /></button>
-              <button type="button" class="docs-tool docs-tool-text" title="分割线" @mousedown.prevent @click="execCmd('insertHorizontalRule')">―</button>
-            </template>
-            <span v-else class="docs-type-label">
-              <DocTypeIcon :type="activeDoc.type" />
-              {{ activeDoc.type === 'sheet' ? '表格' : activeDoc.type === 'mindmap' ? '思维导图' : '流程图' }}
-            </span>
-          </div>
-
-          <div class="docs-toolbar-actions">
-            <button type="button" class="docs-export" :class="{ 'is-active': activeDoc.starred }" @click="toggleStar(activeDoc)">
-              <StarFilled v-if="activeDoc.starred" class="docs-star-icon" />
-              <StarOutlined v-else class="docs-star-icon" />
-              {{ activeDoc.starred ? '已收藏' : '收藏' }}
-            </button>
-            <button type="button" class="docs-export" @click="wideMode = !wideMode">
-              <ColumnWidthOutlined /> {{ wideMode ? '标准' : '宽屏' }}
-            </button>
-            <button type="button" class="docs-export" @click="focusMode = !focusMode">
-              <FullscreenExitOutlined v-if="focusMode" />
-              <FullscreenOutlined v-else />
-              {{ focusMode ? '退出专注' : '专注' }}
-            </button>
-            <a-dropdown trigger="click" placement="bottomRight">
-              <button type="button" class="docs-export"><DownloadOutlined /> 导出</button>
-              <template #overlay>
-                <a-menu @click="onExport($event)">
-                  <a-menu-item v-if="activeDoc.type === 'doc'" key="word">Word (.doc)</a-menu-item>
-                  <a-menu-item v-else-if="activeDoc.type === 'sheet'" key="excel">Excel (.xls)</a-menu-item>
-                  <a-menu-item v-else-if="activeDoc.type === 'mindmap'" key="xmind">XMind (.mm)</a-menu-item>
-                  <a-menu-item v-else key="flow-json">流程图 (.json)</a-menu-item>
-                </a-menu>
-              </template>
-            </a-dropdown>
-            <span class="docs-saved">
-              <span class="docs-saved-dot" />
-              {{ saved ? '已保存' : '保存中…' }}
-            </span>
-          </div>
-        </div>
-
         <!-- 正文 + 左侧大纲 -->
         <div class="docs-body">
           <!-- 文档大纲 -->
@@ -1092,28 +2297,239 @@ function folderNameOf(doc: DocItem | null): string {
                 class="docs-title-input"
                 placeholder="无标题文档"
                 maxlength="120"
-                @input="touch(activeDoc)"
+                :readonly="!docsEditMode"
+                @input="onDocChanged(activeDoc)"
               />
+
+              <div v-if="activeDoc.type === 'doc'" class="docs-doc-meta">
+                <span class="docs-doc-avatar" :style="docAvatarStyle">{{ docAuthor.slice(0, 1).toUpperCase() }}</span>
+                <span class="docs-doc-author">{{ docAuthor }}</span>
+                <span class="docs-doc-sep" />
+                <span class="docs-doc-date">{{ formatLongDate(activeDoc.updatedAt) }}修改</span>
+              </div>
 
               <div
                 v-if="activeDoc.type === 'doc'"
-                ref="editorRef"
-                class="docs-editor"
-                contenteditable="true"
-                data-placeholder="输入正文，开始记录你的想法…"
-                @input="onEditorInput"
-              ></div>
+                class="docs-editor-wrap"
+                :class="{ 'is-edit': docsEditMode }"
+                @mouseover="onEditorHover"
+                @mouseleave="onEditorLeave"
+              >
+                <div
+                  ref="editorRef"
+                  class="docs-editor"
+                  :class="{ 'is-empty': editorEmpty }"
+                  :contenteditable="docsEditMode ? 'true' : 'false'"
+                  data-placeholder="输入“/”快速插入内容"
+                  @input="onEditorInput"
+                  @click="onEditorClick"
+                  @keydown="onEditorKeyDown"
+                  @paste="onEditorPaste"
+                ></div>
+                <!-- 飞书式块级插入：悬停行的左外侧出现"+"，悬停变暗，点击弹出富文本元素菜单 -->
+                <a-dropdown
+                  v-model:open="plusMenuOpen"
+                  trigger="click"
+                  placement="rightTop"
+                  :overlay-style="{ padding: 0, background: 'transparent', boxShadow: 'none' }"
+                >
+                  <button
+                    ref="plusBtnRef"
+                    v-show="plusVisible && docsEditMode"
+                    type="button"
+                    class="docs-block-plus"
+                    :class="{ 'is-open': plusMenuOpen, 'is-block': plusMode === 'block' }"
+                    :style="{ top: plusTop + 'px' }"
+                    :title="plusMode === 'block' ? '块操作' : '插入'"
+                  >
+                    <template v-if="plusMode === 'block'">
+                      <span class="docs-block-plus-label">{{ hoverBlockLabel }}</span>
+                      <HolderOutlined class="docs-block-plus-drag" />
+                    </template>
+                    <PlusOutlined v-else />
+                  </button>
+                  <template #overlay>
+                    <div v-if="plusMode === 'plus'" class="docs-insert-panel" @mousedown.stop @click.stop>
+                      <div class="docs-insert-label">基础</div>
+                      <div class="docs-insert-grid">
+                        <button
+                          v-for="it in insertBasics"
+                          :key="it.key"
+                          type="button"
+                          class="docs-insert-cell"
+                          :title="it.title"
+                          @mouseenter="activeInsertSub = ''"
+                          @click="applyInsert(it.key)"
+                        >
+                          <component :is="it.icon" v-if="it.icon" />
+                          <span v-else class="docs-insert-glyph">{{ it.glyph }}</span>
+                        </button>
+                      </div>
+
+                      <div class="docs-insert-label">常用</div>
+                      <div class="docs-insert-list">
+                        <div
+                          v-for="it in insertCommons"
+                          :key="it.key"
+                          class="docs-insert-item"
+                          :class="{ 'has-sub': !!it.sub, 'is-sub-open': activeInsertSub === it.key }"
+                          @mouseenter="activeInsertSub = it.sub ? it.key : ''"
+                          @click="it.sub ? (activeInsertSub = it.key) : applyInsert(it.key)"
+                        >
+                          <component :is="it.icon" class="docs-insert-item-icon" :style="{ color: it.color, background: it.color + '1a' }" />
+                          <span class="docs-insert-item-label">{{ it.label }}</span>
+                          <RightOutlined v-if="it.sub" class="docs-insert-item-caret" />
+                          <div v-if="it.sub && activeInsertSub === it.key" class="docs-insert-sub">
+                            <button
+                              v-for="s in it.sub"
+                              :key="s.key"
+                              type="button"
+                              class="docs-insert-sub-item"
+                              @click.stop="applyInsert(s.key)"
+                            >{{ s.label }}</button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- 富文本块的类型手柄菜单：块转换 / 缩进对齐 / 颜色 / 剪贴板 -->
+                    <div v-else class="docs-block-panel" @mousedown.stop @click.stop>
+                      <div class="docs-block-grid">
+                        <a-tooltip v-for="it in blockConvertBtns" :key="it.key" :title="it.title" placement="bottom">
+                          <button
+                            type="button"
+                            class="docs-insert-cell"
+                            :class="{ 'is-active': hoverBlockType === it.key }"
+                            @mouseenter="activeBlockSub = ''"
+                            @click="applyBlockCmd(it.key)"
+                          >
+                            <component :is="it.icon" v-if="it.icon" />
+                            <span v-else class="docs-insert-glyph">{{ it.glyph }}</span>
+                          </button>
+                        </a-tooltip>
+                      </div>
+                      <div class="docs-block-grid">
+                        <a-tooltip v-for="it in blockExtraBtns" :key="it.key" :title="it.title" placement="bottom">
+                          <button
+                            type="button"
+                            class="docs-insert-cell"
+                            :class="{ 'is-active': hoverBlockType === it.key }"
+                            @mouseenter="activeBlockSub = ''"
+                            @click="applyBlockCmd(it.key)"
+                          >
+                            <component :is="it.icon" v-if="it.icon" />
+                            <span v-else class="docs-insert-glyph">{{ it.glyph }}</span>
+                          </button>
+                        </a-tooltip>
+                      </div>
+
+                      <div class="docs-block-divider" />
+
+                      <div
+                        v-for="it in blockSubItems"
+                        :key="it.key"
+                        class="docs-insert-item"
+                        :class="{ 'is-sub-open': activeBlockSub === it.key }"
+                        @mouseenter="activeBlockSub = it.key"
+                        @click="activeBlockSub = activeBlockSub === it.key ? '' : it.key"
+                      >
+                        <component :is="it.icon" class="docs-block-row-icon" />
+                        <span class="docs-insert-item-label">{{ it.label }}</span>
+                        <RightOutlined class="docs-insert-item-caret" />
+                        <div v-if="activeBlockSub === it.key" class="docs-insert-sub">
+                          <template v-if="it.sub.length">
+                            <button
+                              v-for="s in it.sub"
+                              :key="s.key"
+                              type="button"
+                              class="docs-insert-sub-item"
+                              @click.stop="applyBlockCmd(s.key)"
+                            >{{ s.label }}</button>
+                          </template>
+                          <template v-else>
+                            <div class="docs-block-colors">
+                              <button
+                                v-for="c in bubbleColors"
+                                :key="c"
+                                type="button"
+                                class="docs-bubble-color"
+                                :style="{ background: c }"
+                                :title="`高亮 ${c}`"
+                                @click.stop="applyBlockCmd('highlight', c)"
+                              ></button>
+                            </div>
+                            <button type="button" class="docs-insert-sub-item" @click.stop="applyBlockCmd('unhighlight')">
+                              清除颜色
+                            </button>
+                          </template>
+                        </div>
+                      </div>
+
+                      <div class="docs-block-divider" />
+
+                      <div
+                        v-for="it in blockClipItems"
+                        :key="it.key"
+                        class="docs-insert-item"
+                        :class="{ 'is-danger': it.danger }"
+                        @mouseenter="activeBlockSub = ''"
+                        @click="applyBlockCmd(it.key)"
+                      >
+                        <component :is="it.icon" class="docs-block-row-icon" />
+                        <span class="docs-insert-item-label">{{ it.label }}</span>
+                      </div>
+
+                      <div class="docs-block-divider" />
+
+                      <div
+                        v-for="it in blockDocItems"
+                        :key="it.key"
+                        class="docs-insert-item"
+                        @mouseenter="activeBlockSub = ''"
+                        @click="applyBlockCmd(it.key)"
+                      >
+                        <component :is="it.icon" class="docs-block-row-icon" />
+                        <span class="docs-insert-item-label">{{ it.label }}</span>
+                      </div>
+
+                      <div class="docs-block-divider" />
+
+                      <div
+                        class="docs-insert-item"
+                        :class="{ 'is-sub-open': activeBlockSub === 'below' }"
+                        @mouseenter="activeBlockSub = 'below'"
+                        @click="activeBlockSub = activeBlockSub === 'below' ? '' : 'below'"
+                      >
+                        <PlusSquareOutlined class="docs-block-row-icon" />
+                        <span class="docs-insert-item-label">在下方添加</span>
+                        <RightOutlined class="docs-insert-item-caret" />
+                        <div v-if="activeBlockSub === 'below'" class="docs-insert-sub">
+                          <button
+                            v-for="s in blockAddItems"
+                            :key="s.key"
+                            type="button"
+                            class="docs-insert-sub-item"
+                            @click.stop="applyBlockCmd('below', s.key)"
+                          >{{ s.label }}</button>
+                        </div>
+                      </div>
+                    </div>
+                  </template>
+                </a-dropdown>
+                <input ref="imageInputRef" type="file" accept="image/*" class="docs-hidden-file" @change="onImagePicked" />
+                <input ref="fileInputRef" type="file" class="docs-hidden-file" @change="onAttachPicked" />
+              </div>
               <DocSheetEditor
                 v-else-if="activeDoc.type === 'sheet'"
                 :key="`sheet-${activeDoc.id}`"
                 :rows="sheetRows(activeDoc)"
-                @change="touch(activeDoc)"
+                @change="onDocChanged(activeDoc)"
               />
               <DocMindmapEditor
                 v-else-if="activeDoc.type === 'mindmap'"
                 :key="`mind-${activeDoc.id}`"
                 :root="mindRoot(activeDoc)"
-                @change="touch(activeDoc)"
+                @change="onDocChanged(activeDoc)"
               />
               <DocFlowEditor
                 v-else-if="activeDoc.type === 'flow'"
@@ -1131,7 +2547,6 @@ function folderNameOf(doc: DocItem | null): string {
         <header class="docs-home-head">
           <div>
             <h1 class="docs-home-title">回收站</h1>
-            <p class="docs-home-sub">共 {{ trash.length }} 篇文档</p>
           </div>
           <button v-if="trash.length" type="button" class="docs-home-new docs-home-clear" @click="emptyTrash">清空回收站</button>
         </header>
@@ -1167,7 +2582,6 @@ function folderNameOf(doc: DocItem | null): string {
         <header class="docs-home-head">
           <div>
             <h1 class="docs-home-title">知识库</h1>
-            <p class="docs-home-sub">共 {{ folders.length }} 个知识库</p>
           </div>
           <button type="button" class="docs-home-new" @click="openCreateFolder"><PlusOutlined /> 新建知识库</button>
         </header>
@@ -1348,15 +2762,151 @@ function folderNameOf(doc: DocItem | null): string {
         <a-button type="primary" @click="submitFolder">确定</a-button>
       </div>
     </a-modal>
+
+    <!-- 选中文字后的浮动格式工具栏 -->
+    <Teleport to="body">
+    <div
+      v-if="bubble.visible"
+      ref="bubbleRef"
+      class="docs-bubble"
+      :style="{ top: bubble.top + 'px', left: bubble.left + 'px' }"
+      @mousedown.prevent
+    >
+      <div class="docs-bubble-group">
+        <a-tooltip title="标题样式" placement="bottom">
+          <button
+            type="button"
+            class="docs-bubble-btn is-label"
+            :class="{ 'is-open': bubble.menu === 'heading' }"
+            @click="toggleBubbleMenu('heading')"
+          >
+            {{ bubble.block }}<DownOutlined class="docs-bubble-caret" />
+          </button>
+        </a-tooltip>
+        <div v-if="bubble.menu === 'heading'" class="docs-bubble-menu">
+          <button
+            v-for="o in bubbleHeadings"
+            :key="o.key"
+            type="button"
+            class="docs-bubble-menu-item"
+            :class="{ 'is-active': bubble.block === (o.key === 'p' ? '正文' : o.key.toUpperCase()) }"
+            @click="applyBubble(o.key)"
+          >{{ o.label }}</button>
+        </div>
+      </div>
+
+      <div class="docs-bubble-group">
+        <a-tooltip title="列表样式" placement="bottom">
+          <button
+            type="button"
+            class="docs-bubble-btn"
+            :class="{ 'is-open': bubble.menu === 'list' }"
+            @click="toggleBubbleMenu('list')"
+          >
+            <UnorderedListOutlined /><DownOutlined class="docs-bubble-caret" />
+          </button>
+        </a-tooltip>
+        <div v-if="bubble.menu === 'list'" class="docs-bubble-menu">
+          <button
+            v-for="o in bubbleLists"
+            :key="o.key"
+            type="button"
+            class="docs-bubble-menu-item"
+            @click="applyBubble(o.key)"
+          >{{ o.label }}</button>
+        </div>
+      </div>
+
+      <span class="docs-bubble-sep" />
+
+      <a-tooltip title="加粗" placement="bottom">
+        <button type="button" class="docs-bubble-btn" @click="applyBubble('bold')"><BoldOutlined /></button>
+      </a-tooltip>
+      <a-tooltip title="删除线" placement="bottom">
+        <button type="button" class="docs-bubble-btn" @click="applyBubble('strike')"><StrikethroughOutlined /></button>
+      </a-tooltip>
+      <a-tooltip title="斜体" placement="bottom">
+        <button type="button" class="docs-bubble-btn" @click="applyBubble('italic')"><ItalicOutlined /></button>
+      </a-tooltip>
+      <a-tooltip title="下划线" placement="bottom">
+        <button type="button" class="docs-bubble-btn" @click="applyBubble('underline')"><UnderlineOutlined /></button>
+      </a-tooltip>
+      <a-tooltip title="链接" placement="bottom">
+        <button type="button" class="docs-bubble-btn" @click="applyBubble('link')"><LinkOutlined /></button>
+      </a-tooltip>
+      <a-tooltip title="行内代码" placement="bottom">
+        <button type="button" class="docs-bubble-btn" @click="applyBubble('inline-code')">
+          <CodeOutlined />
+        </button>
+      </a-tooltip>
+
+      <div class="docs-bubble-group">
+        <a-tooltip title="高亮颜色" placement="bottom">
+          <button
+            type="button"
+            class="docs-bubble-btn"
+            :class="{ 'is-open': bubble.menu === 'color' }"
+            @click="toggleBubbleMenu('color')"
+          >
+            <span class="docs-bubble-mark">A</span><DownOutlined class="docs-bubble-caret" />
+          </button>
+        </a-tooltip>
+        <div v-if="bubble.menu === 'color'" class="docs-bubble-menu is-right docs-bubble-colors">
+          <a-tooltip v-for="(c, i) in bubbleColors" :key="c" :title="bubbleColorNames[i]" placement="bottom">
+            <button
+              type="button"
+              class="docs-bubble-color"
+              :style="{ background: c }"
+              @click="applyBubble('highlight', c)"
+            ></button>
+          </a-tooltip>
+          <button type="button" class="docs-bubble-clear-color" @click="applyBubble('unhighlight')">清除高亮</button>
+        </div>
+      </div>
+
+      <span class="docs-bubble-sep" />
+      <a-tooltip title="清除格式" placement="bottom">
+        <button type="button" class="docs-bubble-btn" @click="applyBubble('clear')"><ClearOutlined /></button>
+      </a-tooltip>
+    </div>
+    </Teleport>
+
+    <!-- “/”斜杠插入菜单（参考飞书）：输入 / 唤起，关键词过滤 + ↑↓ 选择 + 回车插入 -->
+    <Teleport to="body">
+      <div
+        v-if="slash.visible"
+        class="docs-slash"
+        :style="{ top: slash.top + 'px', left: slash.left + 'px' }"
+        @mousedown.prevent
+      >
+        <div class="docs-slash-title">插入{{ slash.keyword ? ` · “${slash.keyword}”` : '' }}</div>
+        <button
+          v-for="(it, i) in slashFiltered"
+          :key="it.key"
+          type="button"
+          class="docs-slash-item"
+          :class="{ 'is-active': i === slash.active }"
+          @mouseenter="slash.active = i"
+          @click="applySlashInsert(it)"
+        >
+          <span class="docs-slash-icon">
+            <component :is="it.icon" v-if="it.icon" />
+            <template v-else>{{ it.glyph }}</template>
+          </span>
+          <span class="docs-slash-label">{{ it.label }}</span>
+        </button>
+        <div v-if="!slashFiltered.length" class="docs-slash-empty">没有匹配的插入项</div>
+      </div>
+    </Teleport>
   </div>
 </template>
 
 <style scoped>
 .docs-page {
-  /* 父级 workbench-panel 上下各有 2vh padding，负 margin 抵消后高度要补回 4vh 才能贴底 */
-  height: calc(100% + 4vh);
-  width: calc(100% + 1vh);
-  margin: -2vh -0.5vh;
+  /* 父级 workbench-panel 在文档页已无内边距，直接占满 */
+  height: 100%;
+  width: 100%;
+  margin: 0;
   display: flex;
   background: #fff;
   color: #37352f;
@@ -1366,7 +2916,7 @@ function folderNameOf(doc: DocItem | null): string {
 
 /* ---- 左侧：知识库 / 文件树 ---- */
 .docs-side {
-  flex: 0 0 334px;
+  flex: 0 0 304px;
   height: 100%;
   min-height: 0;
   display: flex;
@@ -1377,10 +2927,59 @@ function folderNameOf(doc: DocItem | null): string {
   border-right: 1px solid #ececec;
 }
 .docs-side-head {
+  position: relative;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: center;
   padding: 0 8px 4px;
+}
+/* 折叠按钮：固定在左侧，Logo 与标题整体居中 */
+.docs-side-fold {
+  position: absolute;
+  left: 8px;
+  top: 50%;
+  transform: translateY(calc(-50% - 2px));
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  font-size: 15px;
+  color: #646a73;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+.docs-side-fold:hover {
+  color: #1f2329;
+  background: rgba(0, 0, 0, 0.05);
+}
+/* 折叠态：左侧菜单完全隐藏，展开入口在顶部菜单左侧 */
+.docs-page.is-side-collapsed .docs-side {
+  display: none;
+}
+.docs-page.is-side-collapsed .docs-side-head {
+  flex-direction: column;
+  justify-content: flex-start;
+  align-items: flex-start;
+  gap: 0;
+  padding: 12px 8px 4px;
+}
+.docs-page.is-side-collapsed .docs-side-fold {
+  position: static;
+  transform: none;
+}
+.docs-page.is-side-collapsed .docs-side-brand {
+  display: none;
+}
+.docs-page.is-side-collapsed .docs-search-wrap,
+.docs-page.is-side-collapsed .docs-nav,
+.docs-page.is-side-collapsed .docs-list,
+.docs-page.is-side-collapsed .docs-trash-entry {
+  display: none;
 }
 .docs-side-brand {
   display: flex;
@@ -1420,25 +3019,6 @@ function folderNameOf(doc: DocItem | null): string {
   font-size: 10px;
   line-height: 1.3;
   color: #9ca3af;
-}
-.docs-add {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  font-size: 11px;
-  color: #6b7280;
-  background: #f3f4f6;
-  border: none;
-  border-radius: 8px;
-  cursor: pointer;
-  transition: background 0.12s, color 0.12s;
-}
-.docs-add:hover {
-  color: #111827;
-  background: #e5e7eb;
 }
 .docs-search-wrap {
   position: relative;
@@ -1486,6 +3066,42 @@ function folderNameOf(doc: DocItem | null): string {
   font-weight: 600;
   letter-spacing: 0.04em;
   color: #91918e;
+}
+/* 置顶区：一行一个 */
+.docs-pinned-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 0 8px;
+}
+.docs-pinned-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  width: 100%;
+  height: 30px;
+  padding: 0 8px;
+  font-size: 12px;
+  color: #646a73;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+.docs-pinned-item:hover {
+  color: #37352f;
+  background: rgba(0, 0, 0, 0.05);
+}
+.docs-pinned-item.active {
+  color: #37352f;
+  background: rgba(0, 0, 0, 0.06);
+}
+.docs-pinned-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .docs-group-title-main {
   margin-top: 4px;
@@ -1794,6 +3410,9 @@ function folderNameOf(doc: DocItem | null): string {
   min-height: 0;
   display: flex;
   flex-direction: column;
+  box-sizing: border-box;
+  /* 左侧菜单直达顶部后，右侧内容区顶部为顶栏（仅覆盖右侧）预留高度 */
+  padding-top: var(--app-header-height, 56px);
   background: #fff;
 }
 /* 正文 + 右侧大纲 */
@@ -1803,11 +3422,10 @@ function folderNameOf(doc: DocItem | null): string {
   display: flex;
 }
 .docs-outline {
-  flex: 0 0 210px;
+  flex: 0 0 250px;
   overflow-y: auto;
   padding: 28px 14px;
   background: #fff;
-  border-right: 1px solid #e9e9e7;
 }
 .docs-outline-title {
   padding: 0 8px 8px;
@@ -1844,110 +3462,6 @@ function folderNameOf(doc: DocItem | null): string {
   color: #91918e;
 }
 
-/* 顶部工具条：与正文同色、无分割线，融成一块画布 */
-.docs-toolbar {
-  flex: none;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  height: 48px;
-  padding: 0 48px;
-  background: transparent;
-  border-bottom: none;
-}
-.docs-toolbar-pill {
-  display: flex;
-  align-items: center;
-  gap: 1px;
-  padding: 0;
-  background: transparent;
-}
-.docs-tool {
-  min-width: 28px;
-  height: 28px;
-  padding: 0 6px;
-  font-size: 13px;
-  line-height: 1;
-  color: #787774;
-  background: transparent;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  transition: background 0.12s, color 0.12s;
-}
-.docs-tool:hover {
-  color: #37352f;
-  background: rgba(0, 0, 0, 0.05);
-}
-.docs-tool-sep {
-  width: 1px;
-  height: 16px;
-  margin: 0 6px;
-  background: #e9e9e7;
-}
-.docs-tool-text {
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-}
-.docs-star-icon {
-  font-size: 12px;
-  color: #91918e;
-}
-.docs-export.is-active {
-  color: #d4a72c;
-}
-.docs-export.is-active .docs-star-icon {
-  color: #d4a72c;
-}
-.docs-toolbar-actions {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-left: auto;
-}
-.docs-export {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  height: 28px;
-  padding: 0 8px;
-  font-size: 12px;
-  color: #787774;
-  background: transparent;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  transition: background 0.12s, color 0.12s;
-}
-.docs-export:hover {
-  color: #37352f;
-  background: rgba(0, 0, 0, 0.05);
-}
-.docs-type-label {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 0 6px;
-  font-size: 13px;
-  font-weight: 500;
-  color: #787774;
-}
-.docs-saved {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  margin-left: 0;
-  font-size: 12px;
-  color: #91918e;
-}
-.docs-saved-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: #34c759;
-}
-
 /* 正文画布 */
 .docs-canvas {
   flex: 1;
@@ -1963,8 +3477,14 @@ function folderNameOf(doc: DocItem | null): string {
   max-width: 920px;
   margin: 0 auto;
   box-sizing: border-box;
-  padding: 48px 72px 120px;
+  /* 文档模式宽度自适应：右留白随视口收缩（宽屏 72px，窄屏最低 20px），左侧固定 40px 容纳加号槽位 */
+  padding: 48px clamp(20px, 5vw, 72px) 120px 40px;
   background: #fff;
+}
+/* Mac 客户端：文档正文靠左，去掉 max-width 居中产生的大片左侧留白 */
+:global(html.is-mac) .docs-canvas-inner {
+  margin-left: 0;
+  margin-right: auto;
 }
 /* 表格 / 思维导图 / 流程图：内容区撑满 */
 .docs-canvas-inner.is-wide {
@@ -1986,17 +3506,464 @@ function folderNameOf(doc: DocItem | null): string {
 .docs-title-input::placeholder {
   color: #c7c7c5;
 }
+/* 标题下方作者行：头像 · 作者 · 修改日期 */
+.docs-doc-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 16px;
+  font-size: 13px;
+  color: #787774;
+}
+.docs-doc-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  font-size: 12px;
+  color: #fff;
+  border-radius: 50%;
+  user-select: none;
+}
+.docs-doc-author {
+  font-weight: 500;
+  color: #646a73;
+}
+.docs-doc-sep {
+  width: 1px;
+  height: 12px;
+  margin: 0 4px;
+  background: #e5e5e3;
+}
+.docs-editor-wrap {
+  position: relative;
+  /* 左侧预留加号槽位：鼠标从正文移向加号不会离开容器，避免 mouseleave 提前藏掉加号 */
+  padding-left: 34px;
+  margin-left: -34px;
+}
+/* 悬停行的左外侧"+"插入按钮 */
+.docs-block-plus {
+  position: absolute;
+  left: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  font-size: 14px;
+  color: #91918e;
+  background: #fff;
+  border: 1px solid #e5e5e3;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s, border-color 0.12s, box-shadow 0.12s;
+}
+/* 鼠标悬停 / 菜单展开时颜色变暗 */
+.docs-block-plus:hover,
+.docs-block-plus.is-open {
+  color: #1f2329;
+  background: #f2f3f5;
+  border-color: #d0d3d6;
+  box-shadow: 0 1px 3px rgba(31, 35, 41, 0.08);
+}
+/* 富文本块：不展示"+",改展示块类型 + 拖拽手柄 */
+.docs-block-plus.is-block {
+  gap: 3px;
+  width: auto;
+  min-width: 26px;
+  padding: 0 5px;
+  color: #646a73;
+  background: #f2f3f5;
+  border-color: transparent;
+}
+.docs-block-plus.is-block:hover,
+.docs-block-plus.is-block.is-open {
+  color: #1f2329;
+  background: #e9eaec;
+  border-color: transparent;
+}
+.docs-block-plus-label {
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+}
+.docs-block-plus-drag {
+  font-size: 12px;
+  color: #a5a9b0;
+}
+/* "+"下拉面板：基础排版 + 常用富文本元素 */
+.docs-insert-panel {
+  width: 288px;
+  padding: 8px 12px 12px;
+  background: #fff;
+  border: 1px solid #f0f1f2;
+  border-radius: 10px;
+  box-shadow: 0 8px 28px rgba(31, 35, 41, 0.12);
+}
+.docs-insert-label {
+  padding: 8px 0 4px;
+  font-size: 13px;
+  color: #8f959e;
+}
+.docs-insert-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 2px;
+}
+.docs-insert-cell {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 34px;
+  font-size: 16px;
+  color: #1f2329;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+.docs-insert-cell:hover {
+  color: #646a73;
+  background: #f2f3f5;
+}
+/* 当前块类型高亮 */
+.docs-insert-cell.is-active {
+  color: #3370ff;
+  background: #e1eaff;
+}
+.docs-insert-glyph {
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+}
+/* 块类型手柄面板 */
+.docs-block-panel {
+  width: 268px;
+  padding: 8px 10px 10px;
+  background: #fff;
+  border: 1px solid #f0f1f2;
+  border-radius: 10px;
+  box-shadow: 0 8px 28px rgba(31, 35, 41, 0.12);
+}
+.docs-block-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 2px;
+}
+.docs-block-divider {
+  height: 1px;
+  margin: 8px 0 6px;
+  background: #f0f1f2;
+}
+.docs-block-row-icon {
+  flex: none;
+  font-size: 16px;
+  color: #646a73;
+}
+/* 删除类操作：悬停转为警示色 */
+.docs-insert-item.is-danger:hover .docs-insert-item-label,
+.docs-insert-item.is-danger:hover .docs-block-row-icon {
+  color: #f54a45;
+}
+.docs-block-colors {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px 6px;
+}
+.docs-insert-list {
+  display: flex;
+  flex-direction: column;
+}
+.docs-insert-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 38px;
+  padding: 0 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.docs-insert-item:hover,
+.docs-insert-item.is-sub-open {
+  background: #f2f3f5;
+}
+.docs-insert-item-icon {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  padding: 5px;
+  font-size: 15px;
+  border-radius: 6px;
+  box-sizing: border-box;
+}
+.docs-insert-item-label {
+  flex: 1;
+  font-size: 14px;
+  color: #1f2329;
+}
+.docs-insert-item-caret {
+  flex: none;
+  font-size: 11px;
+  color: #8f959e;
+}
+.docs-insert-sub {
+  position: absolute;
+  top: -6px;
+  left: calc(100% + 4px);
+  z-index: 10;
+  min-width: 148px;
+  padding: 6px;
+  background: #fff;
+  border: 1px solid #f0f1f2;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(31, 35, 41, 0.14);
+}
+.docs-insert-sub-item {
+  display: block;
+  width: 100%;
+  padding: 7px 10px;
+  font-size: 13px;
+  color: #1f2329;
+  text-align: left;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.docs-insert-sub-item:hover {
+  background: #f2f3f5;
+}
+.docs-hidden-file {
+  display: none;
+}
+/* “/”斜杠插入菜单 */
+.docs-slash {
+  position: fixed;
+  z-index: 1400;
+  width: 272px;
+  max-height: 340px;
+  padding: 6px;
+  overflow-y: auto;
+  background: #fff;
+  border: 1px solid #f0f1f2;
+  border-radius: 10px;
+  box-shadow: 0 8px 28px rgba(31, 35, 41, 0.14);
+}
+.docs-slash-title {
+  padding: 6px 8px 4px;
+  font-size: 12px;
+  color: #8f959e;
+}
+.docs-slash-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  font-size: 13px;
+  color: #37352f;
+  text-align: left;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.docs-slash-item.is-active {
+  color: #1f2329;
+  background: #f2f3f5;
+}
+.docs-slash-icon {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #646a73;
+  background: #f5f6f7;
+  border-radius: 5px;
+}
+.docs-slash-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.docs-slash-empty {
+  padding: 14px 8px;
+  font-size: 13px;
+  color: #a5a9b0;
+  text-align: center;
+}
+/* 选中文字的浮动格式工具栏 */
+.docs-bubble {
+  position: fixed;
+  z-index: 1400;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 5px 8px;
+  background: #fff;
+  border: 1px solid #e5e6eb;
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(31, 35, 41, 0.14);
+  transform: translateX(-50%);
+  white-space: nowrap;
+  user-select: none;
+}
+.docs-bubble-group {
+  position: relative;
+  display: flex;
+}
+.docs-bubble-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  min-width: 30px;
+  height: 30px;
+  padding: 0 5px;
+  font-size: 15px;
+  color: #1f2329;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+.docs-bubble-btn:hover,
+.docs-bubble-btn.is-open {
+  background: #f2f3f5;
+}
+.docs-bubble-btn.is-label {
+  min-width: 44px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.docs-bubble-caret {
+  font-size: 10px;
+  color: #8f959e;
+}
+.docs-bubble-sep {
+  flex: none;
+  width: 1px;
+  height: 18px;
+  margin: 0 4px;
+  background: #e5e6eb;
+}
+/* 高亮按钮：字母 A 带色条 */
+.docs-bubble-mark {
+  position: relative;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1;
+}
+.docs-bubble-mark::after {
+  content: '';
+  position: absolute;
+  left: -1px;
+  right: -1px;
+  bottom: -4px;
+  height: 3px;
+  background: #ffe58f;
+  border-radius: 2px;
+}
+.docs-bubble-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  z-index: 5;
+  min-width: 132px;
+  padding: 6px;
+  background: #fff;
+  border: 1px solid #f0f1f2;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(31, 35, 41, 0.14);
+}
+.docs-bubble-menu.is-right {
+  left: auto;
+  right: 0;
+}
+.docs-bubble-menu-item {
+  display: block;
+  width: 100%;
+  padding: 6px 10px;
+  font-size: 13px;
+  color: #1f2329;
+  text-align: left;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.docs-bubble-menu-item:hover,
+.docs-bubble-menu-item.is-active {
+  background: #f2f3f5;
+}
+.docs-bubble-colors {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 8px 10px;
+}
+.docs-bubble-color {
+  width: 20px;
+  height: 20px;
+  border: 1px solid rgba(31, 35, 41, 0.12);
+  border-radius: 50%;
+  cursor: pointer;
+}
+.docs-bubble-color:hover {
+  transform: scale(1.1);
+}
+.docs-bubble-clear-color {
+  padding: 0 4px;
+  font-size: 12px;
+  color: #646a73;
+  white-space: nowrap;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+.docs-bubble-clear-color:hover {
+  color: #1f2329;
+}
 .docs-editor {
+  position: relative;
   min-height: 46vh;
-  padding: 36px 0 40px;
+  /* 正文顶部间距收紧：不再与作者行、首个块的 margin 叠加出大片留白 */
+  padding: 16px 0 40px;
   font-size: 16px;
   line-height: 1.75;
   color: #37352f;
   outline: none;
 }
-.docs-editor:empty::before {
+/* 首个块去掉自带的上外边距，避免顶部留白翻倍 */
+.docs-editor > :first-child {
+  margin-top: 0;
+}
+/* 正文数据为空时显示输入提示：绝对定位在内容首行，不参与排版，
+   避免提示与光标相互挤行（提示把光标顶下去 / 光标掉到提示下面） */
+.docs-editor.is-empty::before {
   content: attr(data-placeholder);
+  position: absolute;
+  top: 16px; /* 与编辑器 padding-top 对齐，即内容首行 */
+  left: 0;
   color: #c7c7c5;
+  pointer-events: none;
+}
+.docs-editor :deep(h1) {
+  margin: 34px 0 12px;
+  font-size: 32px;
+  font-weight: 600;
+  line-height: 1.25;
 }
 .docs-editor :deep(h2) {
   margin: 30px 0 10px;
@@ -2004,13 +3971,149 @@ function folderNameOf(doc: DocItem | null): string {
   font-weight: 600;
   line-height: 1.3;
 }
+.docs-editor :deep(h3) {
+  margin: 24px 0 8px;
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+/* "+"插入的富文本元素 */
+/* 编辑模式：鼠标悬停块级元素时展示背景色（段落 / 标题 / 有序无序列表 / 待办任务 / 引用等） */
+.docs-editor-wrap.is-edit .docs-editor :deep(p:hover),
+.docs-editor-wrap.is-edit .docs-editor :deep(h1:hover),
+.docs-editor-wrap.is-edit .docs-editor :deep(h2:hover),
+.docs-editor-wrap.is-edit .docs-editor :deep(h3:hover),
+.docs-editor-wrap.is-edit .docs-editor :deep(li:hover),
+.docs-editor-wrap.is-edit .docs-editor :deep(.docs-todo:hover),
+.docs-editor-wrap.is-edit .docs-editor :deep(blockquote:hover),
+.docs-editor-wrap.is-edit .docs-editor :deep(pre:hover),
+.docs-editor-wrap.is-edit .docs-editor :deep(.docs-callout:hover),
+.docs-editor-wrap.is-edit .docs-editor :deep(.docs-cols:hover),
+.docs-editor-wrap.is-edit .docs-editor :deep(.docs-insert-table:hover),
+.docs-editor-wrap.is-edit .docs-editor :deep(.docs-img:hover) {
+  background: #f5f6f7;
+  border-radius: 4px;
+}
+.docs-editor :deep(.docs-img) {
+  display: block;
+  max-width: 100%;
+  margin: 12px 0;
+  border-radius: 6px;
+}
+/* 不用 flex 布局：contenteditable 里的 flex 容器会让 Chrome 把光标画到容器底部（光标偏下），
+   改为块级排版 + 绝对定位勾选框，文字保持普通行内排版，光标高度与文字一致 */
+.docs-editor :deep(.docs-todo) {
+  position: relative;
+  margin: 3px 0;
+  /* 勾选框贴左（16px）+ 8px 间距 */
+  padding-left: 24px;
+  box-sizing: border-box;
+}
+.docs-editor :deep(.docs-todo-box) {
+  position: absolute;
+  /* 与列表符号对齐：ul 圆点墨迹约在 x=6px，ol 数字右缘贴文字（x=24px），
+     框左缘取 6px、宽 16px（含边框），右缘 22px 恰在文字（24px）之前 */
+  left: 6px;
+  /* 16px 勾选框在 1.75 行高（28px）文字行内垂直居中 */
+  top: 6px;
+  width: 16px;
+  height: 16px;
+  box-sizing: border-box;
+  background: #fff;
+  border: 1.5px solid #c9cdd4;
+  border-radius: 4px;
+  cursor: pointer;
+}
+/* 勾选后：不整块填充颜色，只描蓝边 + 显示蓝色对勾 */
+.docs-editor :deep(.docs-todo.is-done .docs-todo-box) {
+  border-color: #3370ff;
+}
+/* CSS 画对勾（伪元素不参与 innerHTML 保存，不会污染文档内容） */
+.docs-editor :deep(.docs-todo.is-done .docs-todo-box)::after {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: 2px;
+  width: 5px;
+  height: 9px;
+  border: solid #3370ff;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+.docs-editor :deep(.docs-todo.is-done .docs-todo-text) {
+  color: #bbb;
+  text-decoration: line-through;
+}
+.docs-editor :deep(.docs-insert-table) {
+  width: 100%;
+  margin: 12px 0;
+  table-layout: fixed;
+  border-collapse: collapse;
+}
+.docs-editor :deep(.docs-insert-table td) {
+  min-width: 40px;
+  padding: 6px 10px;
+  vertical-align: top;
+  border: 1px solid #e5e6eb;
+}
+.docs-editor :deep(.docs-cols) {
+  display: grid;
+  gap: 16px;
+  margin: 12px 0;
+}
+.docs-editor :deep(.docs-col) {
+  min-height: 44px;
+  padding: 8px 10px;
+  border: 1px dashed #e5e6eb;
+  border-radius: 6px;
+}
+.docs-editor :deep(.docs-callout) {
+  margin: 12px 0;
+  padding: 12px 14px;
+  background: #fff8e6;
+  border-left: 3px solid #ffc60a;
+  border-radius: 6px;
+}
+.docs-editor :deep(.docs-attach) {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  margin: 4px 0;
+  font-size: 13px;
+  color: #646a73;
+  background: #f2f3f5;
+  border-radius: 6px;
+}
+.docs-editor :deep(code) {
+  padding: 1px 5px;
+  font-size: 14px;
+  background: #f2f3f5;
+  border-radius: 4px;
+}
+.docs-editor :deep(pre code) {
+  padding: 0;
+  background: transparent;
+}
 .docs-editor :deep(p) {
   margin: 0 0 10px;
+}
+/* 鼠标选中文案时的背景色：段落 / 有序 / 无序 / 待办 / 引用等所有块统一为主题蓝半透明 */
+.docs-editor ::selection,
+.docs-editor :deep(::selection),
+.docs-title-input::selection {
+  background: rgba(51, 112, 255, 0.24);
+  color: inherit;
 }
 .docs-editor :deep(ul),
 .docs-editor :deep(ol) {
   margin: 10px 0;
   padding-left: 24px;
+}
+/* 有序列表序号 / 无序列表圆点显示为主题蓝 */
+.docs-editor :deep(ol li)::marker,
+.docs-editor :deep(ul li)::marker {
+  color: #3370ff;
+  font-weight: 600;
 }
 .docs-editor :deep(li) {
   margin: 3px 0;
@@ -2056,23 +4159,26 @@ function folderNameOf(doc: DocItem | null): string {
   max-width: 1040px;
 }
 
-.docs-back {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  height: 28px;
-  padding: 0 8px;
-  font-size: 13px;
-  color: #646a73;
-  background: transparent;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: background 0.12s, color 0.12s;
+/* ---- 文档模式宽度自适应 ---- */
+/* 中等宽度：目录收窄，给正文让位 */
+@media (max-width: 1240px) {
+  .docs-outline {
+    flex-basis: 190px;
+    padding: 24px 10px;
+  }
 }
-.docs-back:hover {
-  color: #1f2329;
-  background: #f2f3f5;
+/* 较窄宽度：隐藏目录，正文占满画布 */
+@media (max-width: 1060px) {
+  .docs-outline {
+    display: none;
+  }
+  .docs-canvas-inner {
+    padding: 40px clamp(16px, 4vw, 48px) 96px 40px;
+  }
+  .docs-canvas-inner.is-full,
+  .docs-page.is-focus .docs-canvas-inner {
+    max-width: none;
+  }
 }
 
 /* ---- 文档列表首页 ---- */
@@ -2486,8 +4592,9 @@ function folderNameOf(doc: DocItem | null): string {
   .docs-side {
     flex-basis: 200px;
   }
+  /* 左侧仍保留 40px 加号槽位，仅收窄右留白 */
   .docs-canvas-inner {
-    padding: 32px 24px 80px;
+    padding: 32px 16px 80px 40px;
   }
   .docs-canvas-inner.is-wide {
     padding: 20px 16px 24px;

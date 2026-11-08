@@ -84,6 +84,60 @@ html.is-desktop .issue-detail-drawer :is(.ant-drawer-body, .drawer-inner) {
   height: calc(100dvh - var(--desktop-tabbar-height, 0px)) !important;
 }
 
+/*
+ * mac 客户端：工作台主内容区去掉左侧留白，与侧栏无缝衔接（网页 / iOS 不受影响）
+ * 逐层清零：content(8px) → workbench-panel(0.5vh) → 页面(padding-left 24px)
+ */
+html.is-desktop.is-mac .content {
+  padding-left: 8px;
+}
+
+html.is-desktop.is-mac .workbench-panel {
+  padding-left: 0;
+}
+
+html.is-desktop.is-mac .my-board {
+  padding-left: 0;
+}
+
+/*
+ * mac 客户端：所有页面根容器左侧统一留 10px（内容区与侧栏之间保留一点呼吸感）
+ * 特异性 (0,3,1) 高于各页面 scoped 的根类 (0,2,0)，无需逐页枚举；
+ * 只作用于 .content 的直接子元素，页面内部的树形缩进等不受影响。
+ * 注：不写在 html.is-mac 上 —— html 加 padding 会让整页宽出 10px 产生横向滚动
+ */
+html.is-desktop.is-mac .content > * {
+  padding-left: 8px;
+}
+
+/* mac 客户端：文档主页（主页 / 知识库 / 回收站）左侧留 40px */
+html.is-desktop.is-mac .docs-home {
+  padding-left: 40px;
+}
+
+/* mac 客户端：文档左侧导航（先锋云文档 / 搜索 / 文件树）左侧留 22px */
+html.is-desktop.is-mac .docs-side {
+  padding-left: 22px;
+}
+
+/*
+ * mac 客户端：文档侧栏内层全部贴左
+ * （标题 8px、导航项/分组/文件夹 8~10px）
+ */
+html.is-desktop.is-mac .docs-side-head,
+html.is-desktop.is-mac .docs-group-title,
+html.is-desktop.is-mac .docs-nav-item,
+html.is-desktop.is-mac .docs-trash-entry,
+html.is-desktop.is-mac .docs-folder,
+html.is-desktop.is-mac .docs-item {
+  padding-left: 0;
+}
+
+/* 文件夹内子文档保留层级缩进（原 30px，跟随基础项一起左移 8px） */
+html.is-desktop.is-mac .docs-item.grouped {
+  padding-left: 22px;
+}
+
 * {
   margin: 0;
   padding: 0;

@@ -354,7 +354,7 @@ function scrollIntoView(key: string) {
 
 /* macOS：红绿灯在左侧 */
 :global(html.is-mac) .desktop-tabbar {
-  padding-left: 80px;
+  padding-left: 0px;
 }
 
 /* 与左侧一级菜单（.icon-bar 64px）同宽，logo 居中 */

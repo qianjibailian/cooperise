@@ -1,9 +1,9 @@
 <template>
-  <a-layout class="layout-container">
+  <a-layout class="layout-container" :style="{ '--sider-w': siderWidth + 'px' }">
     <!-- 客户端：顶栏上方的页签栏（系统窗口按钮也在这一行） -->
     <DesktopTabBar v-if="isDesktop" />
     <AppHeader
-      :class="{ 'app-header-flush': isDocsRoute }"
+      :class="{ 'app-header-flush': isDocsRoute, 'app-header-docs-collapsed': isDocsRoute && docsSideCollapsed }"
       :drawer-open="drawerOpen"
       :sidebar-collapsed="panelCollapsed"
       :hide-sidebar-toggle="isNonWorkbenchRoute"
@@ -27,7 +27,7 @@
 
     <a-layout-sider
       v-if="!isNonWorkbenchRoute && (!panelCollapsed || isIOSApp)"
-      :width="334"
+      :width="siderWidth"
       class="sider"
       :class="{ 'sider-mobile-open': mobileMenuOpen, 'sider-detail': isNonWorkbenchRoute }"
       :trigger="null"
@@ -280,7 +280,7 @@
         </div>
       </div>
     </a-layout-sider>
-    <a-layout class="main-layout" :class="{ 'main-layout-collapsed': panelCollapsed && !isNonWorkbenchRoute, 'main-layout-full': isNonWorkbenchRoute }">
+    <a-layout class="main-layout" :class="{ 'main-layout-collapsed': panelCollapsed && !isNonWorkbenchRoute, 'main-layout-full': isNonWorkbenchRoute, 'main-layout-docs': isDocsRoute }">
       <a-layout-content class="content" :class="{ 'content-flush': isDocsRoute }">
         <WorkbenchPanel />
       </a-layout-content>
@@ -329,7 +329,7 @@ import {
 import { useRouter, useRoute } from 'vue-router'
 import AppHeader from '@/components/AppHeader.vue'
 import DesktopTabBar from '@/components/DesktopTabBar.vue'
-import { isDesktop } from '@/utils/desktop'
+import { isDesktop, isMacDesktop } from '@/utils/desktop'
 import AppSideDrawer from '@/components/AppSideDrawer.vue'
 import NewIssueFormModal from '@/components/NewIssueFormModal.vue'
 import { notifyIssueCreated, onIssueCreated } from '@/utils/issue-events'
@@ -345,6 +345,7 @@ import type { ViewItem, ViewGroup } from '@/types/faiz'
 import { Modal, message } from 'ant-design-vue'
 import { deleteViewGroup, deleteView } from '@/api/faiz'
 import ReleaseNotice from '@/components/ReleaseNotice.vue'
+import { docsSideCollapsed } from '@/utils/docs-layout'
 
 const iconBarItems = [
   { key: 'workspace', icon: HomeOutlined, label: '工作台' },
@@ -356,6 +357,9 @@ const iconBarItems = [
 
 const router = useRouter()
 const route = useRoute()
+
+/** 侧栏宽度：macOS 红绿灯占左侧，把侧栏收窄让主内容区更靠左 */
+const siderWidth = isMacDesktop ? 280 : 334
 
 // 侧边栏「我的事项 (N)」：与我的事项列表总数一致；挂载时与新建事项后按我的事项的筛选条件刷新
 const { todoCount } = useTodoCount()
@@ -554,6 +558,10 @@ watch(
 )
 
 const currentPath = computed(() => {
+  if (route.path.startsWith('/workbench')) {
+    activeSection.value = 'workspace'
+    return route.path
+  }
   if (route.path.startsWith('/docs')) {
     activeSection.value = 'docs'
     return route.path
@@ -1246,7 +1254,7 @@ onBeforeUnmount(() => {
 
 .main-layout {
   padding-top: var(--app-header-height, 56px);
-  margin-left: 334px;
+  margin-left: var(--sider-w, 334px);
   min-height: 100vh;
   min-height: 100dvh;
   transition: margin-left 0.2s cubic-bezier(0.4, 0, 0.2, 1);
@@ -1266,9 +1274,29 @@ onBeforeUnmount(() => {
   width: 100%;
   box-sizing: border-box;
 }
-/* 文档页：去掉顶部菜单投下的阴影分割线，与主内容融成一体 */
+/* 文档页：去掉顶部菜单投下的阴影分割线，改为明确的底部分割线 */
 .app-header-flush {
   box-shadow: none !important;
+  border-bottom: 1px solid #e5e6eb;
+}
+/* 文档页：左侧文档菜单直达视口顶部，顶栏只覆盖右侧内容区（侧栏宽 334px，窄屏 200px） */
+/* 同时去掉 min-width，否则顶栏右移后总宽超出视口，右侧头像会被挤出屏幕 */
+.layout-container .app-header-flush {
+  left: 304px;
+  min-width: 0;
+}
+/* 文档侧栏折叠时，左侧菜单完全消失，顶栏撑满整行 */
+.layout-container .app-header-docs-collapsed {
+  left: 0;
+}
+@media (max-width: 860px) {
+  .layout-container .app-header-flush {
+    left: 200px;
+    min-width: 0;
+  }
+  .layout-container .app-header-docs-collapsed {
+    left: 0;
+  }
 }
 /* 文档页：内容区不留白，页面自身贴满 */
 .content.content-flush {
@@ -1276,8 +1304,12 @@ onBeforeUnmount(() => {
 }
 /* 文档页：工作台面板撑到视口底部（去掉通用页面预留的 19px） */
 .content.content-flush :deep(.workbench-panel) {
-  height: calc(100vh - var(--app-header-height, 56px));
-  height: calc(100dvh - var(--app-header-height, 56px));
+  height: 100vh;
+  height: 100dvh;
+}
+/* 文档页：主布局不再为顶栏预留顶部空间，左侧菜单才能延伸到顶部 */
+.main-layout-docs {
+  padding-top: 0;
 }
 
 .content > :deep(*) {
