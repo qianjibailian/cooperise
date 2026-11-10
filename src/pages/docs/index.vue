@@ -61,7 +61,7 @@ import DocFlowEditor from '@/components/docs/DocFlowEditor.vue'
 import DocTypeIcon from '@/components/docs/DocTypeIcon.vue'
 import AppLogo from '@/components/AppLogo.vue'
 import { isDesktop } from '@/utils/desktop'
-import { docsSideCollapsed, docsEditMode, docsActiveDoc } from '@/utils/docs-layout'
+import { docsSideCollapsed, docsEditMode, docsActiveDoc, docsSaveState, docsTitleRev } from '@/utils/docs-layout'
 import {
   createDoc as createDocApi,
   createDocFolder,
@@ -121,6 +121,8 @@ const expanded = reactive<Record<string, boolean>>({})
 const activeDoc = computed(() => docs.value.find((d) => d.id === activeId.value) || null)
 // 同步当前文档给顶栏（分享 / 编辑按钮使用）
 watch(activeDoc, (d) => { docsActiveDoc.value = d }, { immediate: true })
+// 顶栏文件名改名：v-model 已同步到同一对象，这里只需触发刷新时间 + 防抖保存
+watch(docsTitleRev, () => { if (activeDoc.value) onDocChanged(activeDoc.value) })
 
 /** 语雀式大纲：解析正文 h2 / h3 */
 interface OutlineItem {
@@ -268,6 +270,7 @@ let pendingDoc: DocItem | null = null
 function scheduleSave() {
   pendingDoc = activeDoc.value
   saved.value = false
+  docsSaveState.value = 'saving'
   clearTimeout(saveTimer)
   saveTimer = setTimeout(flushSave, 400)
 }
@@ -280,8 +283,10 @@ async function flushSave() {
     const res = await saveDocContent(doc.id, { title: doc.title, content: doc.content, data: doc.data })
     if (res.success && res.data?.updatedAt) doc.updatedAt = res.data.updatedAt
     saved.value = true
+    docsSaveState.value = 'saved'
   } catch {
     // 保存失败保持「未保存」状态，下次修改会再次尝试
+    docsSaveState.value = 'unsaved'
   }
 }
 
@@ -891,6 +896,8 @@ function onEditorChange(editor: HTMLElement, doc: DocItem) {
   } else if (hoverBlock.value === editor) {
     plusVisible.value = false
   }
+  // 内容有变化：400ms 防抖实时保存（输入 / 工具栏 / 插入块 / 粘贴 / 勾选待办等所有编辑入口都汇聚到这里）
+  scheduleSave()
 }
 
 /** 打开文档时：空文档默认在首行显示"+"（参考飞书，与输入提示并排） */
@@ -2291,8 +2298,13 @@ function folderNameOf(doc: DocItem | null): string {
           </aside>
 
           <div class="docs-canvas">
-            <div class="docs-canvas-inner" :class="{ 'is-wide': activeDoc.type !== 'doc', 'is-full': wideMode }">
+            <div
+              class="docs-canvas-inner"
+              :class="{ 'is-wide': activeDoc.type !== 'doc', 'is-sheet': activeDoc.type === 'sheet', 'is-full': wideMode }"
+            >
+              <!-- 内容区大标题仅文档显示；表格/思维导图/流程图的文件名在顶栏左上角（可编辑） -->
               <input
+                v-if="activeDoc.type === 'doc'"
                 v-model="activeDoc.title"
                 class="docs-title-input"
                 placeholder="无标题文档"
@@ -3492,6 +3504,21 @@ function folderNameOf(doc: DocItem | null): string {
   width: 100%;
   padding: 32px 48px 48px;
 }
+/* 表格：画布零留白，编辑器宽高撑满（滚动交给表格自身） */
+.docs-canvas-inner.is-wide.is-sheet {
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.docs-canvas-inner.is-wide.is-sheet :deep(.sheet-editor) {
+  flex: 1;
+  min-height: 0;
+  border: none;
+  border-radius: 0;
+}
 .docs-title-input {
   width: 100%;
   padding: 0;
@@ -3746,7 +3773,8 @@ function folderNameOf(doc: DocItem | null): string {
   position: fixed;
   z-index: 1400;
   width: 272px;
-  max-height: 340px;
+  /* 矮窗口兼容：不超过视口高度的 60%，避免菜单底部被截断 */
+  max-height: min(340px, 60vh);
   padding: 6px;
   overflow-y: auto;
   background: #fff;
@@ -4601,6 +4629,64 @@ function folderNameOf(doc: DocItem | null): string {
   }
   .docs-title-input {
     font-size: 28px;
+  }
+}
+
+/* 极窄宽度：侧栏再收窄、首页留白收紧、列表隐藏次要列，保证正文/表格可用 */
+@media (max-width: 720px) {
+  .docs-side {
+    flex-basis: 160px;
+    padding: 12px 8px 10px;
+  }
+  .docs-canvas-inner {
+    padding: 28px 12px 72px 36px;
+  }
+  .docs-canvas-inner.is-wide {
+    padding: 16px 12px 20px;
+  }
+  .docs-title-input {
+    font-size: 24px;
+  }
+  .docs-home {
+    padding: 24px 16px 48px;
+  }
+  /* 标题行 / 工具行允许换行，避免排序与视图切换被挤出视口 */
+  .docs-home-head,
+  .docs-home-toolbar {
+    flex-wrap: wrap;
+  }
+  .docs-col-location,
+  .docs-col-time {
+    display: none;
+  }
+}
+
+/* ---- 高度自适应：矮窗口收紧垂直留白，保证首屏可见更多正文 ---- */
+@media (max-height: 760px) {
+  .docs-canvas-inner {
+    padding-top: 32px;
+    padding-bottom: 88px;
+  }
+  .docs-canvas-inner.is-wide {
+    padding-top: 24px;
+  }
+  .docs-side {
+    padding-top: 12px;
+  }
+  .docs-home {
+    padding-top: 24px;
+  }
+}
+/* 极矮窗口（如半屏 / 小窗预览）：标题与首页留白进一步收紧 */
+@media (max-height: 600px) {
+  .docs-canvas-inner {
+    padding-top: 24px;
+  }
+  .docs-title-input {
+    font-size: 28px;
+  }
+  .docs-home {
+    padding-top: 16px;
   }
 }
 </style>

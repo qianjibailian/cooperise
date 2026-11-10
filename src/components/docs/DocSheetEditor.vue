@@ -337,9 +337,10 @@ function applyTemplate(tpl: (typeof TEMPLATES)[number]) {
   color: #8f959e;
 }
 
-/* 表格 */
+/* 表格：撑满编辑器剩余高度，滚动收在表格区内 */
 .sheet-scroll {
-  max-height: 62vh;
+  flex: 1;
+  min-height: 0;
   overflow: auto;
 }
 .sheet-table {

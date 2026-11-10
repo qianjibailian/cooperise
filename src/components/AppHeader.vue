@@ -1,5 +1,16 @@
 <template>
   <header class="app-header">
+    <!-- 文档详情：顶栏最左侧文件名（上，可直接改名）+ 保存状态轻提示（下），参考飞书；文档/表格/思维导图/流程图共用 -->
+    <div v-if="isDocs && docsActiveDoc" class="docs-head-meta">
+      <input
+        v-model="docsActiveDoc.title"
+        class="docs-head-title"
+        placeholder="无标题文档"
+        maxlength="120"
+        @input="docsTitleRev++"
+      />
+      <span class="docs-save-state" :class="`is-${docsSaveState}`">{{ docsSaveStateText }}</span>
+    </div>
     <div class="header-left" :class="{ collapsed: sidebarCollapsed, 'no-logo': isDesktop }">
       <!-- 文档页侧栏折叠时：左侧菜单消失，展开入口固定在顶栏最左侧 -->
       <button v-if="isDocs && docsSideCollapsed" type="button" class="docs-side-expand" title="展开菜单" @click="docsSideCollapsed = false">
@@ -251,7 +262,7 @@ import {
 import HeaderBanner from './HeaderBanner.vue'
 import AppNavPopover from './AppNavPopover.vue'
 import { message } from 'ant-design-vue'
-import { docsEditMode, docsActiveDoc, docsSideCollapsed } from '@/utils/docs-layout'
+import { docsEditMode, docsActiveDoc, docsSideCollapsed, docsSaveState, docsTitleRev } from '@/utils/docs-layout'
 import HeaderSpaceSwitcher from './HeaderSpaceSwitcher.vue'
 import DesktopSettingsModal from './DesktopSettingsModal.vue'
 import { isDesktop } from '@/utils/desktop'
@@ -479,6 +490,15 @@ const isWorkbench = computed(() => route.path.startsWith('/workbench'))
 
 /** 文档页：保留顶栏空间切换，但不显示搜索 / 新建 */
 const isDocs = computed(() => route.path.startsWith('/docs'))
+
+/** 文档保存状态轻提示文案（分享按钮左侧，参考飞书：不显眼的灰色小字） */
+const docsSaveStateText = computed(() => {
+  switch (docsSaveState.value) {
+    case 'saving': return '保存中…'
+    case 'unsaved': return '保存失败，将在下次修改时重试'
+    default: return '已经保存到云端'
+  }
+})
 
 /** 文档分享：复制文档链接到剪贴板 */
 async function shareDoc() {
@@ -717,6 +737,69 @@ async function handleLogout() {
 .docs-side-expand:hover {
   color: #1f2329;
   background: #f2f3f5;
+}
+
+/* 文档详情：顶栏最左侧文件名 + 保存状态（上下两行，参考飞书） */
+.docs-head-meta {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 0;
+  max-width: 260px;
+  margin-right: 12px;
+  line-height: 1.3;
+}
+
+/* 文件名：保存状态上方一行，可直接改名（样式同纯文本，聚焦才显边框） */
+.docs-head-title {
+  width: 100%;
+  min-width: 0;
+  padding: 0 4px;
+  margin-left: -4px;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 20px;
+  color: #1f2329;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  outline: none;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  transition: box-shadow 0.12s, background 0.12s;
+}
+.docs-head-title::placeholder {
+  color: #b8bac0;
+  font-weight: 500;
+}
+.docs-head-title:focus {
+  background: #f2f3f5;
+  box-shadow: 0 0 0 2px rgba(51, 112, 255, 0.25);
+}
+
+/* 保存状态轻提示（灰色小字，不抢视觉） */
+.docs-save-state {
+  font-size: 12px;
+  color: #8f959e;
+  white-space: nowrap;
+  user-select: none;
+}
+.docs-save-state.is-saving {
+  color: #8f959e;
+}
+.docs-save-state.is-unsaved {
+  color: #d4a106;
+}
+/* 窄屏兼容：保存状态为辅助信息，宽度不足时隐藏（文件名保留但收窄） */
+@media (max-width: 960px) {
+  .docs-head-meta {
+    max-width: 140px;
+  }
+  .docs-head-meta .docs-save-state {
+    display: none;
+  }
 }
 
 /* 文档详情：分享（主按钮）与编辑/预览切换 */
