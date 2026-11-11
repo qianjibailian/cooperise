@@ -157,17 +157,39 @@ export function emptyTrash(): Promise<Result<void>> {
   return request.post(`/docs/trash/empty`)
 }
 
-// ==================== 分享（预留：前端「共享」入口已占位，交互未实现） ====================
+// ==================== 分享（协作者与链接分享同时生效） ====================
 
-/** 分享范围 */
-export type DocShareScope = 'MEMBERS' | 'ORG' | 'ALL'
+/** 链接分享范围：OFF-未开启（仅协作者可访问）/ ORG-组织内可访问 / ALL-所有人可访问（拿到链接即可查看） */
+export type DocLinkScope = 'OFF' | 'ORG' | 'ALL'
 
-/**
- * 设置文档分享（POST /docs/share，仅创建人可操作）
- * MEMBERS 时 values 传 memberId 列表，ORG 时传 organizationCode。
- */
-export function shareDoc(data: { id: string; scope: DocShareScope; values?: string[] }): Promise<Result<void>> {
-  return request.post(`/docs/share`, data)
+/** 协作者：姓名、工号、头像由后端按 memberId 补全 */
+export interface DocShareMember {
+  memberId: string
+  realName?: string
+  coAccount?: string
+  avatarUrl?: string | null
+}
+
+/** 分享信息：owner 表示当前用户是否为创建人（仅创建人可修改） */
+export interface DocShareInfo {
+  owner: boolean
+  collaborators: DocShareMember[]
+  linkScope: DocLinkScope
+}
+
+/** 文档分享信息（POST /docs/share/info）：创建人与被分享人可读 */
+export function getDocShareInfo(id: string): Promise<Result<DocShareInfo>> {
+  return request.post(`/docs/share/info`, { id })
+}
+
+/** 设置协作者（POST /docs/share/collaborators，仅创建人）：memberIds 为完整列表，整体覆盖 */
+export function setDocCollaborators(data: { id: string; memberIds: string[] }): Promise<Result<void>> {
+  return request.post(`/docs/share/collaborators`, data)
+}
+
+/** 设置链接分享范围（POST /docs/share/link，仅创建人） */
+export function setDocLinkScope(data: { id: string; scope: DocLinkScope }): Promise<Result<void>> {
+  return request.post(`/docs/share/link`, data)
 }
 
 /** 共享给我的文档（POST /docs/shared）：「共享」导航页数据源，按 updatedAt 倒序 */

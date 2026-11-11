@@ -22,14 +22,15 @@ const isDocsRoute = computed(() => route.path.startsWith('/docs'))
 <style scoped>
 .workbench-panel {
   width: 100%;
-  height: calc(100vh - var(--app-header-height, 56px) - 19px);
-  height: calc(100dvh - var(--app-header-height, 56px) - 19px);
+  /* 占满顶栏以下、视口底部以上的整个区域；页面无灰边、无圆角 */
+  height: calc(100vh - var(--app-header-height, 56px));
+  height: calc(100dvh - var(--app-header-height, 56px));
   background: #ffffff;
   display: flex;
   flex-direction: column;
   padding: 2vh 0.5vh;
   box-sizing: border-box;
-  border-radius: 4px;
+  border-radius: 0;
 }
 /* 文档页：去掉四周留白，占满全高，左侧菜单才能延伸到顶部 */
 .workbench-panel.workbench-panel-docs {

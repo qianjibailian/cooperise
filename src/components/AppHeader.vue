@@ -1,5 +1,9 @@
 <template>
   <header class="app-header">
+    <!-- 文档页侧栏折叠时的展开按钮：固定在顶栏最左侧，位于文件名 / 保存状态的左边 -->
+    <button v-if="isDocs && docsSideCollapsed" type="button" class="docs-side-expand" title="展开菜单" @click="docsSideCollapsed = false">
+      <MenuUnfoldOutlined />
+    </button>
     <!-- 文档详情：顶栏最左侧文件名（上，可直接改名）+ 保存状态轻提示（下），参考飞书；文档/表格/思维导图/流程图共用 -->
     <div v-if="isDocs && docsActiveDoc" class="docs-head-meta">
       <input
@@ -12,10 +16,6 @@
       <span class="docs-save-state" :class="`is-${docsSaveState}`">{{ docsSaveStateText }}</span>
     </div>
     <div class="header-left" :class="{ collapsed: sidebarCollapsed, 'no-logo': isDesktop }">
-      <!-- 文档页侧栏折叠时：左侧菜单消失，展开入口固定在顶栏最左侧 -->
-      <button v-if="isDocs && docsSideCollapsed" type="button" class="docs-side-expand" title="展开菜单" @click="docsSideCollapsed = false">
-        <MenuUnfoldOutlined />
-      </button>
       <!-- 左上角菜单入口：点击弹出一级菜单（文档页已移至左侧文档菜单 Logo 左侧） -->
       <AppNavPopover v-if="!isDocs" />
 
@@ -43,14 +43,24 @@
     <div class="header-right">
       <!-- 文档详情：分享 / 编辑（原详情页工具条按钮，移至顶栏） -->
       <template v-if="isDocs && docsActiveDoc">
-        <button type="button" class="docs-share" @click="shareDoc">
-          <ShareAltOutlined /> 分享
-        </button>
+        <a-popover
+          v-model:open="sharePanelOpen"
+          trigger="click"
+          placement="bottomRight"
+          :arrow="false"
+          overlay-class-name="doc-share-popover"
+        >
+          <template #content>
+            <DocSharePanel :doc-id="sharePanelDocId" />
+          </template>
+          <button type="button" class="docs-share">
+            <ShareAltOutlined /> 分享
+          </button>
+        </a-popover>
         <a-dropdown trigger="click" placement="bottomRight">
           <button type="button" class="docs-edit-btn">
-            <EditOutlined v-if="docsEditMode" />
-            <EyeOutlined v-else />
-            {{ docsEditMode ? '编辑' : '预览' }}
+            <span class="docs-seg" :class="{ 'is-active': docsEditMode }"><EditOutlined />编辑</span>
+            <span class="docs-seg" :class="{ 'is-active': !docsEditMode }"><EyeOutlined />预览</span>
             <CaretDownOutlined class="docs-edit-caret" />
           </button>
           <template #overlay>
@@ -261,9 +271,10 @@ import {
 } from '@ant-design/icons-vue'
 import HeaderBanner from './HeaderBanner.vue'
 import AppNavPopover from './AppNavPopover.vue'
-import { message } from 'ant-design-vue'
 import { docsEditMode, docsActiveDoc, docsSideCollapsed, docsSaveState, docsTitleRev } from '@/utils/docs-layout'
+import { docSharePanelOpen } from '@/utils/doc-share'
 import HeaderSpaceSwitcher from './HeaderSpaceSwitcher.vue'
+import DocSharePanel from './DocSharePanel.vue'
 import DesktopSettingsModal from './DesktopSettingsModal.vue'
 import { isDesktop } from '@/utils/desktop'
 import { currentSpaceCode } from '@/utils/current-space'
@@ -500,18 +511,14 @@ const docsSaveStateText = computed(() => {
   }
 })
 
-/** 文档分享：复制文档链接到剪贴板 */
-async function shareDoc() {
-  const doc = docsActiveDoc.value
-  if (!doc) return
-  const href = router.resolve({ path: '/docs', query: { doc: doc.id } }).href
-  try {
-    await navigator.clipboard.writeText(`${location.origin}${href}`)
-    message.success('链接已复制，粘贴给协作者即可分享')
-  } catch {
-    message.warning('复制失败，请手动复制地址栏链接')
-  }
-}
+/** 顶栏「分享」面板：开关与文档页菜单共用 docSharePanelOpen；面板针对当前打开的文档 */
+const sharePanelOpen = computed({
+  get: () => docSharePanelOpen.value,
+  set: (open: boolean) => {
+    docSharePanelOpen.value = open
+  },
+})
+const sharePanelDocId = computed(() => docsActiveDoc.value?.id ?? '')
 
 /** 顶栏"编辑"下拉：切换编辑 / 预览模式 */
 function onEditModeMenu({ key }: { key: string | number }) {
@@ -727,16 +734,16 @@ async function handleLogout() {
   height: 30px;
   margin-right: 6px;
   font-size: 16px;
-  color: #646a73;
+  color: var(--docs-text-2);
   background: transparent;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--docs-radius);
   cursor: pointer;
   transition: background 0.12s, color 0.12s;
 }
 .docs-side-expand:hover {
-  color: #1f2329;
-  background: #f2f3f5;
+  color: var(--docs-text);
+  background: var(--docs-hover);
 }
 
 /* 文档详情：顶栏最左侧文件名 + 保存状态（上下两行，参考飞书） */
@@ -754,16 +761,17 @@ async function handleLogout() {
 /* 文件名：保存状态上方一行，可直接改名（样式同纯文本，聚焦才显边框） */
 .docs-head-title {
   width: 100%;
+  height: 24px;
   min-width: 0;
   padding: 0 4px;
   margin-left: -4px;
-  font-size: 13px;
+  font-size: 16px;
   font-weight: 600;
-  line-height: 20px;
-  color: #1f2329;
+  line-height: 24px;
+  color: var(--docs-text);
   background: transparent;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--docs-radius-sm);
   outline: none;
   overflow: hidden;
   white-space: nowrap;
@@ -771,26 +779,26 @@ async function handleLogout() {
   transition: box-shadow 0.12s, background 0.12s;
 }
 .docs-head-title::placeholder {
-  color: #b8bac0;
+  color: var(--docs-text-3);
   font-weight: 500;
 }
 .docs-head-title:focus {
-  background: #f2f3f5;
-  box-shadow: 0 0 0 2px rgba(51, 112, 255, 0.25);
+  background: var(--docs-hover);
+  box-shadow: 0 0 0 1px var(--c-primary-border);
 }
 
-/* 保存状态轻提示（灰色小字，不抢视觉） */
+/* 保存状态轻提示（灰色小字，不抢视觉；保存失败用警示色） */
 .docs-save-state {
   font-size: 12px;
-  color: #8f959e;
+  color: var(--docs-text-3);
   white-space: nowrap;
   user-select: none;
 }
 .docs-save-state.is-saving {
-  color: #8f959e;
+  color: var(--docs-text-3);
 }
 .docs-save-state.is-unsaved {
-  color: #d4a106;
+  color: var(--docs-warn);
 }
 /* 窄屏兼容：保存状态为辅助信息，宽度不足时隐藏（文件名保留但收窄） */
 @media (max-width: 960px) {
@@ -802,7 +810,7 @@ async function handleLogout() {
   }
 }
 
-/* 文档详情：分享（主按钮）与编辑/预览切换 */
+/* 文档详情：分享（主按钮，主题主色）与编辑/预览切换（分段控件观感） */
 .docs-share {
   display: inline-flex;
   align-items: center;
@@ -812,36 +820,79 @@ async function handleLogout() {
   font-size: 13px;
   font-weight: 500;
   color: #fff;
-  background: #3370ff;
+  /* 静止底色用主题的按下色（苹果蓝 #0071E3）：白字对比度 4.7:1，达到 AA */
+  background: var(--c-primary-active);
   border: none;
-  border-radius: 6px;
+  border-radius: var(--docs-radius);
   cursor: pointer;
-  transition: background 0.12s;
+  transition: background-color var(--docs-dur) var(--docs-ease), box-shadow var(--docs-dur) var(--docs-ease);
 }
 .docs-share:hover {
-  background: #2b5fd9;
+  background: color-mix(in srgb, var(--c-primary-active) 88%, #000);
 }
+.docs-share:active {
+  background: color-mix(in srgb, var(--c-primary-active) 78%, #000);
+}
+.docs-share:focus-visible {
+  outline: none;
+  box-shadow: var(--docs-focus);
+}
+/* 编辑 / 预览：1px 边框的圆角组，选中段用主题浅底 + 主色字；仍由整个按钮触发原下拉 */
 .docs-edit-btn {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 2px;
   height: 30px;
-  padding: 0 10px;
+  padding: 0 6px 0 2px;
   font-size: 13px;
-  color: #37352f;
-  background: transparent;
-  border: 1px solid #e5e5e3;
-  border-radius: 6px;
+  color: var(--docs-text-2);
+  background: var(--docs-canvas);
+  border: 1px solid var(--docs-border-strong);
+  border-radius: var(--docs-radius);
   cursor: pointer;
-  transition: background 0.12s, border-color 0.12s;
+  transition: border-color var(--docs-dur) var(--docs-ease), box-shadow var(--docs-dur) var(--docs-ease);
 }
 .docs-edit-btn:hover {
-  background: rgba(0, 0, 0, 0.04);
-  border-color: #d9d9d6;
+  border-color: var(--docs-text-3);
+}
+.docs-edit-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--docs-focus);
+}
+.docs-seg {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 24px;
+  padding: 0 8px;
+  border-radius: var(--docs-radius-sm);
+  color: var(--docs-text-2);
+  white-space: nowrap;
+}
+.docs-seg.is-active {
+  background: var(--c-primary-bg);
+  color: var(--c-primary);
 }
 .docs-edit-caret {
+  margin: 0 2px;
   font-size: 10px;
-  color: #91918e;
+  color: var(--docs-text-3);
+}
+@media (max-width: 767px) {
+  .docs-seg .anticon {
+    display: none;
+  }
+}
+
+/* 分享面板的浮层（antd 浮层挂在 body，故用 :global）：靠 overlay-class-name 定位，
+   去掉内容区内边距，圆角与阴影直接用 token，不再用内联样式 + !important 覆盖 */
+:global(.doc-share-popover .ant-popover-inner) {
+  border-radius: var(--docs-radius-lg);
+  box-shadow: var(--docs-shadow-float);
+  padding: 0;
+}
+:global(.doc-share-popover .ant-popover-inner-content) {
+  padding: 0;
 }
 
 /* 中英文切换已移入用户下拉菜单 */

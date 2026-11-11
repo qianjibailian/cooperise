@@ -709,7 +709,8 @@ onBeforeUnmount(() => {
 }
 
 .sider {
-  background: #ffffff !important;
+  /* 侧栏灰底、内容区白底，靠色调分层（与云文档侧栏一致），交界处一条细线 */
+  background: var(--docs-side-bg) !important;
   height: calc(100vh - var(--app-header-height, 56px));
   height: calc(100dvh - var(--app-header-height, 56px));
   position: fixed;
@@ -719,7 +720,8 @@ onBeforeUnmount(() => {
   z-index: 90;
   display: flex;
   flex-direction: column;
-  box-shadow: 1px 0 3px rgba(0, 0, 0, 0.04);
+  box-shadow: none;
+  border-right: 1px solid var(--docs-border);
   transform: translateX(calc(-1 * var(--app-scroll-x, 0px)));
 }
 
@@ -792,7 +794,7 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  background: #ffffff;
+  background: transparent;
   padding-top: 18px;
 }
 
@@ -1101,6 +1103,7 @@ onBeforeUnmount(() => {
 
 .sidebar-menu {
   border-right: none !important;
+  background: transparent;
 }
 
 .sidebar-menu :deep(.ant-menu-item) {
@@ -1124,8 +1127,9 @@ onBeforeUnmount(() => {
   font-size: 14px;
 }
 
-.sidebar-menu :deep(.ant-menu-item:hover) {
-  background: #f5f5f5 !important;
+.sidebar-menu :deep(.ant-menu-item:hover),
+.sidebar-menu :deep(.ant-menu-submenu-title:hover) {
+  background: rgba(0, 0, 0, 0.05) !important;
   color: #262626;
 }
 
@@ -1235,7 +1239,7 @@ onBeforeUnmount(() => {
 
 /* 文件夹展开态：标题浅灰背景 + 图标变主色，展开 / 收起更明显 */
 .view-menu :deep(.ant-menu-submenu-open > .ant-menu-submenu-title) {
-  background: #f2f2f7;
+  background: rgba(0, 0, 0, 0.05);
   border-radius: 8px;
 }
 .view-menu :deep(.ant-menu-submenu-open > .ant-menu-submenu-title .folder-icon) {
@@ -1269,7 +1273,8 @@ onBeforeUnmount(() => {
 }
 
 .content {
-  padding: 8px;
+  /* 内容区不留白：工作台面板贴满顶栏以下的整个区域（无灰边、无圆角） */
+  padding: 0;
   background: #f4f5f8;
   width: 100%;
   box-sizing: border-box;

@@ -62,6 +62,7 @@ import DocTypeIcon from '@/components/docs/DocTypeIcon.vue'
 import AppLogo from '@/components/AppLogo.vue'
 import { isDesktop } from '@/utils/desktop'
 import { docsSideCollapsed, docsEditMode, docsActiveDoc, docsSaveState, docsTitleRev } from '@/utils/docs-layout'
+import { openDocSharePanel } from '@/utils/doc-share'
 import {
   createDoc as createDocApi,
   createDocFolder,
@@ -1060,14 +1061,14 @@ interface InsertCommon {
   sub?: { key: string; label: string }[]
 }
 const insertCommons: InsertCommon[] = [
-  { key: 'todo', label: '任务', icon: CheckSquareOutlined, color: '#3370ff' },
-  { key: 'image', label: '图片', icon: PictureOutlined, color: '#ffb400' },
-  { key: 'attach', label: '视频或文件', icon: PaperClipOutlined, color: '#3370ff' },
+  { key: 'todo', label: '任务', icon: CheckSquareOutlined, color: 'var(--c-primary)' },
+  { key: 'image', label: '图片', icon: PictureOutlined, color: 'var(--docs-type-flow)' },
+  { key: 'attach', label: '视频或文件', icon: PaperClipOutlined, color: 'var(--c-primary)' },
   {
     key: 'table',
     label: '表格',
     icon: TableOutlined,
-    color: '#34c724',
+    color: 'var(--docs-type-sheet)',
     sub: [
       { key: 'table:3', label: '3 × 3 表格' },
       { key: 'table:4', label: '4 × 4 表格' },
@@ -1078,13 +1079,13 @@ const insertCommons: InsertCommon[] = [
     key: 'columns',
     label: '分栏',
     icon: LayoutOutlined,
-    color: '#7f3bf5',
+    color: 'var(--docs-type-mindmap)',
     sub: [
       { key: 'columns:2', label: '两栏' },
       { key: 'columns:3', label: '三栏' },
     ],
   },
-  { key: 'callout', label: '高亮块', icon: BgColorsOutlined, color: '#ff8800' },
+  { key: 'callout', label: '高亮块', icon: BgColorsOutlined, color: 'var(--docs-type-flow)' },
 ]
 /** 当前展开的二级菜单 */
 const activeInsertSub = ref('')
@@ -1340,7 +1341,7 @@ function applyBlockCmd(cmd: string, arg?: string) {
       plusVisible.value = false
       break
     case 'share':
-      message.info('分享功能开发中')
+      openDocSharePanel()
       break
     case 'subdoc':
       message.info('转换为子文档功能开发中')
@@ -2388,7 +2389,7 @@ function folderNameOf(doc: DocItem | null): string {
                           @mouseenter="activeInsertSub = it.sub ? it.key : ''"
                           @click="it.sub ? (activeInsertSub = it.key) : applyInsert(it.key)"
                         >
-                          <component :is="it.icon" class="docs-insert-item-icon" :style="{ color: it.color, background: it.color + '1a' }" />
+                          <component :is="it.icon" class="docs-insert-item-icon" :style="{ color: it.color, background: `color-mix(in srgb, ${it.color} 10%, transparent)` }" />
                           <span class="docs-insert-item-label">{{ it.label }}</span>
                           <RightOutlined v-if="it.sub" class="docs-insert-item-caret" />
                           <div v-if="it.sub && activeInsertSub === it.key" class="docs-insert-sub">
@@ -2920,10 +2921,9 @@ function folderNameOf(doc: DocItem | null): string {
   width: 100%;
   margin: 0;
   display: flex;
-  background: #fff;
-  color: #37352f;
-  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto,
-    'PingFang SC', 'Microsoft YaHei', sans-serif;
+  background: var(--docs-canvas);
+  color: var(--docs-text);
+  font-family: var(--docs-font);
 }
 
 /* ---- 左侧：知识库 / 文件树 ---- */
@@ -2935,8 +2935,8 @@ function folderNameOf(doc: DocItem | null): string {
   flex-direction: column;
   gap: 12px;
   padding: 20px 12px 14px;
-  background: #f7f8fa;
-  border-right: 1px solid #ececec;
+  background: var(--docs-nav-bg);
+  border-right: 1px solid var(--docs-border);
 }
 .docs-side-head {
   position: relative;
@@ -2958,16 +2958,16 @@ function folderNameOf(doc: DocItem | null): string {
   width: 28px;
   height: 28px;
   font-size: 15px;
-  color: #646a73;
+  color: var(--docs-text-2);
   background: transparent;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--docs-radius);
   cursor: pointer;
   transition: background 0.12s, color 0.12s;
 }
 .docs-side-fold:hover {
-  color: #1f2329;
-  background: rgba(0, 0, 0, 0.05);
+  color: var(--docs-text);
+  background: var(--docs-hover);
 }
 /* 折叠态：左侧菜单完全隐藏，展开入口在顶部菜单左侧 */
 .docs-page.is-side-collapsed .docs-side {
@@ -3006,7 +3006,7 @@ function folderNameOf(doc: DocItem | null): string {
   height: 34px;
   padding: 5px;
   box-sizing: border-box;
-  background: linear-gradient(135deg, #e8f0fe 0%, #dbeafe 100%);
+  background: linear-gradient(135deg, var(--docs-selected) 0%, var(--c-primary-bg-hover) 100%);
   border-radius: 9px;
 }
 .docs-side-logo :deep(svg) {
@@ -3024,13 +3024,13 @@ function folderNameOf(doc: DocItem | null): string {
   font-weight: 700;
   line-height: 1.2;
   letter-spacing: -0.01em;
-  color: #111827;
+  color: var(--docs-text);
 }
 .docs-side-sub {
   margin-top: 1px;
   font-size: 10px;
   line-height: 1.3;
-  color: #9ca3af;
+  color: var(--docs-text-3);
 }
 .docs-search-wrap {
   position: relative;
@@ -3038,20 +3038,20 @@ function folderNameOf(doc: DocItem | null): string {
 .docs-search {
   height: 36px;
   padding-right: 44px;
-  border-color: #e5e6eb;
-  border-radius: 8px;
-  background: #fff;
-  box-shadow: 0 1px 2px rgba(31, 35, 41, 0.03);
+  border-color: var(--docs-border);
+  border-radius: var(--docs-radius);
+  background: var(--docs-canvas);
+  box-shadow: none;
 }
 .docs-search:hover {
-  border-color: #d0d3d9;
+  border-color: var(--docs-border-strong);
 }
 .docs-search:focus-within {
-  border-color: #3370ff;
-  background: #fff;
+  border-color: var(--c-primary);
+  background: var(--docs-canvas);
 }
 .docs-search-icon {
-  color: #8f959e;
+  color: var(--docs-text-3);
 }
 .docs-search-kbd {
   position: absolute;
@@ -3060,9 +3060,9 @@ function folderNameOf(doc: DocItem | null): string {
   padding: 1px 5px;
   font-size: 10px;
   line-height: 1.4;
-  color: #b0b3b8;
-  background: #eceef0;
-  border-radius: 4px;
+  color: var(--docs-text-3);
+  background: var(--docs-hover);
+  border-radius: var(--docs-radius-sm);
   transform: translateY(-50%);
   pointer-events: none;
 }
@@ -3074,10 +3074,10 @@ function folderNameOf(doc: DocItem | null): string {
 }
 .docs-group-title {
   padding: 8px 8px 4px;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.04em;
-  color: #91918e;
+  color: var(--docs-text-3);
 }
 /* 置顶区：一行一个 */
 .docs-pinned-grid {
@@ -3094,21 +3094,21 @@ function folderNameOf(doc: DocItem | null): string {
   width: 100%;
   height: 30px;
   padding: 0 8px;
-  font-size: 12px;
-  color: #646a73;
+  font-size: 13px;
+  color: var(--docs-text-2);
   background: transparent;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--docs-radius);
   cursor: pointer;
   transition: background 0.12s, color 0.12s;
 }
 .docs-pinned-item:hover {
-  color: #37352f;
-  background: rgba(0, 0, 0, 0.05);
+  color: var(--docs-text);
+  background: var(--docs-hover);
 }
 .docs-pinned-item.active {
-  color: #37352f;
-  background: rgba(0, 0, 0, 0.06);
+  color: var(--c-primary);
+  background: var(--docs-selected);
 }
 .docs-pinned-name {
   overflow: hidden;
@@ -3118,7 +3118,7 @@ function folderNameOf(doc: DocItem | null): string {
 .docs-group-title-main {
   margin-top: 4px;
   padding-top: 10px;
-  border-top: 1px solid #ededf0;
+  border-top: 1px solid var(--docs-border);
 }
 
 .docs-list {
@@ -3145,29 +3145,27 @@ function folderNameOf(doc: DocItem | null): string {
   gap: 8px;
   padding: 16px;
   text-align: left;
-  background: #fff;
-  border: 1px solid #eff0f2;
-  border-radius: 12px;
+  background: var(--docs-canvas);
+  border: 1px solid var(--docs-border);
+  border-radius: var(--docs-radius-lg);
   cursor: pointer;
   transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s;
 }
 .docs-library-card:hover {
-  border-color: #dcdde1;
-  box-shadow: 0 4px 16px rgba(31, 35, 41, 0.06);
-  transform: translateY(-1px);
+  border-color: var(--docs-border-strong);
 }
 .docs-library-icon {
   font-size: 28px;
-  color: #f0b429;
+  color: var(--docs-warn);
 }
 .docs-library-name {
   font-size: 14px;
   font-weight: 600;
-  color: #1f2329;
+  color: var(--docs-text);
 }
 .docs-library-meta {
-  font-size: 11px;
-  color: #8f959e;
+  font-size: 12px;
+  color: var(--docs-text-3);
 }
 
 /* 飞书式主导航 */
@@ -3181,30 +3179,30 @@ function folderNameOf(doc: DocItem | null): string {
   align-items: center;
   gap: 9px;
   width: 100%;
-  height: 36px;
+  height: 34px;
   padding: 0 10px;
   font-size: 14px;
-  color: #374151;
+  color: var(--docs-text);
   text-align: left;
   background: transparent;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--docs-radius);
   cursor: pointer;
   transition: background 0.12s, color 0.12s;
 }
 .docs-nav-item :deep(.anticon) {
   font-size: 15px;
-  color: #6b7280;
+  color: var(--docs-text-2);
 }
 .docs-nav-item:hover {
-  background: #f2f3f5;
+  background: var(--docs-hover);
 }
 .docs-nav-item.active {
-  color: #3370ff;
-  background: #e8f0fe;
+  color: var(--c-primary);
+  background: var(--docs-selected);
 }
 .docs-nav-item.active :deep(.anticon) {
-  color: #3370ff;
+  color: var(--c-primary);
 }
 /* 侧栏底部：文档统计 + 新建 */
 /* 回收站入口 */
@@ -3214,25 +3212,25 @@ function folderNameOf(doc: DocItem | null): string {
   gap: 8px;
   height: 34px;
   padding: 0 10px;
-  font-size: 13px;
-  color: #6b7280;
+  font-size: 14px;
+  color: var(--docs-text-2);
   background: transparent;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--docs-radius);
   cursor: pointer;
   transition: background 0.12s, color 0.12s;
 }
 .docs-trash-entry:hover {
-  background: #eef0f2;
+  background: var(--docs-hover);
 }
 .docs-trash-entry.active {
-  color: #3370ff;
-  background: #e8f0fe;
+  color: var(--c-primary);
+  background: var(--docs-selected);
 }
 .docs-trash-count {
   margin-left: auto;
-  font-size: 11px;
-  color: #9ca3af;
+  font-size: 12px;
+  color: var(--docs-text-3);
 }
 
 /* 文件夹行 */
@@ -3243,18 +3241,18 @@ function folderNameOf(doc: DocItem | null): string {
   min-height: 34px;
   padding: 5px 8px;
   margin-top: 2px;
-  border-radius: 8px;
+  border-radius: var(--docs-radius);
   cursor: pointer;
   transition: background 0.12s;
 }
 .docs-folder:hover {
-  background: #f5f5f5;
+  background: var(--docs-hover);
 }
 .docs-folder.active {
-  background: #e8f0fe;
+  background: var(--docs-selected);
 }
 .docs-folder.active .docs-folder-name {
-  color: #3370ff;
+  color: var(--c-primary);
 }
 .docs-folder-caret {
   flex: none;
@@ -3263,7 +3261,7 @@ function folderNameOf(doc: DocItem | null): string {
   justify-content: center;
   width: 12px;
   font-size: 9px;
-  color: #9ca3af;
+  color: var(--docs-text-3);
   transition: transform 0.15s;
 }
 .docs-folder-caret.open {
@@ -3272,7 +3270,7 @@ function folderNameOf(doc: DocItem | null): string {
 .docs-folder-icon {
   flex: none;
   font-size: 15px;
-  color: #f0b429;
+  color: var(--docs-warn);
 }
 .docs-folder-name {
   flex: 1;
@@ -3280,22 +3278,22 @@ function folderNameOf(doc: DocItem | null): string {
   overflow: hidden;
   font-size: 14px;
   font-weight: 500;
-  color: #374151;
+  color: var(--docs-text);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .docs-folder-count {
   flex: none;
   padding: 0;
-  font-size: 11px;
+  font-size: 12px;
   line-height: 16px;
-  color: #9ca3af;
+  color: var(--docs-text-3);
   text-align: center;
   background: transparent;
   border-radius: 0;
 }
 .docs-folder.active .docs-folder-count {
-  color: #6b7280;
+  color: var(--docs-text-2);
   background: transparent;
 }
 .docs-folder-more {
@@ -3306,8 +3304,8 @@ function folderNameOf(doc: DocItem | null): string {
   width: 18px;
   height: 18px;
   font-size: 11px;
-  color: #91918e;
-  border-radius: 4px;
+  color: var(--docs-text-3);
+  border-radius: var(--docs-radius-sm);
   opacity: 0;
   transition: opacity 0.12s, background 0.12s;
 }
@@ -3315,7 +3313,7 @@ function folderNameOf(doc: DocItem | null): string {
   opacity: 1;
 }
 .docs-folder-more:hover {
-  background: rgba(0, 0, 0, 0.06);
+  background: var(--docs-hover);
 }
 .docs-folder.is-ungrouped {
   cursor: default;
@@ -3326,7 +3324,7 @@ function folderNameOf(doc: DocItem | null): string {
 .docs-folder-empty {
   padding: 5px 8px 5px 30px;
   font-size: 12px;
-  color: #b0b3b8;
+  color: var(--docs-text-3);
 }
 
 /* 文档行 */
@@ -3340,7 +3338,7 @@ function folderNameOf(doc: DocItem | null): string {
   text-align: left;
   background: transparent;
   border: none;
-  border-radius: 8px;
+  border-radius: var(--docs-radius);
   cursor: pointer;
   transition: background 0.12s;
 }
@@ -3348,14 +3346,14 @@ function folderNameOf(doc: DocItem | null): string {
   padding-left: 30px;
 }
 .docs-item:hover {
-  background: #f5f5f5;
+  background: var(--docs-hover);
 }
 .docs-item.active {
-  background: #e8f0fe;
+  background: var(--docs-selected);
   box-shadow: none;
 }
 .docs-item.active .docs-item-title-text {
-  color: #3370ff;
+  color: var(--c-primary);
   font-weight: 500;
 }
 .docs-item-main {
@@ -3371,8 +3369,8 @@ function folderNameOf(doc: DocItem | null): string {
   gap: 6px;
   min-width: 0;
   font-size: 14px;
-  font-weight: 400;
-  color: #374151;
+  font-weight: 500;
+  color: var(--docs-text);
 }
 .docs-item-title-text {
   min-width: 0;
@@ -3384,8 +3382,8 @@ function folderNameOf(doc: DocItem | null): string {
   flex: none;
 }
 .docs-item-meta {
-  font-size: 11px;
-  color: #91918e;
+  font-size: 12px;
+  color: var(--docs-text-3);
 }
 .docs-item-more {
   flex: none;
@@ -3395,8 +3393,8 @@ function folderNameOf(doc: DocItem | null): string {
   width: 20px;
   height: 20px;
   font-size: 11px;
-  color: #91918e;
-  border-radius: 4px;
+  color: var(--docs-text-3);
+  border-radius: var(--docs-radius-sm);
   opacity: 0;
   transition: opacity 0.12s, background 0.12s;
 }
@@ -3404,13 +3402,13 @@ function folderNameOf(doc: DocItem | null): string {
   opacity: 1;
 }
 .docs-item-more:hover {
-  background: rgba(0, 0, 0, 0.06);
+  background: var(--docs-hover);
 }
 .docs-list-empty {
   padding: 28px 12px;
   font-size: 12px;
   line-height: 1.6;
-  color: #91918e;
+  color: var(--docs-text-3);
   text-align: center;
 }
 
@@ -3425,7 +3423,7 @@ function folderNameOf(doc: DocItem | null): string {
   box-sizing: border-box;
   /* 左侧菜单直达顶部后，右侧内容区顶部为顶栏（仅覆盖右侧）预留高度 */
   padding-top: var(--app-header-height, 56px);
-  background: #fff;
+  background: var(--docs-canvas);
 }
 /* 正文 + 右侧大纲 */
 .docs-body {
@@ -3437,14 +3435,14 @@ function folderNameOf(doc: DocItem | null): string {
   flex: 0 0 250px;
   overflow-y: auto;
   padding: 28px 14px;
-  background: #fff;
+  background: var(--docs-canvas);
 }
 .docs-outline-title {
   padding: 0 8px 8px;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.04em;
-  color: #91918e;
+  color: var(--docs-text-3);
 }
 .docs-outline-item {
   display: block;
@@ -3453,7 +3451,7 @@ function folderNameOf(doc: DocItem | null): string {
   overflow: hidden;
   font-size: 12px;
   line-height: 1.5;
-  color: #787774;
+  color: var(--docs-text-2);
   text-align: left;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -3464,14 +3462,14 @@ function folderNameOf(doc: DocItem | null): string {
   transition: color 0.12s, background 0.12s, border-color 0.12s;
 }
 .docs-outline-item:hover {
-  color: #37352f;
-  background: rgba(0, 0, 0, 0.04);
-  border-left-color: #00b96b;
+  color: var(--docs-text);
+  background: var(--docs-hover);
+  border-left-color: var(--c-primary);
 }
 .docs-outline-item.is-h3 {
   padding-left: 20px;
   font-size: 12px;
-  color: #91918e;
+  color: var(--docs-text-3);
 }
 
 /* 正文画布 */
@@ -3479,30 +3477,31 @@ function folderNameOf(doc: DocItem | null): string {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  background: #fff;
+  background: var(--docs-canvas);
   display: flex;
   flex-direction: column;
 }
 .docs-canvas-inner {
   flex: 1 0 auto;
   width: 100%;
-  max-width: 920px;
-  margin: 0 auto;
+  /* 正文撑满画布：不限宽、不居中，宽高都占满可视区域 */
+  max-width: none;
+  margin: 0;
   box-sizing: border-box;
-  /* 文档模式宽度自适应：右留白随视口收缩（宽屏 72px，窄屏最低 20px），左侧固定 40px 容纳加号槽位 */
-  padding: 48px clamp(20px, 5vw, 72px) 120px 40px;
-  background: #fff;
+  /* 四周留白收到最小：左侧 40px 只为悬停的加号 / 块手柄留位，其余各边 24px 文字安全边距 */
+  padding: 24px 24px 64px 40px;
+  background: var(--docs-canvas);
 }
 /* Mac 客户端：文档正文靠左，去掉 max-width 居中产生的大片左侧留白 */
 :global(html.is-mac) .docs-canvas-inner {
   margin-left: 0;
   margin-right: auto;
 }
-/* 表格 / 思维导图 / 流程图：内容区撑满 */
+/* 表格 / 思维导图 / 流程图：内容区零留白，编辑器自己撑满 */
 .docs-canvas-inner.is-wide {
   max-width: none;
   width: 100%;
-  padding: 32px 48px 48px;
+  padding: 0;
 }
 /* 表格：画布零留白，编辑器宽高撑满（滚动交给表格自身） */
 .docs-canvas-inner.is-wide.is-sheet {
@@ -3522,16 +3521,16 @@ function folderNameOf(doc: DocItem | null): string {
 .docs-title-input {
   width: 100%;
   padding: 0;
-  font-size: 36px;
+  font-size: 30px;
   font-weight: 700;
-  line-height: 1.25;
+  line-height: 1.3;
   letter-spacing: -0.02em;
-  color: #37352f;
+  color: var(--docs-text);
   border: none;
   outline: none;
 }
 .docs-title-input::placeholder {
-  color: #c7c7c5;
+  color: var(--docs-text-3);
 }
 /* 标题下方作者行：头像 · 作者 · 修改日期 */
 .docs-doc-meta {
@@ -3539,8 +3538,8 @@ function folderNameOf(doc: DocItem | null): string {
   align-items: center;
   gap: 8px;
   margin-top: 16px;
-  font-size: 13px;
-  color: #787774;
+  font-size: 12px;
+  color: var(--docs-text-3);
 }
 .docs-doc-avatar {
   display: inline-flex;
@@ -3555,13 +3554,13 @@ function folderNameOf(doc: DocItem | null): string {
 }
 .docs-doc-author {
   font-weight: 500;
-  color: #646a73;
+  color: var(--docs-text-2);
 }
 .docs-doc-sep {
   width: 1px;
   height: 12px;
   margin: 0 4px;
-  background: #e5e5e3;
+  background: var(--docs-border);
 }
 .docs-editor-wrap {
   position: relative;
@@ -3579,20 +3578,19 @@ function folderNameOf(doc: DocItem | null): string {
   width: 26px;
   height: 26px;
   font-size: 14px;
-  color: #91918e;
-  background: #fff;
-  border: 1px solid #e5e5e3;
-  border-radius: 6px;
+  color: var(--docs-text-3);
+  background: var(--docs-canvas);
+  border: 1px solid var(--docs-border);
+  border-radius: var(--docs-radius);
   cursor: pointer;
   transition: background 0.12s, color 0.12s, border-color 0.12s, box-shadow 0.12s;
 }
 /* 鼠标悬停 / 菜单展开时颜色变暗 */
 .docs-block-plus:hover,
 .docs-block-plus.is-open {
-  color: #1f2329;
-  background: #f2f3f5;
-  border-color: #d0d3d6;
-  box-shadow: 0 1px 3px rgba(31, 35, 41, 0.08);
+  color: var(--docs-text);
+  background: var(--docs-hover);
+  border-color: var(--docs-border-strong);
 }
 /* 富文本块：不展示"+",改展示块类型 + 拖拽手柄 */
 .docs-block-plus.is-block {
@@ -3600,14 +3598,14 @@ function folderNameOf(doc: DocItem | null): string {
   width: auto;
   min-width: 26px;
   padding: 0 5px;
-  color: #646a73;
-  background: #f2f3f5;
+  color: var(--docs-text-2);
+  background: var(--docs-hover);
   border-color: transparent;
 }
 .docs-block-plus.is-block:hover,
 .docs-block-plus.is-block.is-open {
-  color: #1f2329;
-  background: #e9eaec;
+  color: var(--docs-text);
+  background: var(--docs-hover);
   border-color: transparent;
 }
 .docs-block-plus-label {
@@ -3617,21 +3615,21 @@ function folderNameOf(doc: DocItem | null): string {
 }
 .docs-block-plus-drag {
   font-size: 12px;
-  color: #a5a9b0;
+  color: var(--docs-text-3);
 }
 /* "+"下拉面板：基础排版 + 常用富文本元素 */
 .docs-insert-panel {
   width: 288px;
   padding: 8px 12px 12px;
-  background: #fff;
-  border: 1px solid #f0f1f2;
-  border-radius: 10px;
-  box-shadow: 0 8px 28px rgba(31, 35, 41, 0.12);
+  background: var(--docs-canvas);
+  border: 1px solid var(--docs-border);
+  border-radius: var(--docs-radius-lg);
+  box-shadow: var(--docs-shadow-float);
 }
 .docs-insert-label {
   padding: 8px 0 4px;
   font-size: 13px;
-  color: #8f959e;
+  color: var(--docs-text-3);
 }
 .docs-insert-grid {
   display: grid;
@@ -3644,21 +3642,21 @@ function folderNameOf(doc: DocItem | null): string {
   justify-content: center;
   height: 34px;
   font-size: 16px;
-  color: #1f2329;
+  color: var(--docs-text);
   background: transparent;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--docs-radius);
   cursor: pointer;
   transition: background 0.12s, color 0.12s;
 }
 .docs-insert-cell:hover {
-  color: #646a73;
-  background: #f2f3f5;
+  color: var(--docs-text-2);
+  background: var(--docs-hover);
 }
 /* 当前块类型高亮 */
 .docs-insert-cell.is-active {
-  color: #3370ff;
-  background: #e1eaff;
+  color: var(--c-primary);
+  background: var(--c-primary-bg);
 }
 .docs-insert-glyph {
   font-size: 14px;
@@ -3669,10 +3667,10 @@ function folderNameOf(doc: DocItem | null): string {
 .docs-block-panel {
   width: 268px;
   padding: 8px 10px 10px;
-  background: #fff;
-  border: 1px solid #f0f1f2;
-  border-radius: 10px;
-  box-shadow: 0 8px 28px rgba(31, 35, 41, 0.12);
+  background: var(--docs-canvas);
+  border: 1px solid var(--docs-border);
+  border-radius: var(--docs-radius-lg);
+  box-shadow: var(--docs-shadow-float);
 }
 .docs-block-grid {
   display: grid;
@@ -3682,17 +3680,17 @@ function folderNameOf(doc: DocItem | null): string {
 .docs-block-divider {
   height: 1px;
   margin: 8px 0 6px;
-  background: #f0f1f2;
+  background: var(--docs-border);
 }
 .docs-block-row-icon {
   flex: none;
   font-size: 16px;
-  color: #646a73;
+  color: var(--docs-text-2);
 }
 /* 删除类操作：悬停转为警示色 */
 .docs-insert-item.is-danger:hover .docs-insert-item-label,
 .docs-insert-item.is-danger:hover .docs-block-row-icon {
-  color: #f54a45;
+  color: var(--docs-danger);
 }
 .docs-block-colors {
   display: flex;
@@ -3711,13 +3709,13 @@ function folderNameOf(doc: DocItem | null): string {
   gap: 10px;
   height: 38px;
   padding: 0 8px;
-  border-radius: 6px;
+  border-radius: var(--docs-radius);
   cursor: pointer;
   transition: background 0.12s;
 }
 .docs-insert-item:hover,
 .docs-insert-item.is-sub-open {
-  background: #f2f3f5;
+  background: var(--docs-hover);
 }
 .docs-insert-item-icon {
   flex: none;
@@ -3725,18 +3723,18 @@ function folderNameOf(doc: DocItem | null): string {
   height: 26px;
   padding: 5px;
   font-size: 15px;
-  border-radius: 6px;
+  border-radius: var(--docs-radius);
   box-sizing: border-box;
 }
 .docs-insert-item-label {
   flex: 1;
   font-size: 14px;
-  color: #1f2329;
+  color: var(--docs-text);
 }
 .docs-insert-item-caret {
   flex: none;
   font-size: 11px;
-  color: #8f959e;
+  color: var(--docs-text-3);
 }
 .docs-insert-sub {
   position: absolute;
@@ -3745,25 +3743,25 @@ function folderNameOf(doc: DocItem | null): string {
   z-index: 10;
   min-width: 148px;
   padding: 6px;
-  background: #fff;
-  border: 1px solid #f0f1f2;
-  border-radius: 8px;
-  box-shadow: 0 8px 24px rgba(31, 35, 41, 0.14);
+  background: var(--docs-canvas);
+  border: 1px solid var(--docs-border);
+  border-radius: var(--docs-radius-lg);
+  box-shadow: var(--docs-shadow-float);
 }
 .docs-insert-sub-item {
   display: block;
   width: 100%;
   padding: 7px 10px;
   font-size: 13px;
-  color: #1f2329;
+  color: var(--docs-text);
   text-align: left;
   background: transparent;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--docs-radius);
   cursor: pointer;
 }
 .docs-insert-sub-item:hover {
-  background: #f2f3f5;
+  background: var(--docs-hover);
 }
 .docs-hidden-file {
   display: none;
@@ -3777,15 +3775,15 @@ function folderNameOf(doc: DocItem | null): string {
   max-height: min(340px, 60vh);
   padding: 6px;
   overflow-y: auto;
-  background: #fff;
-  border: 1px solid #f0f1f2;
-  border-radius: 10px;
-  box-shadow: 0 8px 28px rgba(31, 35, 41, 0.14);
+  background: var(--docs-canvas);
+  border: 1px solid var(--docs-border);
+  border-radius: var(--docs-radius-lg);
+  box-shadow: var(--docs-shadow-float);
 }
 .docs-slash-title {
   padding: 6px 8px 4px;
   font-size: 12px;
-  color: #8f959e;
+  color: var(--docs-text-3);
 }
 .docs-slash-item {
   display: flex;
@@ -3794,16 +3792,16 @@ function folderNameOf(doc: DocItem | null): string {
   width: 100%;
   padding: 6px 8px;
   font-size: 13px;
-  color: #37352f;
+  color: var(--docs-text);
   text-align: left;
   background: transparent;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--docs-radius);
   cursor: pointer;
 }
 .docs-slash-item.is-active {
-  color: #1f2329;
-  background: #f2f3f5;
+  color: var(--docs-text);
+  background: var(--docs-hover);
 }
 .docs-slash-icon {
   display: inline-flex;
@@ -3814,8 +3812,8 @@ function folderNameOf(doc: DocItem | null): string {
   height: 24px;
   font-size: 12px;
   font-weight: 600;
-  color: #646a73;
-  background: #f5f6f7;
+  color: var(--docs-text-2);
+  background: var(--docs-side-bg);
   border-radius: 5px;
 }
 .docs-slash-label {
@@ -3826,7 +3824,7 @@ function folderNameOf(doc: DocItem | null): string {
 .docs-slash-empty {
   padding: 14px 8px;
   font-size: 13px;
-  color: #a5a9b0;
+  color: var(--docs-text-3);
   text-align: center;
 }
 /* 选中文字的浮动格式工具栏 */
@@ -3837,10 +3835,10 @@ function folderNameOf(doc: DocItem | null): string {
   align-items: center;
   gap: 2px;
   padding: 5px 8px;
-  background: #fff;
-  border: 1px solid #e5e6eb;
-  border-radius: 10px;
-  box-shadow: 0 8px 24px rgba(31, 35, 41, 0.14);
+  background: var(--docs-canvas);
+  border: 1px solid var(--docs-border);
+  border-radius: var(--docs-radius-lg);
+  box-shadow: var(--docs-shadow-float);
   transform: translateX(-50%);
   white-space: nowrap;
   user-select: none;
@@ -3858,16 +3856,16 @@ function folderNameOf(doc: DocItem | null): string {
   height: 30px;
   padding: 0 5px;
   font-size: 15px;
-  color: #1f2329;
+  color: var(--docs-text);
   background: transparent;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--docs-radius);
   cursor: pointer;
   transition: background 0.12s, color 0.12s;
 }
 .docs-bubble-btn:hover,
 .docs-bubble-btn.is-open {
-  background: #f2f3f5;
+  background: var(--docs-hover);
 }
 .docs-bubble-btn.is-label {
   min-width: 44px;
@@ -3876,14 +3874,14 @@ function folderNameOf(doc: DocItem | null): string {
 }
 .docs-bubble-caret {
   font-size: 10px;
-  color: #8f959e;
+  color: var(--docs-text-3);
 }
 .docs-bubble-sep {
   flex: none;
   width: 1px;
   height: 18px;
   margin: 0 4px;
-  background: #e5e6eb;
+  background: var(--docs-border);
 }
 /* 高亮按钮：字母 A 带色条 */
 .docs-bubble-mark {
@@ -3909,10 +3907,10 @@ function folderNameOf(doc: DocItem | null): string {
   z-index: 5;
   min-width: 132px;
   padding: 6px;
-  background: #fff;
-  border: 1px solid #f0f1f2;
-  border-radius: 8px;
-  box-shadow: 0 8px 24px rgba(31, 35, 41, 0.14);
+  background: var(--docs-canvas);
+  border: 1px solid var(--docs-border);
+  border-radius: var(--docs-radius-lg);
+  box-shadow: var(--docs-shadow-float);
 }
 .docs-bubble-menu.is-right {
   left: auto;
@@ -3923,16 +3921,16 @@ function folderNameOf(doc: DocItem | null): string {
   width: 100%;
   padding: 6px 10px;
   font-size: 13px;
-  color: #1f2329;
+  color: var(--docs-text);
   text-align: left;
   background: transparent;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--docs-radius);
   cursor: pointer;
 }
 .docs-bubble-menu-item:hover,
 .docs-bubble-menu-item.is-active {
-  background: #f2f3f5;
+  background: var(--docs-hover);
 }
 .docs-bubble-colors {
   display: flex;
@@ -3954,23 +3952,23 @@ function folderNameOf(doc: DocItem | null): string {
 .docs-bubble-clear-color {
   padding: 0 4px;
   font-size: 12px;
-  color: #646a73;
+  color: var(--docs-text-2);
   white-space: nowrap;
   background: transparent;
   border: none;
   cursor: pointer;
 }
 .docs-bubble-clear-color:hover {
-  color: #1f2329;
+  color: var(--docs-text);
 }
 .docs-editor {
   position: relative;
   min-height: 46vh;
   /* 正文顶部间距收紧：不再与作者行、首个块的 margin 叠加出大片留白 */
-  padding: 16px 0 40px;
-  font-size: 16px;
+  padding: 0 0 40px;
+  font-size: 15px;
   line-height: 1.75;
-  color: #37352f;
+  color: var(--docs-text);
   outline: none;
 }
 /* 首个块去掉自带的上外边距，避免顶部留白翻倍 */
@@ -3982,26 +3980,26 @@ function folderNameOf(doc: DocItem | null): string {
 .docs-editor.is-empty::before {
   content: attr(data-placeholder);
   position: absolute;
-  top: 16px; /* 与编辑器 padding-top 对齐，即内容首行 */
+  top: 0; /* 与编辑器 padding-top 对齐（已为 0），即内容首行 */
   left: 0;
-  color: #c7c7c5;
+  color: var(--docs-text-3);
   pointer-events: none;
 }
 .docs-editor :deep(h1) {
   margin: 34px 0 12px;
-  font-size: 32px;
-  font-weight: 600;
-  line-height: 1.25;
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1.3;
 }
 .docs-editor :deep(h2) {
   margin: 30px 0 10px;
-  font-size: 26px;
+  font-size: 21px;
   font-weight: 600;
   line-height: 1.3;
 }
 .docs-editor :deep(h3) {
   margin: 24px 0 8px;
-  font-size: 20px;
+  font-size: 18px;
   font-weight: 600;
   line-height: 1.4;
 }
@@ -4019,14 +4017,14 @@ function folderNameOf(doc: DocItem | null): string {
 .docs-editor-wrap.is-edit .docs-editor :deep(.docs-cols:hover),
 .docs-editor-wrap.is-edit .docs-editor :deep(.docs-insert-table:hover),
 .docs-editor-wrap.is-edit .docs-editor :deep(.docs-img:hover) {
-  background: #f5f6f7;
-  border-radius: 4px;
+  background: var(--docs-side-bg);
+  border-radius: var(--docs-radius-sm);
 }
 .docs-editor :deep(.docs-img) {
   display: block;
   max-width: 100%;
   margin: 12px 0;
-  border-radius: 6px;
+  border-radius: var(--docs-radius);
 }
 /* 不用 flex 布局：contenteditable 里的 flex 容器会让 Chrome 把光标画到容器底部（光标偏下），
    改为块级排版 + 绝对定位勾选框，文字保持普通行内排版，光标高度与文字一致 */
@@ -4047,14 +4045,14 @@ function folderNameOf(doc: DocItem | null): string {
   width: 16px;
   height: 16px;
   box-sizing: border-box;
-  background: #fff;
-  border: 1.5px solid #c9cdd4;
-  border-radius: 4px;
+  background: var(--docs-canvas);
+  border: 1.5px solid var(--docs-border-strong);
+  border-radius: var(--docs-radius-sm);
   cursor: pointer;
 }
 /* 勾选后：不整块填充颜色，只描蓝边 + 显示蓝色对勾 */
 .docs-editor :deep(.docs-todo.is-done .docs-todo-box) {
-  border-color: #3370ff;
+  border-color: var(--c-primary);
 }
 /* CSS 画对勾（伪元素不参与 innerHTML 保存，不会污染文档内容） */
 .docs-editor :deep(.docs-todo.is-done .docs-todo-box)::after {
@@ -4064,12 +4062,12 @@ function folderNameOf(doc: DocItem | null): string {
   top: 2px;
   width: 5px;
   height: 9px;
-  border: solid #3370ff;
+  border: solid var(--c-primary);
   border-width: 0 2px 2px 0;
   transform: rotate(45deg);
 }
 .docs-editor :deep(.docs-todo.is-done .docs-todo-text) {
-  color: #bbb;
+  color: var(--docs-text-3);
   text-decoration: line-through;
 }
 .docs-editor :deep(.docs-insert-table) {
@@ -4082,7 +4080,7 @@ function folderNameOf(doc: DocItem | null): string {
   min-width: 40px;
   padding: 6px 10px;
   vertical-align: top;
-  border: 1px solid #e5e6eb;
+  border: 1px solid var(--docs-border);
 }
 .docs-editor :deep(.docs-cols) {
   display: grid;
@@ -4092,15 +4090,15 @@ function folderNameOf(doc: DocItem | null): string {
 .docs-editor :deep(.docs-col) {
   min-height: 44px;
   padding: 8px 10px;
-  border: 1px dashed #e5e6eb;
-  border-radius: 6px;
+  border: 1px dashed var(--docs-border);
+  border-radius: var(--docs-radius);
 }
 .docs-editor :deep(.docs-callout) {
   margin: 12px 0;
   padding: 12px 14px;
   background: #fff8e6;
   border-left: 3px solid #ffc60a;
-  border-radius: 6px;
+  border-radius: var(--docs-radius);
 }
 .docs-editor :deep(.docs-attach) {
   display: inline-flex;
@@ -4108,15 +4106,15 @@ function folderNameOf(doc: DocItem | null): string {
   padding: 4px 10px;
   margin: 4px 0;
   font-size: 13px;
-  color: #646a73;
-  background: #f2f3f5;
-  border-radius: 6px;
+  color: var(--docs-text-2);
+  background: var(--docs-hover);
+  border-radius: var(--docs-radius);
 }
 .docs-editor :deep(code) {
   padding: 1px 5px;
   font-size: 14px;
-  background: #f2f3f5;
-  border-radius: 4px;
+  background: var(--docs-hover);
+  border-radius: var(--docs-radius-sm);
 }
 .docs-editor :deep(pre code) {
   padding: 0;
@@ -4129,7 +4127,7 @@ function folderNameOf(doc: DocItem | null): string {
 .docs-editor ::selection,
 .docs-editor :deep(::selection),
 .docs-title-input::selection {
-  background: rgba(51, 112, 255, 0.24);
+  background: color-mix(in srgb, var(--c-primary) 24%, transparent);
   color: inherit;
 }
 .docs-editor :deep(ul),
@@ -4140,7 +4138,7 @@ function folderNameOf(doc: DocItem | null): string {
 /* 有序列表序号 / 无序列表圆点显示为主题蓝 */
 .docs-editor :deep(ol li)::marker,
 .docs-editor :deep(ul li)::marker {
-  color: #3370ff;
+  color: var(--c-primary);
   font-weight: 600;
 }
 .docs-editor :deep(li) {
@@ -4149,8 +4147,8 @@ function folderNameOf(doc: DocItem | null): string {
 .docs-editor :deep(blockquote) {
   margin: 12px 0;
   padding: 4px 0 4px 14px;
-  color: #787774;
-  border-left: 3px solid #e9e9e7;
+  color: var(--docs-text-2);
+  border-left: 3px solid var(--docs-border);
 }
 .docs-editor :deep(pre) {
   margin: 12px 0;
@@ -4158,33 +4156,33 @@ function folderNameOf(doc: DocItem | null): string {
   overflow-x: auto;
   font-size: 13px;
   line-height: 1.6;
-  color: #37352f;
+  color: var(--docs-text);
   white-space: pre-wrap;
-  background: #f7f7f5;
-  border-radius: 6px;
+  background: var(--docs-side-bg);
+  border-radius: var(--docs-radius);
 }
 .docs-editor :deep(hr) {
   margin: 24px 0;
   border: none;
-  border-top: 1px solid #e9e9e7;
+  border-top: 1px solid var(--docs-border);
 }
 .docs-editor :deep(a) {
-  color: #00b96b;
+  color: var(--c-primary);
 }
 .docs-item-star {
   flex: none;
   font-size: 10px;
-  color: #d4a72c;
+  color: var(--docs-warn);
 }
 /* 宽屏 / 专注模式 */
 .docs-canvas-inner.is-full {
-  max-width: 1200px;
+  max-width: none;
 }
 .docs-page.is-focus .docs-side {
   display: none;
 }
 .docs-page.is-focus .docs-canvas-inner {
-  max-width: 1040px;
+  max-width: none;
 }
 
 /* ---- 文档模式宽度自适应 ---- */
@@ -4201,7 +4199,7 @@ function folderNameOf(doc: DocItem | null): string {
     display: none;
   }
   .docs-canvas-inner {
-    padding: 40px clamp(16px, 4vw, 48px) 96px 40px;
+    padding: 24px 24px 64px 40px;
   }
   .docs-canvas-inner.is-full,
   .docs-page.is-focus .docs-canvas-inner {
@@ -4237,16 +4235,15 @@ function folderNameOf(doc: DocItem | null): string {
   width: 100%;
   padding: 14px 16px;
   text-align: left;
-  background: #fff;
-  border: 1px solid #eff0f2;
-  border-radius: 10px;
+  background: var(--docs-canvas);
+  border: 1px solid var(--docs-border);
+  border-radius: var(--docs-radius-lg);
   cursor: pointer;
   transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
 }
 .docs-quick-card:hover {
-  background: #fcfcfd;
-  border-color: #dcdde1;
-  box-shadow: 0 4px 16px rgba(31, 35, 41, 0.06);
+  background: var(--docs-paper);
+  border-color: var(--docs-border-strong);
 }
 .docs-quick-icon {
   flex: none;
@@ -4260,13 +4257,15 @@ function folderNameOf(doc: DocItem | null): string {
   border-radius: 9px;
 }
 .docs-quick-icon.is-new {
-  background: linear-gradient(135deg, #3370ff, #5b8cff);
+  background: linear-gradient(135deg, var(--c-primary), var(--c-primary-hover));
 }
 .docs-quick-icon.is-upload {
-  background: linear-gradient(135deg, #f59e0b, #fbbf24);
+  background: var(--docs-hover);
+  color: var(--docs-text-2);
 }
 .docs-quick-icon.is-template {
-  background: linear-gradient(135deg, #8b5cf6, #a78bfa);
+  background: var(--docs-hover);
+  color: var(--docs-text-2);
 }
 .docs-quick-text {
   flex: 1;
@@ -4278,16 +4277,16 @@ function folderNameOf(doc: DocItem | null): string {
 .docs-quick-text b {
   font-size: 14px;
   font-weight: 600;
-  color: #1f2329;
+  color: var(--docs-text);
 }
 .docs-quick-text small {
-  font-size: 11px;
-  color: #8f959e;
+  font-size: 12px;
+  color: var(--docs-text-3);
 }
 .docs-quick-caret {
   flex: none;
   font-size: 11px;
-  color: #b0b3b8;
+  color: var(--docs-text-3);
 }
 .docs-upload-input {
   display: none;
@@ -4299,15 +4298,15 @@ function folderNameOf(doc: DocItem | null): string {
 }
 .docs-home-title {
   margin: 0;
-  font-size: 26px;
+  font-size: 30px;
   font-weight: 700;
   letter-spacing: -0.01em;
-  color: #1f2329;
+  color: var(--docs-text);
 }
 .docs-home-sub {
   margin: 4px 0 0;
   font-size: 12px;
-  color: #8f959e;
+  color: var(--docs-text-3);
 }
 .docs-home-new {
   display: inline-flex;
@@ -4316,23 +4315,32 @@ function folderNameOf(doc: DocItem | null): string {
   height: 36px;
   padding: 0 16px;
   font-size: 13px;
+  font-weight: 500;
   color: #fff;
-  background: #3370ff;
+  /* 静止底色用主题的按下色（苹果蓝 #0071E3）：白字对比度 4.7:1，达到 AA；悬停加深 */
+  background: var(--c-primary-active);
   border: none;
-  border-radius: 8px;
+  border-radius: var(--docs-radius);
   cursor: pointer;
-  transition: background 0.15s;
+  transition: background-color var(--docs-dur) var(--docs-ease), box-shadow var(--docs-dur) var(--docs-ease);
 }
 .docs-home-new:hover {
-  background: #2860e0;
+  background: color-mix(in srgb, var(--c-primary-active) 88%, #000);
+}
+.docs-home-new:active {
+  background: color-mix(in srgb, var(--c-primary-active) 78%, #000);
+}
+.docs-home-new:focus-visible {
+  outline: none;
+  box-shadow: var(--docs-focus);
 }
 .docs-home-clear {
-  color: #d54941;
-  background: #fff;
-  border: 1px solid #f2c1c1;
+  color: var(--docs-danger);
+  background: var(--docs-canvas);
+  border: 1px solid var(--docs-border-strong);
 }
 .docs-home-clear:hover {
-  background: #fff1f0;
+  background: color-mix(in srgb, var(--docs-danger) 8%, transparent);
 }
 /* 回收站操作 */
 .docs-trash-actions {
@@ -4345,22 +4353,22 @@ function folderNameOf(doc: DocItem | null): string {
   padding: 0 10px;
   margin-left: 6px;
   font-size: 12px;
-  color: #3370ff;
-  background: #f2f6ff;
+  color: var(--c-primary);
+  background: var(--c-primary-bg);
   border: none;
-  border-radius: 6px;
+  border-radius: var(--docs-radius);
   cursor: pointer;
   transition: background 0.12s;
 }
 .docs-trash-btn:hover {
-  background: #e8f0fe;
+  background: var(--c-primary-bg-hover);
 }
 .docs-trash-btn.danger {
-  color: #d54941;
-  background: #fff1f0;
+  color: var(--docs-danger);
+  background: color-mix(in srgb, var(--docs-danger) 8%, transparent);
 }
 .docs-trash-btn.danger:hover {
-  background: #ffe4e2;
+  background: color-mix(in srgb, var(--docs-danger) 14%, transparent);
 }
 .docs-home-toolbar {
   display: flex;
@@ -4368,7 +4376,7 @@ function folderNameOf(doc: DocItem | null): string {
   justify-content: space-between;
   gap: 16px;
   margin-top: 24px;
-  border-bottom: 1px solid #eff0f2;
+  border-bottom: 1px solid var(--docs-border);
 }
 .docs-home-tabs {
   display: flex;
@@ -4378,16 +4386,16 @@ function folderNameOf(doc: DocItem | null): string {
   position: relative;
   padding: 0 0 10px;
   font-size: 13px;
-  color: #646a73;
+  color: var(--docs-text-2);
   background: none;
   border: none;
   cursor: pointer;
 }
 .docs-home-tabs button:hover {
-  color: #1f2329;
+  color: var(--docs-text);
 }
 .docs-home-tabs button.active {
-  color: #3370ff;
+  color: var(--c-primary);
   font-weight: 500;
 }
 .docs-home-tabs button.active::after {
@@ -4397,7 +4405,7 @@ function folderNameOf(doc: DocItem | null): string {
   right: 0;
   bottom: -1px;
   height: 2px;
-  background: #3370ff;
+  background: var(--c-primary);
   border-radius: 1px;
 }
 .docs-home-right {
@@ -4413,29 +4421,29 @@ function folderNameOf(doc: DocItem | null): string {
 .docs-home-sort :deep(.ant-select-selector) {
   height: 30px !important;
   padding: 0 28px 0 10px !important;
-  background: #f5f6f7 !important;
+  background: var(--docs-side-bg) !important;
   border-color: transparent !important;
-  border-radius: 8px !important;
+  border-radius: var(--docs-radius) !important;
   box-shadow: none !important;
 }
 .docs-home-sort:hover :deep(.ant-select-selector) {
-  background: #eef0f2 !important;
+  background: var(--docs-hover) !important;
 }
 .docs-home-sort :deep(.ant-select-selection-item) {
   font-size: 12px;
   line-height: 28px !important;
-  color: #50565e;
+  color: var(--docs-text-2);
 }
 .docs-sort-icon {
   font-size: 13px;
-  color: #8f959e;
+  color: var(--docs-text-3);
 }
 .docs-view-toggle {
   display: inline-flex;
   gap: 2px;
   padding: 2px;
-  background: #f2f3f5;
-  border-radius: 7px;
+  background: var(--docs-hover);
+  border-radius: var(--docs-radius);
 }
 .docs-view-toggle button {
   display: inline-flex;
@@ -4444,17 +4452,16 @@ function folderNameOf(doc: DocItem | null): string {
   width: 28px;
   height: 26px;
   font-size: 13px;
-  color: #8f959e;
+  color: var(--docs-text-3);
   background: transparent;
   border: none;
-  border-radius: 5px;
+  border-radius: var(--docs-radius);
   cursor: pointer;
   transition: background 0.12s, color 0.12s;
 }
 .docs-view-toggle button.active {
-  color: #1f2329;
-  background: #fff;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+  color: var(--docs-text);
+  background: var(--docs-canvas);
 }
 .docs-col-owner {
   width: 14%;
@@ -4473,36 +4480,34 @@ function folderNameOf(doc: DocItem | null): string {
   gap: 8px;
   padding: 16px;
   text-align: left;
-  background: #fff;
-  border: 1px solid #eff0f2;
-  border-radius: 12px;
+  background: var(--docs-canvas);
+  border: 1px solid var(--docs-border);
+  border-radius: var(--docs-radius-lg);
   cursor: pointer;
   transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s;
 }
 .docs-grid-card:hover {
-  border-color: #dcdde1;
-  box-shadow: 0 4px 16px rgba(31, 35, 41, 0.06);
-  transform: translateY(-1px);
+  border-color: var(--docs-border-strong);
 }
 .docs-grid-title {
   width: 100%;
   overflow: hidden;
   font-size: 14px;
   font-weight: 500;
-  color: #1f2329;
+  color: var(--docs-text);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .docs-grid-meta {
-  font-size: 11px;
-  color: #8f959e;
+  font-size: 12px;
+  color: var(--docs-text-3);
 }
 .docs-grid-star {
   position: absolute;
   top: 14px;
   right: 14px;
   font-size: 12px;
-  color: #f5b400;
+  color: var(--docs-warn);
 }
 .docs-table {
   width: 100%;
@@ -4514,31 +4519,33 @@ function folderNameOf(doc: DocItem | null): string {
   padding: 10px 12px;
   font-size: 12px;
   font-weight: 400;
-  color: #8f959e;
+  color: var(--docs-text-3);
   text-align: left;
-  border-bottom: 1px solid #eff0f2;
+  border-bottom: 1px solid var(--docs-border);
 }
 .docs-table td {
-  padding: 12px;
+  padding: 0 12px;
   overflow: hidden;
-  font-size: 13px;
-  color: #1f2329;
+  font-size: 14px;
+  color: var(--docs-text);
   text-overflow: ellipsis;
   white-space: nowrap;
-  border-bottom: 1px solid #f2f3f5;
+  border-bottom: 1px solid var(--docs-border);
+  height: 40px;
 }
 .docs-table tbody tr {
   cursor: pointer;
   transition: background 0.12s;
 }
 .docs-table tbody tr:hover {
-  background: #f7f8fa;
+  background: var(--docs-hover);
 }
 .docs-table-title {
   display: flex;
   align-items: center;
   gap: 8px;
   min-width: 0;
+  font-weight: 500;
 }
 .docs-table-title > span {
   overflow: hidden;
@@ -4546,7 +4553,7 @@ function folderNameOf(doc: DocItem | null): string {
   white-space: nowrap;
 }
 .docs-table-muted {
-  color: #8f959e !important;
+  color: var(--docs-text-3) !important;
   font-size: 12px !important;
 }
 .docs-col-location {
@@ -4565,8 +4572,8 @@ function folderNameOf(doc: DocItem | null): string {
   justify-content: center;
   width: 24px;
   height: 24px;
-  color: #8f959e;
-  border-radius: 5px;
+  color: var(--docs-text-3);
+  border-radius: var(--docs-radius);
   opacity: 0;
   transition: opacity 0.12s, background 0.12s;
 }
@@ -4574,12 +4581,12 @@ function folderNameOf(doc: DocItem | null): string {
   opacity: 1;
 }
 .docs-table-more:hover {
-  background: #eef0f2;
+  background: var(--docs-hover);
 }
 .docs-home-empty {
   padding: 60px 0;
   font-size: 13px;
-  color: #8f959e;
+  color: var(--docs-text-3);
   text-align: center;
 }
 
@@ -4591,21 +4598,21 @@ function folderNameOf(doc: DocItem | null): string {
   align-items: center;
   justify-content: center;
   gap: 10px;
-  color: #91918e;
+  color: var(--docs-text-3);
 }
 .docs-empty-icon {
   font-size: 36px;
-  color: #d3d3d1;
+  color: var(--docs-border-strong);
 }
 .docs-empty-title {
   font-size: 15px;
   font-weight: 600;
-  color: #37352f;
+  color: var(--docs-text);
 }
 .docs-empty-desc {
   margin-bottom: 8px;
   font-size: 12px;
-  color: #91918e;
+  color: var(--docs-text-3);
 }
 
 /* 文件夹弹窗 */
@@ -4620,15 +4627,15 @@ function folderNameOf(doc: DocItem | null): string {
   .docs-side {
     flex-basis: 200px;
   }
-  /* 左侧仍保留 40px 加号槽位，仅收窄右留白 */
+  /* 左侧仍保留 40px 加号槽位，其余各边保持最小留白 */
   .docs-canvas-inner {
-    padding: 32px 16px 80px 40px;
+    padding: 24px 24px 64px 40px;
   }
   .docs-canvas-inner.is-wide {
-    padding: 20px 16px 24px;
+    padding: 0;
   }
   .docs-title-input {
-    font-size: 28px;
+    font-size: 26px;
   }
 }
 
@@ -4639,10 +4646,10 @@ function folderNameOf(doc: DocItem | null): string {
     padding: 12px 8px 10px;
   }
   .docs-canvas-inner {
-    padding: 28px 12px 72px 36px;
+    padding: 24px 16px 64px 40px;
   }
   .docs-canvas-inner.is-wide {
-    padding: 16px 12px 20px;
+    padding: 0;
   }
   .docs-title-input {
     font-size: 24px;
@@ -4664,11 +4671,11 @@ function folderNameOf(doc: DocItem | null): string {
 /* ---- 高度自适应：矮窗口收紧垂直留白，保证首屏可见更多正文 ---- */
 @media (max-height: 760px) {
   .docs-canvas-inner {
-    padding-top: 32px;
-    padding-bottom: 88px;
+    padding-top: 24px;
+    padding-bottom: 64px;
   }
   .docs-canvas-inner.is-wide {
-    padding-top: 24px;
+    padding-top: 0;
   }
   .docs-side {
     padding-top: 12px;
@@ -4683,7 +4690,7 @@ function folderNameOf(doc: DocItem | null): string {
     padding-top: 24px;
   }
   .docs-title-input {
-    font-size: 28px;
+    font-size: 26px;
   }
   .docs-home {
     padding-top: 16px;

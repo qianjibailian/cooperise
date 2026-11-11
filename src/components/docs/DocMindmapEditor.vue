@@ -82,26 +82,31 @@ function onInput() {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  padding: 6px 0;
+  padding: var(--docs-space-3);
+  font-family: var(--docs-font);
+  background: var(--docs-paper);
+  border: 1px solid var(--docs-border);
+  border-radius: var(--docs-radius-lg);
 }
 .mind-row {
   position: relative;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--docs-space-2);
   min-height: 34px;
-  border-radius: 8px;
-  transition: background 0.15s;
+  border-radius: var(--docs-radius);
+  transition: background-color var(--docs-dur) var(--docs-ease);
 }
 .mind-row:hover {
-  background: #f7f8fa;
+  background: var(--docs-hover);
 }
+/* 连线（横向分支 + 纵向主干）：--docs-text-3 */
 .mind-branch {
   position: relative;
   flex: none;
   width: 14px;
   height: 1px;
-  background: #dee0e3;
+  background: var(--docs-text-3);
 }
 .mind-branch::before {
   content: '';
@@ -110,7 +115,7 @@ function onInput() {
   top: -18px;
   width: 1px;
   height: 36px;
-  background: #eff0f2;
+  background: var(--docs-text-3);
 }
 .mind-root-dot {
   flex: none;
@@ -120,28 +125,34 @@ function onInput() {
   background: var(--c-primary);
   border-radius: 50%;
 }
+/* 节点：画布底 + 1px 强描边 + 圆角；聚焦即选中，描边 2px 主题色 */
 .mind-input {
   flex: 1;
   min-width: 0;
   height: 30px;
-  padding: 0 8px;
-  font-size: 14px;
-  color: #1f2329;
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: 6px;
+  padding: 0 var(--docs-space-2);
+  font-family: inherit;
+  font-size: var(--docs-fs-control);
+  line-height: var(--docs-lh-ui);
+  color: var(--docs-text);
+  background: var(--docs-canvas);
+  border: 1px solid var(--docs-border-strong);
+  border-radius: var(--docs-radius);
   outline: none;
-  transition: border-color 0.15s, background 0.15s;
+  transition: border-color var(--docs-dur) var(--docs-ease), background-color var(--docs-dur) var(--docs-ease), box-shadow var(--docs-dur) var(--docs-ease);
+}
+.mind-input::placeholder {
+  color: var(--docs-text-3);
 }
 .mind-input:hover {
-  border-color: #e3e5e8;
+  border-color: var(--c-primary-border);
 }
 .mind-input:focus {
-  background: #fff;
   border-color: var(--c-primary);
+  box-shadow: inset 0 0 0 1px var(--c-primary), var(--docs-focus);
 }
 .mind-input.is-root {
-  font-size: 18px;
+  font-size: var(--docs-fs-subtitle);
   font-weight: 600;
 }
 .mind-actions {
@@ -149,11 +160,13 @@ function onInput() {
   display: inline-flex;
   gap: 2px;
   opacity: 0;
-  transition: opacity 0.15s;
+  transition: opacity var(--docs-dur) var(--docs-ease);
 }
-.mind-row:hover .mind-actions {
+.mind-row:hover .mind-actions,
+.mind-row:focus-within .mind-actions {
   opacity: 1;
 }
+/* 图标按钮：幽灵样式，悬停 --docs-hover */
 .mind-act {
   display: inline-flex;
   align-items: center;
@@ -161,19 +174,27 @@ function onInput() {
   width: 24px;
   height: 24px;
   padding: 0;
-  font-size: 11px;
-  color: #8f959e;
+  font-size: var(--docs-fs-caption);
+  color: var(--docs-text-3);
   background: transparent;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--docs-radius-sm);
   cursor: pointer;
+  transition: background-color var(--docs-dur) var(--docs-ease), color var(--docs-dur) var(--docs-ease), box-shadow var(--docs-dur) var(--docs-ease);
 }
 .mind-act:hover {
-  color: #1f2329;
-  background: #eef0f2;
+  color: var(--docs-text);
+  background: var(--docs-hover);
+}
+.mind-act:active {
+  box-shadow: var(--docs-shadow-control);
+}
+.mind-act:focus-visible {
+  outline: none;
+  box-shadow: var(--docs-focus);
 }
 .mind-act.danger:hover {
-  color: #f54a45;
-  background: #fff1f0;
+  color: var(--docs-danger);
+  background: color-mix(in srgb, var(--docs-danger) 8%, transparent);
 }
 </style>

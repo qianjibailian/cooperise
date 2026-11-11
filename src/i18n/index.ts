@@ -18,6 +18,7 @@ import vxePcUiEnUS from 'vxe-pc-ui/es/language/en-US'
 import vxeTableEnUS from 'vxe-table/lib/locale/lang/en-US'
 import axios from 'axios'
 import { API_BASE_URL } from '@/utils/request'
+import { getToken } from '@/utils/auth'
 
 export type Locale = 'zh' | 'en'
 
@@ -326,13 +327,19 @@ function applyRemoteDictionary(remote: Record<string, string>) {
 }
 
 /**
- * 系统初始化时调用：GET /i18n/all?lang=en 拉取全部译文（无需登录）。
+ * 系统初始化时调用：GET /i18n/all?lang=en 拉取全部译文（无需登录，带无效 token 也返回正常）。
+ * 已登录时同样带上 Authorization，与其他接口的请求头保持一致。
  * 失败时静默沿用本地缓存的词典，不弹错误提示；后台增删改翻译后再调用一次即可刷新
  */
 export function loadRemoteDictionary(): Promise<void> {
   if (remoteLoading) return remoteLoading
+  const token = getToken()
   remoteLoading = axios
-    .get(`${API_BASE_URL}/i18n/all`, { params: { lang: 'en' }, headers: { 'Accept-Language': locale.value }, timeout: 8000 })
+    .get(`${API_BASE_URL}/i18n/all`, {
+      params: { lang: 'en' },
+      headers: { 'Accept-Language': locale.value, ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      timeout: 8000,
+    })
     .then((res) => {
       const data = res.data?.success ? res.data.data : null
       if (data && typeof data === 'object') applyRemoteDictionary(data as Record<string, string>)

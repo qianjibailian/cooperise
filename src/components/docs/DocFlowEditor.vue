@@ -95,43 +95,142 @@ function fitView() {
 .flow-editor {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: var(--docs-space-3);
+  font-family: var(--docs-font);
 }
 .flow-toolbar {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: var(--docs-space-2);
 }
+/* 幽灵按钮：默认透明，悬停 --docs-hover */
 .flow-tool {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--docs-space-1);
   height: 28px;
-  padding: 0 10px;
-  font-size: 12px;
-  color: #646a73;
-  background: #f7f8fa;
+  padding: 0 var(--docs-space-2);
+  font-family: inherit;
+  font-size: var(--docs-fs-control);
+  line-height: var(--docs-lh-ui);
+  color: var(--docs-text-2);
+  background: transparent;
   border: none;
-  border-radius: 7px;
+  border-radius: var(--docs-radius);
   cursor: pointer;
-  transition: background 0.15s, color 0.15s;
+  transition: background-color var(--docs-dur) var(--docs-ease), color var(--docs-dur) var(--docs-ease), box-shadow var(--docs-dur) var(--docs-ease);
 }
 .flow-tool:hover {
-  color: #1f2329;
-  background: #eef0f2;
+  color: var(--docs-text);
+  background: var(--docs-hover);
+}
+.flow-tool:active {
+  box-shadow: var(--docs-shadow-control);
+}
+.flow-tool:focus-visible {
+  outline: none;
+  box-shadow: var(--docs-focus);
+}
+/* 分组分隔：「自适应」与节点工具之间的 1px 竖线（位于 gap 中线） */
+.flow-toolbar > .flow-tool:last-of-type {
+  position: relative;
+}
+.flow-toolbar > .flow-tool:last-of-type::before {
+  content: '';
+  position: absolute;
+  left: calc(var(--docs-space-2) / -2);
+  top: 6px;
+  bottom: 6px;
+  width: 1px;
+  background: var(--docs-border);
 }
 .flow-hint {
   margin-left: auto;
-  font-size: 11px;
-  color: #8f959e;
+  font-size: var(--docs-fs-caption);
+  color: var(--docs-text-3);
 }
+/* 画布：纸色底 + 1px 细线 + 大圆角 */
 .flow-canvas {
   height: calc(100vh - 300px);
   min-height: 420px;
   overflow: hidden;
-  background: #fff;
-  border: 1px solid #eff0f2;
-  border-radius: 10px;
+  background: var(--docs-paper);
+  border: 1px solid var(--docs-border);
+  border-radius: var(--docs-radius-lg);
+}
+
+/* LogicFlow 的内置样式是硬编码色，这里用 :deep 覆盖为 token；
+   画布背景与节点文字是库的内联 style，只能用 !important 覆盖。 */
+.flow-canvas :deep(.lf-graph) {
+  background: var(--docs-paper);
+}
+.flow-canvas :deep(.lf-background-area) {
+  background-color: var(--docs-paper) !important;
+}
+/* 点阵背景：点的颜色 --docs-border */
+.flow-canvas :deep(.lf-grid pattern > rect) {
+  fill: var(--docs-border);
+}
+/* 节点：画布底 + 1px 强描边 + 圆角 */
+.flow-canvas :deep(.lf-node > rect),
+.flow-canvas :deep(.lf-node > ellipse),
+.flow-canvas :deep(.lf-node polygon) {
+  fill: var(--docs-canvas);
+  stroke: var(--docs-border-strong);
+  stroke-width: 1px;
+}
+.flow-canvas :deep(.lf-node > rect) {
+  rx: var(--docs-radius);
+  ry: var(--docs-radius);
+}
+/* 选中节点：2px 主题色描边 */
+.flow-canvas :deep(.lf-node.lf-node-selected > rect),
+.flow-canvas :deep(.lf-node.lf-node-selected > ellipse),
+.flow-canvas :deep(.lf-node.lf-node-selected polygon) {
+  stroke: var(--c-primary);
+  stroke-width: 2px;
+}
+/* 节点文字：--docs-text 13px */
+.flow-canvas :deep(.lf-node text) {
+  fill: var(--docs-text);
+  font-size: var(--docs-fs-control);
+}
+.flow-canvas :deep(.lf-node-text-auto-wrap-content),
+.flow-canvas :deep(.lf-node-text-ellipsis-content) {
+  color: var(--docs-text) !important;
+  font-size: var(--docs-fs-control) !important;
+}
+/* 连线：--docs-text-3 */
+.flow-canvas :deep(.lf-edge polyline),
+.flow-canvas :deep(.lf-edge polygon),
+.flow-canvas :deep(.lf-edge path) {
+  stroke: var(--docs-text-3);
+}
+/* 锚点与选中轮廓 */
+.flow-canvas :deep(.lf-node-anchor) {
+  fill: var(--docs-canvas);
+  stroke: var(--c-primary);
+}
+.flow-canvas :deep(.lf-node-anchor-hover) {
+  fill: var(--c-primary-bg);
+  stroke: var(--c-primary-border);
+}
+.flow-canvas :deep(.lf-outline-node),
+.flow-canvas :deep(.lf-outline-edge) {
+  stroke: var(--docs-text-3);
+}
+/* 框选 */
+.flow-canvas :deep(.lf-multiple-select) {
+  border-color: var(--c-primary);
+  box-shadow: var(--docs-focus);
+}
+/* 节点文字就地编辑框 */
+.flow-canvas :deep(.lf-text-input) {
+  color: var(--docs-text);
+  background: var(--docs-canvas);
+  border-color: var(--c-primary);
+  border-radius: var(--docs-radius-sm);
+  font-family: var(--docs-font);
 }
 </style>

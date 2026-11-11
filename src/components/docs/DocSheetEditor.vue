@@ -249,9 +249,10 @@ function applyTemplate(tpl: (typeof TEMPLATES)[number]) {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  background: #fff;
-  border: 1px solid #e5e6eb;
-  border-radius: 8px;
+  font-family: var(--docs-font);
+  background: var(--docs-canvas);
+  border: 1px solid var(--docs-border);
+  border-radius: var(--docs-radius-lg);
 }
 
 /* 工作表标签 */
@@ -259,24 +260,25 @@ function applyTemplate(tpl: (typeof TEMPLATES)[number]) {
   display: flex;
   align-items: center;
   gap: 2px;
-  padding: 0 10px;
-  background: #fafbfc;
-  border-bottom: 1px solid #eff0f2;
+  padding: 0 var(--docs-space-2);
+  background: var(--docs-paper);
+  border-bottom: 1px solid var(--docs-border);
 }
 .sheet-tab {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--docs-space-2);
   height: 34px;
-  padding: 0 14px;
-  font-size: 12px;
-  color: #646a73;
+  padding: 0 var(--docs-space-4);
+  font-size: var(--docs-fs-control);
+  line-height: var(--docs-lh-ui);
+  color: var(--docs-text-2);
   border-bottom: 2px solid transparent;
 }
 .sheet-tab.is-active {
-  color: #3370ff;
-  background: #fff;
-  border-bottom-color: #3370ff;
+  color: var(--c-primary);
+  background: var(--docs-canvas);
+  border-bottom-color: var(--c-primary);
 }
 
 /* 工具栏 */
@@ -284,57 +286,67 @@ function applyTemplate(tpl: (typeof TEMPLATES)[number]) {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 8px;
-  padding: 6px 10px;
-  border-bottom: 1px solid #eff0f2;
+  gap: var(--docs-space-2);
+  padding: var(--docs-space-2) var(--docs-space-3);
+  border-bottom: 1px solid var(--docs-border);
 }
 .sheet-cell-address {
   min-width: 40px;
-  font-size: 12px;
+  font-size: var(--docs-fs-meta);
   font-weight: 600;
-  color: #3370ff;
+  color: var(--c-primary);
 }
 .sheet-tools {
   display: flex;
   align-items: center;
   gap: 1px;
 }
+/* 幽灵按钮：默认透明，悬停 --docs-hover，按下 --docs-shadow-control */
 .sheet-tool {
   display: inline-flex;
   align-items: center;
-  gap: 3px;
+  gap: var(--docs-space-1);
   height: 28px;
-  padding: 0 8px;
-  font-size: 12px;
-  color: #646a73;
+  padding: 0 var(--docs-space-2);
+  font-family: inherit;
+  font-size: var(--docs-fs-control);
+  line-height: var(--docs-lh-ui);
+  color: var(--docs-text-2);
   background: transparent;
   border: none;
-  border-radius: 5px;
+  border-radius: var(--docs-radius);
   cursor: pointer;
-  transition: background 0.12s, color 0.12s;
+  transition: background-color var(--docs-dur) var(--docs-ease), color var(--docs-dur) var(--docs-ease), box-shadow var(--docs-dur) var(--docs-ease);
 }
 .sheet-tool:hover:not(:disabled) {
-  color: #1f2329;
-  background: #f2f3f5;
+  color: var(--docs-text);
+  background: var(--docs-hover);
+}
+.sheet-tool:active:not(:disabled) {
+  box-shadow: var(--docs-shadow-control);
+}
+.sheet-tool:focus-visible {
+  outline: none;
+  box-shadow: var(--docs-focus);
 }
 .sheet-tool:disabled {
   cursor: not-allowed;
   opacity: 0.35;
 }
 .sheet-tool.danger:hover:not(:disabled) {
-  color: #d54941;
-  background: #fff1f0;
+  color: var(--docs-danger);
+  background: color-mix(in srgb, var(--docs-danger) 8%, transparent);
 }
 .sheet-tool-sep {
   width: 1px;
   height: 16px;
-  margin: 0 4px;
-  background: #e5e6eb;
+  margin: 0 var(--docs-space-1);
+  background: var(--docs-border);
 }
 .sheet-size {
   margin-left: auto;
-  font-size: 11px;
-  color: #8f959e;
+  font-size: var(--docs-fs-caption);
+  color: var(--docs-text-3);
 }
 
 /* 表格：撑满编辑器剩余高度，滚动收在表格区内 */
@@ -347,22 +359,24 @@ function applyTemplate(tpl: (typeof TEMPLATES)[number]) {
   min-width: 100%;
   table-layout: fixed;
   border-collapse: collapse;
-  font-size: 13px;
+  font-size: var(--docs-fs-control);
 }
+/* 网格线 1px */
 .sheet-table th,
 .sheet-table td {
-  border-right: 1px solid #eff0f2;
-  border-bottom: 1px solid #eff0f2;
+  border-right: 1px solid var(--docs-border);
+  border-bottom: 1px solid var(--docs-border);
 }
+/* 表头：纸色底 + 次级文字 12px / 500 */
 .sheet-corner,
 .sheet-row-no,
 .sheet-col-head {
   height: 30px;
-  font-size: 12px;
+  font-size: var(--docs-fs-meta);
   font-weight: 500;
-  color: #8f959e;
+  color: var(--docs-text-2);
   text-align: center;
-  background: #f7f8fa;
+  background: var(--docs-paper);
 }
 .sheet-corner {
   width: 44px;
@@ -377,22 +391,26 @@ function applyTemplate(tpl: (typeof TEMPLATES)[number]) {
 }
 .sheet-col-head.active,
 .sheet-row-no.active {
-  color: #3370ff;
-  background: #e8f0fe;
+  color: var(--c-primary);
+  background: var(--c-primary-bg);
 }
 .sheet-cell {
   padding: 0;
-  background: #fff;
+  background: var(--docs-canvas);
 }
+/* 选区：选中区域底 + 2px 主题色边框 */
 .sheet-cell.active {
-  box-shadow: inset 0 0 0 2px #3370ff;
+  background: var(--c-primary-bg);
+  box-shadow: inset 0 0 0 2px var(--c-primary);
 }
 .sheet-input {
   width: 100%;
   height: 34px;
-  padding: 0 8px;
-  font-size: 13px;
-  color: #1f2329;
+  padding: var(--docs-space-2) var(--docs-space-3);
+  font-family: inherit;
+  font-size: var(--docs-fs-control);
+  line-height: var(--docs-lh-ui);
+  color: var(--docs-text);
   background: transparent;
   border: none;
   outline: none;
@@ -400,60 +418,66 @@ function applyTemplate(tpl: (typeof TEMPLATES)[number]) {
 
 /* 空表模板推荐 */
 .sheet-templates {
-  padding: 24px 28px 32px;
+  padding: var(--docs-space-6) var(--docs-space-6) var(--docs-space-8);
 }
 .sheet-templates-title {
-  margin-bottom: 12px;
-  font-size: 12px;
+  margin-bottom: var(--docs-space-3);
+  font-size: var(--docs-fs-meta);
   font-weight: 600;
-  color: #8f959e;
+  color: var(--docs-text-2);
 }
 .sheet-templates-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
-  gap: 12px;
+  gap: var(--docs-space-3);
 }
 .sheet-template-card {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 12px;
+  gap: var(--docs-space-2);
+  padding: var(--docs-space-3);
+  font-family: inherit;
   text-align: left;
-  background: #fff;
-  border: 1px solid #eff0f2;
-  border-radius: 10px;
+  background: var(--docs-canvas);
+  border: 1px solid var(--docs-border);
+  border-radius: var(--docs-radius-lg);
   cursor: pointer;
-  transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s;
+  transition: border-color var(--docs-dur) var(--docs-ease), box-shadow var(--docs-dur) var(--docs-ease), transform var(--docs-dur) var(--docs-ease);
 }
 .sheet-template-card:hover {
-  border-color: #dcdde1;
-  box-shadow: 0 4px 16px rgba(31, 35, 41, 0.06);
+  border-color: var(--docs-border-strong);
+  box-shadow: var(--docs-shadow-card);
   transform: translateY(-1px);
+}
+.sheet-template-card:focus-visible {
+  outline: none;
+  box-shadow: var(--docs-focus);
 }
 .sheet-template-preview {
   display: flex;
   flex-direction: column;
-  gap: 3px;
-  padding: 8px;
-  background: #f7f8fa;
-  border-radius: 6px;
+  gap: var(--docs-space-1);
+  padding: var(--docs-space-2);
+  background: var(--docs-side-bg);
+  border-radius: var(--docs-radius-sm);
 }
 .sheet-template-line {
   display: flex;
-  gap: 3px;
+  gap: var(--docs-space-1);
 }
 .sheet-template-cell {
   flex: 1;
   height: 8px;
-  background: #e5e6eb;
-  border-radius: 2px;
+  background: var(--docs-border-strong);
+  border-radius: var(--docs-radius-xs);
 }
 .sheet-template-line:first-child .sheet-template-cell {
-  background: #c9d7f5;
+  background: color-mix(in srgb, var(--c-primary) 22%, transparent);
 }
 .sheet-template-name {
-  font-size: 13px;
+  font-size: var(--docs-fs-control);
   font-weight: 500;
-  color: #1f2329;
+  line-height: var(--docs-lh-ui);
+  color: var(--docs-text);
 }
 </style>

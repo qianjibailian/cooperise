@@ -159,6 +159,80 @@ html, body, #app {
   --c-primary-border: #a8ccff;
 }
 
+/* 云文档设计 token（规范：参考苹果人机界面指南的数值体系）。
+   文档页与顶栏的文档部分共用；品牌色始终引用 --c-primary，切换主题预设时跟着变。
+   取值约定：8pt 网格间距、字号阶梯、圆角三级（控件 / 面板 / 浮层）、细线 0.5px 视感（rgba 线）、
+   毛玻璃材质仅用于顶栏与侧栏、动效统一 200ms 标准缓动 */
+:root {
+  /* 画布与面（苹果中性灰） */
+  --docs-canvas: #ffffff;
+  --docs-paper: #fbfbfd;
+  --docs-side-bg: #f5f5f7;
+  /* 文档左侧菜单底色：比 --docs-side-bg 更浅，只用于 .docs-side（工作台侧栏仍用 --docs-side-bg） */
+  --docs-nav-bg: #fafafb;
+  --docs-hover: rgba(0, 0, 0, 0.05);
+  --docs-selected: var(--c-primary-bg);
+  /* 细线：苹果分隔线用不透明度控制，不用实色 */
+  --docs-border: rgba(0, 0, 0, 0.08);
+  --docs-border-strong: rgba(0, 0, 0, 0.14);
+  /* 文字（苹果三级文字色） */
+  --docs-text: #1d1d1f;
+  --docs-text-2: #6e6e73;
+  --docs-text-3: #86868b;
+  /* 状态（文字用深一档保证对比度） */
+  --docs-danger: #d70015;
+  --docs-warn: #b25000;
+  --docs-success: #248a3d;
+  /* 文档类型（列表 / 侧栏 / 顶栏的类型图标，取苹果系统色） */
+  --docs-type-doc: var(--c-primary);
+  --docs-type-sheet: #34c759;
+  --docs-type-mindmap: #af52de;
+  --docs-type-flow: #ff9500;
+  /* 圆角三级：控件 6/8px，面板与卡片 12px，浮层 10px（菜单）/ 14px（大面板） */
+  --docs-radius-xs: 4px;
+  --docs-radius-sm: 6px;
+  --docs-radius: 8px;
+  --docs-radius-lg: 12px;
+  --docs-radius-xl: 14px;
+  /* 阴影：分层柔和阴影 + 0.5px 描边，只给浮层与按钮按下态使用 */
+  --docs-shadow-control: 0 1px 2px rgba(0, 0, 0, 0.06);
+  --docs-shadow-card: 0 1px 3px rgba(0, 0, 0, 0.06), 0 0 0 0.5px rgba(0, 0, 0, 0.04);
+  --docs-shadow-float: 0 0 0 0.5px rgba(0, 0, 0, 0.08), 0 2px 6px rgba(0, 0, 0, 0.05), 0 12px 32px rgba(0, 0, 0, 0.14);
+  /* 材质：顶栏与侧栏毛玻璃（苹果的 saturate + blur） */
+  --docs-material: rgba(255, 255, 255, 0.72);
+  --docs-material-blur: saturate(180%) blur(20px);
+  /* 焦点环：主题色 35% 透明度外环，键盘可见 */
+  --docs-focus: 0 0 0 3px color-mix(in srgb, var(--c-primary) 35%, transparent);
+  /* 动效：统一 200ms 标准缓动 */
+  --docs-ease: cubic-bezier(0.25, 0.1, 0.25, 1);
+  --docs-dur: 200ms;
+  /* 间距阶梯（8pt 网格，含 4px 半步） */
+  --docs-space-1: 4px;
+  --docs-space-2: 8px;
+  --docs-space-3: 12px;
+  --docs-space-4: 16px;
+  --docs-space-5: 20px;
+  --docs-space-6: 24px;
+  --docs-space-8: 32px;
+  --docs-space-10: 40px;
+  --docs-space-12: 48px;
+  /* 字号阶梯（苹果：说明 11 / 辅助 12 / 控件 13 / 正文 15 / 小标题 17 / 标题 22 / 大标题 28 / 展示 34） */
+  --docs-fs-caption: 11px;
+  --docs-fs-meta: 12px;
+  --docs-fs-control: 13px;
+  --docs-fs-body: 15px;
+  --docs-fs-subtitle: 17px;
+  --docs-fs-title-sm: 22px;
+  --docs-fs-title: 28px;
+  --docs-fs-display: 34px;
+  --docs-lh-body: 1.7;
+  --docs-lh-ui: 1.4;
+  --docs-tracking-title: -0.02em;
+  /* 字体：苹方优先（中文），SF 为西文 */
+  --docs-font: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', 'PingFang SC',
+    'Hiragino Sans GB', 'Helvetica Neue', 'Segoe UI', 'Microsoft YaHei', 'Noto Sans CJK SC', Arial, sans-serif;
+}
+
 html, body {
   /* 字体栈（参考 Apple 官网中文站）：苹方 → 微软雅黑 → 思源黑体，西文用系统字体 */
   font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, 'Helvetica Neue',
@@ -448,6 +522,11 @@ html.is-ios .main-layout-full {
 html.is-ios .main-layout {
   padding-bottom: calc(56px + env(safe-area-inset-bottom, 0px));
   min-height: calc(100dvh - 112px - env(safe-area-inset-bottom, 0px));
+}
+
+/* iOS：工作台面板撑满内容区，但底部要让出 Tab 栏（即上面 main-layout 的 padding-bottom） */
+html.is-ios .workbench-panel {
+  height: calc(100dvh - var(--app-header-height, 56px) - 56px - env(safe-area-inset-bottom, 0px));
 }
 
 /* 登录 / 注册等鉴权页：避开刘海与底部手势条 */
