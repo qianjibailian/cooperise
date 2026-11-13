@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import {
   PlusOutlined,
   DeleteOutlined,
@@ -21,7 +21,43 @@ const emit = defineEmits<{
 }>()
 
 const colCount = computed(() => Math.max(1, ...props.rows.map((r) => r.length)))
-const isEmpty = computed(() => props.rows.every((r) => r.every((c) => !c || !c.trim())))
+
+/** 空白占位行：把网格铺满可见高度（只用于展示，不写入数据） */
+const scrollRef = ref<HTMLElement | null>(null)
+const fillerRows = ref(0)
+const fillerRowHeight = ref(35)
+/** 最后一行占位行额外补的高度，保证网格正好铺到底 */
+const fillerLastExtra = ref(0)
+let resizeObserver: ResizeObserver | null = null
+
+function computeFillerRows() {
+  const el = scrollRef.value
+  if (!el) return
+  const rowEl = el.querySelector('.sheet-table tbody tr') as HTMLElement | null
+  const headerEl = el.querySelector('.sheet-table thead tr') as HTMLElement | null
+  const rowHeight = rowEl?.getBoundingClientRect().height || 35
+  const headerHeight = headerEl?.getBoundingClientRect().height || 30
+  // 留 1px 余量，避免铺满后出现细滚动条
+  const available = el.clientHeight - headerHeight - 1
+  const used = props.rows.length * rowHeight
+  const count = Math.max(0, Math.floor((available - used) / rowHeight))
+  fillerRows.value = count
+  fillerRowHeight.value = rowHeight
+  fillerLastExtra.value = count > 0 ? Math.max(0, available - used - count * rowHeight) : 0
+}
+
+onMounted(() => {
+  nextTick(computeFillerRows)
+  if (typeof ResizeObserver !== 'undefined' && scrollRef.value) {
+    resizeObserver = new ResizeObserver(() => computeFillerRows())
+    resizeObserver.observe(scrollRef.value)
+  }
+})
+watch(() => props.rows.length, () => nextTick(computeFillerRows))
+onBeforeUnmount(() => {
+  resizeObserver?.disconnect()
+  resizeObserver = null
+})
 
 /** 当前选中单元格 */
 const activeCell = ref({ r: 0, c: 0 })
@@ -118,46 +154,6 @@ function focusCell(ri: number, ci: number) {
   activeCell.value = { r: ri, c: ci }
 }
 
-// ---- 空表模板 ----
-const TEMPLATES = [
-  {
-    key: 'gantt',
-    name: '项目甘特图',
-    rows: [
-      ['任务', '负责人', '开始日期', '结束日期', '状态'],
-      ['需求评审', '', '', '', '未开始'],
-      ['方案设计', '', '', '', '未开始'],
-      ['开发联调', '', '', '', '未开始'],
-      ['测试验收', '', '', '', '未开始'],
-    ],
-  },
-  {
-    key: 'todo',
-    name: '待办事项清单',
-    rows: [
-      ['事项', '负责人', '优先级', '状态'],
-      ['补充需求文档', '', '高', '待开始'],
-      ['接口联调', '', '中', '进行中'],
-      ['编写测试用例', '', '中', '待开始'],
-    ],
-  },
-  {
-    key: 'release',
-    name: '版本排期',
-    rows: [
-      ['版本', '内容', '负责人', '上线日期'],
-      ['v1.0.0', '首个版本', '', ''],
-      ['v1.1.0', '功能迭代', '', ''],
-      ['v1.2.0', '体验优化', '', ''],
-    ],
-  },
-]
-
-function applyTemplate(tpl: (typeof TEMPLATES)[number]) {
-  pushHistory()
-  applyRows(tpl.rows.map((r) => [...r]))
-  activeCell.value = { r: 0, c: 0 }
-}
 </script>
 
 <template>
@@ -187,7 +183,7 @@ function applyTemplate(tpl: (typeof TEMPLATES)[number]) {
     </div>
 
     <!-- 表格 -->
-    <div class="sheet-scroll">
+    <div ref="scrollRef" class="sheet-scroll">
       <table class="sheet-table">
         <thead>
           <tr>
@@ -217,29 +213,18 @@ function applyTemplate(tpl: (typeof TEMPLATES)[number]) {
               />
             </td>
           </tr>
+          <!-- 空白占位行：网格铺满高度 -->
+          <tr
+            v-for="n in fillerRows"
+            :key="`filler-${n}`"
+            class="sheet-filler-row"
+            :style="n === fillerRows && fillerLastExtra ? { height: `${fillerRowHeight + fillerLastExtra}px` } : undefined"
+          >
+            <th class="sheet-row-no">{{ rows.length + n }}</th>
+            <td v-for="ci in colCount" :key="ci" class="sheet-cell" />
+          </tr>
         </tbody>
       </table>
-
-      <!-- 空表：模板推荐 -->
-      <div v-if="isEmpty" class="sheet-templates">
-        <div class="sheet-templates-title">从模板开始</div>
-        <div class="sheet-templates-grid">
-          <button
-            v-for="tpl in TEMPLATES"
-            :key="tpl.key"
-            type="button"
-            class="sheet-template-card"
-            @click="applyTemplate(tpl)"
-          >
-            <span class="sheet-template-preview">
-              <span v-for="(r, ri) in tpl.rows.slice(0, 4)" :key="ri" class="sheet-template-line">
-                <span v-for="(_c, ci) in r.slice(0, 4)" :key="ci" class="sheet-template-cell" />
-              </span>
-            </span>
-            <span class="sheet-template-name">{{ tpl.name }}</span>
-          </button>
-        </div>
-      </div>
     </div>
   </div>
 </template>
@@ -248,6 +233,8 @@ function applyTemplate(tpl: (typeof TEMPLATES)[number]) {
 .sheet-editor {
   display: flex;
   flex-direction: column;
+  width: 100%;
+  height: 100%;
   overflow: hidden;
   font-family: var(--docs-font);
   background: var(--docs-canvas);
@@ -356,6 +343,7 @@ function applyTemplate(tpl: (typeof TEMPLATES)[number]) {
   overflow: auto;
 }
 .sheet-table {
+  width: 100%;
   min-width: 100%;
   table-layout: fixed;
   border-collapse: collapse;
@@ -398,6 +386,12 @@ function applyTemplate(tpl: (typeof TEMPLATES)[number]) {
   padding: 0;
   background: var(--docs-canvas);
 }
+/* 数据行与占位行统一行高，网格才能整齐铺满 */
+.sheet-table tbody tr,
+.sheet-table tbody th,
+.sheet-table tbody td {
+  height: 35px;
+}
 /* 选区：选中区域底 + 2px 主题色边框 */
 .sheet-cell.active {
   background: var(--c-primary-bg);
@@ -416,68 +410,4 @@ function applyTemplate(tpl: (typeof TEMPLATES)[number]) {
   outline: none;
 }
 
-/* 空表模板推荐 */
-.sheet-templates {
-  padding: var(--docs-space-6) var(--docs-space-6) var(--docs-space-8);
-}
-.sheet-templates-title {
-  margin-bottom: var(--docs-space-3);
-  font-size: var(--docs-fs-meta);
-  font-weight: 600;
-  color: var(--docs-text-2);
-}
-.sheet-templates-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
-  gap: var(--docs-space-3);
-}
-.sheet-template-card {
-  display: flex;
-  flex-direction: column;
-  gap: var(--docs-space-2);
-  padding: var(--docs-space-3);
-  font-family: inherit;
-  text-align: left;
-  background: var(--docs-canvas);
-  border: 1px solid var(--docs-border);
-  border-radius: var(--docs-radius-lg);
-  cursor: pointer;
-  transition: border-color var(--docs-dur) var(--docs-ease), box-shadow var(--docs-dur) var(--docs-ease), transform var(--docs-dur) var(--docs-ease);
-}
-.sheet-template-card:hover {
-  border-color: var(--docs-border-strong);
-  box-shadow: var(--docs-shadow-card);
-  transform: translateY(-1px);
-}
-.sheet-template-card:focus-visible {
-  outline: none;
-  box-shadow: var(--docs-focus);
-}
-.sheet-template-preview {
-  display: flex;
-  flex-direction: column;
-  gap: var(--docs-space-1);
-  padding: var(--docs-space-2);
-  background: var(--docs-side-bg);
-  border-radius: var(--docs-radius-sm);
-}
-.sheet-template-line {
-  display: flex;
-  gap: var(--docs-space-1);
-}
-.sheet-template-cell {
-  flex: 1;
-  height: 8px;
-  background: var(--docs-border-strong);
-  border-radius: var(--docs-radius-xs);
-}
-.sheet-template-line:first-child .sheet-template-cell {
-  background: color-mix(in srgb, var(--c-primary) 22%, transparent);
-}
-.sheet-template-name {
-  font-size: var(--docs-fs-control);
-  font-weight: 500;
-  line-height: var(--docs-lh-ui);
-  color: var(--docs-text);
-}
 </style>
