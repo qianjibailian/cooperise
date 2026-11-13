@@ -217,7 +217,6 @@ import type { AvailableFieldItem, UserItem } from '@/types/faiz'
 import { toFieldOperator, type FieldOperator } from '@/types/fieldOperator'
 import { personLabel, personName, personAccount, personAvatar } from '@/utils/person'
 import { issueTypeIconOf } from '@/utils/issueTypeIcons'
-import { currentSpaceCode } from '@/utils/current-space'
 import {
   OPERATORS,
   OPERATORS_BY_KIND,
@@ -429,13 +428,12 @@ function setSelectValues(c: FilterCondition, v: unknown) {
 }
 
 /**
- * 选项按空间过滤：条件里空间只选了一个时取该空间，否则取顶部所选空间；都没有则不过滤。
+ * 选项按空间过滤：条件里空间只选了一个时取该空间；没有则不过滤。
  * 人员只列拥有该空间的用户，问题类型（及状态）只列该空间的类型
  */
 const optionSpaceCode = computed<string | undefined>(() => {
   const spaces = conditions.value.find((c) => c.field === 'space' && c.operator === 'BELONG')?.values ?? []
-  if (spaces.length === 1) return spaces[0]
-  return currentSpaceCode.value || undefined
+  return spaces.length === 1 ? spaces[0] : undefined
 })
 
 /** 问题类型列表按空间只拉一次，状态与问题类型选项共用 */

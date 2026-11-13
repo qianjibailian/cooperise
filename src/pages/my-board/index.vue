@@ -22,7 +22,6 @@
       <div v-if="!panels.length" class="mb-empty">
         <AppstoreOutlined class="mb-empty-icon" />
         <div class="mb-empty-title">还没有看板</div>
-        <div class="mb-empty-desc">添加看板，把「我的需求」「我的任务」「待我处理」放在一起看</div>
         <div class="mb-empty-actions">
           <a-button :loading="creatingPresets" @click="addPresets">添加推荐看板</a-button>
           <a-button type="primary" @click="openCreate"><PlusOutlined /> 添加看板</a-button>
@@ -155,7 +154,6 @@ import {
 import { issueTypeIconOf } from '@/utils/issueTypeIcons'
 import IssueDetailDrawer from '@/components/IssueDetailDrawer.vue'
 import FilterPanel from '@/components/FilterPanel.vue'
-import { currentSpaceCode } from '@/utils/current-space'
 import {
   buildGlobalFilter,
   parseGlobalFilter,
@@ -229,8 +227,7 @@ const typesLoading = ref(false)
 async function loadIssueTypes() {
   typesLoading.value = true
   try {
-    // 顶部选了空间时只列该空间的问题类型
-    const res = await queryIssueTypes({ page: 1, pageSize: 999, status: 1, spaceCode: currentSpaceCode.value || undefined })
+    const res = await queryIssueTypes({ page: 1, pageSize: 999, status: 1 })
     issueTypes.value = (res?.success ? res.data?.list || [] : []).filter(t => t.issueTypeCode)
   } catch {
     issueTypes.value = []

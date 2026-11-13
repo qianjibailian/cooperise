@@ -71,7 +71,7 @@ export function useViewStore() {
     }
     if (loadingPromise.value) {
       if (!force) return loadingPromise.value
-      // 强制刷新（如切换空间）时，等进行中的请求结束再按最新条件重拉，避免拿到旧空间的视图
+      // 强制刷新（如新建 / 删除视图后）时，等进行中的请求结束再重拉，避免拿到旧数据
       await loadingPromise.value.catch(() => undefined)
       if (loadingPromise.value) return loadingPromise.value
     }

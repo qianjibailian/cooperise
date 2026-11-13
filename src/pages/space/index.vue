@@ -1,7 +1,6 @@
 <template>
   <div class="mgmt-page">
     <header class="mgmt-header">
-      <h2 class="mgmt-title">空间</h2>
       <a-button type="primary" class="mgmt-create-btn" @click="openCreate">
         <PlusOutlined /> 新建空间
       </a-button>
@@ -533,17 +532,9 @@ onMounted(() => {
 .mgmt-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 16px;
   margin-bottom: 16px;
-}
-
-.mgmt-title {
-  margin: 0;
-  font-size: 22px;
-  font-weight: 600;
-  letter-spacing: -0.2px;
-  color: #1d1d1f;
 }
 
 .mgmt-create-btn {

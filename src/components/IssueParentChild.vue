@@ -311,10 +311,9 @@ function onSearch(v: string) {
 async function runSearch(kw: string) {
   const seq = ++searchSeq
   try {
-    // 显式传 spaceCode: undefined，覆盖 fuzzyQueryIssues 默认带的顶部当前空间
     const [byKey, bySummary] = await Promise.all([
-      fuzzyQueryIssues({ issueKey: kw, page: 1, pageSize: 10, spaceCode: undefined }).catch(() => null),
-      fuzzyQueryIssues({ summary: kw, page: 1, pageSize: 10, spaceCode: undefined }).catch(() => null),
+      fuzzyQueryIssues({ issueKey: kw, page: 1, pageSize: 10 }).catch(() => null),
+      fuzzyQueryIssues({ summary: kw, page: 1, pageSize: 10 }).catch(() => null),
     ])
     if (seq !== searchSeq) return
     const merged = new Map<string, FuzzyIssueItem>()

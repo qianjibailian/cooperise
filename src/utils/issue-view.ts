@@ -2,7 +2,6 @@
  * 视图（日历 / 看板等）共用的事项字段解析、分组与草稿解析工具。
  * 字段 ID 一律为 /availableField/list 的 fieldId；/issue/query 只返回 showField 里的字段。
  */
-import { currentSpaceCode } from '@/utils/current-space'
 import dayjs from 'dayjs'
 import {
   queryUsers,
@@ -198,7 +197,7 @@ export async function fetchGroupUniverse(
   opts?: { issueTypeCodes?: string[] },
 ): Promise<GroupValue[]> {
   if (isUserField(meta)) {
-    const res = await queryUsers({ keyword: '', isActive: 1, spaceCode: currentSpaceCode.value || undefined, page: 1, pageSize: 500 })
+    const res = await queryUsers({ keyword: '', isActive: 1, page: 1, pageSize: 500 })
     return (res?.data?.list || []).map((u) => {
       const key = String(u.memberId || u.id || u.userNo)
       return {
@@ -211,8 +210,7 @@ export async function fetchGroupUniverse(
     })
   }
   if (fieldId === 'issuetype' || fieldId === 'status') {
-    // 顶部选了空间时只取该空间的问题类型 / 状态
-    const typeRes = await queryIssueTypes({ page: 1, pageSize: 999, status: 1, spaceCode: currentSpaceCode.value || undefined })
+    const typeRes = await queryIssueTypes({ page: 1, pageSize: 999, status: 1 })
     const types = typeRes?.success ? typeRes.data?.list || [] : []
     if (fieldId === 'issuetype') {
       return types.map((t) => {
@@ -238,7 +236,7 @@ export async function fetchGroupUniverse(
   // 下拉类自定义字段：取字段选项
   const type = fieldTypeOf(meta)
   if (!type.startsWith('SELECT_LIST') && type !== 'CASCADER_SINGLE') return []
-  const res = await getAvailableFieldOptions([{ fieldId, type, projectId: currentSpaceCode.value || '18701', issueTypeCode: '' }])
+  const res = await getAvailableFieldOptions([{ fieldId, type, projectId: '', issueTypeCode: '' }])
   const bucket = (res?.data || [])[0] as { options?: unknown } | undefined
   const nested = (bucket?.options as { options?: unknown[] } | undefined)?.options
   const raw = (Array.isArray(bucket?.options) ? bucket.options : Array.isArray(nested) ? nested : []) as Record<string, unknown>[]

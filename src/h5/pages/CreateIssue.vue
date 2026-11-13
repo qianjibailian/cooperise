@@ -94,7 +94,6 @@ import {
 } from '@/api/faiz'
 import type { CreateMetaField } from '@/types/faiz'
 import { normalizeFieldType } from '@/types/fieldType'
-import { currentSpaceCode } from '@/utils/current-space'
 import { notifyIssueCreated } from '@/utils/issue-events'
 import FieldInput from '../components/FieldInput.vue'
 import { editValueOf, isEmptyValue } from '../utils'
@@ -120,9 +119,7 @@ async function loadSpaces() {
   }
   let lastId = ''
   try { lastId = localStorage.getItem(LAST_SPACE_KEY) || '' } catch { /* 存储不可用 */ }
-  const def = spaces.value.find((s) => s.spaceCode === currentSpaceCode.value)
-    || spaces.value.find((s) => String(s.id) === lastId)
-    || spaces.value[0]
+  const def = spaces.value.find((s) => String(s.id) === lastId) || spaces.value[0]
   if (def) await pickSpace(def)
 }
 

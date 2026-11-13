@@ -3,7 +3,6 @@
     <van-sticky>
       <header class="h5-large-title is-head">
         <h1>事项</h1>
-        <SpaceSwitcher />
       </header>
       <van-search v-model="keyword" placeholder="搜索概要" shape="round" background="transparent" @search="reload" @clear="reload" />
       <!-- 全局筛选 / 排序：默认条件与网页版「我的事项」一致（经办人 = 当前用户、状态 = 所有未结束状态） -->
@@ -39,15 +38,13 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onActivated, onMounted, ref, watch } from 'vue'
+import { computed, onActivated, onMounted, ref } from 'vue'
 import { getIssues } from '@/api/faiz'
 import { buildGlobalFilter, defaultConditions, type FilterCondition } from '@/utils/issueFilter'
-import { currentSpaceCode } from '@/utils/current-space'
 import { onIssueCreated } from '@/utils/issue-events'
 import IssueCard from '../components/IssueCard.vue'
 import FilterSheet from '../components/FilterSheet.vue'
 import SortSheet, { type SortRow } from '../components/SortSheet.vue'
-import SpaceSwitcher from '../components/SpaceSwitcher.vue'
 import { LIST_FIELDS, briefOf, type IssueBrief } from '../utils'
 
 defineOptions({ name: 'H5Issues' })
@@ -169,8 +166,7 @@ function reload() {
 }
 
 onMounted(reload)
-// 切换空间 / 新建了事项：重新加载
-watch(currentSpaceCode, reload)
+// 新建了事项：重新加载
 onIssueCreated(reload)
 
 // 从详情返回：静默刷新第一页，保留滚动位置（详情里可能改了状态）

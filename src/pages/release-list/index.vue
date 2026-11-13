@@ -388,7 +388,7 @@ function isRequired(fieldId: string) {
   return requiredSet.value.has(fieldId)
 }
 
-// ---------- 字段元数据（当前空间可用字段） ----------
+// ---------- 字段元数据（可用字段） ----------
 const availableFields = ref<AvailableFieldItem[]>([])
 const fieldLoading = ref(false)
 async function loadAvailableFields() {

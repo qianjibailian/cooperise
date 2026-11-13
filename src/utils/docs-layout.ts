@@ -3,7 +3,7 @@ import type { DocItem } from '@/types/docs'
 
 /**
  * 文档页左侧菜单折叠状态
- * 文档页自身折叠侧栏，布局层（layout/index.vue）据此前移顶栏偏移
+ * 文档页自身折叠侧栏，云文档布局（layout/DocsLayout.vue）据此前移顶栏偏移
  */
 export const docsSideCollapsed = ref(false)
 

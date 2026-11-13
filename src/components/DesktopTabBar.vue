@@ -121,9 +121,9 @@ function docTitleOf(id: string): string {
     const parsed = raw ? JSON.parse(raw) : null
     const list = Array.isArray(parsed) ? parsed : parsed?.docs
     const title = list?.find((d: any) => d && String(d.id) === id)?.title
-    return title || '先蜂云文档'
+    return title || '云文档'
   } catch {
-    return '先蜂云文档'
+    return '云文档'
   }
 }
 

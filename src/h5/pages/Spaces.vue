@@ -29,7 +29,7 @@
       >
         <van-empty v-if="finished && !list.length" image-size="72" :description="keyword ? '没有匹配的空间' : '暂无空间'" />
 
-        <!-- 空间卡片：点开操作菜单（设为当前 / 编辑 / 删除），右上角直接启用 / 停用 -->
+        <!-- 空间卡片：点开操作菜单（编辑 / 删除），右上角直接启用 / 停用 -->
         <div v-for="s in list" :key="s.id" class="sp-card" :class="{ disabled: s.status !== 1 }" @click="openActions(s)">
           <div class="sp-card-top">
             <span class="sp-avatar" :style="{ background: s.color || DEFAULT_COLOR }">{{ spaceAvatarText(s.spaceName) }}</span>
@@ -37,7 +37,6 @@
               <div class="sp-name-row">
                 <span class="sp-name h5-ellipsis" data-no-i18n>{{ s.spaceName }}</span>
                 <span v-if="s.spaceKey" class="sp-key" data-no-i18n>{{ s.spaceKey }}</span>
-                <span v-if="s.spaceCode === currentSpaceCode" class="sp-current">当前</span>
               </div>
               <div class="sp-code" data-no-i18n>{{ s.spaceCode }}</div>
             </div>
@@ -77,7 +76,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
-import { showConfirmDialog, showSuccessToast } from 'vant'
+import { showConfirmDialog } from 'vant'
 import {
   deleteSpace, getOrganizationTree, querySpaces, updateSpace,
   type OrganizationNode, type SpaceItem,
@@ -98,7 +97,7 @@ const STATUS_FILTERS = [
 ]
 const PAGE_SIZE = 20
 
-const { ensureLoaded: ensureSpaceCache, currentSpaceCode, setCurrentSpace } = useSpaces()
+const { ensureLoaded: ensureSpaceCache } = useSpaces()
 
 // ---------------- 组织树（筛选 / 表单共用） ----------------
 const orgTree = ref<OrganizationNode[]>([])
@@ -189,7 +188,7 @@ function setStatus(v: string) {
 }
 watch(orgFilter, reload)
 
-/** 空间有变动：刷新列表，并刷新共享的空间缓存（顶部空间切换、新建事项等用） */
+/** 空间有变动：刷新列表，并刷新共享的空间缓存（空间名称回显、新建事项等用） */
 function onSaved() {
   reload()
   void ensureSpaceCache(true)
@@ -237,7 +236,6 @@ const actionList = computed(() => {
   const s = acting.value
   if (!s) return []
   return [
-    ...(s.status === 1 && s.spaceCode !== currentSpaceCode.value ? [{ name: '设为当前空间', key: 'current' }] : []),
     { name: '编辑', key: 'edit' },
     { name: '删除', key: 'delete', color: '#ee0a24' },
   ]
@@ -250,10 +248,7 @@ function openActions(s: SpaceItem) {
 async function onAction(a: { key: string }) {
   const s = acting.value
   if (!s) return
-  if (a.key === 'current') {
-    setCurrentSpace(s.spaceCode)
-    showSuccessToast(`已切换到「${s.spaceName}」`)
-  } else if (a.key === 'edit') {
+  if (a.key === 'edit') {
     editing.value = s
     formOpen.value = true
   } else if (a.key === 'delete') {

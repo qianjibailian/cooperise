@@ -2,7 +2,6 @@
   <div class="h5-page">
     <header class="h5-large-title">
       <h1>看板</h1>
-      <SpaceSwitcher />
     </header>
 
     <van-pull-refresh v-model="refreshing" @refresh="reload">
@@ -91,15 +90,13 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { showConfirmDialog } from 'vant'
 import { useRouter } from 'vue-router'
 import { deleteView, deleteViewGroup, queryMyBoardPanelData, queryMyBoardPanels, type MyBoardIssue, type MyBoardPanel } from '@/api/faiz'
 import type { ViewGroup, ViewItem } from '@/types/faiz'
-import { currentSpaceCode } from '@/utils/current-space'
 import { hexOr } from '@/utils/issue-view'
 import { useViewStore } from '@/utils/view-store'
-import SpaceSwitcher from '../components/SpaceSwitcher.vue'
 import ViewForm, { type ViewFormAction } from '../components/ViewForm.vue'
 import FolderIcon from '../components/FolderIcon.vue'
 
@@ -267,7 +264,6 @@ onMounted(() => {
   void loadPanels()
   void loadViews()
 })
-watch(currentSpaceCode, () => void reload())
 </script>
 
 <style scoped>

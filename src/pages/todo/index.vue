@@ -476,7 +476,6 @@ import {
 import dayjs from 'dayjs'
 import type { Dayjs } from 'dayjs'
 import { message } from 'ant-design-vue'
-import { currentSpaceCode } from '@/utils/current-space'
 import { getIssues, queryWorkbenchFieldList, getFilterDraft, updateFilterDraft, patchIssue, getAvailableFieldOptions, queryUsers, queryIssueButtonsForIssue, type IssueButtonItem } from '@/api/faiz'
 import { runIssueButton } from '@/utils/issueButtons'
 import type { IssueRecord, IssueQueryPayload, SortItem, FilterDraft, GlobalFilter, CustomFieldOptionItem, UserItem } from '@/types/faiz'
@@ -554,34 +553,6 @@ const STANDARD_FIELD_LABELS: Record<string, string> = {
 const shownFields = ref<FieldOption[]>([])
 const hiddenFields = ref<FieldOption[]>([])
 
-// ---------- 空间隔离：顶部选了空间时，列表列 / 列设置只展示该空间的字段 ----------
-/** 当前空间可用的字段 ID（系统字段 + 关联本空间问题类型的自定义字段）；null 表示不限（未选空间或未取到） */
-const spaceFieldIds = ref<Set<string> | null>(null)
-let spaceFieldsReq: Promise<void> | null = null
-function ensureSpaceFields(): Promise<void> {
-  if (!currentSpaceCode.value) return Promise.resolve()
-  if (!spaceFieldsReq) {
-    spaceFieldsReq = (async () => {
-      try {
-        const res = await queryWorkbenchFieldList({ page: 1, pageSize: 999, searchKey: '' })
-        if (res?.success && res.data?.list) spaceFieldIds.value = new Set(res.data.list.map(f => f.fieldId))
-      } catch {
-        // 取不到时不做空间过滤，避免列全部消失
-      }
-    })()
-  }
-  return spaceFieldsReq
-}
-/** 字段是否属于当前空间：标准字段（单号 / 概要 / 状态等）各空间都有 */
-function isSpaceField(id: string): boolean {
-  return !spaceFieldIds.value || id in STANDARD_FIELD_LABELS || spaceFieldIds.value.has(id)
-}
-/** 草稿里属于其它空间的已显示字段：列设置中不展示，保存时原样写回，切回原空间时列不丢 */
-const outOfSpaceShownIds = ref<string[]>([])
-// 页面加载即取空间字段（表格列依赖它）；切换空间时页面会整体重挂载，无需监听
-// eslint-disable-next-line @typescript-eslint/no-floating-promises
-ensureSpaceFields()
-
 /** 从 draft 的 showField 解析已展示字段 ID 列表（保留顺序），兼容字符串数组和对象数组两种格式 */
 function getDraftShownFieldIds(): string[] {
   const d = draftFilter.value
@@ -602,7 +573,6 @@ async function fetchAvailableFields(keyword?: string) {
   settingLoading.value = true
   hiddenCurrentPage.value = 1
   try {
-    await ensureSpaceFields()
     const res = await queryWorkbenchFieldList({
       page: 1,
       pageSize: 20,
@@ -624,8 +594,7 @@ async function fetchAvailableFields(keyword?: string) {
           if (v && v.trim()) allLabelMap[k] = v
         }
         const draftIds = getDraftShownFieldIds()
-        outOfSpaceShownIds.value = draftIds.filter(id => id && !isSpaceField(id))
-        shownFields.value = draftIds.filter(id => isSpaceField(id)).map(id => ({
+        shownFields.value = draftIds.map(id => ({
           key: id,
           label: allLabelMap[id] || id,
           checked: true,
@@ -735,11 +704,8 @@ async function saveShownFields() {
   const d = draftFilter.value
   // 无草稿时也要保存（后端按 userNo + viewCode 创建草稿），与 handleFilterSave 保持一致
   const userNo = draftUserNo.value
-  // showFieldItemList 直接传字段 ID 字符串数组；其它空间的已显示字段追加在末尾保留
-  const showFieldItemList = [
-    ...shownFields.value.map(f => f.key),
-    ...outOfSpaceShownIds.value.filter(id => !shownFields.value.some(f => f.key === id)),
-  ]
+  // showFieldItemList 直接传字段 ID 字符串数组
+  const showFieldItemList = shownFields.value.map(f => f.key)
   const newShowField = JSON.stringify({ showFieldItemList })
   try {
     const res = await updateFilterDraft({
@@ -959,8 +925,6 @@ const tableColumns = computed(() => {
       if (!f.id) continue
       const name = f.name != null ? String(f.name).trim() : ''
       if (!name) continue
-      // 顶部选了空间时不展示其它空间的字段列
-      if (!isSpaceField(f.id)) continue
       if (!(f.id in m)) m[f.id] = { id: f.id, name, type: f.type }
     }
   }

@@ -1,0 +1,89 @@
+/* 空间 / 管理后台 / 通用页布局共用的外壳样式（侧栏与菜单由各布局自己提供） */
+.layout-container {
+  height: 100%;
+  min-width: var(--app-min-width);
+  background: #fafafa;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+}
+
+.main-layout {
+  padding-top: var(--app-header-height, 56px);
+  margin-left: var(--sider-w, 240px);
+  min-height: 100vh;
+  min-height: 100dvh;
+  transition: margin-left 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.main-layout-collapsed {
+  margin-left: 0;
+}
+
+.content {
+  padding: 0;
+  background: #f4f5f8;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.content > * {
+  width: 100%;
+}
+
+/* 模块侧栏里的菜单容器（每个模块布局自己填菜单内容） */
+.side-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: transparent;
+  padding-top: 18px;
+}
+
+.side-title {
+  padding: 0 16px 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #1d1d1f;
+}
+
+/* 模块侧栏里的菜单（与工作台保持同一套观感） */
+.sidebar-menu {
+  border-right: none !important;
+  background: transparent;
+}
+
+.sidebar-menu .ant-menu-item {
+  margin: 2px 8px;
+  border-radius: 6px;
+  height: 36px;
+  line-height: 36px;
+  color: #595959;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+}
+
+.sidebar-menu .ant-menu-item:hover {
+  background: rgba(0, 0, 0, 0.05) !important;
+  color: #262626;
+}
+
+.sidebar-menu .ant-menu-item-selected {
+  background: var(--c-primary-bg) !important;
+  color: var(--c-primary) !important;
+  font-weight: 500;
+}
+
+.sidebar-menu .ant-menu-item-selected::after {
+  display: none;
+}
+
+@media (max-width: 767px) {
+  .layout-container {
+    min-width: 0;
+  }
+  .main-layout,
+  .main-layout-collapsed {
+    margin-left: 0 !important;
+  }
+}

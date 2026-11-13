@@ -2146,7 +2146,7 @@ function folderNameOf(doc: DocItem | null): string {
         <div v-if="!docsSideCollapsed" class="docs-side-brand">
           <AppLogo class="docs-side-logo" />
           <div class="docs-side-brand-text">
-            <span class="docs-side-title">先蜂云文档</span>
+            <span class="docs-side-title">云文档</span>
           </div>
         </div>
       </header>

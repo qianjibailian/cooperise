@@ -352,7 +352,6 @@ import { PlusOutlined, DeleteOutlined, CloseOutlined } from '@ant-design/icons-v
 import { Empty, message } from 'ant-design-vue'
 import { createIssue, getAvailableFieldOptions, queryUsers, queryTemplates, getTemplate, getIssueCreateMeta, queryEditMeta, patchIssue, queryAvailableFieldList, querySpaceOptions, queryIssueTypes, createTemplate, type SpaceItem } from '@/api/faiz'
 import { issueTypeIconOf } from '@/utils/issueTypeIcons'
-import { currentSpaceCode } from '@/utils/current-space'
 import { personLabel, personAvatar, personInitial, personKey } from '@/utils/person'
 import { FIELD_TYPE, normalizeFieldType, formatTypeLabel } from '@/types/fieldType'
 import type {
@@ -441,13 +440,8 @@ function loadSpaceOptions() {
       const res = await querySpaceOptions()
       if (!res?.success) return
       spaceOptions.value = res.data || []
-      // 新建：顶部选了空间时默认带出该空间；否则带出上次使用的空间，失效时取第一个
-      const headerSpace = currentSpaceCode.value
-        ? spaceOptions.value.find(sp => String(sp.spaceCode) === currentSpaceCode.value)
-        : undefined
-      if (!isEditMode.value && headerSpace) {
-        newFormSpaceId.value = headerSpace.id
-      } else if (!isEditMode.value && !spaceOptions.value.some(sp => sp.id === newFormSpaceId.value)) {
+      // 新建：默认带出上次使用的空间，失效时取第一个
+      if (!isEditMode.value && !spaceOptions.value.some(sp => sp.id === newFormSpaceId.value)) {
         let last: number | undefined
         try { last = Number(localStorage.getItem(LAST_SPACE_KEY)) || undefined } catch { /* 存储不可用 */ }
         newFormSpaceId.value = spaceOptions.value.find(sp => sp.id === last)?.id ?? spaceOptions.value[0]?.id
@@ -970,7 +964,7 @@ const handleTemplateChange = async (val: string) => {
 
 /** 模板字段构建完 Tabs + newFormData 后，补做成员选项预取和自定义字段接口拉取 */
 function postLoadAfterBuildTabs() {
-  // projectId 用当前空间的编码（服务端枚举按空间取），没有空间时才退回默认值
+  // projectId 用表单所选空间的编码（服务端枚举按空间取），没有空间时才退回默认值
   const projectId = currentSpace.value?.spaceCode || NEW_FORM_DEFAULT_PROJECT_ID
   const issueTypeCode = currentIssueTypeCode()
   // member 字段：SELECT_USER_SINGLE / SELECT_USER_MULTI 一律预取用户数据（/user/query），

@@ -1,5 +1,4 @@
 import request from '@/utils/request'
-import { currentSpaceCode, scopeGlobalFilter } from '@/utils/current-space'
 import type {
   Result,
   Template,
@@ -84,13 +83,9 @@ export function previewTemplateTable(id: number | string): Promise<Result<Record
 
 // ==================== Issue API ====================
 
-/** Issue 分页搜索（POST /issue/query） */
+/** Issue 分页搜索（POST /issue/query）：数据可见范围由后端按用户所属空间控制 */
 export function getIssues(data?: IssueQuery | IssueQueryPayload): Promise<IssueQueryResult> {
-  // 顶部选了空间时，所有事项查询只看该空间（不改调用方的入参对象，草稿保存不受影响）
-  const payload = data && 'globalFilter' in data
-    ? { ...data, globalFilter: scopeGlobalFilter(data.globalFilter) }
-    : data
-  return request.post(`/issue/query`, payload)
+  return request.post(`/issue/query`, data)
 }
 
 /** 新建事项（POST /issue/create），入参使用 inputFields 数组格式 */
@@ -195,11 +190,10 @@ export interface FuzzyIssueItem {
 }
 
 /** 模糊搜索事项（POST /issue/fuzzy-query）：issueKey / summary 均为模糊匹配，同时传时为「且」；pageSize 最大 10 */
-export function fuzzyQueryIssues(data: { issueKey?: string; summary?: string; spaceCode?: string; page?: number; pageSize?: number }): Promise<
+export function fuzzyQueryIssues(data: { issueKey?: string; summary?: string; page?: number; pageSize?: number }): Promise<
   Result<{ list: FuzzyIssueItem[]; total: number; currentPage?: number; pageSize?: number; pageCount?: number }>
 > {
-  // 顶部选了空间时只搜该空间；调用方显式传 spaceCode 时以调用方为准
-  return request.post(`/issue/fuzzy-query`, { spaceCode: currentSpaceCode.value || undefined, ...data })
+  return request.post(`/issue/fuzzy-query`, data)
 }
 
 /** 查询事项详情（POST /issue/queryDetail） */
@@ -241,9 +235,7 @@ export function queryEditMeta(payload: IssueEditMetaRequest): Promise<Result<Iss
 
 /** 获取草稿筛选（GET /filter/draft?userNo=xxx&viewCode=xxx） */
 export async function getFilterDraft(userNo: string, viewCode?: string): Promise<Result<FilterDraft>> {
-  // 草稿按「用户 + 视图 + 空间」隔离：带上顶部当前空间，各空间的筛选 / 排序 / 展示字段互不影响
-  const spaceCode = currentSpaceCode.value || undefined
-  const res: Result<FilterDraft> = await request.get(`/filter/draft`, { params: { userNo, viewCode, spaceCode } })
+  const res: Result<FilterDraft> = await request.get(`/filter/draft`, { params: { userNo, viewCode } })
   // 草稿按「用户 + 视图」隔离：返回的草稿属于其它视图时视为该视图暂无草稿，避免不同视图的查询条件互相影响
   if (viewCode && res?.data && res.data.viewCode && res.data.viewCode !== viewCode) {
     return { ...res, data: null as unknown as FilterDraft }
@@ -253,22 +245,19 @@ export async function getFilterDraft(userNo: string, viewCode?: string): Promise
 
 /** 更新草稿筛选（PUT /filter/draft） */
 export function updateFilterDraft(data: Partial<FilterDraft> & { userNo: string }): Promise<Result<FilterDraft>> {
-  // 写入当前空间的草稿（与 getFilterDraft 一致）
-  return request.put(`/filter/draft`, { ...data, spaceCode: currentSpaceCode.value || '' })
+  return request.put(`/filter/draft`, data)
 }
 
 // ==================== View API ====================
 
-/** 我的视图列表（POST /view/list） */
+/** 我的视图列表（POST /view/list）：后端按用户可见范围返回 */
 export function getViewList(): Promise<ViewListResult> {
-  // 选了空间只列该空间下创建的视图
-  return request.post(`/view/list`, { spaceCode: currentSpaceCode.value || undefined })
+  return request.post(`/view/list`, {})
 }
 
 /** 新建视图（POST /view/create） */
 export function createView(data: { filterName: string; viewType: string; groupCode?: string }): Promise<Result<unknown>> {
-  // 新视图归属顶部当前空间
-  return request.post(`/view/create`, { spaceCode: currentSpaceCode.value || undefined, ...data })
+  return request.post(`/view/create`, data)
 }
 
 /** 编辑视图（POST /view/update）：groupCode 传空字符串表示移到未分组 */
@@ -298,8 +287,7 @@ export function deleteView(data: { filterCode: string }): Promise<Result<unknown
 
 /** 新建视图文件夹（POST /view/group/create） */
 export function createViewGroup(data: { groupName: string }): Promise<Result<unknown>> {
-  // 新文件夹归属顶部当前空间
-  return request.post(`/view/group/create`, { spaceCode: currentSpaceCode.value || undefined, ...data })
+  return request.post(`/view/group/create`, data)
 }
 
 /** 重命名视图文件夹（POST /view/group/update） */
@@ -347,12 +335,9 @@ export function queryAvailableFieldList(
   return request.post(`/availableField/list`, params)
 }
 
-/**
- * 工作台用的可用字段列表：顶部选了空间时只返回该空间的字段（系统字段 + 关联本空间问题类型的自定义字段）。
- * 新建事项 / 模板等按自身所选空间取字段的场景仍用 queryAvailableFieldList。
- */
+/** 工作台用的可用字段列表：可见范围由后端按用户所属空间控制 */
 export function queryWorkbenchFieldList(params?: AvailableFieldQuery): Promise<AvailableFieldResult> {
-  return queryAvailableFieldList({ ...params, spaceCode: currentSpaceCode.value || undefined })
+  return queryAvailableFieldList(params)
 }
 
 /** 新增可选自定义字段（POST /customField） */
@@ -1027,14 +1012,12 @@ export interface MyBoardPanelData {
 
 /** 当前用户的面板（POST /my-board/panels） */
 export function queryMyBoardPanels(): Promise<Result<MyBoardPanel[]>> {
-  // 选了空间只列该空间下创建的面板
-  return request.post(`/my-board/panels`, { spaceCode: currentSpaceCode.value || undefined })
+  return request.post(`/my-board/panels`, {})
 }
 
 /** 新增 / 修改面板（POST /my-board/panel/save） */
 export function saveMyBoardPanel(data: MyBoardPanelSavePayload): Promise<Result<MyBoardPanel>> {
-  // 新面板归属顶部当前空间（修改时后端忽略）
-  return request.post(`/my-board/panel/save`, { spaceCode: currentSpaceCode.value || undefined, ...data })
+  return request.post(`/my-board/panel/save`, data)
 }
 
 /** 删除面板（POST /my-board/panel/delete） */
@@ -1047,10 +1030,9 @@ export function sortMyBoardPanels(ids: number[]): Promise<Result<void>> {
   return request.post(`/my-board/panel/sort`, { ids })
 }
 
-/** 面板数据（POST /my-board/panel/data） */
+/** 面板数据（POST /my-board/panel/data）：可见范围由后端按用户所属空间控制 */
 export function queryMyBoardPanelData(id: number): Promise<Result<MyBoardPanelData>> {
-  // 顶部选了空间时只看该空间的事项；不传 spaceCode 为全部空间
-  return request.post(`/my-board/panel/data`, { id, spaceCode: currentSpaceCode.value || undefined })
+  return request.post(`/my-board/panel/data`, { id })
 }
 
 // ==================== 空间管理 ====================

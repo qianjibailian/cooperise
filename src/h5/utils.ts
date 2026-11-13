@@ -1,17 +1,14 @@
 /**
  * 手机 H5 共用的数据处理（只用接口层与纯函数，不引入网页版组件）
  */
-import { computed, ref } from 'vue'
 import dayjs from 'dayjs'
-import { getAvailableFieldOptions, getUserDetail, queryIssueTypeStatuses, queryIssueTypes, queryUsers, queryWorkbenchFieldList } from '@/api/faiz'
-import { currentSpaceCode } from '@/utils/current-space'
+import { getAvailableFieldOptions, queryIssueTypeStatuses, queryIssueTypes, queryUsers, queryWorkbenchFieldList } from '@/api/faiz'
 import { ALL_NOT_DONE } from '@/utils/issueFilter'
 import type { DetailField, DetailLayoutGroup, IssueFieldItem, IssueRecord } from '@/types/faiz'
 import { normalizeFieldType } from '@/types/fieldType'
 import { fieldOf, fieldText, hexOr, issueKeyOf, objOf } from '@/utils/issue-view'
 import { personLabel, personAvatar, personInitial, personKey } from '@/utils/person'
 import { useAuth } from '@/utils/auth'
-import { useSpaces } from '@/utils/space-store'
 
 export { fieldOf, fieldText, issueKeyOf, personLabel, personAvatar, personInitial, personKey }
 
@@ -212,45 +209,6 @@ export async function searchUsers(keyword: string, ctx: { issueKey?: string; spa
   return (res?.success ? res.data?.list || [] : []) as unknown as Record<string, unknown>[]
 }
 
-// ---------------- 空间 ----------------
-
-/**
- * 我能切换的空间（与网页版顶栏空间切换一致）：我被分配的空间 ∩ 启用的空间，按 sort 排序；
- * 当前空间无效时自动选第一个
- */
-export function useMySpaces() {
-  const { spaces, ensureLoaded, currentSpaceCode, setCurrentSpace } = useSpaces()
-  const { user } = useAuth()
-  const myCodes = ref<Set<string> | null>(null)
-  const loading = ref(false)
-
-  const mySpaces = computed(() => {
-    const list = spaces.value.filter((s) => s.status === 1 && (!myCodes.value || myCodes.value.has(s.spaceCode)))
-    return [...list].sort((a, b) => (Number(a.sort) || 0) - (Number(b.sort) || 0))
-  })
-  const current = computed(() => mySpaces.value.find((s) => s.spaceCode === currentSpaceCode.value))
-
-  async function load() {
-    loading.value = true
-    try {
-      await ensureLoaded()
-      const id = Number((user.value as Record<string, unknown> | null)?.id)
-      if (id) {
-        const res = await getUserDetail(id)
-        const list = res?.data?.spaces
-        if (res?.success && Array.isArray(list)) myCodes.value = new Set(list.map((s) => s.spaceCode))
-      }
-      if (!current.value && mySpaces.value.length) setCurrentSpace(mySpaces.value[0].spaceCode)
-    } catch {
-      // 请求层已统一提示
-    } finally {
-      loading.value = false
-    }
-  }
-
-  return { mySpaces, current, currentSpaceCode, setCurrentSpace, load, loading }
-}
-
 /** 当前登录用户的 memberId（筛选草稿、视图查询用） */
 export function myMemberId(): string {
   const { user } = useAuth()
@@ -277,13 +235,10 @@ const BUILTIN_FIELDS: FilterFieldMeta[] = [
   { id: 'updated', name: '更新时间', type: 'DATE_PICKER' },
 ]
 
-/** 可筛选 / 排序的字段：/availableField/list（系统字段 + 自定义字段，按当前空间），同一空间只拉一次 */
+/** 可筛选 / 排序的字段：/availableField/list（系统字段 + 自定义字段），只拉一次 */
 let fieldsPromise: Promise<FilterFieldMeta[]> | null = null
-let fieldsSpace = ''
 export function loadFilterFields(): Promise<FilterFieldMeta[]> {
-  const space = currentSpaceCode.value || ''
-  if (!fieldsPromise || fieldsSpace !== space) {
-    fieldsSpace = space
+  if (!fieldsPromise) {
     fieldsPromise = queryWorkbenchFieldList({ page: 1, pageSize: 500, searchKey: '' })
       .then((res) => {
         const list = (res?.success ? res.data?.list || [] : [])
@@ -307,11 +262,10 @@ export interface FilterOption {
   color?: string
 }
 
-/** 筛选值选项：问题类型 → 编码；状态 → 当前空间所有问题类型下的状态（含「所有未结束状态」）；其他下拉 → 自定义选项 */
+/** 筛选值选项：问题类型 → 编码；状态 → 所有可见问题类型下的状态（含「所有未结束状态」）；其他下拉 → 自定义选项 */
 export async function loadFilterOptions(field: FilterFieldMeta): Promise<FilterOption[]> {
-  const spaceCode = currentSpaceCode.value || undefined
   if (field.id === 'issuetype' || field.id === 'status') {
-    const res = await queryIssueTypes({ page: 1, pageSize: 999, status: 1, spaceCode })
+    const res = await queryIssueTypes({ page: 1, pageSize: 999, status: 1 })
     const types = res?.success ? res.data?.list || [] : []
     if (field.id === 'issuetype') {
       return types.map((t) => ({ value: t.issueTypeCode || String(t.id), label: t.issueTypeName, color: (t as { color?: string }).color }))
@@ -327,7 +281,7 @@ export async function loadFilterOptions(field: FilterFieldMeta): Promise<FilterO
     }
     return [{ value: ALL_NOT_DONE, label: '所有未结束状态' }, ...seen.values()]
   }
-  const nodes = await loadFieldOptions({ id: field.id, type: field.type || 'SELECT_LIST_SINGLE' }, { spaceCode })
+  const nodes = await loadFieldOptions({ id: field.id, type: field.type || 'SELECT_LIST_SINGLE' }, {})
   return nodes.map((n) => ({ value: n.value, label: n.text, color: n.color }))
 }
 

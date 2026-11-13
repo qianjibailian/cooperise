@@ -5,7 +5,7 @@
     - createInGroup：在某个文件夹里新建视图
     - editView：编辑视图名称 / 类型
     - renameGroup：重命名文件夹
-    新建的视图 / 文件夹归属当前空间（接口层自动带 spaceCode）
+    新建的视图 / 文件夹属于当前用户，不再跟随空间切换
   -->
   <van-popup :show="show" position="bottom" round closeable safe-area-inset-bottom class="vf-sheet" @update:show="onShowChange">
     <div class="vf-title">{{ title }}</div>

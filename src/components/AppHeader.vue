@@ -15,13 +15,15 @@
       />
       <span class="docs-save-state" :class="`is-${docsSaveState}`">{{ docsSaveStateText }}</span>
     </div>
-    <div class="header-left" :class="{ collapsed: sidebarCollapsed, 'no-logo': isDesktop }">
-      <!-- 左上角菜单入口：点击弹出一级菜单（文档页已移至左侧文档菜单 Logo 左侧） -->
-      <AppNavPopover v-if="!isDocs" />
-
-      <!-- 空间切换（仅工作台）：与折叠按钮互换 -->
-      <div v-if="isWorkbench" class="header-space">
-        <HeaderSpaceSwitcher />
+    <div
+      class="header-left"
+      :class="{ collapsed: sidebarCollapsed, 'no-logo': isDesktop, 'header-left-fixed': !!leftWidth, 'header-left-centered': centerTitle }"
+      :style="leftWidth ? { '--header-left-w': `${leftWidth}px` } : undefined"
+    >
+      <div class="header-left-main">
+        <AppLogo v-if="showLogo" class="header-logo" />
+        <!-- 模块名：各模块布局自己传入（工作台 / 云文档 / 空间 / 管理后台） -->
+        <span v-if="moduleTitle" class="header-module-title">{{ moduleTitle }}</span>
       </div>
 
       <div class="header-left-right">
@@ -32,13 +34,6 @@
 
     <!-- 公告横幅（上下滚动轮播，内容见 @/config/banner）；文档页不显示 -->
     <HeaderBanner v-if="!isDocs" />
-
-    <div class="header-center" v-if="false">
-      <div class="workspace-btn" @click="$emit('workspace-click')">
-        <HomeOutlined />
-        <span>控制台</span>
-      </div>
-    </div>
 
     <div class="header-right">
       <!-- 文档详情：分享 / 编辑（原详情页工具条按钮，移至顶栏） -->
@@ -71,8 +66,6 @@
           </template>
         </a-dropdown>
       </template>
-      <!-- 文档页：一级菜单入口移至头像左侧（顶栏左上角不再显示） -->
-      <AppNavPopover v-if="isDocs" class="header-nav-right" placement="bottomRight" />
       <!-- 搜索框 + 自控下拉面板（不用 a-dropdown：受控 open 会被组件内部重置，结果有数据也不弹出） -->
       <div v-if="isWorkbench" class="header-search-wrap">
         <a-input
@@ -92,9 +85,7 @@
         <div v-if="dropdownOpen" class="search-panel" @mousedown.prevent>
           <!-- 有输入：搜索结果（参考 Google / Spotlight：单行、灰色辅助信息、命中词加粗） -->
           <div v-if="searchValue.trim()" class="sp-body">
-            <div v-if="fuzzyResults.length" class="sp-section">
-              问题<span v-if="scopeSpaceName" class="sp-scope"> · {{ scopeSpaceName }}</span>
-            </div>
+            <div v-if="fuzzyResults.length" class="sp-section">问题</div>
             <div v-if="fuzzyResults.length" class="sp-list">
               <div
                 v-for="(item, i) in fuzzyResults"
@@ -128,15 +119,11 @@
               </div>
             </div>
             <div v-else-if="fuzzyLoading" class="sp-empty">搜索中…</div>
-            <div v-else class="sp-empty">
-              {{ scopeSpaceName ? `在「${scopeSpaceName}」中没有找到相关问题` : '没有找到相关问题' }}
-            </div>
+            <div v-else class="sp-empty">没有找到相关问题</div>
           </div>
           <!-- 未输入：搜索提示 -->
           <div v-else class="sp-body">
-            <div class="sp-empty">
-              {{ scopeSpaceName ? `在「${scopeSpaceName}」中搜索问题单号或概要` : '输入问题单号或概要' }}
-            </div>
+            <div class="sp-empty">输入问题单号或概要</div>
           </div>
           <!-- 最近搜索 / 最近访问：暂时隐藏（数据为占位，待接入真实记录后恢复）
           <div v-else class="search-dropdown">
@@ -173,7 +160,7 @@
         </div>
       </div>
 
-      <button v-if="isWorkbench" class="header-create-btn" @click="$emit('create-click')">
+      <button v-if="isWorkbench" class="header-create-btn" @click="openNewIssueModal()">
         <PlusOutlined />
         <span class="create-label">新建</span>
       </button>
@@ -255,7 +242,6 @@ import { ref, computed, nextTick, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 
 import {
-  HomeOutlined,
   SearchOutlined,
   RightOutlined,
   DownOutlined,
@@ -270,33 +256,35 @@ import {
   CaretDownOutlined,
 } from '@ant-design/icons-vue'
 import HeaderBanner from './HeaderBanner.vue'
-import AppNavPopover from './AppNavPopover.vue'
+import AppLogo from './AppLogo.vue'
 import { docsEditMode, docsActiveDoc, docsSideCollapsed, docsSaveState, docsTitleRev } from '@/utils/docs-layout'
 import { docSharePanelOpen } from '@/utils/doc-share'
-import HeaderSpaceSwitcher from './HeaderSpaceSwitcher.vue'
 import DocSharePanel from './DocSharePanel.vue'
 import DesktopSettingsModal from './DesktopSettingsModal.vue'
 import { isDesktop } from '@/utils/desktop'
-import { currentSpaceCode } from '@/utils/current-space'
-import { useSpaces } from '@/utils/space-store'
 import { useAuth, setAuthUser } from '@/utils/auth'
 import { useTheme } from '@/utils/theme'
 import { useLocale } from '@/i18n'
 import { formatPersonLabel } from '@/utils/person'
 import { logout, getCurrentUser, fuzzyQueryIssues, type FuzzyIssueItem } from '@/api/faiz'
 import { issueTypeIconOf } from '@/utils/issueTypeIcons'
+import { openNewIssueModal } from '@/utils/new-issue-modal'
 
 defineProps<{
-  drawerOpen?: boolean
   searchPlaceholder?: string
   sidebarCollapsed?: boolean
   hideSidebarToggle?: boolean
+  /** 当前模块名（每个模块布局传入，显示在顶栏左侧） */
+  moduleTitle?: string
+  /** 是否在顶栏左侧显示应用 Logo（工作台） */
+  showLogo?: boolean
+  /** 顶栏左侧固定宽度（与左侧菜单同宽，折叠图标落在菜单分界线上） */
+  leftWidth?: number
+  /** 模块名是否在左侧区域内水平居中（工作台） */
+  centerTitle?: boolean
 }>()
 
 const emit = defineEmits<{
-  (e: 'menu-click'): void
-  (e: 'workspace-click'): void
-  (e: 'create-click'): void
   (e: 'search', value: string): void
   (e: 'toggle-sidebar'): void
 }>()
@@ -402,17 +390,6 @@ async function runFuzzyQuery(keyword: string) {
   }
 }
 
-/** 搜索范围：顶部选了空间时只搜该空间（fuzzyQueryIssues 自动带 spaceCode），面板里提示当前范围 */
-const { findSpace } = useSpaces()
-const scopeSpaceName = computed(() => (currentSpaceCode.value ? findSpace(currentSpaceCode.value)?.spaceName || '' : ''))
-// 切换空间时，若搜索框有内容，按新空间重新搜索
-watch(currentSpaceCode, () => {
-  const kw = searchValue.value.trim()
-  if (!kw) return
-  fuzzyLoading.value = true
-  runFuzzyQuery(kw)
-})
-
 /** 键盘选中项：↑↓ 切换，回车打开 */
 const activeIndex = ref(0)
 watch(fuzzyResults, () => (activeIndex.value = 0))
@@ -496,10 +473,10 @@ const userInitials = computed(() => username.value.slice(-2).toUpperCase())
 const router = useRouter()
 const route = useRoute()
 
-/** 空间切换 / 搜索事项 / 新建按钮只在工作台菜单下展示 */
+/** 搜索事项 / 新建按钮只在工作台菜单下展示 */
 const isWorkbench = computed(() => route.path.startsWith('/workbench'))
 
-/** 文档页：保留顶栏空间切换，但不显示搜索 / 新建 */
+/** 文档页：不显示搜索 / 新建 */
 const isDocs = computed(() => route.path.startsWith('/docs'))
 
 /** 文档保存状态轻提示文案（分享按钮左侧，参考飞书：不显眼的灰色小字） */
@@ -634,6 +611,69 @@ async function handleLogout() {
   padding-right: 8px;
 }
 
+/* 左侧 Logo + 模块名 */
+.header-left-main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.header-logo {
+  flex: none;
+}
+
+.header-logo :deep(svg) {
+  width: 32px;
+  height: 32px;
+}
+
+/* 固定宽度（与左侧菜单同宽）：Logo 靠左，分割线 + 折叠图标贴在该宽度右边界上 */
+.header-left.header-left-fixed {
+  position: relative;
+  /* 抵消顶栏左右 16px 内边距：让这一块的左边缘贴住窗口左侧，右边缘正好落在左侧菜单的竖线上 */
+  margin-left: -16px;
+  padding-left: 16px;
+  padding-right: 0;
+  width: var(--header-left-w);
+  min-width: var(--header-left-w);
+  flex: 0 0 var(--header-left-w);
+  justify-content: flex-start;
+}
+
+/* 分割线贴在左侧菜单右边界上，向上与菜单竖线连成一线 */
+.header-left-fixed .header-left-right {
+  position: absolute;
+  left: calc(100% - 1px);
+  top: 50%;
+  margin-left: 0;
+  transform: translateY(-50%);
+}
+
+.header-left-fixed .header-divider {
+  margin-left: 0;
+  margin-right: 8px;
+}
+
+/* 模块名：由各模块布局传入 */
+.header-module-title {
+  margin-right: 10px;
+  font-size: 16px;
+  font-weight: 600;
+  color: #1d1d1f;
+  white-space: nowrap;
+}
+
+/* 工作台：模块名相对左侧菜单宽度水平居中（Logo 仍靠左） */
+.header-left-centered .header-module-title {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  margin-right: 0;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
 .header-left.collapsed {
   min-width: calc(112px + 40px);
 }
@@ -700,22 +740,6 @@ async function handleLogout() {
 
 .workspace-btn:hover {
   background: #eef1f6;
-}
-
-.header-space {
-  display: flex;
-  align-items: center;
-  /*
-   * 与侧栏二级菜单（我的事项所在面板）左边缘对齐：
-   * 侧栏二级菜单 x = icon-bar 64；顶部 x = header padding 16 + logo 36 + margin-left → margin-left = 12
-   * 配合触发器宽度 216px（280 - 64），顶部这块与下方菜单左右边界完全重合
-   */
-  margin-left: 12px;
-}
-
-/* 客户端不显示 logo，省掉的 36px 用 margin 补回来，保持与侧栏菜单对齐 */
-.header-left.no-logo .header-space {
-  margin-left: 48px;
 }
 
 .header-right {
@@ -995,7 +1019,7 @@ async function handleLogout() {
 
 /* ==========================================================================
    手机端（iPhone 17 / 17 Pro Max 为基准，断点 767px）
-   顶部一行：菜单 + 空间切换 + 搜索 + 新建 + 头像
+   顶部一行：搜索 + 新建 + 头像
    ========================================================================== */
 @media (max-width: 767px) {
   .app-header {
@@ -1005,34 +1029,30 @@ async function handleLogout() {
   }
 
   .header-left,
-  .header-left.collapsed {
-    /* 桌面端这里是 calc(280px + 40px)（与侧栏同宽），手机必须让位给搜索区 */
+  .header-left.collapsed,
+  .header-left.header-left-fixed {
+    /* 桌面端这里是侧栏宽度，手机必须让位给搜索区 */
+    width: auto;
     min-width: 0 !important;
     /* 不参与收缩，否则后面的菜单按钮会被搜索框挤掉 */
     flex: 0 0 auto;
     gap: 4px;
+    margin-left: 0;
+    padding-left: 0;
     padding-right: 0;
   }
 
+  /* 手机端不按菜单宽度居中：模块名跟随内容从左排 */
+  .header-left-centered .header-module-title {
+    position: static;
+    transform: none;
+    margin-right: 0;
+  }
+
   /* 手机屏幕窄，logo 让位给功能区（保留在平板 / 桌面） */
-  .header-left > .app-logo {
+  .header-left > .app-logo,
+  .header-logo {
     display: none;
-  }
-
-  /* 空间切换在手机上固定 116px：桌面端的 216px 会挤掉搜索与右侧操作 */
-  .header-space {
-    margin-left: 0 !important;
-    width: 116px;
-    flex: 0 0 116px;
-    overflow: hidden;
-  }
-
-  .header-space :deep(.header-space-trigger) {
-    width: 100% !important;
-    max-width: 116px !important;
-    height: 30px;
-    padding: 0 8px 0 4px;
-    font-size: 13px;
   }
 
   /* 菜单按钮（打开抽屉）必须始终可见，不参与收缩 */
@@ -1211,11 +1231,6 @@ async function handleLogout() {
   font-size: 12px;
   font-weight: 500;
   color: #8c8c8c;
-}
-
-.sp-scope {
-  font-weight: 400;
-  color: #aeaeb2;
 }
 
 .sp-list {

@@ -1,6 +1,10 @@
 import { defineComponent, h, markRaw, onMounted, ref, watch } from 'vue'
 import { createRouter, createWebHistory, createWebHashHistory, useRoute, type RouteRecordRaw } from 'vue-router'
-import Layout from '@/layout/index.vue'
+import WorkspaceLayout from '@/layout/WorkspaceLayout.vue'
+import DocsLayout from '@/layout/DocsLayout.vue'
+import SpaceLayout from '@/layout/SpaceLayout.vue'
+import AdminLayout from '@/layout/AdminLayout.vue'
+import PlainLayout from '@/layout/PlainLayout.vue'
 import Todo from '@/pages/todo/index.vue'
 import Docs from '@/pages/docs/index.vue'
 import MyBoard from '@/pages/my-board/index.vue'
@@ -77,23 +81,88 @@ const routes: RouteRecordRaw[] = [
   { path: '/login', component: Login, name: 'Login', meta: { title: '登录', public: true } },
   // 注册功能已下线：旧链接统一回到登录页
   { path: '/register', redirect: { name: 'Login' } },
+
+  // ============ 工作台（独立布局：自己的顶栏 + 工作台侧栏） ============
+  {
+    path: '/workbench',
+    component: WorkspaceLayout,
+    children: [
+      { path: '', redirect: '/workbench/board', name: 'Workbench' },
+      { path: 'board', component: MyBoard, name: 'MyBoard', meta: { title: '我的看板' } },
+      { path: 'todo', component: Todo, name: 'Todo', meta: { title: '我的事项' } },
+      // 兼容旧链接
+      { path: 'docs', redirect: '/docs' },
+      { path: 'view/:filterCode', component: ViewEntry, name: 'ViewEntry', meta: { title: '视图' } },
+      // 「新筛选器」菜单已下线：旧链接回到我的事项
+      { path: 'filters', redirect: '/workbench/todo' },
+      { path: ':pathMatch(.*)*', component: EmptyContent, name: 'WorkbenchDynamic' },
+    ],
+  },
+
+  // ============ 云文档（独立布局：自己的顶栏 + 文档页自带的左侧菜单） ============
+  {
+    path: '/docs',
+    component: DocsLayout,
+    children: [
+      { path: '', component: Docs, name: 'Docs', meta: { title: '云文档' } },
+    ],
+  },
+
+  // ============ 空间（独立布局：自己的顶栏 + 空间侧栏） ============
+  {
+    path: '/space',
+    component: SpaceLayout,
+    children: [
+      { path: '', component: Space, name: 'Space', meta: { title: '空间' } },
+      { path: ':spaceCode', component: SpaceHome, name: 'SpaceHome', meta: { title: '空间' } },
+    ],
+  },
+
+  // ============ 管理后台（独立布局：自己的顶栏 + 管理侧栏） ============
+  {
+    path: '/admin',
+    component: AdminLayout,
+    children: [
+      { path: '', redirect: '/admin/users' },
+      { path: 'users', component: Users, name: 'AdminUsers', meta: { title: '用户管理' } },
+      { path: 'roles', component: Roles, name: 'AdminRoles', meta: { title: '角色管理' } },
+      { path: 'positions', component: Positions, name: 'AdminPositions', meta: { title: '岗位管理' } },
+      { path: 'organization', component: Organization, name: 'Organization', meta: { title: '组织管理' } },
+      { path: 'issue-type', component: IssueTypes, name: 'AdminIssueTypes', meta: { title: '问题类型' } },
+      { path: 'system-field', component: SystemField, name: 'SystemField', meta: { title: '系统字段' } },
+      { path: 'i18n', component: I18nPage, name: 'AdminI18n', meta: { title: '国际化翻译' } },
+      { path: 'template-list', component: TemplateList, name: 'TemplateList', meta: { title: '模板管理' } },
+      { path: 'workflow', component: Workflow, name: 'Workflow', meta: { title: '工作流' } },
+    ],
+  },
+
+  // ============ 通用页面（个人中心 / 事项详情 / 历史页面）：只有顶栏 ============
+  {
+    path: '/settings',
+    component: PlainLayout,
+    children: [
+      { path: '', redirect: '/settings/profile' },
+      { path: 'template-list', redirect: '/admin/template-list' },
+      { path: 'available-field', component: AvailableField, name: 'AvailableField', meta: { title: '自定义字段' } },
+      { path: 'workflow', redirect: '/admin/workflow' },
+      { path: 'space', redirect: '/space' },
+      { path: 'profile', component: Profile, name: 'Profile', meta: { title: '个人中心' } },
+      { path: 'account', component: Account, name: 'Account', meta: { title: '账户设置' } },
+      { path: ':pathMatch(.*)*', component: EmptyContent, name: 'SettingsDynamic' },
+    ],
+  },
+  {
+    path: '/jira',
+    component: PlainLayout,
+    children: [
+      { path: 'browse/:issueKey', component: IssueDetail, name: 'IssueDetail', meta: { title: '事项详情' } },
+    ],
+  },
   {
     path: '/',
-    component: Layout,
-    redirect: '/workbench',
+    component: PlainLayout,
     children: [
-      // 工作台默认进入「我的看板」
-      { path: 'workbench', redirect: '/workbench/board', name: 'Workbench' },
-      { path: 'workbench/board', component: MyBoard, name: 'MyBoard', meta: { title: '我的看板' } },
-      { path: 'workbench/todo', component: Todo, name: 'Todo', meta: { title: '我的事项' } },
-      { path: 'docs', component: Docs, name: 'Docs', meta: { title: '先蜂云文档' } },
-      // 兼容旧链接
-      { path: 'workbench/docs', redirect: '/docs' },
-      { path: 'workbench/view/:filterCode', component: ViewEntry, name: 'ViewEntry', meta: { title: '视图' } },
-      { path: 'jira/browse/:issueKey', component: IssueDetail, name: 'IssueDetail', meta: { title: '事项详情' } },
-      // 「新筛选器」菜单已下线：旧链接回到我的事项
-      { path: 'workbench/filters', redirect: '/workbench/todo' },
-      { path: 'workbench/:pathMatch(.*)*', component: EmptyContent, name: 'WorkbenchDynamic' },
+      { path: '', redirect: '/workbench' },
       { path: 'dashboard', component: Dashboard, name: 'Dashboard', meta: { title: '仪表盘' } },
       { path: 'requirements', component: Requirements, name: 'Requirements', meta: { title: '需求管理' } },
       { path: 'requirements/create', component: Requirements, name: 'CreateRequirement', meta: { title: '创建需求' } },
@@ -103,24 +172,6 @@ const routes: RouteRecordRaw[] = [
       { path: 'roles', component: Roles, name: 'Roles', meta: { title: '角色管理' } },
       { path: 'permissions', component: Permissions, name: 'Permissions', meta: { title: '权限管理' } },
       { path: 'departments', component: Departments, name: 'Departments', meta: { title: '部门管理' } },
-      { path: 'settings/template-list', redirect: '/admin/template-list' },
-      { path: 'settings/available-field', component: AvailableField, name: 'AvailableField', meta: { title: '自定义字段' } },
-      { path: 'settings/workflow', redirect: '/admin/workflow' },
-      { path: 'space', component: Space, name: 'Space', meta: { title: '空间' } },
-      { path: 'space/:spaceCode', component: SpaceHome, name: 'SpaceHome', meta: { title: '空间' } },
-      { path: 'settings/space', redirect: '/space' },
-      { path: 'settings/profile', component: Profile, name: 'Profile', meta: { title: '个人中心' } },
-      { path: 'settings/account', component: Account, name: 'Account', meta: { title: '账户设置' } },
-      { path: 'admin/users', component: Users, name: 'AdminUsers', meta: { title: '用户管理' } },
-      { path: 'admin/roles', component: Roles, name: 'AdminRoles', meta: { title: '角色管理' } },
-      { path: 'admin/positions', component: Positions, name: 'AdminPositions', meta: { title: '岗位管理' } },
-      { path: 'admin/organization', component: Organization, name: 'Organization', meta: { title: '组织管理' } },
-      { path: 'admin/issue-type', component: IssueTypes, name: 'AdminIssueTypes', meta: { title: '问题类型' } },
-      { path: 'admin/system-field', component: SystemField, name: 'SystemField', meta: { title: '系统字段' } },
-      { path: 'admin/i18n', component: I18nPage, name: 'AdminI18n', meta: { title: '国际化翻译' } },
-      { path: 'admin/template-list', component: TemplateList, name: 'TemplateList', meta: { title: '模板管理' } },
-      { path: 'admin/workflow', component: Workflow, name: 'Workflow', meta: { title: '工作流' } },
-      { path: 'settings/:pathMatch(.*)*', component: EmptyContent, name: 'SettingsDynamic' },
       { path: ':pathMatch(.*)*', component: EmptyContent, name: 'NotFound' },
     ],
   },

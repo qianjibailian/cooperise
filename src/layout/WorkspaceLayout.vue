@@ -1,60 +1,28 @@
 <template>
   <a-layout class="layout-container" :style="{ '--sider-w': siderWidth + 'px' }">
-    <!-- 客户端：顶栏上方的页签栏（系统窗口按钮也在这一行） -->
-    <DesktopTabBar v-if="isDesktop" />
     <AppHeader
-      :class="{ 'app-header-flush': isDocsRoute, 'app-header-docs-collapsed': isDocsRoute && docsSideCollapsed }"
-      :drawer-open="drawerOpen"
       :sidebar-collapsed="panelCollapsed"
-      :hide-sidebar-toggle="isNonWorkbenchRoute"
+      :show-logo="true"
+      :center-title="true"
+      :left-width="panelCollapsed ? 200 : siderWidth"
+      module-title="需求管控平台"
       search-placeholder="搜索问题单号或者概要"
-      @menu-click="handleMenuClick"
-      @workspace-click="handleWorkspaceClick"
-      @create-click="handleNewFormOpen"
-      @search="handleHeaderSearch"
       @toggle-sidebar="toggleSidebar"
-    />
-
-    <AppSideDrawer
-      v-if="drawerOpen"
-      :open="drawerOpen"
-      @close="drawerOpen = false"
-      @menu-click="handleRemoteMenuClick"
     />
 
     <!-- 手机端：侧栏以抽屉形式从左侧滑出，点遮罩 / 换页自动收起 -->
     <div v-if="isMobile && mobileMenuOpen" class="mobile-mask" @click="closeMobileMenu" />
 
     <a-layout-sider
-      v-if="!isNonWorkbenchRoute && (!panelCollapsed || isIOSApp)"
+      v-if="!panelCollapsed || isIOSApp"
       :width="siderWidth"
-      class="sider"
-      :class="{ 'sider-mobile-open': mobileMenuOpen, 'sider-detail': isNonWorkbenchRoute }"
+      class="sider sider-workbench"
+      :class="{ 'sider-mobile-open': mobileMenuOpen }"
       :trigger="null"
     >
       <div class="sider-inner">
-        <!--
-          一级菜单（图标栏）：网页 / Electron 端已收进左上角 Logo 下拉；
-          iOS App 仍用底部 Tab 栏呈现（Teleport 到 body 避免被抽屉裁剪）。
-        -->
-        <Teleport to="body" :disabled="!isIOSApp">
-          <div v-if="isIOSApp" class="icon-bar">
-            <div
-              v-for="item in iconBarItems"
-              :key="item.key"
-              class="icon-bar-item"
-              :class="{ active: activeSection === item.key }"
-              @click="handleSectionClick(item.key)"
-            >
-              <component :is="item.icon" class="icon-bar-icon" />
-              <span class="icon-bar-label">{{ item.label }}</span>
-            </div>
-          </div>
-        </Teleport>
-
         <!-- 右侧面板 -->
-        <div v-if="!isNonWorkbenchRoute" class="side-panel" :class="{ 'side-panel-collapsed': panelCollapsed }">
-          <template v-if="activeSection === 'workspace'">
+        <div class="side-panel" :class="{ 'side-panel-collapsed': panelCollapsed }">
             <a-menu
               theme="light"
               mode="inline"
@@ -182,114 +150,14 @@
                 </template>
               </a-menu>
             </div>
-          </template>
-
-          <template v-else-if="activeSection === 'system'">
-            <div v-if="!panelCollapsed" class="panel-section-header">
-              <component :is="SettingOutlined" class="section-icon" />
-              <span class="section-title">系统管理</span>
-            </div>
-            <a-menu
-              theme="light"
-              mode="inline"
-              :selectedKeys="[currentPath]"
-
-              @click="handleLocalMenuClick"
-              class="sidebar-menu"
-            >
-              <a-menu-item key="/users">
-                <component :is="UserOutlined" />
-                <span>用户管理</span>
-              </a-menu-item>
-              <a-menu-item key="/roles">
-                <component :is="TeamOutlined" />
-                <span>角色管理</span>
-              </a-menu-item>
-              <a-menu-item key="/permissions">
-                <component :is="LockOutlined" />
-                <span>权限管理</span>
-              </a-menu-item>
-              <a-menu-item key="/departments">
-                <component :is="BuildOutlined" />
-                <span>部门管理</span>
-              </a-menu-item>
-            </a-menu>
-          </template>
-
-          <template v-else-if="activeSection === 'settings'">
-            <a-menu
-              theme="light"
-              mode="inline"
-              :selectedKeys="[currentPath]"
-              @click="handleLocalMenuClick"
-              class="sidebar-menu"
-            >
-              <!-- 自定义字段：暂时隐藏，路由 /settings/available-field 仍保留 -->
-              <!--
-              <a-menu-item key="/settings/available-field">
-                <component :is="AppstoreOutlined" />
-                <span>自定义字段</span>
-              </a-menu-item>
-              -->
-              <a-menu-item key="/settings/profile">
-                <component :is="UserOutlined" />
-                <span>个人中心</span>
-              </a-menu-item>
-              <a-menu-item key="/settings/account">
-                <component :is="LockOutlined" />
-                <span>账户设置</span>
-              </a-menu-item>
-            </a-menu>
-          </template>
-
-          <template v-else-if="activeSection === 'admin'">
-            <a-menu
-              theme="light"
-              mode="inline"
-              :selectedKeys="[currentPath]"
-              @click="handleLocalMenuClick"
-              class="sidebar-menu"
-            >
-              <a-menu-item key="/admin/users">
-                <component :is="UserOutlined" />
-                <span>用户管理</span>
-              </a-menu-item>
-              <a-menu-item key="/admin/roles">
-                <component :is="TeamOutlined" />
-                <span>角色管理</span>
-              </a-menu-item>
-              <a-menu-item key="/admin/positions">
-                <component :is="IdcardOutlined" />
-                <span>岗位管理</span>
-              </a-menu-item>
-              <a-menu-item key="/admin/organization">
-                <component :is="ApartmentOutlined" />
-                <span>组织管理</span>
-              </a-menu-item>
-              <a-menu-item key="/admin/system-field">
-                <component :is="AppstoreOutlined" />
-                <span>系统字段</span>
-              </a-menu-item>
-              <a-menu-item key="/admin/i18n">
-                <component :is="TranslationOutlined" />
-                <span>国际化翻译</span>
-              </a-menu-item>
-              <!-- 问题类型 / 模板管理 / 工作流 已移入空间（空间首页 Tab），路由 /admin/* 仍保留 -->
-            </a-menu>
-          </template>
         </div>
       </div>
     </a-layout-sider>
-    <a-layout class="main-layout" :class="{ 'main-layout-collapsed': panelCollapsed && !isNonWorkbenchRoute, 'main-layout-full': isNonWorkbenchRoute, 'main-layout-docs': isDocsRoute }">
-      <a-layout-content class="content" :class="{ 'content-flush': isDocsRoute }">
+    <a-layout class="main-layout" :class="{ 'main-layout-collapsed': panelCollapsed }">
+      <a-layout-content class="content">
         <WorkbenchPanel />
       </a-layout-content>
     </a-layout>
-
-    <!-- 新建弹窗：抽离为独立组件 -->
-    <NewIssueFormModal v-model:open="showNewFormModal" @submitted="notifyIssueCreated" />
-    <!-- 右下角发版更新通知 -->
-    <ReleaseNotice />
 
     <!-- 我的视图「+」：新建视图 / 文件夹 -->
     <CreateViewModal
@@ -305,8 +173,6 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import {
-  HomeOutlined,
-  SettingOutlined,
   CheckSquareOutlined,
   DashboardOutlined,
   SearchOutlined,
@@ -314,27 +180,13 @@ import {
   FolderOutlined,
   FolderOpenOutlined,
   StarFilled,
-  AppstoreOutlined,
   MoreOutlined,
-  TeamOutlined,
-  LockOutlined,
-  BuildOutlined,
-  ApartmentOutlined,
-  IdcardOutlined,
-  UserOutlined,
-  ToolOutlined,
-  TranslationOutlined,
-  FileTextOutlined,
 } from '@ant-design/icons-vue'
 import { useRouter, useRoute } from 'vue-router'
 import AppHeader from '@/components/AppHeader.vue'
-import DesktopTabBar from '@/components/DesktopTabBar.vue'
-import { isDesktop, isMacDesktop } from '@/utils/desktop'
-import AppSideDrawer from '@/components/AppSideDrawer.vue'
-import NewIssueFormModal from '@/components/NewIssueFormModal.vue'
-import { notifyIssueCreated, onIssueCreated } from '@/utils/issue-events'
+import { isMacDesktop } from '@/utils/desktop'
+import { onIssueCreated } from '@/utils/issue-events'
 import { useTodoCount, refreshTodoCount } from '@/utils/todo-count'
-import { currentSpaceCode } from '@/utils/current-space'
 import { isIOSApp } from '@/utils/native'
 import { useAuth } from '@/utils/auth'
 import CreateViewModal from '@/components/CreateViewModal.vue'
@@ -344,40 +196,25 @@ import { useViewStore } from '@/utils/view-store'
 import type { ViewItem, ViewGroup } from '@/types/faiz'
 import { Modal, message } from 'ant-design-vue'
 import { deleteViewGroup, deleteView } from '@/api/faiz'
-import ReleaseNotice from '@/components/ReleaseNotice.vue'
-import { docsSideCollapsed } from '@/utils/docs-layout'
-
-const iconBarItems = [
-  { key: 'workspace', icon: HomeOutlined, label: '工作台' },
-  { key: 'docs', icon: FileTextOutlined, label: '文档' },
-  { key: 'space', icon: AppstoreOutlined, label: '空间' },
-  { key: 'settings', icon: SettingOutlined, label: '设置' },
-  { key: 'admin', icon: ToolOutlined, label: '管理后台' },
-]
 
 const router = useRouter()
 const route = useRoute()
 
-/** 侧栏宽度：macOS 红绿灯占左侧，把侧栏收窄让主内容区更靠左 */
-const siderWidth = isMacDesktop ? 280 : 334
+/** 侧栏宽度：macOS 红绿灯占左侧，把侧栏收窄让主内容区更靠左（整体比原宽度缩小 20%） */
+const siderWidth = Math.round((isMacDesktop ? 280 : 334) * 0.8)
 
-// 侧边栏「我的事项 (N)」：与我的事项列表总数一致；挂载时与新建事项后按我的事项的筛选条件刷新
+// 侧边栏「我的事项 (N)」：与我的事项列表总数一致；挂载时与新建事项后按我的事项的筛选条件刷新。
+// 该数字只显示在工作台侧栏，非工作台路由不请求（列表页在其它路由整页刷新时也不该带出这两个接口）
 const { todoCount } = useTodoCount()
 const { user: authUser } = useAuth()
 const todoUserNo = computed(() => authUser.value?.memberId || '10284941')
-onMounted(() => refreshTodoCount(todoUserNo.value))
-onIssueCreated(() => refreshTodoCount(todoUserNo.value))
-// 顶部切换空间后：「我的事项 (N)」按新空间重新计数；「我的视图」按空间重新加载，
-// 当前打开的视图不属于新空间时回到「我的事项」
-watch(currentSpaceCode, async () => {
-  refreshTodoCount(todoUserNo.value)
-  await fetchViewList(true)
-  const m = route.path.match(/^\/workbench\/view\/([^/?#]+)/)
-  const code = m ? decodeURIComponent(m[1]) : ''
-  if (code && code !== 'group' && !__findViewItem(code)) router.replace('/workbench/todo')
+const isWorkbenchPath = (path: string) => path.startsWith('/workbench')
+onMounted(() => {
+  if (isWorkbenchPath(route.path)) refreshTodoCount(todoUserNo.value)
 })
-
-const drawerOpen = ref(false)
+onIssueCreated(() => {
+  if (isWorkbenchPath(route.path)) refreshTodoCount(todoUserNo.value)
+})
 const SIDEBAR_COLLAPSED_KEY = 'cooperise_sidebar_collapsed'
 /** 侧栏收起偏好：默认展开；用户收起后记住（iOS 小屏默认收起） */
 function readSidebarCollapsed(): boolean {
@@ -398,18 +235,8 @@ const sidebarCollapsed = ref(readSidebarCollapsed())
  */
 const isMobile = ref(window.innerWidth <= 767)
 const mobileMenuOpen = ref(false)
-const activeSection = ref('workspace')
-// 设置路由与工作台路由同样展示侧边栏（含二级菜单），仅其余路由（如事项详情）隐藏侧边面板
-/** 文档页需要贴边展示：去掉内容区四周留白 */
-const isDocsRoute = computed(() => route.path.startsWith('/docs'))
-/** 收起状态：整个侧栏（一级图标栏 + 二级面板）隐藏，内容区全宽 */
+/** 收起状态：整个侧栏隐藏，内容区全宽 */
 const panelCollapsed = computed(() => sidebarCollapsed.value)
-
-const isNonWorkbenchRoute = computed(() => {
-  const path = route.path
-  if (path.startsWith('/settings') || path.startsWith('/admin')) return false
-  return !path.startsWith('/workbench')
-})
 
 // ========== 我的视图（/view/list 异步，单例共享自 @/utils/view-store） ==========
 const {
@@ -539,70 +366,24 @@ watch(
   { deep: true, immediate: true }
 )
 
-// 新建表单弹窗
-const showNewFormModal = ref(false)
-
-function handleNewFormOpen() {
-  showNewFormModal.value = true
-}
-
 // 进入工作台路由时请求 /view/list（已加载过则走缓存）；其它路由不展示视图区，不请求
 watch(
   () => route.path,
-  (path) => {
-    if (path.startsWith('/workbench')) fetchViewList()
+  (path, prev) => {
+    if (isWorkbenchPath(path)) {
+      fetchViewList()
+      // 从其它模块（文档 / 空间 / 设置 / 事项详情等）进入工作台：补一次「我的事项」数量；
+      // 工作台内部切页不重复请求（我的事项页查询后会自行更新数量）
+      if (prev && !isWorkbenchPath(prev)) refreshTodoCount(todoUserNo.value)
+    }
     // 手机端：点菜单跳页后自动收起抽屉
     if (isMobile.value && mobileMenuOpen.value) mobileMenuOpen.value = false
   },
   { immediate: true },
 )
 
-const currentPath = computed(() => {
-  if (route.path.startsWith('/workbench')) {
-    activeSection.value = 'workspace'
-    return route.path
-  }
-  if (route.path.startsWith('/docs')) {
-    activeSection.value = 'docs'
-    return route.path
-  }
-  if (route.path.startsWith('/users') || route.path.startsWith('/roles') || route.path.startsWith('/permissions') || route.path.startsWith('/departments')) {
-    activeSection.value = 'system'
-    return route.path
-  }
-  if (route.path.startsWith('/space')) {
-    activeSection.value = 'space'
-    return route.path
-  }
-  if (route.path.startsWith('/settings')) {
-    activeSection.value = 'settings'
-    return route.path
-  }
-  if (route.path.startsWith('/admin')) {
-    activeSection.value = 'admin'
-    return route.path
-  }
-  return route.path
-})
-
-function handleSectionClick(key: string) {
-  activeSection.value = key
-  if (key === 'workspace') {
-    router.push('/workbench/board')
-  } else if (key === 'docs') {
-    router.push('/docs')
-  } else if (key === 'space') {
-    router.push('/space')
-  } else if (key === 'settings') {
-    router.push('/settings/profile')
-  } else if (key === 'admin') {
-    router.push('/admin/users')
-  }
-}
-
-function handleMenuClick() {
-  drawerOpen.value = !drawerOpen.value
-}
+/** 侧栏菜单选中项：工作台布局只处理 /workbench/* */
+const currentPath = computed(() => route.path)
 
 function syncViewport() {
   const next = window.innerWidth <= 767
@@ -629,14 +410,6 @@ function toggleSidebar() {
 
 function closeMobileMenu() {
   mobileMenuOpen.value = false
-}
-
-function handleWorkspaceClick() {
-  router.push('/dashboard')
-}
-
-function handleHeaderSearch(value: string) {
-  if (value) router.push(value)
 }
 
 /** 从 menu key 找到 ViewItem（key 形如 /workbench/view/CUSTOMxx?groupCode=...） */
@@ -673,14 +446,6 @@ const selectedViewKeys = computed<string[]>(() => {
   return keys
 })
 
-function handleRemoteMenuClick(key: string) {
-  let path = key
-  if (path.startsWith('/cooperise')) {
-    path = path.replace(/^\/cooperise/, '') || '/dashboard'
-  }
-  router.push(path)
-}
-
 // ---------- 窄屏兼容：页面横向滚动时，fixed 的顶栏 / 侧栏跟随平移 ----------
 function syncScrollX() {
   document.documentElement.style.setProperty('--app-scroll-x', `${window.scrollX}px`)
@@ -709,7 +474,8 @@ onBeforeUnmount(() => {
 }
 
 .sider {
-  /* 侧栏灰底、内容区白底，靠色调分层（与云文档侧栏一致），交界处一条细线 */
+  /* 侧栏灰底、内容区白底，靠色调分层（与云文档侧栏一致），交界处一条细线；
+     工作台侧栏例外，见下方 .sider-workbench 的白底覆盖 */
   background: var(--docs-side-bg) !important;
   height: calc(100vh - var(--app-header-height, 56px));
   height: calc(100dvh - var(--app-header-height, 56px));
@@ -725,6 +491,11 @@ onBeforeUnmount(() => {
   transform: translateX(calc(-1 * var(--app-scroll-x, 0px)));
 }
 
+/* 工作台侧栏：白底，与右侧内容区一致（设置 / 管理后台仍用灰底分层） */
+.sider.sider-workbench {
+  background: #ffffff !important;
+}
+
 .sider-inner {
   display: flex;
   flex: 1;
@@ -734,59 +505,6 @@ onBeforeUnmount(() => {
   height: 100dvh;
 }
 
-/* 左侧图标栏 */
-.icon-bar {
-  width: 64px;
-  min-width: 64px;
-  background: #ffffff;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 8px 0;
-  border-right: 1px solid #e8e8e8;
-  height: 100%;
-}
-
-.icon-bar-item {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  width: 56px;
-  height: 64px;
-  border-radius: 8px;
-  cursor: pointer;
-  margin-bottom: 4px;
-  transition: all 0.15s ease;
-}
-
-.icon-bar-item:hover {
-  background: rgba(0, 0, 0, 0.06);
-}
-
-.icon-bar-item.active {
-  background: var(--c-primary-bg);
-}
-
-.icon-bar-item.active .icon-bar-icon {
-  color: var(--c-primary);
-}
-
-.icon-bar-item.active .icon-bar-label {
-  color: var(--c-primary);
-}
-
-.icon-bar-icon {
-  font-size: 20px;
-  color: #595959;
-  margin-bottom: 2px;
-}
-
-.icon-bar-label {
-  font-size: 11px;
-  color: #595959;
-  line-height: 1.2;
-}
 
 /* 右侧面板 */
 .side-panel {
@@ -1237,11 +955,7 @@ onBeforeUnmount(() => {
   margin: 1px 8px;
 }
 
-/* 文件夹展开态：标题浅灰背景 + 图标变主色，展开 / 收起更明显 */
-.view-menu :deep(.ant-menu-submenu-open > .ant-menu-submenu-title) {
-  background: rgba(0, 0, 0, 0.05);
-  border-radius: 8px;
-}
+/* 文件夹展开态：不加深色背景，只让图标变主色 */
 .view-menu :deep(.ant-menu-submenu-open > .ant-menu-submenu-title .folder-icon) {
   color: var(--c-primary);
 }
@@ -1278,47 +992,6 @@ onBeforeUnmount(() => {
   background: #f4f5f8;
   width: 100%;
   box-sizing: border-box;
-}
-/* 文档页：去掉顶部菜单投下的阴影分割线，改为明确的底部分割线 */
-.app-header-flush {
-  box-shadow: none !important;
-  border-bottom: 1px solid #e5e6eb;
-}
-/* 文档页：左侧文档菜单直达视口顶部，顶栏只覆盖右侧内容区（侧栏宽 334px，窄屏 200px） */
-/* 同时去掉 min-width，否则顶栏右移后总宽超出视口，右侧头像会被挤出屏幕 */
-.layout-container .app-header-flush {
-  left: 304px;
-  min-width: 0;
-}
-/* 文档侧栏折叠时，左侧菜单完全消失，顶栏撑满整行 */
-.layout-container .app-header-docs-collapsed {
-  left: 0;
-}
-@media (max-width: 860px) {
-  .layout-container .app-header-flush {
-    left: 200px;
-    min-width: 0;
-  }
-  .layout-container .app-header-docs-collapsed {
-    left: 0;
-  }
-}
-/* 文档页：内容区不留白，页面自身贴满 */
-.content.content-flush {
-  padding: 0;
-}
-/* 文档页：工作台面板撑到视口底部（去掉通用页面预留的 19px） */
-.content.content-flush :deep(.workbench-panel) {
-  height: 100vh;
-  height: 100dvh;
-}
-/* 文档页：主布局不再为顶栏预留顶部空间，左侧菜单才能延伸到顶部 */
-.main-layout-docs {
-  padding-top: 0;
-}
-
-.content > :deep(*) {
-  width: 100%;
 }
 
 /* ==========================================================================

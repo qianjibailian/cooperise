@@ -1,10 +1,10 @@
 <template>
-  <!-- 先蜂云文档 logo：简约小蜜蜂 -->
+  <!-- 云文档 logo：简约小蜜蜂 -->
   <svg
     viewBox="0 0 48 48"
     xmlns="http://www.w3.org/2000/svg"
     role="img"
-    aria-label="先蜂云文档"
+    aria-label="云文档"
   >
     <defs>
       <clipPath id="beeBodyClip">

@@ -1,7 +1,16 @@
 <template>
   <!-- 主题色：antd 组件取 antdTheme，自定义样式取 --c-primary 等 CSS 变量（见 @/utils/theme） -->
   <a-config-provider :theme="antdTheme" :locale="antdLocale">
+    <!-- 客户端：顶部页签栏（全局，不属于任何模块布局） -->
+    <DesktopTabBar v-if="isDesktop && !route.meta.public" />
     <router-view />
+
+    <!-- 全局弹窗与悬浮组件：各模块布局共用，不随模块切换重复挂载 -->
+    <template v-if="!route.meta.public">
+      <NewIssueFormModal v-model:open="newIssueModalOpen" @submitted="notifyIssueCreated" />
+      <ReleaseNotice />
+      <FloatingModuleNav />
+    </template>
   </a-config-provider>
   <!-- 客户端：登录页等没有顶栏的页面，顶部留一条可拖动窗口的区域 -->
   <div v-if="isDesktop && route.meta.public" class="desktop-drag-strip" />
@@ -21,6 +30,12 @@ import enUS from 'ant-design-vue/es/locale/en_US'
 import { locale } from '@/i18n'
 import { isDesktop, isMacDesktop } from '@/utils/desktop'
 import WindowControls from '@/components/WindowControls.vue'
+import DesktopTabBar from '@/components/DesktopTabBar.vue'
+import FloatingModuleNav from '@/components/FloatingModuleNav.vue'
+import NewIssueFormModal from '@/components/NewIssueFormModal.vue'
+import ReleaseNotice from '@/components/ReleaseNotice.vue'
+import { newIssueModalOpen } from '@/utils/new-issue-modal'
+import { notifyIssueCreated } from '@/utils/issue-events'
 
 const route = useRoute()
 const router = useRouter()
@@ -115,7 +130,7 @@ html.is-desktop.is-mac .docs-home {
   padding-left: 40px;
 }
 
-/* mac 客户端：文档左侧导航（先锋云文档 / 搜索 / 文件树）左侧留 22px */
+/* mac 客户端：文档左侧导航（云文档 / 搜索 / 文件树）左侧留 22px */
 html.is-desktop.is-mac .docs-side {
   padding-left: 22px;
 }
