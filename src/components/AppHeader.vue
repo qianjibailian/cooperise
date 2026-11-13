@@ -23,7 +23,7 @@
       <div class="header-left-main">
         <AppLogo v-if="showLogo" class="header-logo" />
         <!-- 模块名：各模块布局自己传入（工作台 / 云文档 / 空间 / 管理后台） -->
-        <span v-if="moduleTitle" class="header-module-title">{{ moduleTitle }}</span>
+        <span v-if="moduleTitle" class="header-module-title" :class="{ 'is-large': moduleTitleLarge }">{{ moduleTitle }}</span>
       </div>
 
       <div class="header-left-right">
@@ -282,6 +282,8 @@ defineProps<{
   leftWidth?: number
   /** 模块名是否在左侧区域内水平居中（工作台） */
   centerTitle?: boolean
+  /** 模块名字号加大一号（云文档） */
+  moduleTitleLarge?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -477,7 +479,7 @@ const route = useRoute()
 const isWorkbench = computed(() => route.path.startsWith('/workbench'))
 
 /** 文档页：不显示搜索 / 新建 */
-const isDocs = computed(() => route.path.startsWith('/docs'))
+const isDocs = computed(() => route.path.startsWith('/docs') || route.path.startsWith('/wiki'))
 
 /** 文档保存状态轻提示文案（分享按钮左侧，参考飞书：不显眼的灰色小字） */
 const docsSaveStateText = computed(() => {
@@ -662,6 +664,10 @@ async function handleLogout() {
   font-weight: 600;
   color: #1d1d1f;
   white-space: nowrap;
+}
+
+.header-module-title.is-large {
+  font-size: 21px;
 }
 
 /* 工作台：模块名相对左侧菜单宽度水平居中（Logo 仍靠左） */

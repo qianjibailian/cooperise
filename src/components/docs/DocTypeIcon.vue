@@ -101,14 +101,14 @@ const props = withDefaults(defineProps<{
   --type-color: var(--docs-type-flow);
 }
 .doc-type-icon.is-sm {
-  width: 22px;
-  height: 22px;
-  font-size: 13px;
+  width: 24px;
+  height: 24px;
+  font-size: 15px;
 }
 .doc-type-icon.is-md {
-  width: 32px;
-  height: 32px;
-  font-size: 17px;
+  width: 34px;
+  height: 34px;
+  font-size: 19px;
   --chamfer: 8px;
 }
 .doc-type-glyph {

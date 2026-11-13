@@ -83,7 +83,7 @@ const KIND_META: Record<TabKind, { label: string; icon: unknown }> = {
 }
 function kindOf(path: string): TabKind {
   if (path.startsWith('/jira/browse/')) return 'link'
-  if (path.startsWith('/docs')) return 'docs'
+  if (path.startsWith('/docs') || path.startsWith('/wiki')) return 'docs'
   if (path.startsWith('/space')) return 'space'
   if (path.startsWith('/workbench/')) return 'menu'
   return 'page'
@@ -111,6 +111,8 @@ const activeKey = computed(() => keyOf(route))
 
 /** 页签标识：云文档按完整路径区分（每个文档一个页签），其余页面按 path 区分 */
 function keyOf(r: RouteLocationNormalizedLoaded): string {
+  // 文档详情（/wiki/:docId）每篇一个页签；文档列表按完整路径区分导航状态
+  if (r.path.startsWith('/wiki/')) return r.path
   return r.path === '/docs' ? r.fullPath : r.path
 }
 
@@ -129,6 +131,7 @@ function docTitleOf(id: string): string {
 
 function titleOf(r: RouteLocationNormalizedLoaded): string {
   if (r.name === 'IssueDetail' && r.params.issueKey) return String(r.params.issueKey)
+  if (r.path.startsWith('/wiki/') && r.params.docId) return docTitleOf(String(r.params.docId))
   if (r.path === '/docs' && r.query.doc) return docTitleOf(String(r.query.doc))
   if (r.name === 'ViewEntry' && r.params.filterCode) {
     return findViewItem(String(r.params.filterCode))?.filterName || '视图'

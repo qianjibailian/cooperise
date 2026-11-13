@@ -3,9 +3,11 @@
   <div class="layout-container docs-layout">
     <AppHeader
       class="app-header-flush"
-      :class="{ 'app-header-docs-collapsed': docsSideCollapsed }"
+      :class="{ 'app-header-docs-collapsed': docsSideCollapsed, 'is-doc-page': isDocDetail }"
       :sidebar-collapsed="false"
       :hide-sidebar-toggle="true"
+      :module-title="moduleTitle"
+      :module-title-large="true"
     />
     <div class="docs-main">
       <router-view />
@@ -14,8 +16,20 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
+import { useRoute } from 'vue-router'
 import AppHeader from '@/components/AppHeader.vue'
 import { docsSideCollapsed } from '@/utils/docs-layout'
+
+const route = useRoute()
+/** 是否文档详情页（/wiki/:docId） */
+const isDocDetail = computed(() => route.path.startsWith('/wiki/'))
+/** 顶部菜单标题：主页 / 知识库；打开文档时顶部显示文档标题，不重复显示模块名 */
+const moduleTitle = computed(() => {
+  if (route.path.startsWith('/wiki/')) return ''
+  if (route.path.startsWith('/docs/wiki')) return '知识库'
+  return '主页'
+})
 </script>
 
 <style scoped>
@@ -37,15 +51,23 @@ import { docsSideCollapsed } from '@/utils/docs-layout'
   height: 100%;
 }
 
-/* 顶栏去掉阴影，改为明确底部分割线；左侧留给文档菜单，折叠时铺满 */
+/* 顶栏去掉阴影和底部分割线；左侧留给文档菜单，折叠时铺满 */
 .app-header-flush {
   box-shadow: none !important;
-  border-bottom: 1px solid #e5e6eb;
+  border-bottom: none;
 }
 
 .docs-layout .app-header-flush {
-  left: 304px;
+  left: 340px;
   min-width: 0;
+  /* 与文档内容区（主页的「新建」卡片）左边缘对齐 */
+  padding-left: 48px;
+}
+
+/* 文档详情：标题和「已经保存到云端」贴近左侧（不跟随内容区缩进），并展示顶栏底部分割线 */
+.docs-layout .app-header-flush.is-doc-page {
+  padding-left: 16px;
+  border-bottom: 1px solid #e5e6eb;
 }
 
 .docs-layout .app-header-docs-collapsed {

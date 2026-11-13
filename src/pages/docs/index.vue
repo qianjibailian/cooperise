@@ -6,6 +6,10 @@ import { Modal, message } from 'ant-design-vue'
 import {
   PlusOutlined,
   SearchOutlined,
+  ControlOutlined,
+  CloseOutlined,
+  LeftOutlined,
+  SmileOutlined,
   MoreOutlined,
   DeleteOutlined,
   FolderFilled,
@@ -40,6 +44,8 @@ import {
   FullscreenOutlined,
   FullscreenExitOutlined,
   MenuFoldOutlined,
+  MenuOutlined,
+  DoubleLeftOutlined,
   MenuUnfoldOutlined,
   HolderOutlined,
   AlignLeftOutlined,
@@ -50,6 +56,13 @@ import {
   TranslationOutlined,
   ShareAltOutlined,
   FileAddOutlined,
+  FileTextOutlined,
+  FileMarkdownOutlined,
+  FileDoneOutlined,
+  Html5Outlined,
+  ScheduleOutlined,
+  PartitionOutlined,
+  BranchesOutlined,
   SnippetsOutlined,
   PlusSquareOutlined,
 } from '@ant-design/icons-vue'
@@ -59,6 +72,7 @@ import DocSheetEditor from '@/components/docs/DocSheetEditor.vue'
 import DocMindmapEditor from '@/components/docs/DocMindmapEditor.vue'
 import DocFlowEditor from '@/components/docs/DocFlowEditor.vue'
 import DocTypeIcon from '@/components/docs/DocTypeIcon.vue'
+import DocsLibraryCover from '@/components/docs/DocsLibraryCover.vue'
 import AppLogo from '@/components/AppLogo.vue'
 import { isDesktop } from '@/utils/desktop'
 import { docsSideCollapsed, docsEditMode, docsActiveDoc, docsSaveState, docsTitleRev } from '@/utils/docs-layout'
@@ -68,6 +82,7 @@ import {
   createDocFolder,
   deleteDocFolder,
   emptyTrash as emptyTrashApi,
+  getDocDetail,
   listDocFolders,
   listDocs as listDocsApi,
   listTrashDocs,
@@ -99,6 +114,8 @@ const editorRef = ref<HTMLElement | null>(null)
 const searchRef = ref<any>(null)
 const route = useRoute()
 const router = useRouter()
+/** 当前文档 ID：/wiki/:docId 优先，兼容旧链接 /docs?doc=xxx */
+const routeDocId = computed(() => String(route.params.docId || route.query.doc || ''))
 /** 列表页排序 */
 const sortBy = ref<'updated' | 'created' | 'title'>('updated')
 const SORT_OPTIONS = [
@@ -132,6 +149,30 @@ interface OutlineItem {
   level: number
 }
 const outline = ref<OutlineItem[]>([])
+
+// ---------------- 左侧目录：折叠 / 展开（记住偏好） ----------------
+const OUTLINE_COLLAPSED_KEY = 'cooperise.docs.outlineCollapsed'
+function readOutlineCollapsed(): boolean {
+  try {
+    return localStorage.getItem(OUTLINE_COLLAPSED_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+const outlineCollapsed = ref(readOutlineCollapsed())
+function toggleOutline() {
+  outlineCollapsed.value = !outlineCollapsed.value
+  try {
+    localStorage.setItem(OUTLINE_COLLAPSED_KEY, outlineCollapsed.value ? '1' : '0')
+  } catch {
+    // 存储不可用时只在本次生效
+  }
+}
+/** 点击目录里的文档标题：回到正文顶部 */
+function scrollToTop() {
+  const canvas = document.querySelector('.docs-canvas') as HTMLElement | null
+  canvas?.scrollTo({ top: 0, behavior: 'smooth' })
+}
 
 /** 宽屏 / 专注模式 */
 const wideMode = ref(false)
@@ -251,8 +292,21 @@ async function loadDocs() {
     // 默认展开全部文件夹
     for (const f of folders.value) expanded[f.id] = expanded[f.id] ?? true
     // 从 URL 恢复当前文档；没有则停留在列表页
-    const target = String(route.query.doc || '')
+    const target = routeDocId.value
+    // 新页面直接打开文档时，列表里可能还没有这篇（或列表只返回摘要）：按 id 拉一次详情
+    if (target && !docs.value.some((d) => d.id === target)) {
+      try {
+        const detailRes = await getDocDetail(target)
+        if (detailRes?.success && detailRes.data) docs.value.unshift(normalizeDoc(detailRes.data))
+      } catch {
+        // 详情加载失败时按列表结果处理
+      }
+    }
     activeId.value = target && docs.value.some((d) => d.id === target) ? target : ''
+    // 旧链接 /docs?doc=xxx → /wiki/xxx
+    if (activeId.value && !route.params.docId && route.query.doc) {
+      router.replace({ name: 'WikiDoc', params: { docId: activeId.value } })
+    }
   } catch {
     // 失败提示由 request 拦截器统一展示；保留现有数据
   } finally {
@@ -325,8 +379,9 @@ function createDoc(type: DocType = 'doc', folderId?: string) {
       if (!res.success || !res.data) return
       const doc = normalizeDoc(res.data)
       docs.value.unshift(doc)
-      selectDoc(doc)
       if (folderId) expanded[folderId] = true
+      // 后端生成文档 id（24 位 Base62），打开新的文档页面加载内容
+      router.push({ name: 'WikiDoc', params: { docId: doc.id } })
       if (type === 'doc') nextTick(() => editorRef.value?.focus())
     })
     .catch(() => {})
@@ -412,7 +467,8 @@ function createDocWithContent(type: DocType, title: string, content: string) {
       if (!res.success || !res.data) return
       const doc = normalizeDoc(res.data)
       docs.value.unshift(doc)
-      selectDoc(doc)
+      // 打开新的文档页面（后端生成的文档 id）
+      router.push({ name: 'WikiDoc', params: { docId: doc.id } })
       if (type === 'doc') {
         nextTick(() => {
           if (editorRef.value) {
@@ -481,12 +537,13 @@ function onTemplateMenu(e: { key?: string | number }) {
 
 function selectDoc(doc: DocItem) {
   activeId.value = doc.id
-  router.replace({ query: { ...route.query, doc: doc.id } })
+  // 文档详情统一走 /wiki/:docId（参考飞书）
+  router.replace({ name: 'WikiDoc', params: { docId: doc.id } })
 }
 
 /** 主内容区的文档：在新页面 / 页签中打开 */
 function openDocInNewPage(doc: DocItem) {
-  const href = router.resolve({ path: '/docs', query: { doc: doc.id } }).href
+  const href = router.resolve({ name: 'WikiDoc', params: { docId: doc.id } }).href
   if (isDesktop) {
     // 客户端：由 DesktopTabBar 按完整路径新开页签
     router.push(href)
@@ -495,26 +552,37 @@ function openDocInNewPage(doc: DocItem) {
   }
 }
 
-/** 返回文档列表 */
+/** 返回文档列表：主页 / 知识库各自对应自己的路由 */
 function backToList() {
   activeId.value = ''
-  const query = { ...route.query }
-  delete query.doc
-  router.replace({ query })
+  const target = navMode.value === 'library' ? 'DocsWiki' : 'DocsHome'
+  if (route.name !== target) router.replace({ name: target })
 }
 
-/** 切换左侧导航：全部 / 收藏 */
+/** 切换左侧导航：主页（/docs/drive/home）、知识库（/docs/wiki）等 */
 function switchNav(mode: 'recent' | 'owned' | 'shared' | 'starred' | 'library' | 'trash') {
   navMode.value = mode
   if (mode === 'recent' || mode === 'owned' || mode === 'shared') activeFolderId.value = ''
-  backToList()
+  activeId.value = ''
+  const target = mode === 'library' ? 'DocsWiki' : 'DocsHome'
+  if (route.name !== target) router.push({ name: target })
 }
+
+// 直接访问 /docs/wiki（知识库）时，左侧对应高亮
+watch(
+  () => route.name,
+  (name) => {
+    if (name === 'DocsWiki') navMode.value = 'library'
+    else if (name === 'DocsHome' && navMode.value === 'library') navMode.value = 'recent'
+  },
+  { immediate: true },
+)
 
 // 浏览器前进 / 后退时同步当前文档
 watch(
-  () => route.query.doc,
-  (id) => {
-    const code = String(id || '')
+  () => [route.params.docId, route.query.doc],
+  () => {
+    const code = routeDocId.value
     activeId.value = code && docs.value.some((d) => d.id === code) ? code : ''
   },
 )
@@ -524,6 +592,13 @@ const pinnedDocs = computed(() =>
   docs.value.filter((d) => d.starred).sort((a, b) => b.updatedAt - a.updatedAt),
 )
 const pinnedFolders = computed(() => folders.value.filter((f) => f.starred))
+
+/** 知识库搜索 */
+const libraryKeyword = ref('')
+const libraryFolders = computed(() => {
+  const kw = libraryKeyword.value.trim().toLowerCase()
+  return kw ? folders.value.filter((f) => f.name.toLowerCase().includes(kw)) : folders.value
+})
 
 function docsOfFolder(folder: DocFolder): number {
   return docs.value.filter((d) => d.folderId === folder.id).length
@@ -708,6 +783,64 @@ function openCreateFolder() {
   folderModalOpen.value = true
 }
 
+// ---------------- 新建知识库：先选模板 ----------------
+const libraryTemplateOpen = ref(false)
+const selectedLibraryTemplate = ref<string | null>(null)
+
+/** 目前仅支持空白知识库模板 */
+function openCreateLibrary() {
+  selectedLibraryTemplate.value = 'blank'
+  libraryTemplateOpen.value = true
+}
+
+// 第二步：完善知识库信息
+const libraryInfoOpen = ref(false)
+const libraryInfoSubmitting = ref(false)
+const libraryInfoForm = reactive({
+  name: '',
+  desc: '',
+  visibility: 'members' as 'members' | 'all',
+})
+
+function confirmLibraryTemplate() {
+  libraryTemplateOpen.value = false
+  libraryInfoForm.name = ''
+  libraryInfoForm.desc = ''
+  libraryInfoForm.visibility = 'members'
+  libraryInfoOpen.value = true
+}
+
+/** 返回上一步：重新选择模板 */
+function backToLibraryTemplate() {
+  libraryInfoOpen.value = false
+  libraryTemplateOpen.value = true
+}
+
+async function submitLibraryInfo() {
+  const name = libraryInfoForm.name.trim()
+  if (!name) {
+    message.warning('请输入知识库名称')
+    return
+  }
+  if (libraryInfoSubmitting.value) return
+  libraryInfoSubmitting.value = true
+  try {
+    const res = await createDocFolder({ name })
+    if (!res.success || !res.data) return
+    const folder = normalizeFolder(res.data)
+    folders.value.push(folder)
+    expanded[folder.id] = true
+    activeFolderId.value = folder.id
+    libraryInfoOpen.value = false
+  } finally {
+    libraryInfoSubmitting.value = false
+  }
+}
+
+function onLibraryFeedback() {
+  message.info('反馈功能即将上线')
+}
+
 function openRenameFolder(folder: DocFolder) {
   folderForm.id = folder.id
   folderForm.name = folder.name
@@ -784,6 +917,100 @@ function onAddMenu(e: { key?: string | number }) {
   else if (['doc', 'sheet', 'mindmap', 'flow'].includes(key)) {
     createDoc(key as DocType, activeFolderId.value || undefined)
   }
+}
+
+/** 新建下拉：悬停 / 点击展开（参考飞书的「新建」面板） */
+const addOpen = ref(false)
+const ADD_TYPE_ITEMS = [
+  { key: 'doc', label: '文档', icon: FileTextOutlined },
+  { key: 'sheet', label: '表格', icon: TableOutlined },
+]
+const ADD_APP_ITEMS = [
+  { key: 'mindmap', label: '思维导图', icon: PartitionOutlined },
+  { key: 'flow', label: '流程图', icon: BranchesOutlined },
+]
+/** 选择文件类型后进入模板选择弹窗 */
+const docTemplateOpen = ref(false)
+const docTemplateKeyword = ref('')
+const docTemplateCategory = ref('recommend')
+const docTemplateType = ref<DocType>('doc')
+
+const DOC_TYPE_LABELS: Record<string, string> = {
+  doc: '文档',
+  sheet: '表格',
+  mindmap: '思维导图',
+  flow: '流程图',
+}
+const DOC_BLANK_LABELS: Record<string, string> = {
+  doc: '新建空白文档',
+  sheet: '新建空白表格',
+  mindmap: '新建空白思维导图',
+  flow: '新建空白流程图',
+}
+const DOC_TEMPLATE_CATEGORIES = [
+  { key: 'mine', label: '我的模板' },
+  { key: 'shared', label: '与我共享' },
+  { key: 'recommend', label: '推荐' },
+  { key: 'latest', label: '最新' },
+  { key: 'hot', label: '热门模板' },
+  { key: 'project', label: '项目管理' },
+  { key: 'weekly', label: '周报日报' },
+  { key: 'meeting', label: '会议' },
+  { key: 'okr', label: 'OKR' },
+  { key: 'rd', label: '研发' },
+  { key: 'product', label: '产品' },
+  { key: 'design', label: '设计' },
+  { key: 'ops', label: '运营' },
+  { key: 'market', label: '市场' },
+]
+
+/** 新建到哪个文档库 */
+const docTemplateTargetName = computed(
+  () => folders.value.find((f) => f.id === activeFolderId.value)?.name || '我的文档库',
+)
+
+function openDocTemplate(type: DocType) {
+  docTemplateType.value = type
+  docTemplateKeyword.value = ''
+  docTemplateCategory.value = 'recommend'
+  docTemplateOpen.value = true
+}
+
+function createBlankDocFromTemplate() {
+  const type = docTemplateType.value
+  docTemplateOpen.value = false
+  createDoc(type, activeFolderId.value || undefined)
+}
+
+function onAddItem(key: string) {
+  addOpen.value = false
+  if (['doc', 'sheet', 'mindmap', 'flow'].includes(key)) {
+    openDocTemplate(key as DocType)
+    return
+  }
+  onAddMenu({ key })
+}
+
+/** 上传 / 模板库下拉：与「新建」同一套面板样式和悬停 / 点击交互 */
+const uploadOpen = ref(false)
+const templateOpen = ref(false)
+const UPLOAD_ITEMS = [
+  { key: 'md', label: 'Markdown (.md)', icon: FileMarkdownOutlined },
+  { key: 'txt', label: '文本 (.txt)', icon: FileTextOutlined },
+  { key: 'html', label: '网页 (.html)', icon: Html5Outlined },
+]
+const TEMPLATE_ITEMS = [
+  { key: 'meeting', label: '会议纪要', icon: ScheduleOutlined },
+  { key: 'weekly', label: '周报', icon: FileDoneOutlined },
+  { key: 'prd', label: '产品需求文档', icon: SnippetsOutlined },
+]
+function onUploadItem(key: string) {
+  uploadOpen.value = false
+  onUploadMenu({ key })
+}
+function onTemplateItem(key: string) {
+  templateOpen.value = false
+  onTemplateMenu({ key })
 }
 
 // ---- 编辑器 ----
@@ -892,7 +1119,7 @@ function onEditorChange(editor: HTMLElement, doc: DocItem) {
   if (isEditorEmpty(editor)) {
     hoverBlock.value = editor
     hoverBlockType.value = 'p'
-    plusTop.value = 16 // 与编辑器首行（输入提示）对齐
+    plusTop.value = 0 // 与编辑器首行（输入提示）对齐
     plusVisible.value = true
   } else if (hoverBlock.value === editor) {
     plusVisible.value = false
@@ -910,7 +1137,7 @@ watch(activeDoc, async (d) => {
   if (isEditorEmpty(ed)) {
     hoverBlock.value = ed
     hoverBlockType.value = 'p'
-    plusTop.value = 16 // 与编辑器首行（输入提示）对齐
+    plusTop.value = 0 // 与编辑器首行（输入提示）对齐
     plusVisible.value = true
   } else {
     plusVisible.value = false
@@ -1109,7 +1336,7 @@ function onEditorHover(e: MouseEvent) {
     if (isEditorEmpty(editor)) {
       hoverBlock.value = editor
       hoverBlockType.value = 'p'
-      plusTop.value = 16 // 与编辑器首行（输入提示）对齐
+      plusTop.value = 0 // 与编辑器首行（输入提示）对齐
       plusVisible.value = true
     } else {
       plusVisible.value = false
@@ -2285,17 +2512,38 @@ function folderNameOf(doc: DocItem | null): string {
       <template v-if="activeDoc">
         <!-- 正文 + 左侧大纲 -->
         <div class="docs-body">
-          <!-- 文档大纲 -->
-          <aside v-if="!focusMode && activeDoc.type === 'doc' && outline.length" class="docs-outline">
-            <div class="docs-outline-title">目录</div>
+          <!-- 文档大纲：一直展示，可折叠 / 展开 -->
+          <aside
+            v-if="!focusMode && activeDoc.type === 'doc'"
+            class="docs-outline"
+            :class="{ 'is-collapsed': outlineCollapsed }"
+          >
             <button
-              v-for="o in outline"
-              :key="o.id"
               type="button"
-              class="docs-outline-item"
-              :class="{ 'is-h3': o.level === 3 }"
-              @click="scrollToHeading(o.id)"
-            >{{ o.text }}</button>
+              class="docs-outline-toggle"
+              :title="outlineCollapsed ? '展开目录' : '收起目录'"
+              @click="toggleOutline"
+            >
+              <Transition name="docs-outline-icon" mode="out-in">
+                <MenuOutlined v-if="outlineCollapsed" key="collapsed" />
+                <DoubleLeftOutlined v-else key="expanded" />
+              </Transition>
+            </button>
+            <Transition name="docs-outline-fade">
+              <div v-if="!outlineCollapsed" class="docs-outline-content">
+                <button type="button" class="docs-outline-root" @click="scrollToTop">
+                  {{ activeDoc.title || '无标题文档' }}
+                </button>
+                <button
+                  v-for="o in outline"
+                  :key="o.id"
+                  type="button"
+                  class="docs-outline-item"
+                  :class="{ 'is-h3': o.level === 3 }"
+                  @click="scrollToHeading(o.id)"
+                >{{ o.text }}</button>
+              </div>
+            </Transition>
           </aside>
 
           <div class="docs-canvas">
@@ -2591,82 +2839,231 @@ function folderNameOf(doc: DocItem | null): string {
       </div>
 
       <!-- 知识库列表 -->
-      <div v-else-if="navMode === 'library'" class="docs-home">
-        <header class="docs-home-head">
-          <div>
-            <h1 class="docs-home-title">知识库</h1>
-          </div>
-          <button type="button" class="docs-home-new" @click="openCreateFolder"><PlusOutlined /> 新建知识库</button>
-        </header>
-        <div class="docs-library-grid">
-          <button
-            v-for="f in folders"
-            :key="f.id"
-            type="button"
-            class="docs-library-card"
-            @click="openLibrary(f)"
-          >
-            <span class="docs-library-icon"><FolderFilled /></span>
-            <span class="docs-library-name">{{ f.name }}</span>
-            <span class="docs-library-meta">{{ docsOfFolder(f) }} 篇文档</span>
-          </button>
-        </div>
-        <div v-if="!folders.length" class="docs-home-empty">还没有知识库，点击右上角新建</div>
-      </div>
-
-      <!-- 文档列表首页 -->
-      <div v-else class="docs-home">
-        <header class="docs-home-head">
-          <div>
-            <h1 class="docs-home-title">{{ navMode === 'starred' ? '收藏' : navMode === 'shared' ? '与我共享' : navMode === 'owned' ? '归我所有' : '主页' }}</h1>
-          </div>
-        </header>
-
-        <!-- 快捷入口：新建 / 上传 / 模板库 -->
+      <div v-else-if="navMode === 'library'" class="docs-home docs-home-main">
+        <!-- 快捷入口：新建 / 模板库 / 新建知识库 -->
         <div class="docs-quick-cards">
-          <a-dropdown trigger="click" placement="bottomLeft">
-            <button type="button" class="docs-quick-card">
+          <a-dropdown
+            v-model:open="addOpen"
+            :trigger="['hover', 'click']"
+            placement="bottomLeft"
+            overlay-class-name="docs-add-popover"
+          >
+            <button type="button" class="docs-quick-card" :class="{ 'is-open': addOpen }">
               <span class="docs-quick-icon is-new"><PlusOutlined /></span>
               <span class="docs-quick-text"><b>新建</b><small>新建文档开始协作</small></span>
               <DownOutlined class="docs-quick-caret" />
             </button>
             <template #overlay>
-              <a-menu @click="onAddMenu($event)">
-                <a-menu-item key="doc">新建文档</a-menu-item>
-                <a-menu-item key="sheet">新建表格</a-menu-item>
-                <a-menu-item key="mindmap">新建思维导图</a-menu-item>
-                <a-menu-item key="flow">新建流程图</a-menu-item>
-                <a-menu-item key="folder">新建文件夹</a-menu-item>
-              </a-menu>
+              <div class="docs-add-panel" @mousedown.stop>
+                <button
+                  v-for="it in ADD_TYPE_ITEMS"
+                  :key="it.key"
+                  type="button"
+                  class="docs-add-item"
+                  @click="onAddItem(it.key)"
+                >
+                  <span class="docs-add-icon" :class="`is-${it.key}`">
+                    <component :is="it.icon" />
+                  </span>
+                  <span>{{ it.label }}</span>
+                </button>
+                <div class="docs-add-divider" />
+                <button type="button" class="docs-add-item" @click="onAddItem('folder')">
+                  <span class="docs-add-icon is-folder"><FolderFilled /></span>
+                  <span>文件夹</span>
+                </button>
+                <div class="docs-add-divider" />
+                <div class="docs-add-section">文档应用</div>
+                <button
+                  v-for="it in ADD_APP_ITEMS"
+                  :key="it.key"
+                  type="button"
+                  class="docs-add-item"
+                  @click="onAddItem(it.key)"
+                >
+                  <span class="docs-add-icon" :class="`is-${it.key}`">
+                    <component :is="it.icon" />
+                  </span>
+                  <span>{{ it.label }}</span>
+                </button>
+              </div>
             </template>
           </a-dropdown>
 
-          <a-dropdown trigger="click" placement="bottomLeft">
-            <button type="button" class="docs-quick-card">
+          <a-dropdown
+            v-model:open="templateOpen"
+            :trigger="['hover', 'click']"
+            placement="bottomLeft"
+            overlay-class-name="docs-add-popover"
+          >
+            <button type="button" class="docs-quick-card" :class="{ 'is-open': templateOpen }">
+              <span class="docs-quick-icon is-template"><AppstoreOutlined /></span>
+              <span class="docs-quick-text"><b>模板库</b><small>选择模板快速新建</small></span>
+              <DownOutlined class="docs-quick-caret" />
+            </button>
+            <template #overlay>
+              <div class="docs-add-panel" @mousedown.stop>
+                <button
+                  v-for="it in TEMPLATE_ITEMS"
+                  :key="it.key"
+                  type="button"
+                  class="docs-add-item"
+                  @click="onTemplateItem(it.key)"
+                >
+                  <span class="docs-add-icon" :class="`is-${it.key}`">
+                    <component :is="it.icon" />
+                  </span>
+                  <span>{{ it.label }}</span>
+                </button>
+              </div>
+            </template>
+          </a-dropdown>
+
+          <button type="button" class="docs-quick-card" @click="openCreateLibrary">
+            <span class="docs-quick-icon is-newlib"><FolderFilled /></span>
+            <span class="docs-quick-text"><b>新建知识库</b><small>让知识创造价值</small></span>
+          </button>
+        </div>
+
+        <div class="docs-library-toolbar">
+          <div class="docs-library-heading">
+            <span>全部知识库</span>
+            <ControlOutlined class="docs-library-filter" />
+          </div>
+          <a-input
+            v-model:value="libraryKeyword"
+            allow-clear
+            placeholder="搜索知识库"
+            class="docs-library-search"
+          >
+            <template #prefix><SearchOutlined class="docs-library-search-icon" /></template>
+          </a-input>
+        </div>
+
+        <div class="docs-library-grid">
+          <button
+            v-for="f in libraryFolders"
+            :key="f.id"
+            type="button"
+            class="docs-library-card"
+            @click="openLibrary(f)"
+          >
+            <DocsLibraryCover class="docs-library-cover" :name="f.name" />
+            <span class="docs-library-cover-title">{{ f.name }}</span>
+            <span class="docs-library-cover-meta">{{ docsOfFolder(f) }} 篇文档</span>
+          </button>
+        </div>
+        <div v-if="!folders.length" class="docs-home-empty">还没有知识库，点击上方卡片新建</div>
+        <div v-else-if="!libraryFolders.length" class="docs-home-empty">没有匹配的知识库</div>
+      </div>
+
+      <!-- 文档列表首页 -->
+      <div v-else class="docs-home docs-home-main">
+        <!-- 快捷入口：新建 / 上传 / 模板库 -->
+        <div class="docs-quick-cards">
+          <a-dropdown
+            v-model:open="addOpen"
+            :trigger="['hover', 'click']"
+            placement="bottomLeft"
+            overlay-class-name="docs-add-popover"
+          >
+            <button type="button" class="docs-quick-card" :class="{ 'is-open': addOpen }">
+              <span class="docs-quick-icon is-new"><PlusOutlined /></span>
+              <span class="docs-quick-text"><b>新建</b><small>新建文档开始协作</small></span>
+              <DownOutlined class="docs-quick-caret" />
+            </button>
+            <template #overlay>
+              <div class="docs-add-panel" @mousedown.stop>
+                <button
+                  v-for="it in ADD_TYPE_ITEMS"
+                  :key="it.key"
+                  type="button"
+                  class="docs-add-item"
+                  @click="onAddItem(it.key)"
+                >
+                  <span class="docs-add-icon" :class="`is-${it.key}`">
+                    <component :is="it.icon" />
+                  </span>
+                  <span>{{ it.label }}</span>
+                </button>
+                <div class="docs-add-divider" />
+                <button type="button" class="docs-add-item" @click="onAddItem('folder')">
+                  <span class="docs-add-icon is-folder"><FolderFilled /></span>
+                  <span>文件夹</span>
+                </button>
+                <div class="docs-add-divider" />
+                <div class="docs-add-section">文档应用</div>
+                <button
+                  v-for="it in ADD_APP_ITEMS"
+                  :key="it.key"
+                  type="button"
+                  class="docs-add-item"
+                  @click="onAddItem(it.key)"
+                >
+                  <span class="docs-add-icon" :class="`is-${it.key}`">
+                    <component :is="it.icon" />
+                  </span>
+                  <span>{{ it.label }}</span>
+                </button>
+              </div>
+            </template>
+          </a-dropdown>
+
+          <a-dropdown
+            v-model:open="uploadOpen"
+            :trigger="['hover', 'click']"
+            placement="bottomLeft"
+            overlay-class-name="docs-add-popover"
+          >
+            <button type="button" class="docs-quick-card" :class="{ 'is-open': uploadOpen }">
               <span class="docs-quick-icon is-upload"><UploadOutlined /></span>
               <span class="docs-quick-text"><b>上传</b><small>上传本地文件</small></span>
               <DownOutlined class="docs-quick-caret" />
             </button>
             <template #overlay>
-              <a-menu @click="onUploadMenu($event)">
-                <a-menu-item key="md">Markdown (.md)</a-menu-item>
-                <a-menu-item key="txt">文本 (.txt)</a-menu-item>
-                <a-menu-item key="html">网页 (.html)</a-menu-item>
-              </a-menu>
+              <div class="docs-add-panel" @mousedown.stop>
+                <button
+                  v-for="it in UPLOAD_ITEMS"
+                  :key="it.key"
+                  type="button"
+                  class="docs-add-item"
+                  @click="onUploadItem(it.key)"
+                >
+                  <span class="docs-add-icon" :class="`is-${it.key}`">
+                    <component :is="it.icon" />
+                  </span>
+                  <span>{{ it.label }}</span>
+                </button>
+              </div>
             </template>
           </a-dropdown>
 
-          <a-dropdown trigger="click" placement="bottomLeft">
-            <button type="button" class="docs-quick-card">
+          <a-dropdown
+            v-model:open="templateOpen"
+            :trigger="['hover', 'click']"
+            placement="bottomLeft"
+            overlay-class-name="docs-add-popover"
+          >
+            <button type="button" class="docs-quick-card" :class="{ 'is-open': templateOpen }">
               <span class="docs-quick-icon is-template"><AppstoreOutlined /></span>
               <span class="docs-quick-text"><b>模板库</b><small>选择模板快速新建</small></span>
+              <DownOutlined class="docs-quick-caret" />
             </button>
             <template #overlay>
-              <a-menu @click="onTemplateMenu($event)">
-                <a-menu-item key="meeting">会议纪要</a-menu-item>
-                <a-menu-item key="weekly">周报</a-menu-item>
-                <a-menu-item key="prd">产品需求文档</a-menu-item>
-              </a-menu>
+              <div class="docs-add-panel" @mousedown.stop>
+                <button
+                  v-for="it in TEMPLATE_ITEMS"
+                  :key="it.key"
+                  type="button"
+                  class="docs-add-item"
+                  @click="onTemplateItem(it.key)"
+                >
+                  <span class="docs-add-icon" :class="`is-${it.key}`">
+                    <component :is="it.icon" />
+                  </span>
+                  <span>{{ it.label }}</span>
+                </button>
+              </div>
             </template>
           </a-dropdown>
         </div>
@@ -2773,6 +3170,191 @@ function folderNameOf(doc: DocItem | null): string {
       <div class="docs-folder-modal-footer">
         <a-button @click="folderModalOpen = false">取消</a-button>
         <a-button type="primary" @click="submitFolder">确定</a-button>
+      </div>
+    </a-modal>
+
+    <!-- 新建知识库：选择知识库模板（参考飞书） -->
+    <a-modal
+      v-model:open="libraryTemplateOpen"
+      :width="760"
+      :footer="null"
+      :closable="false"
+      centered
+      destroy-on-close
+      class="docs-lib-tpl-modal"
+      :body-style="{ padding: '0' }"
+    >
+      <div class="lib-tpl">
+        <header class="lib-tpl-head">
+          <h3>选择知识库模板</h3>
+          <div class="lib-tpl-head-actions">
+            <button type="button" class="lib-tpl-feedback" @click="onLibraryFeedback">我要反馈</button>
+            <button type="button" class="lib-tpl-close" @click="libraryTemplateOpen = false"><CloseOutlined /></button>
+          </div>
+        </header>
+
+        <div class="lib-tpl-body">
+          <div class="lib-tpl-scroll">
+            <section class="lib-tpl-section">
+              <h4>推荐</h4>
+              <div class="lib-tpl-grid">
+                <button
+                  type="button"
+                  class="lib-tpl-card is-blank"
+                  :class="{ active: selectedLibraryTemplate === 'blank' }"
+                  @click="selectedLibraryTemplate = 'blank'"
+                >
+                  <PlusOutlined class="lib-tpl-plus" />
+                  <span>空白知识库</span>
+                </button>
+              </div>
+            </section>
+          </div>
+
+          <aside class="lib-tpl-preview">
+            <h4>模板结构预览</h4>
+            <p class="lib-tpl-preview-empty">当前仅支持空白知识库模板</p>
+          </aside>
+        </div>
+
+        <footer class="lib-tpl-foot">
+          <a-button @click="libraryTemplateOpen = false">取消</a-button>
+          <a-button type="primary" :disabled="!selectedLibraryTemplate" @click="confirmLibraryTemplate">下一步</a-button>
+        </footer>
+      </div>
+    </a-modal>
+
+    <!-- 新建知识库：完善知识库信息 -->
+    <a-modal
+      v-model:open="libraryInfoOpen"
+      :width="620"
+      :footer="null"
+      :closable="false"
+      centered
+      destroy-on-close
+      class="docs-lib-info-modal"
+      :body-style="{ padding: '0' }"
+    >
+      <div class="lib-info">
+        <header class="lib-info-head">
+          <button type="button" class="lib-info-back" title="返回" @click="backToLibraryTemplate">
+            <LeftOutlined />
+          </button>
+          <h3>完善知识库信息</h3>
+        </header>
+
+        <div class="lib-info-body">
+          <div class="lib-info-field">
+            <label>名称<span class="lib-info-required">*</span></label>
+            <a-input
+              v-model:value="libraryInfoForm.name"
+              size="large"
+              placeholder="请输入名称"
+              :maxlength="30"
+              @press-enter="submitLibraryInfo"
+            >
+              <template #prefix><SmileOutlined class="lib-info-prefix" /></template>
+            </a-input>
+          </div>
+
+          <div class="lib-info-field">
+            <label>简介</label>
+            <a-input
+              v-model:value="libraryInfoForm.desc"
+              size="large"
+              placeholder="请输入简介"
+              :maxlength="100"
+            />
+          </div>
+
+          <div class="lib-info-field">
+            <label>可见范围<span class="lib-info-required">*</span></label>
+            <div class="lib-info-visibility">
+              <a-radio-group v-model:value="libraryInfoForm.visibility" class="lib-info-radios">
+                <a-radio value="members">仅当前知识库成员可见</a-radio>
+                <a-radio value="all">所有人公开可见</a-radio>
+              </a-radio-group>
+            </div>
+          </div>
+        </div>
+
+        <footer class="lib-info-foot">
+          <a-button @click="libraryInfoOpen = false">取消</a-button>
+          <a-button
+            type="primary"
+            :disabled="!libraryInfoForm.name.trim()"
+            :loading="libraryInfoSubmitting"
+            @click="submitLibraryInfo"
+          >
+            创建
+          </a-button>
+        </footer>
+      </div>
+    </a-modal>
+
+    <!-- 新建文档：选择模板（参考飞书） -->
+    <a-modal
+      v-model:open="docTemplateOpen"
+      :width="1080"
+      :footer="null"
+      :closable="false"
+      centered
+      destroy-on-close
+      class="docs-doc-tpl-modal"
+      :body-style="{ padding: '0' }"
+    >
+      <div class="doc-tpl">
+        <header class="doc-tpl-head">
+          <div class="doc-tpl-target">
+            <span class="doc-tpl-target-label">新建到</span>
+            <span class="doc-tpl-target-folder">
+              <FolderFilled />
+              <span>{{ docTemplateTargetName }}</span>
+            </span>
+          </div>
+          <a-input
+            v-model:value="docTemplateKeyword"
+            allow-clear
+            placeholder="搜索模板"
+            class="doc-tpl-search"
+          >
+            <template #prefix><SearchOutlined /></template>
+          </a-input>
+          <div class="doc-tpl-head-right">
+            <span class="doc-tpl-type"><ControlOutlined />{{ DOC_TYPE_LABELS[docTemplateType] || '文档' }}</span>
+            <span class="doc-tpl-divider" />
+            <button type="button" class="lib-tpl-close" @click="docTemplateOpen = false"><CloseOutlined /></button>
+          </div>
+        </header>
+
+        <div class="doc-tpl-body">
+          <nav class="doc-tpl-nav">
+            <button
+              v-for="c in DOC_TEMPLATE_CATEGORIES"
+              :key="c.key"
+              type="button"
+              class="doc-tpl-nav-item"
+              :class="{ active: docTemplateCategory === c.key }"
+              @click="docTemplateCategory = c.key"
+            >
+              {{ c.label }}
+            </button>
+          </nav>
+
+          <section class="doc-tpl-content">
+            <h4>{{ docTemplateCategory === 'recommend' ? '为你推荐' : (DOC_TEMPLATE_CATEGORIES.find((c) => c.key === docTemplateCategory)?.label || '模板') }}</h4>
+            <div
+              v-if="docTemplateCategory === 'recommend' && !docTemplateKeyword.trim()"
+              class="doc-tpl-grid"
+            >
+              <button type="button" class="doc-tpl-blank" @click="createBlankDocFromTemplate">
+                <PlusOutlined class="doc-tpl-plus" />
+                <span>{{ DOC_BLANK_LABELS[docTemplateType] || '新建空白文档' }}</span>
+              </button>
+            </div>
+            <div v-else class="doc-tpl-empty">暂无模板</div>
+          </section>
+        </div>
       </div>
     </a-modal>
 
@@ -2928,7 +3510,7 @@ function folderNameOf(doc: DocItem | null): string {
 
 /* ---- 左侧：知识库 / 文件树 ---- */
 .docs-side {
-  flex: 0 0 304px;
+  flex: 0 0 340px;
   height: 100%;
   min-height: 0;
   display: flex;
@@ -2957,7 +3539,7 @@ function folderNameOf(doc: DocItem | null): string {
   flex: none;
   width: 28px;
   height: 28px;
-  font-size: 15px;
+  font-size: 16px;
   color: var(--docs-text-2);
   background: transparent;
   border: none;
@@ -3020,7 +3602,7 @@ function folderNameOf(doc: DocItem | null): string {
   min-width: 0;
 }
 .docs-side-title {
-  font-size: 17px;
+  font-size: 18px;
   font-weight: 700;
   line-height: 1.2;
   letter-spacing: -0.01em;
@@ -3028,7 +3610,7 @@ function folderNameOf(doc: DocItem | null): string {
 }
 .docs-side-sub {
   margin-top: 1px;
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1.3;
   color: var(--docs-text-3);
 }
@@ -3058,7 +3640,7 @@ function folderNameOf(doc: DocItem | null): string {
   top: 50%;
   right: 8px;
   padding: 1px 5px;
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1.4;
   color: var(--docs-text-3);
   background: var(--docs-hover);
@@ -3074,7 +3656,7 @@ function folderNameOf(doc: DocItem | null): string {
 }
 .docs-group-title {
   padding: 8px 8px 4px;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
   letter-spacing: 0.04em;
   color: var(--docs-text-3);
@@ -3094,7 +3676,7 @@ function folderNameOf(doc: DocItem | null): string {
   width: 100%;
   height: 30px;
   padding: 0 8px;
-  font-size: 13px;
+  font-size: 14px;
   color: var(--docs-text-2);
   background: transparent;
   border: none;
@@ -3132,40 +3714,102 @@ function folderNameOf(doc: DocItem | null): string {
 }
 
 /* 知识库卡片 */
-.docs-library-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 12px;
-  margin-top: 20px;
-}
-.docs-library-card {
+/* 全部知识库：标题 + 筛选 + 搜索 */
+.docs-library-toolbar {
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 28px;
+}
+.docs-library-heading {
+  display: flex;
+  align-items: center;
   gap: 8px;
-  padding: 16px;
-  text-align: left;
-  background: var(--docs-canvas);
-  border: 1px solid var(--docs-border);
-  border-radius: var(--docs-radius-lg);
-  cursor: pointer;
-  transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s;
-}
-.docs-library-card:hover {
-  border-color: var(--docs-border-strong);
-}
-.docs-library-icon {
-  font-size: 28px;
-  color: var(--docs-warn);
-}
-.docs-library-name {
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 600;
   color: var(--docs-text);
 }
-.docs-library-meta {
-  font-size: 12px;
+.docs-library-filter {
+  font-size: 15px;
   color: var(--docs-text-3);
+  cursor: pointer;
+}
+.docs-library-search {
+  width: 260px;
+}
+.docs-library-search-icon {
+  color: var(--docs-text-3);
+}
+
+/* 知识库封面卡片 */
+.docs-library-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 168px));
+  justify-content: start;
+  gap: 14px;
+  margin-top: 16px;
+}
+.docs-library-card {
+  position: relative;
+  display: block;
+  width: 100%;
+  padding: 0;
+  /* 参考飞书知识库卡片比例（约 2:3），避免过于细长 */
+  aspect-ratio: 2 / 3;
+  overflow: hidden;
+  text-align: left;
+  border: 1px solid rgba(0, 0, 0, 0.04);
+  border-radius: 14px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  cursor: pointer;
+  transition: box-shadow 0.15s, transform 0.15s;
+}
+.docs-library-card:hover {
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.1);
+  transform: translateY(-2px);
+}
+/* 插画铺满卡片；顶部 / 底部加一层淡白渐变，保证标题和文档数可读 */
+.docs-library-cover {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.docs-library-card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.52) 0%,
+    rgba(255, 255, 255, 0) 36%,
+    rgba(255, 255, 255, 0) 76%,
+    rgba(255, 255, 255, 0.38) 100%
+  );
+}
+.docs-library-cover-title {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  right: 12px;
+  z-index: 1;
+  overflow: hidden;
+  font-size: 16px;
+  font-weight: 700;
+  color: #1d1d1f;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.docs-library-cover-meta {
+  position: absolute;
+  bottom: 10px;
+  left: 12px;
+  z-index: 1;
+  font-size: 11px;
+  color: rgba(0, 0, 0, 0.5);
 }
 
 /* 飞书式主导航 */
@@ -3181,7 +3825,7 @@ function folderNameOf(doc: DocItem | null): string {
   width: 100%;
   height: 34px;
   padding: 0 10px;
-  font-size: 14px;
+  font-size: 15px;
   color: var(--docs-text);
   text-align: left;
   background: transparent;
@@ -3191,7 +3835,7 @@ function folderNameOf(doc: DocItem | null): string {
   transition: background 0.12s, color 0.12s;
 }
 .docs-nav-item :deep(.anticon) {
-  font-size: 15px;
+  font-size: 16px;
   color: var(--docs-text-2);
 }
 .docs-nav-item:hover {
@@ -3212,7 +3856,7 @@ function folderNameOf(doc: DocItem | null): string {
   gap: 8px;
   height: 34px;
   padding: 0 10px;
-  font-size: 14px;
+  font-size: 15px;
   color: var(--docs-text-2);
   background: transparent;
   border: none;
@@ -3229,7 +3873,7 @@ function folderNameOf(doc: DocItem | null): string {
 }
 .docs-trash-count {
   margin-left: auto;
-  font-size: 12px;
+  font-size: 13px;
   color: var(--docs-text-3);
 }
 
@@ -3260,7 +3904,7 @@ function folderNameOf(doc: DocItem | null): string {
   align-items: center;
   justify-content: center;
   width: 12px;
-  font-size: 9px;
+  font-size: 10px;
   color: var(--docs-text-3);
   transition: transform 0.15s;
 }
@@ -3269,14 +3913,14 @@ function folderNameOf(doc: DocItem | null): string {
 }
 .docs-folder-icon {
   flex: none;
-  font-size: 15px;
+  font-size: 16px;
   color: var(--docs-warn);
 }
 .docs-folder-name {
   flex: 1;
   min-width: 0;
   overflow: hidden;
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 500;
   color: var(--docs-text);
   text-overflow: ellipsis;
@@ -3285,7 +3929,7 @@ function folderNameOf(doc: DocItem | null): string {
 .docs-folder-count {
   flex: none;
   padding: 0;
-  font-size: 12px;
+  font-size: 13px;
   line-height: 16px;
   color: var(--docs-text-3);
   text-align: center;
@@ -3303,7 +3947,7 @@ function folderNameOf(doc: DocItem | null): string {
   justify-content: center;
   width: 18px;
   height: 18px;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--docs-text-3);
   border-radius: var(--docs-radius-sm);
   opacity: 0;
@@ -3323,7 +3967,7 @@ function folderNameOf(doc: DocItem | null): string {
 }
 .docs-folder-empty {
   padding: 5px 8px 5px 30px;
-  font-size: 12px;
+  font-size: 13px;
   color: var(--docs-text-3);
 }
 
@@ -3368,7 +4012,7 @@ function folderNameOf(doc: DocItem | null): string {
   align-items: center;
   gap: 6px;
   min-width: 0;
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 500;
   color: var(--docs-text);
 }
@@ -3382,7 +4026,7 @@ function folderNameOf(doc: DocItem | null): string {
   flex: none;
 }
 .docs-item-meta {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--docs-text-3);
 }
 .docs-item-more {
@@ -3392,7 +4036,7 @@ function folderNameOf(doc: DocItem | null): string {
   justify-content: center;
   width: 20px;
   height: 20px;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--docs-text-3);
   border-radius: var(--docs-radius-sm);
   opacity: 0;
@@ -3406,7 +4050,7 @@ function folderNameOf(doc: DocItem | null): string {
 }
 .docs-list-empty {
   padding: 28px 12px;
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.6;
   color: var(--docs-text-3);
   text-align: center;
@@ -3433,25 +4077,99 @@ function folderNameOf(doc: DocItem | null): string {
 }
 .docs-outline {
   flex: 0 0 250px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
   overflow-y: auto;
-  padding: 28px 14px;
+  padding: 20px 14px;
   background: var(--docs-canvas);
+  /* 宽度变化时与正文区平滑过渡 */
+  transition: flex-basis 0.24s cubic-bezier(0.4, 0, 0.2, 1);
 }
-.docs-outline-title {
-  padding: 0 8px 8px;
-  font-size: 12px;
+/* 折叠态：宽度缩小三分之一 */
+.docs-outline.is-collapsed {
+  flex-basis: 167px;
+}
+.docs-outline-content {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* 目录内容：折叠时淡出并轻微左移，展开时淡入 */
+.docs-outline-fade-enter-active,
+.docs-outline-fade-leave-active {
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+.docs-outline-fade-enter-from,
+.docs-outline-fade-leave-to {
+  opacity: 0;
+  transform: translateX(-6px);
+}
+
+/* 折叠 / 展开图标切换：淡入缩放 */
+.docs-outline-icon-enter-active,
+.docs-outline-icon-leave-active {
+  transition: opacity 0.14s ease, transform 0.14s ease;
+}
+.docs-outline-icon-enter-from,
+.docs-outline-icon-leave-to {
+  opacity: 0;
+  transform: scale(0.8);
+}
+/* 折叠 / 展开按钮 */
+.docs-outline-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  margin-bottom: 10px;
+  padding: 0;
+  font-size: 15px;
+  color: var(--docs-text-2);
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+.docs-outline-toggle:hover {
+  color: var(--docs-text);
+  background: var(--docs-hover);
+}
+/* 目录第一项：文档标题（高亮） */
+.docs-outline-root {
+  display: block;
+  width: 100%;
+  margin-bottom: 4px;
+  padding: 4px 8px;
+  overflow: hidden;
+  font-size: 14px;
   font-weight: 600;
-  letter-spacing: 0.04em;
-  color: var(--docs-text-3);
+  color: var(--c-primary);
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+.docs-outline-root:hover {
+  background: var(--docs-hover);
+  border-radius: 4px;
 }
 .docs-outline-item {
   display: block;
   width: 100%;
   padding: 4px 8px;
   overflow: hidden;
-  font-size: 12px;
+  font-size: 13px;
+  font-weight: 600;
   line-height: 1.5;
-  color: var(--docs-text-2);
+  color: var(--docs-text);
   text-align: left;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -3468,8 +4186,9 @@ function folderNameOf(doc: DocItem | null): string {
 }
 .docs-outline-item.is-h3 {
   padding-left: 20px;
-  font-size: 12px;
-  color: var(--docs-text-3);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--docs-text-2);
 }
 
 /* 正文画布 */
@@ -4224,16 +4943,26 @@ function folderNameOf(doc: DocItem | null): string {
 /* 快捷入口卡片：新建 / 上传 / 模板库 */
 .docs-quick-cards {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  /* 三个入口卡片比内容区略窄，左侧对齐 */
+  grid-template-columns: repeat(3, minmax(0, 300px));
+  justify-content: start;
   gap: 12px;
-  margin-top: 20px;
+  margin-top: 12px;
+}
+
+/* 主页：新建 / 上传 / 模板库 一行与左侧菜单搜索框顶部水平对齐 */
+.docs-home.docs-home-main {
+  padding-top: 14px;
+}
+.docs-home-main .docs-quick-cards {
+  margin-top: 0;
 }
 .docs-quick-card {
   display: flex;
   align-items: center;
   gap: 12px;
   width: 100%;
-  padding: 14px 16px;
+  padding: 18px 16px;
   text-align: left;
   background: var(--docs-canvas);
   border: 1px solid var(--docs-border);
@@ -4252,7 +4981,7 @@ function folderNameOf(doc: DocItem | null): string {
   justify-content: center;
   width: 36px;
   height: 36px;
-  font-size: 18px;
+  font-size: 19px;
   color: #fff;
   border-radius: 9px;
 }
@@ -4260,12 +4989,16 @@ function folderNameOf(doc: DocItem | null): string {
   background: linear-gradient(135deg, var(--c-primary), var(--c-primary-hover));
 }
 .docs-quick-icon.is-upload {
-  background: var(--docs-hover);
-  color: var(--docs-text-2);
+  background: linear-gradient(135deg, #ff7d00, #ffa940);
+  color: #ffffff;
 }
 .docs-quick-icon.is-template {
-  background: var(--docs-hover);
-  color: var(--docs-text-2);
+  background: linear-gradient(135deg, #ff7d00 0%, #ff4d4f 35%, #8b5cf6 70%, #3370ff 100%);
+  color: #ffffff;
+}
+.docs-quick-icon.is-newlib {
+  background: linear-gradient(135deg, #3370ff, #34d399);
+  color: #ffffff;
 }
 .docs-quick-text {
   flex: 1;
@@ -4275,18 +5008,112 @@ function folderNameOf(doc: DocItem | null): string {
   min-width: 0;
 }
 .docs-quick-text b {
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 600;
   color: var(--docs-text);
 }
 .docs-quick-text small {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--docs-text-3);
 }
 .docs-quick-caret {
   flex: none;
-  font-size: 11px;
-  color: var(--docs-text-3);
+  font-size: 14px;
+  color: var(--docs-text-2);
+  transition: transform 0.15s;
+}
+
+.docs-quick-card.is-open .docs-quick-caret {
+  transform: rotate(180deg);
+}
+
+/* 新建下拉面板（参考飞书「新建」） */
+.docs-add-panel {
+  width: 300px;
+  padding: 8px;
+  background: #ffffff;
+  border: 1px solid var(--docs-border);
+  border-radius: 14px;
+  box-shadow: 0 12px 40px rgba(15, 23, 42, 0.14), 0 2px 8px rgba(15, 23, 42, 0.06);
+}
+
+.docs-add-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  height: 44px;
+  padding: 0 10px;
+  font-size: 14px;
+  color: #1d1d1f;
+  text-align: left;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+
+.docs-add-item:hover {
+  background: #f5f6f8;
+}
+
+.docs-add-icon {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  font-size: 16px;
+  color: #ffffff;
+  border-radius: 8px;
+}
+
+.docs-add-icon.is-doc {
+  background: linear-gradient(135deg, #3370ff, #5b8cff);
+}
+.docs-add-icon.is-sheet {
+  background: linear-gradient(135deg, #00b96b, #34d399);
+}
+.docs-add-icon.is-folder {
+  background: linear-gradient(135deg, #ffc53d, #ffa940);
+}
+.docs-add-icon.is-mindmap {
+  background: linear-gradient(135deg, #36cfc9, #13c2c2);
+}
+.docs-add-icon.is-flow {
+  background: linear-gradient(135deg, #ff7d00, #ffa940);
+}
+.docs-add-icon.is-md {
+  background: linear-gradient(135deg, #3f4652, #6b7280);
+}
+.docs-add-icon.is-txt {
+  background: linear-gradient(135deg, #4e83fd, #7aa7ff);
+}
+.docs-add-icon.is-html {
+  background: linear-gradient(135deg, #ff7d00, #ffa940);
+}
+.docs-add-icon.is-meeting {
+  background: linear-gradient(135deg, #3370ff, #5b8cff);
+}
+.docs-add-icon.is-weekly {
+  background: linear-gradient(135deg, #00b96b, #34d399);
+}
+.docs-add-icon.is-prd {
+  background: linear-gradient(135deg, #8b5cf6, #b794f6);
+}
+
+.docs-add-divider {
+  height: 1px;
+  margin: 6px 8px;
+  background: #f0f0f2;
+}
+
+.docs-add-section {
+  padding: 8px 10px 4px;
+  font-size: 12px;
+  color: #8f959e;
 }
 .docs-upload-input {
   display: none;
@@ -4298,23 +5125,24 @@ function folderNameOf(doc: DocItem | null): string {
 }
 .docs-home-title {
   margin: 0;
-  font-size: 30px;
+  font-size: 31px;
   font-weight: 700;
   letter-spacing: -0.01em;
   color: var(--docs-text);
 }
 .docs-home-sub {
   margin: 4px 0 0;
-  font-size: 12px;
+  font-size: 13px;
   color: var(--docs-text-3);
 }
 .docs-home-new {
   display: inline-flex;
   align-items: center;
   gap: 5px;
+  margin-left: auto;
   height: 36px;
   padding: 0 16px;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 500;
   color: #fff;
   /* 静止底色用主题的按下色（苹果蓝 #0071E3）：白字对比度 4.7:1，达到 AA；悬停加深 */
@@ -4352,7 +5180,7 @@ function folderNameOf(doc: DocItem | null): string {
   height: 26px;
   padding: 0 10px;
   margin-left: 6px;
-  font-size: 12px;
+  font-size: 13px;
   color: var(--c-primary);
   background: var(--c-primary-bg);
   border: none;
@@ -4385,7 +5213,7 @@ function folderNameOf(doc: DocItem | null): string {
 .docs-home-tabs button {
   position: relative;
   padding: 0 0 10px;
-  font-size: 13px;
+  font-size: 14px;
   color: var(--docs-text-2);
   background: none;
   border: none;
@@ -4430,12 +5258,12 @@ function folderNameOf(doc: DocItem | null): string {
   background: var(--docs-hover) !important;
 }
 .docs-home-sort :deep(.ant-select-selection-item) {
-  font-size: 12px;
+  font-size: 13px;
   line-height: 28px !important;
   color: var(--docs-text-2);
 }
 .docs-sort-icon {
-  font-size: 13px;
+  font-size: 14px;
   color: var(--docs-text-3);
 }
 .docs-view-toggle {
@@ -4451,7 +5279,7 @@ function folderNameOf(doc: DocItem | null): string {
   justify-content: center;
   width: 28px;
   height: 26px;
-  font-size: 13px;
+  font-size: 14px;
   color: var(--docs-text-3);
   background: transparent;
   border: none;
@@ -4492,21 +5320,21 @@ function folderNameOf(doc: DocItem | null): string {
 .docs-grid-title {
   width: 100%;
   overflow: hidden;
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 500;
   color: var(--docs-text);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .docs-grid-meta {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--docs-text-3);
 }
 .docs-grid-star {
   position: absolute;
   top: 14px;
   right: 14px;
-  font-size: 12px;
+  font-size: 13px;
   color: var(--docs-warn);
 }
 .docs-table {
@@ -4517,7 +5345,7 @@ function folderNameOf(doc: DocItem | null): string {
 }
 .docs-table th {
   padding: 10px 12px;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 400;
   color: var(--docs-text-3);
   text-align: left;
@@ -4526,7 +5354,7 @@ function folderNameOf(doc: DocItem | null): string {
 .docs-table td {
   padding: 0 12px;
   overflow: hidden;
-  font-size: 14px;
+  font-size: 15px;
   color: var(--docs-text);
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -4554,7 +5382,7 @@ function folderNameOf(doc: DocItem | null): string {
 }
 .docs-table-muted {
   color: var(--docs-text-3) !important;
-  font-size: 12px !important;
+  font-size: 13px !important;
 }
 .docs-col-location {
   width: 18%;
@@ -4585,7 +5413,7 @@ function folderNameOf(doc: DocItem | null): string {
 }
 .docs-home-empty {
   padding: 60px 0;
-  font-size: 13px;
+  font-size: 14px;
   color: var(--docs-text-3);
   text-align: center;
 }
@@ -4601,17 +5429,17 @@ function folderNameOf(doc: DocItem | null): string {
   color: var(--docs-text-3);
 }
 .docs-empty-icon {
-  font-size: 36px;
+  font-size: 37px;
   color: var(--docs-border-strong);
 }
 .docs-empty-title {
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 600;
   color: var(--docs-text);
 }
 .docs-empty-desc {
   margin-bottom: 8px;
-  font-size: 12px;
+  font-size: 13px;
   color: var(--docs-text-3);
 }
 
@@ -4621,6 +5449,517 @@ function folderNameOf(doc: DocItem | null): string {
   justify-content: flex-end;
   gap: 10px;
   margin-top: 20px;
+}
+
+/* ==================== 新建知识库：选择模板弹窗 ==================== */
+.docs-lib-tpl-modal :deep(.ant-modal-content) {
+  padding: 0;
+  overflow: hidden;
+  border-radius: 16px;
+}
+
+.lib-tpl {
+  display: flex;
+  flex-direction: column;
+  height: 640px;
+  background: #ffffff;
+}
+
+.lib-tpl-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex: none;
+  height: 64px;
+  padding: 0 24px;
+  border-bottom: 1px solid #f0f0f2;
+}
+
+.lib-tpl-head h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #1d1d1f;
+}
+
+.lib-tpl-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.lib-tpl-feedback {
+  padding: 0;
+  font-size: 13px;
+  color: #6e6e73;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+
+.lib-tpl-feedback:hover {
+  color: #1d1d1f;
+}
+
+.lib-tpl-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  font-size: 15px;
+  color: #6e6e73;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.lib-tpl-close:hover {
+  color: #1d1d1f;
+  background: #f2f3f5;
+}
+
+.lib-tpl-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.lib-tpl-scroll {
+  flex: 1;
+  min-width: 0;
+  padding: 20px 24px 28px;
+  overflow-y: auto;
+}
+
+.lib-tpl-section + .lib-tpl-section {
+  margin-top: 26px;
+}
+
+.lib-tpl-section h4 {
+  margin: 0 0 12px;
+  font-size: 16px;
+  font-weight: 600;
+  color: #1d1d1f;
+}
+
+.lib-tpl-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.lib-tpl-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 0;
+  overflow: hidden;
+  text-align: left;
+  background: #ffffff;
+  border: 1px solid #e8e8ec;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.lib-tpl-card:hover {
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.08);
+}
+
+.lib-tpl-card.active {
+  border-color: var(--c-primary);
+  box-shadow: 0 0 0 1px var(--c-primary) inset;
+}
+
+.lib-tpl-card.is-blank {
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  height: 186px;
+  font-size: 14px;
+  color: #1d1d1f;
+  border-color: var(--c-primary);
+}
+
+.lib-tpl-plus {
+  font-size: 34px;
+  color: var(--c-primary);
+}
+
+.lib-tpl-cover {
+  display: block;
+  width: 100%;
+  height: 108px;
+}
+
+.lib-tpl-name {
+  padding: 0 12px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #1d1d1f;
+}
+
+.lib-tpl-desc {
+  padding: 0 12px 14px;
+  font-size: 12px;
+  color: #8f959e;
+}
+
+.lib-tpl-preview {
+  flex: 0 0 300px;
+  display: flex;
+  flex-direction: column;
+  padding: 20px 24px;
+  border-left: 1px solid #f0f0f2;
+}
+
+.lib-tpl-preview h4 {
+  margin: 0 0 18px;
+  font-size: 16px;
+  font-weight: 600;
+  color: #1d1d1f;
+}
+
+.lib-tpl-tree {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  opacity: 0.55;
+  transition: opacity 0.15s;
+}
+
+.lib-tpl-tree.is-active {
+  opacity: 1;
+}
+
+.tree-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 26px;
+}
+
+.tree-row.indent {
+  padding-left: 18px;
+}
+
+.tree-row .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #c9ccd1;
+}
+
+.tree-row .dot.dark {
+  background: #9aa0a6;
+}
+
+.tree-row .dot.gold {
+  background: #f5b400;
+}
+
+.tree-row .bar {
+  height: 6px;
+  border-radius: 3px;
+  background: #e5e6e8;
+}
+
+.tree-row .bar.gold {
+  background: #f5b400;
+}
+
+.tree-row .w72 { width: 72px; }
+.tree-row .w64 { width: 64px; }
+.tree-row .w56 { width: 56px; }
+.tree-row .w48 { width: 48px; }
+
+.lib-tpl-preview-empty {
+  margin-top: auto;
+  padding: 20px 0 8px;
+  font-size: 13px;
+  color: #8f959e;
+  text-align: center;
+}
+
+.lib-tpl-preview-empty.is-selected {
+  color: var(--c-primary);
+}
+
+.lib-tpl-foot {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex: none;
+  gap: 12px;
+  height: 64px;
+  padding: 0 24px;
+  border-top: 1px solid #f0f0f2;
+}
+
+/* ==================== 新建知识库：完善信息弹窗 ==================== */
+.docs-lib-info-modal :deep(.ant-modal-content) {
+  padding: 0;
+  overflow: hidden;
+  border-radius: 16px;
+}
+
+.lib-info {
+  display: flex;
+  flex-direction: column;
+  background: #ffffff;
+}
+
+.lib-info-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 24px 28px 10px;
+}
+
+.lib-info-back {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  font-size: 15px;
+  color: #4b5563;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.lib-info-back:hover {
+  color: #1d1d1f;
+  background: #f2f3f5;
+}
+
+.lib-info-head h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #1d1d1f;
+}
+
+.lib-info-body {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 10px 28px 8px;
+}
+
+.lib-info-field label {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 14px;
+  color: #1d1d1f;
+}
+
+.lib-info-required {
+  margin-left: 2px;
+  color: #ff4d4f;
+}
+
+.lib-info-prefix {
+  font-size: 16px;
+  color: #b0b3b8;
+}
+
+.lib-info-visibility {
+  padding: 8px 14px;
+  border: 1px solid #e8e8ec;
+  border-radius: 10px;
+}
+
+.lib-info-radios {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.lib-info-radios :deep(.ant-radio-wrapper) {
+  margin-right: 0;
+  padding: 2px 0;
+  font-size: 14px;
+}
+
+.lib-info-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 20px 28px 24px;
+}
+
+/* ==================== 新建文档：选择模板弹窗 ==================== */
+.docs-doc-tpl-modal :deep(.ant-modal-content) {
+  padding: 0;
+  overflow: hidden;
+  border-radius: 16px;
+}
+
+.doc-tpl {
+  display: flex;
+  flex-direction: column;
+  height: 700px;
+  background: #ffffff;
+}
+
+.doc-tpl-head {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex: none;
+  height: 64px;
+  padding: 0 24px;
+  border-bottom: 1px solid #f0f0f2;
+}
+
+.doc-tpl-target {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 220px;
+}
+
+.doc-tpl-target-label {
+  font-size: 16px;
+  font-weight: 600;
+  color: #1d1d1f;
+}
+
+.doc-tpl-target-folder {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  font-size: 14px;
+  color: var(--c-primary);
+  background: #f2f5ff;
+  border-radius: 8px;
+}
+
+.doc-tpl-search {
+  width: 420px;
+  max-width: 38vw;
+}
+
+.doc-tpl-head-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-left: auto;
+}
+
+.doc-tpl-type {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  font-size: 13px;
+  color: var(--c-primary);
+  background: #eef4ff;
+  border-radius: 8px;
+}
+
+.doc-tpl-divider {
+  width: 1px;
+  height: 20px;
+  background: #e8e8ec;
+}
+
+.doc-tpl-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.doc-tpl-nav {
+  flex: 0 0 180px;
+  padding: 16px 12px;
+  overflow-y: auto;
+  border-right: 1px solid #f0f0f2;
+}
+
+.doc-tpl-nav-item {
+  display: block;
+  width: 100%;
+  margin-bottom: 2px;
+  padding: 8px 12px;
+  font-size: 14px;
+  color: #4b5563;
+  text-align: left;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.doc-tpl-nav-item:hover {
+  background: #f5f6f8;
+}
+
+.doc-tpl-nav-item.active {
+  font-weight: 600;
+  color: var(--c-primary);
+  background: #eef4ff;
+}
+
+.doc-tpl-content {
+  flex: 1;
+  min-width: 0;
+  padding: 20px 24px;
+  overflow-y: auto;
+}
+
+.doc-tpl-content h4 {
+  margin: 0 0 16px;
+  font-size: 20px;
+  font-weight: 600;
+  color: #1d1d1f;
+}
+
+.doc-tpl-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.doc-tpl-blank {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  aspect-ratio: 3 / 4;
+  font-size: 14px;
+  color: #1d1d1f;
+  background: #ffffff;
+  border: 1px solid #e8e8ec;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.doc-tpl-blank:hover {
+  border-color: var(--c-primary);
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.08);
+}
+
+.doc-tpl-plus {
+  font-size: 44px;
+  color: var(--c-primary);
+}
+
+.doc-tpl-empty {
+  padding: 80px 0;
+  font-size: 13px;
+  color: #8f959e;
+  text-align: center;
 }
 
 @media (max-width: 860px) {
@@ -4635,7 +5974,7 @@ function folderNameOf(doc: DocItem | null): string {
     padding: 0;
   }
   .docs-title-input {
-    font-size: 26px;
+    font-size: 27px;
   }
 }
 

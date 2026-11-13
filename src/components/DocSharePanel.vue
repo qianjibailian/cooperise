@@ -362,7 +362,7 @@ function onLinkScopeClick({ key }: { key: string | number }) {
 
 /** 复制文档链接（与原顶栏分享按钮的逻辑一致） */
 async function copyLink() {
-  const href = router.resolve({ path: '/docs', query: { doc: props.docId } }).href
+  const href = router.resolve({ name: 'WikiDoc', params: { docId: props.docId } }).href
   try {
     await navigator.clipboard.writeText(`${location.origin}${href}`)
     message.success('链接已复制，粘贴给协作者即可分享')
