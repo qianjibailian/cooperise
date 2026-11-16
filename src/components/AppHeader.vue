@@ -6,13 +6,17 @@
     </button>
     <!-- 文档详情：顶栏最左侧文件名（上，可直接改名）+ 保存状态轻提示（下），参考飞书；文档/表格/思维导图/流程图共用 -->
     <div v-if="isDocs && docsActiveDoc" class="docs-head-meta">
-      <input
-        v-model="docsActiveDoc.title"
-        class="docs-head-title"
-        placeholder="无标题文档"
-        maxlength="120"
-        @input="docsTitleRev++"
-      />
+      <!-- 外层用隐藏的同款文字撑出宽度：输入框宽度 = 文件名长度，最长到分享按钮前，再长显示省略号 -->
+      <span class="docs-head-title-wrap" :data-value="docTitleInputValue(docsActiveDoc.title) || '请输入标题'">
+        <input
+          :value="docTitleInputValue(docsActiveDoc.title)"
+          class="docs-head-title"
+          placeholder="请输入标题"
+          maxlength="120"
+          size="1"
+          @input="onDocsHeadTitleInput"
+        />
+      </span>
       <span class="docs-save-state" :class="`is-${docsSaveState}`">{{ docsSaveStateText }}</span>
     </div>
     <div
@@ -257,7 +261,7 @@ import {
 } from '@ant-design/icons-vue'
 import HeaderBanner from './HeaderBanner.vue'
 import AppLogo from './AppLogo.vue'
-import { docsEditMode, docsActiveDoc, docsSideCollapsed, docsSaveState, docsTitleRev } from '@/utils/docs-layout'
+import { docsEditMode, docsActiveDoc, docsSideCollapsed, docsSaveState, docsTitleRev, docTitleInputValue } from '@/utils/docs-layout'
 import { docSharePanelOpen } from '@/utils/doc-share'
 import DocSharePanel from './DocSharePanel.vue'
 import DesktopSettingsModal from './DesktopSettingsModal.vue'
@@ -482,6 +486,13 @@ const isWorkbench = computed(() => route.path.startsWith('/workbench'))
 const isDocs = computed(() => route.path.startsWith('/docs') || route.path.startsWith('/wiki'))
 
 /** 文档保存状态轻提示文案（分享按钮左侧，参考飞书：不显眼的灰色小字） */
+/** 顶栏文件名输入（输入框里默认标题显示为空，所以不用 v-model，手动回写） */
+function onDocsHeadTitleInput(e: Event) {
+  if (!docsActiveDoc.value) return
+  docsActiveDoc.value.title = (e.target as HTMLInputElement).value
+  docsTitleRev.value++
+}
+
 const docsSaveStateText = computed(() => {
   switch (docsSaveState.value) {
     case 'saving': return '保存中…'
@@ -778,14 +789,45 @@ async function handleLogout() {
 
 /* 文档详情：顶栏最左侧文件名 + 保存状态（上下两行，参考飞书） */
 .docs-head-meta {
-  flex: none;
+  /* 占满左侧到右边按钮组（分享）之间的全部空间 */
+  flex: 1 1 0;
   display: flex;
   flex-direction: column;
+  align-items: flex-start;
   justify-content: center;
   min-width: 0;
-  max-width: 260px;
-  margin-right: 12px;
+  margin-right: 16px;
   line-height: 1.3;
+}
+/* 文档详情页顶栏左侧没有 Logo / 模块名：去掉这块的最小宽度，把位置让给文件名 */
+.docs-head-meta + .header-left {
+  min-width: 0;
+  padding-right: 0;
+}
+/* 文件名容器：::after 放一份不可见的同款文字决定宽度，输入框叠在同一格里铺满 */
+.docs-head-title-wrap {
+  display: inline-grid;
+  max-width: 100%;
+  min-width: 0;
+}
+.docs-head-title-wrap::after {
+  content: attr(data-value);
+  grid-area: 1 / 1;
+  height: 24px;
+  /* 与输入框同字号、同内边距。输入框左右各有 4px 内边距（共 8px），
+     这里右侧补 10px，保证文字未超出可用宽度时输入框内容区仍放得下整段标题，
+     不会在标题没超长时也显示省略号 */
+  padding: 0 10px 0 4px;
+  margin-left: -4px;
+  overflow: hidden;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 24px;
+  white-space: pre;
+  visibility: hidden;
+}
+.docs-head-title-wrap .docs-head-title {
+  grid-area: 1 / 1;
 }
 
 /* 文件名：保存状态上方一行，可直接改名（样式同纯文本，聚焦才显边框） */
@@ -832,9 +874,6 @@ async function handleLogout() {
 }
 /* 窄屏兼容：保存状态为辅助信息，宽度不足时隐藏（文件名保留但收窄） */
 @media (max-width: 960px) {
-  .docs-head-meta {
-    max-width: 140px;
-  }
   .docs-head-meta .docs-save-state {
     display: none;
   }

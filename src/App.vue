@@ -36,6 +36,8 @@ import NewIssueFormModal from '@/components/NewIssueFormModal.vue'
 import ReleaseNotice from '@/components/ReleaseNotice.vue'
 import { newIssueModalOpen } from '@/utils/new-issue-modal'
 import { notifyIssueCreated } from '@/utils/issue-events'
+import { DOC_UNTITLED, docsActiveDoc } from '@/utils/docs-layout'
+import type { DocMeta } from '@/types/docs'
 
 const route = useRoute()
 const router = useRouter()
@@ -49,6 +51,28 @@ watch(isLoggedIn, (loggedIn) => {
     router.replace({ name: 'Login', query: { redirect: route.fullPath } })
   }
 })
+
+/**
+ * 浏览器标签页标题：文档页展示「文档图标 + 文档标题」（标题实时跟随改名），
+ * 其余页面跟随路由 meta.title；都没有时回退到应用名。
+ */
+const tabTitle = computed(() => {
+  const isDocsRoute = route.path.startsWith('/wiki/') || route.path.startsWith('/docs')
+  const doc = isDocsRoute ? docsActiveDoc.value : null
+  if (doc) {
+    const title = doc.title?.trim() || DOC_UNTITLED
+    const icon = doc.type === 'doc' ? (doc.data as DocMeta | undefined)?.icon || '' : ''
+    return icon ? `${icon} ${title}` : title
+  }
+  return (route.meta.title as string | undefined) || ''
+})
+watch(
+  tabTitle,
+  (title) => {
+    document.title = title ? `${title} · Cooperise` : 'Cooperise'
+  },
+  { immediate: true },
+)
 </script>
 
 <style>

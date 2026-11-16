@@ -1,6 +1,6 @@
 import request from '@/utils/request'
 import type { Result } from '@/types/faiz'
-import type { DocItem, DocFolder, DocType, SheetData, MindmapData, FlowData } from '@/types/docs'
+import type { DocItem, DocFolder, DocType, SheetData, MindmapData, FlowData, DocMeta } from '@/types/docs'
 
 /**
  * ==================== 文档系统 API ====================
@@ -29,14 +29,15 @@ export interface DocCreatePayload {
   /** 富文本初始 HTML（上传 / 模板导入时传入） */
   content?: string
   /** 表格 / 思维导图 / 流程图初始数据 */
-  data?: SheetData | MindmapData | FlowData
+  data?: SheetData | MindmapData | FlowData | DocMeta
 }
 
 /** 文档内容保存入参：整篇覆盖式保存（编辑器 400ms 防抖自动保存） */
 export interface DocSavePayload {
   title?: string
   content?: string
-  data?: SheetData | MindmapData | FlowData
+  /** 表格 / 思维导图 / 流程图数据；富文本文档为图标 / 封面（DocMeta） */
+  data?: SheetData | MindmapData | FlowData | DocMeta
 }
 
 /** 回收站文档：文档 + 删除时间 */

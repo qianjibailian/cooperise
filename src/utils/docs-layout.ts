@@ -7,6 +7,14 @@ import type { DocItem } from '@/types/docs'
  */
 export const docsSideCollapsed = ref(false)
 
+/** 新建文档的默认标题：列表里照常显示；标题输入框里视为"还没起标题"，留空并提示「请输入标题」 */
+export const DOC_UNTITLED = '无标题文档'
+
+/** 标题输入框里显示的值：默认标题显示为空（露出占位提示） */
+export function docTitleInputValue(title?: string): string {
+  return !title || title === DOC_UNTITLED ? '' : title
+}
+
 /** 详情页编辑 / 预览模式（顶栏"编辑"下拉切换，文档页与顶栏共享） */
 export const docsEditMode = ref(true)
 

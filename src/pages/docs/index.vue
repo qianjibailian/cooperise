@@ -22,6 +22,7 @@ import {
   UnderlineOutlined,
   StrikethroughOutlined,
   ClearOutlined,
+  CheckOutlined,
   CheckSquareOutlined,
   PictureOutlined,
   PaperClipOutlined,
@@ -31,27 +32,26 @@ import {
   LinkOutlined,
   CodeOutlined,
   MinusOutlined,
-  DownloadOutlined,
-  StarOutlined,
   StarFilled,
   HomeOutlined,
   BookOutlined,
   AppstoreOutlined,
   SortAscendingOutlined,
   UploadOutlined,
-  ColumnWidthOutlined,
-  FullscreenOutlined,
-  FullscreenExitOutlined,
   MenuFoldOutlined,
   MenuOutlined,
   DoubleLeftOutlined,
   MenuUnfoldOutlined,
   HolderOutlined,
+  LikeOutlined,
+  LikeFilled,
   AlignLeftOutlined,
   FontColorsOutlined,
   ScissorOutlined,
   CopyOutlined,
   CommentOutlined,
+  MessageOutlined,
+  SendOutlined,
   TranslationOutlined,
   ShareAltOutlined,
   FileAddOutlined,
@@ -64,7 +64,10 @@ import {
   PlusSquareOutlined,
 } from '@ant-design/icons-vue'
 import { getLoginUsername, useAuth } from '@/utils/auth'
-import type { DocType, DocFolder, DocItem, MindNode, SheetData, MindmapData, FlowData } from '@/types/docs'
+import type { DocType, DocFolder, DocItem, DocMeta, DocComment, MindNode, SheetData, MindmapData, FlowData } from '@/types/docs'
+import DocEmojiPicker from '@/components/docs/DocEmojiPicker.vue'
+import DocCoverPicker from '@/components/docs/DocCoverPicker.vue'
+import { docCoverBackground } from '@/utils/doc-cover'
 import DocSheetEditor from '@/components/docs/DocSheetEditor.vue'
 import DocMindmapEditor from '@/components/docs/DocMindmapEditor.vue'
 import DocFlowEditor from '@/components/docs/DocFlowEditor.vue'
@@ -72,7 +75,7 @@ import DocTypeIcon from '@/components/docs/DocTypeIcon.vue'
 import DocsLibraryCover from '@/components/docs/DocsLibraryCover.vue'
 import AppLogo from '@/components/AppLogo.vue'
 import { isDesktop } from '@/utils/desktop'
-import { docsSideCollapsed, docsEditMode, docsActiveDoc, docsSaveState, docsTitleRev } from '@/utils/docs-layout'
+import { docsSideCollapsed, docsEditMode, docsActiveDoc, docsSaveState, docsTitleRev, DOC_UNTITLED, docTitleInputValue } from '@/utils/docs-layout'
 import { openDocSharePanel } from '@/utils/doc-share'
 import {
   createDoc as createDocApi,
@@ -167,8 +170,9 @@ function toggleOutline() {
 }
 /** 点击目录里的文档标题：回到正文顶部 */
 function scrollToTop() {
-  const canvas = document.querySelector('.docs-canvas') as HTMLElement | null
-  canvas?.scrollTo({ top: 0, behavior: 'smooth' })
+  // 文档页的滚动容器是包含封面 / 正文 / 目录 / 评论的外层；其他类型仍在 .docs-canvas 上
+  const scroller = document.querySelector('.docs-scroll.is-scroll-page, .docs-canvas') as HTMLElement | null
+  scroller?.scrollTo({ top: 0, behavior: 'smooth' })
 }
 
 /** 宽屏 / 专注模式 */
@@ -207,7 +211,7 @@ const groups = computed<{ folder: DocFolder | null; docs: DocItem[]; flat?: bool
 
 // ---- 文档类型 / 数据兜底 ----
 const DOC_TYPE_TITLE: Record<DocType, string> = {
-  doc: '无标题文档',
+  doc: DOC_UNTITLED,
   sheet: '无标题表格',
   mindmap: '无标题思维导图',
   flow: '无标题流程图',
@@ -256,7 +260,7 @@ function normalizeDoc(d: any): DocItem {
     createdAt: Number(d.createdAt) || Number(d.updatedAt) || Date.now(),
     folderId: d.folderId ? String(d.folderId) : undefined,
     author: d.author ? String(d.author) : undefined,
-    data: (data && typeof data === 'object' ? data : undefined) as SheetData | MindmapData | FlowData | undefined,
+    data: (data && typeof data === 'object' ? data : undefined) as DocItem['data'],
     starred: !!d.starred,
   }
   ensureDocData(doc)
@@ -348,6 +352,75 @@ function onDocChanged(doc: DocItem) {
   scheduleSave()
 }
 
+// ---- 文档图标 / 封面（富文本文档的 data 字段存 DocMeta，随文档内容一起保存） ----
+const docMeta = computed<DocMeta>(() => {
+  const d = activeDoc.value
+  return (d?.type === 'doc' && d.data ? d.data : {}) as DocMeta
+})
+const docCoverStyle = computed(() => ({ background: docCoverBackground(docMeta.value.cover) }))
+/** 选择面板的开关：标题上方「添加图标 / 添加封面」、点击已有图标、封面上的「更换封面」 */
+const iconAddOpen = ref(false)
+const iconEditOpen = ref(false)
+const coverAddOpen = ref(false)
+const coverEditOpen = ref(false)
+
+function setDocMeta(patch: DocMeta) {
+  const doc = activeDoc.value
+  if (!doc || doc.type !== 'doc') return
+  const next: DocMeta = { ...docMeta.value, ...patch }
+  if (!next.icon) delete next.icon
+  if (!next.cover) delete next.cover
+  doc.data = next
+  onDocChanged(doc)
+}
+function setDocIcon(icon: string) {
+  iconAddOpen.value = false
+  iconEditOpen.value = false
+  setDocMeta({ icon })
+}
+function setDocCover(cover: string) {
+  coverAddOpen.value = false
+  coverEditOpen.value = false
+  setDocMeta({ cover })
+}
+
+/** 正文大标题输入（输入框里默认标题显示为空，所以不用 v-model，手动回写） */
+function onTitleInput(e: Event, doc: DocItem) {
+  const el = e.target as HTMLTextAreaElement
+  // 标题是单段文字：粘贴进来的换行替换成空格
+  if (/[\r\n]/.test(el.value)) el.value = el.value.replace(/\s*[\r\n]+\s*/g, ' ')
+  doc.title = el.value
+  autosizeTitle()
+  onDocChanged(doc)
+}
+
+/** 标题文本框高度跟随内容：先收起再按 scrollHeight 撑开（换行 / 删字 / 宽度变化后都要重算） */
+const titleInputRef = ref<HTMLTextAreaElement | null>(null)
+function autosizeTitle() {
+  const el = titleInputRef.value
+  if (!el) return
+  el.style.height = 'auto'
+  el.style.height = `${el.scrollHeight}px`
+}
+let titleResizeObserver: ResizeObserver | undefined
+let titleObservedWidth = 0
+watch(titleInputRef, (el) => {
+  titleResizeObserver?.disconnect()
+  if (!el) return
+  autosizeTitle()
+  // 只在宽度变化时重算（窗口缩放、目录展开收起、加减图标），高度变化是自己改的，不能再触发
+  titleResizeObserver = new ResizeObserver((entries) => {
+    const w = Math.round(entries[0].contentRect.width)
+    if (w === titleObservedWidth) return
+    titleObservedWidth = w
+    autosizeTitle()
+  })
+  titleResizeObserver.observe(el)
+})
+// 切换文档 / 标题被别处修改（顶栏文件名）后重算高度
+watch(() => [activeDoc.value?.id, activeDoc.value?.title], () => nextTick(autosizeTitle))
+onBeforeUnmount(() => titleResizeObserver?.disconnect())
+
 /** 语雀式快捷键：⌘K / Ctrl+K 聚焦搜索 */
 function onGlobalKeydown(e: KeyboardEvent) {
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
@@ -405,56 +478,13 @@ function onFlowChange(doc: DocItem, graph: any) {
   scheduleSave()
 }
 
-// ---- 导出（兼容格式） ----
+// ---- HTML 转义 ----
 function escapeHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
 
 function escapeAttr(s: string): string {
   return escapeHtml(s).replace(/"/g, '&quot;')
-}
-
-function download(filename: string, content: string, mime: string) {
-  const blob = new Blob([content], { type: mime })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = filename
-  a.click()
-  URL.revokeObjectURL(url)
-}
-
-function exportWord(doc: DocItem) {
-  const html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word"><head><meta charset="utf-8"><title>${escapeHtml(doc.title)}</title></head><body>${doc.content}</body></html>`
-  download(`${doc.title || '文档'}.doc`, html, 'application/msword')
-}
-
-function exportExcel(doc: DocItem) {
-  const rows = sheetRows(doc)
-  const table = `<table border="1" cellspacing="0">${rows.map((r) => `<tr>${r.map((c) => `<td>${escapeHtml(c)}</td>`).join('')}</tr>`).join('')}</table>`
-  const html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="utf-8"></head><body>${table}</body></html>`
-  download(`${doc.title || '表格'}.xls`, html, 'application/vnd.ms-excel')
-}
-
-function exportMindmap(doc: DocItem) {
-  const nodeXml = (n: MindNode): string => `<node TEXT="${escapeAttr(n.text)}">${n.children.map(nodeXml).join('')}</node>`
-  const xml = `<?xml version="1.0" encoding="UTF-8"?><map version="1.0.1">${nodeXml(mindRoot(doc))}</map>`
-  download(`${doc.title || '思维导图'}.mm`, xml, 'application/xml')
-}
-
-function exportFlow(doc: DocItem) {
-  const graph = flowGraph(doc) ?? { nodes: [], edges: [] }
-  download(`${doc.title || '流程图'}.json`, JSON.stringify(graph, null, 2), 'application/json')
-}
-
-function onExport(e: { key?: string | number }) {
-  const doc = activeDoc.value
-  if (!doc) return
-  const key = String(e?.key ?? '')
-  if (key === 'word') exportWord(doc)
-  else if (key === 'excel') exportExcel(doc)
-  else if (key === 'xmind') exportMindmap(doc)
-  else if (key === 'flow-json') exportFlow(doc)
 }
 
 /** 新建并写入标题 / 内容（上传文件、模板库共用） */
@@ -471,6 +501,8 @@ function createDocWithContent(type: DocType, title: string, content: string) {
           if (editorRef.value) {
             editorRef.value.innerHTML = content
             normalizeTodoOrder(editorRef.value)
+            normalizeOrderedLists(editorRef.value)
+            ensureCodeHeads(editorRef.value)
           }
           refreshOutline()
         })
@@ -1017,6 +1049,7 @@ function refreshOutline() {
     outline.value = []
     return
   }
+  refreshEmptyBlocks(editorRef.value)
   const nodes = Array.from(editorRef.value.querySelectorAll<HTMLElement>('h1, h2, h3'))
   outline.value = nodes.map((el, i) => {
     const id = `doc-h-${i}`
@@ -1029,8 +1062,27 @@ function refreshOutline() {
   })
 }
 
+/** 空块占位符（对标飞书）：没有内容的标题 / 引用打 data-empty，样式里显示灰色的块类型提示；
+ *  列表项不显示提示（新增的行只保留序号 / 圆点，避免“列表”字样干扰阅读） */
+const EMPTY_BLOCK_SELECTOR = 'h1, h2, h3, blockquote'
+function refreshEmptyBlocks(editor: HTMLElement) {
+  editor.querySelectorAll<HTMLElement>(EMPTY_BLOCK_SELECTOR).forEach((el) => {
+    // 零宽字符不算内容；含图片 / 表格 / 嵌套列表等也不算空
+    const empty =
+      !(el.textContent || '').replace(/[\u200b\ufeff]/g, '') && !el.querySelector('img, table, hr, ul, ol, pre')
+    el.toggleAttribute('data-empty', empty)
+  })
+}
+
 function scrollToHeading(id: string) {
-  document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  const el = document.getElementById(id)
+  const editor = editorRef.value
+  // 目标标题被折叠隐藏时：先展开全部折叠，否则滚不过去
+  if (el && editor && el.hasAttribute('data-fold-hidden')) {
+    editor.querySelectorAll('[data-folded]').forEach((h) => h.removeAttribute('data-folded'))
+    applyHeadingFolds(editor)
+  }
+  el?.scrollIntoView({ behavior: 'smooth', block: 'start' })
 }
 
 watch(activeDoc, (doc) => {
@@ -1038,8 +1090,11 @@ watch(activeDoc, (doc) => {
     if (doc?.type === 'doc' && editorRef.value) {
       editorRef.value.innerHTML = doc.content || ''
       normalizeTodoOrder(editorRef.value)
+      normalizeOrderedLists(editorRef.value)
+      ensureCodeHeads(editorRef.value)
       refreshOutline()
       refreshEmptyState()
+      applyHeadingFolds(editorRef.value)
     } else {
       outline.value = []
       editorEmpty.value = false
@@ -1049,13 +1104,14 @@ watch(activeDoc, (doc) => {
 
 /** 编辑器是否为空（无文字，最多残留一个 br） */
 function isEditorEmpty(ed: HTMLElement): boolean {
-  return !ed.textContent?.trim() && ed.children.length <= 1
+  // 只剩一个空标题 / 空引用不算空：它有自己的类型提示和块手柄
+  return !ed.textContent?.trim() && ed.children.length <= 1 && !ed.querySelector('h1, h2, h3, blockquote')
 }
 
 /** 正文数据为空时显示占位提示（类名驱动，兼容 <p><br></p> 等残留空结构） */
 const editorEmpty = ref(false)
 /** 有实际内容的元素：图片 / 表格 / 分割线 / 代码块 / 列表 / 待办 / 高亮块 / 分栏 */
-const RICH_CONTENT_SELECTOR = 'img, table, hr, pre, ul, ol, .docs-todo, .docs-callout, .docs-cols'
+const RICH_CONTENT_SELECTOR = 'img, table, hr, pre, ul, ol, h1, h2, h3, blockquote, .docs-todo, .docs-callout, .docs-cols'
 
 /** 正文是否没有数据（无文字，也没有图片、表格等富文本元素） */
 function isDocContentEmpty(ed: HTMLElement): boolean {
@@ -1090,6 +1146,693 @@ function refreshEmptyState() {
   editorEmpty.value = empty
 }
 
+// ---- 代码块（对标云文档）：顶部语言栏 + 一键复制 ----
+/**
+ * 语言栏由脚本注入到 <pre> 里，只承担展示 / 复制，
+ * 落盘前会统一剥离，不污染文档内容（参考待办勾选框的伪元素思路）。
+ */
+const CODE_HEAD_SELECTOR = ':scope > .docs-code-head'
+/** 注入到代码块里的只读节点：语言栏 + 彩色代码叠层，落盘前统一剥离 */
+const CODE_INJECTED_SELECTOR = '.docs-code-head, .docs-code-highlight'
+/** 语言切换菜单的候选项（对齐常见代码块组件，覆盖主流语言） */
+const CODE_LANG_OPTIONS: { key: string; label: string }[] = [
+  { key: 'text', label: '纯文本' },
+  { key: 'bash', label: 'Bash' },
+  { key: 'c', label: 'C' },
+  { key: 'cpp', label: 'C++' },
+  { key: 'csharp', label: 'C#' },
+  { key: 'css', label: 'CSS' },
+  { key: 'go', label: 'Go' },
+  { key: 'html', label: 'HTML' },
+  { key: 'java', label: 'Java' },
+  { key: 'javascript', label: 'JavaScript' },
+  { key: 'json', label: 'JSON' },
+  { key: 'kotlin', label: 'Kotlin' },
+  { key: 'markdown', label: 'Markdown' },
+  { key: 'php', label: 'PHP' },
+  { key: 'python', label: 'Python' },
+  { key: 'ruby', label: 'Ruby' },
+  { key: 'rust', label: 'Rust' },
+  { key: 'sql', label: 'SQL' },
+  { key: 'swift', label: 'Swift' },
+  { key: 'typescript', label: 'TypeScript' },
+  { key: 'xml', label: 'XML' },
+  { key: 'yaml', label: 'YAML' },
+]
+const CODE_LANG_LABEL: Record<string, string> = Object.fromEntries(
+  CODE_LANG_OPTIONS.map((it) => [it.key, it.label]),
+)
+/** 用户手动选过语言的代码块：不再跟随内容自动识别 */
+const manualLangPres = new WeakSet<HTMLElement>()
+
+/** 按内容特征粗判代码语言，仅用于语言栏展示 */
+function detectCodeLang(code: string): string {
+  const src = code.trim()
+  if (!src) return 'text'
+  if (/^[\[{]/.test(src)) {
+    try {
+      JSON.parse(src)
+      return 'json'
+    } catch {
+      /* 不是 JSON，继续往下判断 */
+    }
+  }
+  if (/^#!.*\b(bash|sh|zsh)\b/m.test(src)) return 'bash'
+  if (/^\s*(SELECT|INSERT|UPDATE|DELETE|CREATE|ALTER|DROP)\b/i.test(src)) return 'sql'
+  if (/<\/?[a-z][\w:-]*(\s[^>]*)?>/i.test(src)) return 'html'
+  if (/^\s*package\s+\w+|^\s*func\s+[\w>(]/m.test(src)) return 'go'
+  if (/^\s*(def|class)\s+\w+\s*[:(]|^\s*from\s+[\w.]+\s+import\s+/m.test(src)) return 'python'
+  if (/^\s*(import|export)\b[^\n]*\bfrom\b|^\s*export\s+(default|const|function|class)\b/m.test(src)) return 'javascript'
+  if (/^\s*(interface|type)\s+\w+\s*[={]|:\s*(string|number|boolean|any)\b/m.test(src)) return 'typescript'
+  if (/^\s*(async\s+)?function\b|^\s*(const|let|var)\s+[\w${]+\s*=|=>/m.test(src)) return 'javascript'
+  if (/^\s*public\s+(class|interface)\b|^\s*import\s+java\.|^\s*public\s+static\s+void\s+main\b|System\.out\./m.test(src)) return 'java'
+  if (/^\s*[.#]?[\w-]+(\s*[,>]\s*[.#]?[\w-]+)*\s*\{[^}]*:[^}]*\}/m.test(src)) return 'css'
+  if (/^\s*[\w-]+\s*:\s*\S/m.test(src) && /^\s*-\s+\S/m.test(src)) return 'yaml'
+  if (/^\s*(npm|pnpm|yarn|git|cd|ls|curl|wget|echo|mkdir|rm|cp|mv|node|docker|kubectl)\b/m.test(src)) return 'bash'
+  if (/^#{1,6}\s+\S|^\s*[-*]\s+\S/m.test(src)) return 'markdown'
+  return 'text'
+}
+
+// ---- 代码块语法着色 ----
+/**
+ * 着色采用「叠层」方案：可编辑文本保持原样（只把颜色设为透明），
+ * 彩色文本由注入的只读层绘制，输入、光标、撤销都仍然是原生 contenteditable 行为。
+ */
+type CodeToken = { cls: string; text: string }
+type CodeLangRules = {
+  line?: string[]
+  block?: [string, string][]
+  quotes?: string
+  keywords?: Set<string>
+  /** SQL 等不区分大小写的语言 */
+  ci?: boolean
+  /** Shell 变量（$VAR） */
+  vars?: boolean
+}
+const kw = (words: string) => new Set(words.split(/\s+/).filter(Boolean))
+
+const JS_KEYWORDS = kw(
+  'async await break case catch class const continue debugger default delete do else export extends false finally for from function get if import in instanceof let new null of return set super switch this throw true try typeof undefined var void while yield interface type enum implements readonly static declare namespace as',
+)
+const JS_RULES: CodeLangRules = {
+  line: ['//'],
+  block: [['/*', '*/']],
+  quotes: '"\'`',
+  keywords: JS_KEYWORDS,
+}
+const CODE_LANG_RULES: Record<string, CodeLangRules> = {
+  javascript: JS_RULES,
+  typescript: JS_RULES,
+  json: { quotes: '"', keywords: kw('true false null') },
+  python: {
+    line: ['#'],
+    block: [
+      ['"""', '"""'],
+      ["'''", "'''"],
+    ],
+    quotes: '"\'',
+    keywords: kw(
+      'def class return if elif else for while in not and or import from as with try except finally raise lambda pass break continue global nonlocal yield assert del is None True False async await match case',
+    ),
+  },
+  java: {
+    line: ['//'],
+    block: [['/*', '*/']],
+    quotes: '"\'',
+    keywords: kw(
+      'public private protected class interface extends implements import package static final void new return if else for while switch case break continue try catch finally throw throws this super int long double float boolean char byte short String true false null record',
+    ),
+  },
+  go: {
+    line: ['//'],
+    block: [['/*', '*/']],
+    quotes: '"\'`',
+    keywords: kw(
+      'package import func type struct interface var const if else for range switch case break continue return defer go map chan select nil true false string int int64 float64 bool error',
+    ),
+  },
+  rust: {
+    line: ['//'],
+    block: [['/*', '*/']],
+    quotes: '"\'',
+    keywords: kw(
+      'fn let mut pub use mod struct enum impl trait for while loop if else match return self Self crate super async await move ref where const static type dyn box as true false Some None Ok Err',
+    ),
+  },
+  c: {
+    line: ['//'],
+    block: [['/*', '*/']],
+    quotes: '"\'',
+    keywords: kw(
+      'int long short char float double void bool struct union enum typedef static const extern inline return if else for while do switch case break continue sizeof new delete true false NULL',
+    ),
+  },
+  cpp: {
+    line: ['//'],
+    block: [['/*', '*/']],
+    quotes: '"\'',
+    keywords: kw(
+      'int long short char float double void bool class struct union enum typedef static const constexpr extern inline virtual override public private protected namespace using template typename return if else for while do switch case break continue sizeof new delete true false nullptr NULL auto',
+    ),
+  },
+  csharp: {
+    line: ['//'],
+    block: [['/*', '*/']],
+    quotes: '"\'',
+    keywords: kw(
+      'using namespace class struct interface public private protected internal static readonly const void int string bool var new return if else for foreach while switch case break continue try catch finally throw true false null async await',
+    ),
+  },
+  kotlin: {
+    line: ['//'],
+    block: [['/*', '*/']],
+    quotes: '"\'',
+    keywords: kw(
+      'fun val var class object interface data enum when if else for while do return import package private public protected internal override open abstract sealed companion true false null this super',
+    ),
+  },
+  swift: {
+    line: ['//'],
+    block: [['/*', '*/']],
+    quotes: '"',
+    keywords: kw(
+      'func let var class struct enum protocol extension import if else for while repeat switch case break continue return true false nil self Self public private internal static async await try catch throw guard defer',
+    ),
+  },
+  ruby: {
+    line: ['#'],
+    quotes: '"\'',
+    keywords: kw(
+      'def end class module if elsif else unless while until for do return yield begin rescue ensure raise true false nil self require attr_accessor attr_reader',
+    ),
+  },
+  php: {
+    line: ['//', '#'],
+    block: [['/*', '*/']],
+    quotes: '"\'',
+    keywords: kw(
+      'function class interface extends implements public private protected static const return if else elseif foreach for while switch case break continue new echo true false null array async await namespace use',
+    ),
+  },
+  sql: {
+    line: ['--'],
+    block: [['/*', '*/']],
+    quotes: '"\'',
+    ci: true,
+    keywords: kw(
+      'SELECT INSERT UPDATE DELETE CREATE ALTER DROP TABLE FROM WHERE JOIN LEFT RIGHT INNER OUTER ON GROUP BY ORDER HAVING LIMIT OFFSET VALUES INTO SET AS AND OR NOT NULL IS IN LIKE BETWEEN DISTINCT COUNT SUM AVG MIN MAX PRIMARY KEY FOREIGN REFERENCES INDEX UNION ALL CASE WHEN THEN ELSE END',
+    ),
+  },
+  bash: {
+    line: ['#'],
+    quotes: '"\'`',
+    vars: true,
+    keywords: kw(
+      'if then elif else fi for in do done case esac function export local return echo cd ls rm mkdir sudo clear source exit read',
+    ),
+  },
+  yaml: {
+    line: ['#'],
+    quotes: '"\'',
+    keywords: kw('true false null yes no on off'),
+  },
+  css: {
+    block: [['/*', '*/']],
+    quotes: '"\'',
+  },
+}
+
+/** 按语言把代码切成带颜色的 token；未知语言原样返回 */
+function tokenizeCode(code: string, lang: string): CodeToken[] {
+  const rules = CODE_LANG_RULES[lang]
+  if (!rules) return [{ cls: '', text: code }]
+  const tokens: CodeToken[] = []
+  let buf = ''
+  const flush = () => {
+    if (buf) {
+      tokens.push({ cls: '', text: buf })
+      buf = ''
+    }
+  }
+  const push = (cls: string, text: string) => {
+    flush()
+    tokens.push({ cls, text })
+  }
+  let i = 0
+  while (i < code.length) {
+    const ch = code[i]
+    // 行注释（要求位于行首或空白之后，# 号才不会把 a#b 之类误判成注释）
+    const lineMark = rules.line?.find((m) => code.startsWith(m, i))
+    if (lineMark && (i === 0 || /\s/.test(code[i - 1]))) {
+      let j = code.indexOf('\n', i)
+      if (j < 0) j = code.length
+      push('tk-c', code.slice(i, j))
+      i = j
+      continue
+    }
+    // 块注释
+    const blockMark = rules.block?.find(([s]) => code.startsWith(s, i))
+    if (blockMark) {
+      const end = code.indexOf(blockMark[1], i + blockMark[0].length)
+      const j = end < 0 ? code.length : end + blockMark[1].length
+      push('tk-c', code.slice(i, j))
+      i = j
+      continue
+    }
+    // 字符串（含转义；单行字符串遇到换行即结束）
+    if (rules.quotes?.includes(ch)) {
+      let j = i + 1
+      while (j < code.length) {
+        if (code[j] === '\\') {
+          j += 2
+          continue
+        }
+        if (code[j] === ch) {
+          j++
+          break
+        }
+        if (code[j] === '\n' && ch !== '`') break
+        j++
+      }
+      const text = code.slice(i, j)
+      // 字符串后紧跟冒号：JSON / 对象的键
+      push(/^\s*:/.test(code.slice(j)) ? 'tk-a' : 'tk-s', text)
+      i = j
+      continue
+    }
+    // Shell 变量
+    if (rules.vars && ch === '$') {
+      const m = /^\$[A-Za-z_]\w*/.exec(code.slice(i))
+      if (m) {
+        push('tk-v', m[0])
+        i += m[0].length
+        continue
+      }
+    }
+    // 数字
+    if (/[0-9]/.test(ch) && !/[\w$]/.test(code[i - 1] || '')) {
+      const m = /^(?:0[xX][0-9a-fA-F]+|0[bB][01]+|\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)/.exec(code.slice(i))
+      if (m) {
+        push('tk-n', m[0])
+        i += m[0].length
+        continue
+      }
+    }
+    // 标识符：关键字 / 函数调用 / 属性键 / 类型名
+    if (/[A-Za-z_$]/.test(ch)) {
+      let j = i + 1
+      while (j < code.length && /[\w$]/.test(code[j])) j++
+      const word = code.slice(i, j)
+      const matched = rules.keywords?.has(rules.ci ? word.toUpperCase() : word)
+      if (matched) push('tk-k', word)
+      else if (/^\s*\(/.test(code.slice(j))) push('tk-f', word)
+      else if (/^\s*:/.test(code.slice(j))) push('tk-a', word)
+      else if (/^[A-Z]/.test(word)) push('tk-t', word)
+      else buf += word
+      i = j
+      continue
+    }
+    buf += ch
+    i++
+  }
+  flush()
+  return tokens
+}
+
+/** HTML / XML：标签、属性、属性值、注释分别着色 */
+function tokenizeMarkup(code: string): CodeToken[] {
+  const tokens: CodeToken[] = []
+  let buf = ''
+  const flush = () => {
+    if (buf) {
+      tokens.push({ cls: '', text: buf })
+      buf = ''
+    }
+  }
+  const push = (cls: string, text: string) => {
+    flush()
+    tokens.push({ cls, text })
+  }
+  let i = 0
+  while (i < code.length) {
+    if (code.startsWith('<!--', i)) {
+      const end = code.indexOf('-->', i + 4)
+      const j = end < 0 ? code.length : end + 3
+      push('tk-c', code.slice(i, j))
+      i = j
+      continue
+    }
+    if (code[i] !== '<') {
+      buf += code[i]
+      i++
+      continue
+    }
+    const tag = /^<\/?([A-Za-z][\w:-]*)/.exec(code.slice(i))
+    if (!tag) {
+      buf += code[i]
+      i++
+      continue
+    }
+    push('', code.slice(i, i + tag[0].length - tag[1].length))
+    push('tk-t', tag[1])
+    i += tag[0].length
+    while (i < code.length) {
+      const c = code[i]
+      if (c === '>') {
+        push('', '>')
+        i++
+        break
+      }
+      if (c === '/' && code[i + 1] === '>') {
+        push('', '/>')
+        i += 2
+        break
+      }
+      if (c === '"' || c === "'") {
+        let j = i + 1
+        while (j < code.length && code[j] !== c) j++
+        j = Math.min(code.length, j + 1)
+        push('tk-s', code.slice(i, j))
+        i = j
+        continue
+      }
+      const attr = /^[A-Za-z_:][\w:.-]*/.exec(code.slice(i))
+      if (attr) {
+        push('tk-a', attr[0])
+        i += attr[0].length
+        continue
+      }
+      if (c === '=') {
+        push('', '=')
+        i++
+        continue
+      }
+      buf += c
+      i++
+    }
+  }
+  flush()
+  return tokens
+}
+
+function codeHighlightHtml(code: string, lang: string): string {
+  const tokens = lang === 'html' || lang === 'xml' ? tokenizeMarkup(code) : tokenizeCode(code, lang)
+  return tokens
+    .map((t) => (t.cls ? `<span class="${t.cls}">${escapeHtml(t.text)}</span>` : escapeHtml(t.text)))
+    .join('')
+}
+
+/** 绘制彩色代码层；纯文本 / Markdown 不着色 */
+function renderCodeHighlight(pre: HTMLElement) {
+  const lang = pre.dataset.lang || 'text'
+  const existed = pre.querySelector<HTMLElement>(':scope > .docs-code-highlight')
+  const supported = lang === 'html' || lang === 'xml' || !!CODE_LANG_RULES[lang]
+  if (lang === 'text' || lang === 'markdown' || !supported) {
+    existed?.remove()
+    pre.classList.remove('is-code-colored')
+    return
+  }
+  let layer = existed
+  if (!layer) {
+    layer = document.createElement('div')
+    layer.className = 'docs-code-highlight'
+    layer.setAttribute('contenteditable', 'false')
+    layer.setAttribute('aria-hidden', 'true')
+    pre.appendChild(layer)
+  }
+  pre.classList.add('is-code-colored')
+  const html = codeHighlightHtml(codeRenderText(pre), lang)
+  if (layer.innerHTML !== html) layer.innerHTML = html
+}
+
+/** 代码正文（去掉语言栏），用于语言判断；不挂载到文档，避免触发排版 */
+function codeSourceOf(pre: HTMLElement): string {
+  const clone = pre.cloneNode(true) as HTMLElement
+  clone.querySelectorAll(CODE_INJECTED_SELECTOR).forEach((h) => h.remove())
+  // <br> 还原成换行，才能按行做语言特征匹配
+  clone.querySelectorAll('br').forEach((br) => br.replaceWith('\n'))
+  return (clone.textContent || '').replace(/ /g, ' ')
+}
+
+/** 代码正文（去掉注入层），用于着色渲染；保留 &nbsp;，保证与可编辑文本换行一致 */
+function codeRenderText(pre: HTMLElement): string {
+  const clone = pre.cloneNode(true) as HTMLElement
+  clone.querySelectorAll(CODE_INJECTED_SELECTOR).forEach((h) => h.remove())
+  clone.removeAttribute('contenteditable')
+  clone.style.position = 'absolute'
+  clone.style.left = '-99999px'
+  clone.style.top = '0'
+  clone.style.padding = '0'
+  clone.style.border = '0'
+  clone.style.whiteSpace = 'pre-wrap'
+  document.body.appendChild(clone)
+  const text = clone.innerText || clone.textContent || ''
+  clone.remove()
+  return text
+}
+
+/** 代码正文（去掉注入层），用于复制；借助临时挂载拿到真实的换行 */
+function codeTextOf(pre: HTMLElement): string {
+  const clone = pre.cloneNode(true) as HTMLElement
+  clone.querySelectorAll(CODE_INJECTED_SELECTOR).forEach((h) => h.remove())
+  clone.removeAttribute('contenteditable')
+  clone.style.position = 'absolute'
+  clone.style.left = '-99999px'
+  clone.style.top = '0'
+  clone.style.padding = '0'
+  clone.style.border = '0'
+  clone.style.whiteSpace = 'pre-wrap'
+  document.body.appendChild(clone)
+  const text = (clone.innerText || clone.textContent || '').replace(/ /g, ' ')
+  clone.remove()
+  return text.replace(/\n+$/, '')
+}
+
+/** 语言栏模板：左侧语言切换，右侧自动换行开关 + 复制按钮 */
+function codeHeadHtml(lang: string, wrapOff: boolean): string {
+  const label = escapeHtml(CODE_LANG_LABEL[lang] || CODE_LANG_LABEL.text)
+  return (
+    `<div class="docs-code-head" contenteditable="false">` +
+    `<button type="button" class="docs-code-lang" title="切换代码语言">` +
+    `<svg class="docs-code-lang-icon" viewBox="0 0 16 16" aria-hidden="true">` +
+    `<path d="M5.5 4 2 8l3.5 4M10.5 4 14 8l-3.5 4" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>` +
+    `</svg>` +
+    `<span class="docs-code-lang-text">${label}</span>` +
+    `<svg class="docs-code-lang-caret" viewBox="0 0 10 10" aria-hidden="true">` +
+    `<path d="M2.5 4 5 6.5 7.5 4" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>` +
+    `</svg>` +
+    `</button>` +
+    `<div class="docs-code-head-actions">` +
+    `<button type="button" class="docs-code-wrap${wrapOff ? '' : ' is-on'}" title="${wrapOff ? '开启自动换行' : '关闭自动换行'}">` +
+    `<svg viewBox="0 0 16 16" aria-hidden="true">` +
+    `<path d="M2 4h12M2 8h9a2 2 0 0 1 0 4H8.5M2 12h4" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>` +
+    `<path d="m10 10-1.5 2 1.5 2" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>` +
+    `</svg>` +
+    `<span>自动换行</span>` +
+    `</button>` +
+    `<button type="button" class="docs-code-copy" title="复制代码">` +
+    `<svg viewBox="0 0 16 16" aria-hidden="true">` +
+    `<rect x="5.5" y="5.5" width="8" height="8" rx="1.6" fill="none" stroke="currentColor" stroke-width="1.3"/>` +
+    `<path d="M10.5 3.6A1.6 1.6 0 0 0 8.9 2H4.1A2.1 2.1 0 0 0 2 4.1v4.8a1.6 1.6 0 0 0 1.6 1.6" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>` +
+    `</svg>` +
+    `<span class="docs-code-copy-text">复制</span>` +
+    `</button>` +
+    `</div>` +
+    `</div>`
+  )
+}
+
+/** 同步语言标签（内容变化后调用；手动选过语言的块保持不变） */
+function updateCodeLang(pre: HTMLElement) {
+  if (manualLangPres.has(pre)) return
+  const textEl = pre.querySelector<HTMLElement>('.docs-code-lang-text')
+  if (!textEl) return
+  const lang = detectCodeLang(codeSourceOf(pre))
+  if (pre.dataset.lang === lang) return
+  pre.dataset.lang = lang
+  textEl.textContent = CODE_LANG_LABEL[lang] || CODE_LANG_LABEL.text
+}
+
+/** 给所有代码块补齐语言栏（新建 / 粘贴 / 打开文档后调用） */
+function ensureCodeHeads(editor: HTMLElement) {
+  editor.querySelectorAll('pre').forEach((node) => {
+    const pre = node as HTMLElement
+    // 代码块不做拼写检查（透明文字上的红色波浪线会干扰彩色层）
+    pre.spellcheck = false
+    if (pre.querySelector(CODE_HEAD_SELECTOR)) {
+      // 彩色层被撤销 / 剪切等操作带走时补回来
+      if (!pre.querySelector(':scope > .docs-code-highlight')) renderCodeHighlight(pre)
+      return
+    }
+    const src = codeSourceOf(pre)
+    // 文档里已保存过语言（打开旧文档 / 用户选过）就以它为准，不再自动识别
+    const savedLang = pre.dataset.lang
+    if (savedLang) manualLangPres.add(pre)
+    const lang = savedLang || detectCodeLang(src)
+    pre.dataset.lang = lang
+    pre.insertAdjacentHTML('afterbegin', codeHeadHtml(lang, pre.dataset.wrap === 'off'))
+    // 空代码块补一个换行，保证光标落在语言栏下方而不是栏内
+    if (!src.trim() && !pre.querySelector('br')) pre.insertAdjacentHTML('beforeend', '<br>')
+    // 新建空代码块时光标停在 pre 开头，注入语言栏后要挪到栏后面
+    const head = pre.querySelector<HTMLElement>(CODE_HEAD_SELECTOR)
+    const sel = window.getSelection()
+    if (head && sel?.rangeCount && pre.contains(sel.anchorNode)) {
+      const range = sel.getRangeAt(0)
+      if (range.startContainer === pre && range.startOffset === 0) {
+        const after = document.createRange()
+        after.setStartAfter(head)
+        after.collapse(true)
+        sel.removeAllRanges()
+        sel.addRange(after)
+      }
+    }
+    renderCodeHighlight(pre)
+  })
+}
+
+/** 光标所在的代码块 */
+function caretCodeBlock(): HTMLElement | null {
+  const node = window.getSelection()?.anchorNode
+  const el = node?.nodeType === Node.ELEMENT_NODE ? (node as HTMLElement) : node?.parentElement
+  return el?.closest<HTMLElement>('pre') ?? null
+}
+
+/** 只刷新光标所在代码块（语言标签 + 彩色层），避免每次输入处理全部代码块 */
+function refreshCodeBlockAtCaret(editor: HTMLElement) {
+  const pre = caretCodeBlock()
+  if (!pre || !editor.contains(pre)) return
+  updateCodeLang(pre)
+  // 中文输入法组合中不刷新彩色层（此时彩色层隐藏、显示原生文字）
+  if (!pre.classList.contains('is-composing')) renderCodeHighlight(pre)
+}
+
+/** 正在输入法组合的代码块（组合期间彩色层隐藏、显示原生文字） */
+let composingCodePre: HTMLElement | null = null
+
+/** 输入法组合开始：暂时隐藏彩色层，让候选 / 拼音可见 */
+function onEditorCompositionStart() {
+  composingCodePre = caretCodeBlock()
+  composingCodePre?.classList.add('is-composing')
+}
+
+/** 输入法组合结束：恢复彩色层 */
+function onEditorCompositionEnd() {
+  const pre = composingCodePre || caretCodeBlock()
+  composingCodePre = null
+  if (!pre) return
+  pre.classList.remove('is-composing')
+  renderCodeHighlight(pre)
+}
+
+/** 落盘用的干净 HTML：去掉注入的语言栏，文档内容保持原样 */
+function editorContentHtml(editor: HTMLElement): string {
+  if (!editor.querySelector(CODE_INJECTED_SELECTOR) && !editor.querySelector('pre.is-composing')) return editor.innerHTML
+  const clone = editor.cloneNode(true) as HTMLElement
+  clone.querySelectorAll(CODE_INJECTED_SELECTOR).forEach((h) => h.remove())
+  // 着色态 / 输入法态是运行时类名，不写进文档
+  clone.querySelectorAll('pre').forEach((node) => {
+    const pre = node as HTMLElement
+    pre.classList.remove('is-code-colored', 'is-composing')
+    pre.removeAttribute('spellcheck')
+    if (!pre.getAttribute('class')) pre.removeAttribute('class')
+  })
+  return clone.innerHTML
+}
+
+/** 复制代码块正文，按钮上给出“已复制”反馈 */
+async function copyCodeBlock(pre: HTMLElement, btn?: HTMLElement) {
+  const text = codeTextOf(pre)
+  if (!text) return
+  let ok = false
+  try {
+    await navigator.clipboard.writeText(text)
+    ok = true
+  } catch {
+    const ta = document.createElement('textarea')
+    ta.value = text
+    ta.setAttribute('readonly', '')
+    ta.style.position = 'fixed'
+    ta.style.top = '-1000px'
+    ta.style.opacity = '0'
+    document.body.appendChild(ta)
+    ta.select()
+    ok = document.execCommand('copy')
+    ta.remove()
+  }
+  if (!ok) {
+    message.warning('复制失败，请手动复制')
+    return
+  }
+  if (!btn) {
+    message.success('已复制')
+    return
+  }
+  const textEl = btn.querySelector<HTMLElement>('.docs-code-copy-text')
+  btn.classList.add('is-done')
+  if (textEl) textEl.textContent = '已复制'
+  window.setTimeout(() => {
+    btn.classList.remove('is-done')
+    if (textEl) textEl.textContent = '复制'
+  }, 1600)
+}
+
+// ---- 代码块语言切换菜单 ----
+const codeLangMenu = reactive({ open: false, top: 0, left: 0, lang: 'text' })
+const codeLangMenuRef = ref<HTMLElement | null>(null)
+let codeLangMenuPre: HTMLElement | null = null
+/** 菜单高度上限（与样式 max-height 一致），用于判断向上还是向下弹出 */
+const CODE_LANG_MENU_MAX_H = 300
+
+function closeCodeLangMenu() {
+  codeLangMenu.open = false
+  codeLangMenuPre = null
+}
+
+/** 点击语言栏：在按钮下方弹出语言列表（空间不足时向上弹） */
+function openCodeLangMenu(btn: HTMLElement) {
+  const pre = btn.closest('pre') as HTMLElement | null
+  const wrap = btn.closest('.docs-editor-wrap') as HTMLElement | null
+  if (!pre || !wrap) return
+  // 再次点击同一个语言按钮：收起
+  if (codeLangMenu.open && codeLangMenuPre === pre) {
+    closeCodeLangMenu()
+    return
+  }
+  codeLangMenuPre = pre
+  codeLangMenu.lang = pre.dataset.lang || 'text'
+  const btnRect = btn.getBoundingClientRect()
+  const wrapRect = wrap.getBoundingClientRect()
+  const menuH = Math.min(CODE_LANG_MENU_MAX_H, CODE_LANG_OPTIONS.length * 30 + 12)
+  const openUp = window.innerHeight - btnRect.bottom < menuH + 12
+  codeLangMenu.left = Math.max(8, Math.min(btnRect.left - wrapRect.left, wrapRect.width - 184))
+  codeLangMenu.top = openUp
+    ? Math.max(8, btnRect.top - wrapRect.top - menuH - 6)
+    : btnRect.bottom - wrapRect.top + 6
+  codeLangMenu.open = true
+}
+
+function pickCodeLang(key: string) {
+  const pre = codeLangMenuPre
+  closeCodeLangMenu()
+  if (!pre) return
+  pre.dataset.lang = key
+  manualLangPres.add(pre)
+  const textEl = pre.querySelector<HTMLElement>('.docs-code-lang-text')
+  if (textEl) textEl.textContent = CODE_LANG_LABEL[key] || key
+  renderCodeHighlight(pre)
+  onEditorInput()
+}
+
+/** 自动换行开关：默认开启；关闭后代码不折行，可横向滚动 */
+function toggleCodeWrap(pre: HTMLElement, btn: HTMLElement) {
+  const nextOff = pre.dataset.wrap !== 'off'
+  if (nextOff) pre.dataset.wrap = 'off'
+  else delete pre.dataset.wrap
+  btn.classList.toggle('is-on', !nextOff)
+  btn.title = nextOff ? '开启自动换行' : '关闭自动换行'
+  onEditorInput()
+}
+
 /** 编辑器输入入口：先跑飞书式输入增强（Markdown 快捷转换 / 斜杠菜单），再落盘 */
 function onEditorInput(e?: Event) {
   const doc = activeDoc.value
@@ -1103,13 +1846,21 @@ function onEditorInput(e?: Event) {
   }
   handleSlashInput(inputEvent)
   onEditorChange(editor, doc)
+  // 代码块内容变化后同步语言标签与彩色层（只处理光标所在块，开销可控）
+  refreshCodeBlockAtCaret(editor)
+  // 正文编辑后重新定位评论高亮
+  scheduleCommentHighlights()
 }
 
 /** 落盘 / 刷新界面状态（原 onEditorInput 主体） */
 function onEditorChange(editor: HTMLElement, doc: DocItem) {
   // 先收拢空结构，落盘的 HTML 也保持干净
   refreshEmptyState()
-  doc.content = editor.innerHTML
+  // 新建 / 粘贴进来的代码块补齐语言栏；语言栏不写进文档内容
+  ensureCodeHeads(editor)
+  // 有序列表：相邻列表编号连续、修正非法嵌套
+  normalizeOrderedLists(editor)
+  doc.content = editorContentHtml(editor)
   doc.updatedAt = Date.now()
   refreshOutline()
   // 首行"+"：空文档保持显示（配合输入提示），有内容后收起、由悬停接管
@@ -1166,6 +1917,61 @@ const BLOCK_HANDLE_LABEL: Record<string, string> = {
   hr: '—',
 }
 const hoverBlockLabel = computed(() => BLOCK_HANDLE_LABEL[hoverBlockType.value] || '')
+/** 块手柄 / 折叠三角的高度（px），与样式里的 24px 一致 */
+const HANDLE_SIZE = 24
+const hoverIsHeading = computed(() => /^h[1-3]$/.test(hoverBlockType.value))
+/** 只有编辑器直属的标题可以折叠（分栏 / 高亮块里的标题没有"后续内容"可收） */
+const hoverFoldable = computed(
+  () => hoverIsHeading.value && !!hoverBlock.value && hoverBlock.value.parentElement === editorRef.value,
+)
+const hoverFolded = ref(false)
+
+/**
+ * 按标题上的 data-folded 重新计算被折叠的块：从折叠标题之后，到下一个同级或更高级标题之前。
+ * 被隐藏的块打 data-fold-hidden（样式里 display:none）。
+ */
+function applyHeadingFolds(editor: HTMLElement) {
+  editor.querySelectorAll('[data-fold-hidden]').forEach((el) => el.removeAttribute('data-fold-hidden'))
+  let hideLevel = 0
+  for (const el of Array.from(editor.children)) {
+    const level = Number(/^H([1-3])$/.exec(el.tagName)?.[1] || 0)
+    if (hideLevel) {
+      if (level && level <= hideLevel) hideLevel = 0
+      else {
+        el.setAttribute('data-fold-hidden', '')
+        continue
+      }
+    }
+    if (level && el.hasAttribute('data-folded')) hideLevel = level
+  }
+}
+
+/** 折叠 / 展开悬停的标题；编辑模式下折叠状态随文档保存 */
+function toggleHeadingFold() {
+  const editor = editorRef.value
+  const block = hoverBlock.value
+  const doc = activeDoc.value
+  if (!editor || !block || !doc || block.parentElement !== editor) return
+  block.toggleAttribute('data-folded')
+  hoverFolded.value = block.hasAttribute('data-folded')
+  applyHeadingFolds(editor)
+  if (docsEditMode.value) {
+    doc.content = editorContentHtml(editor)
+    scheduleSave()
+  }
+}
+
+/** 光标所在的标题若已折叠则先展开（在折叠标题里回车时，新行不能落进被隐藏的内容里） */
+function unfoldHeadingAtCaret() {
+  const editor = editorRef.value
+  const node = window.getSelection()?.anchorNode
+  if (!editor || !node || !editor.contains(node)) return
+  const el = (node.nodeType === Node.ELEMENT_NODE ? (node as HTMLElement) : node.parentElement)?.closest('[data-folded]')
+  if (!el || !editor.contains(el)) return
+  el.removeAttribute('data-folded')
+  if (hoverBlock.value === el) hoverFolded.value = false
+  applyHeadingFolds(editor)
+}
 /** 富文本块（非普通段落）不展示"+"，改展示块类型手柄 */
 const plusMode = computed<'plus' | 'block'>(() => (hoverBlockType.value === 'p' ? 'plus' : 'block'))
 
@@ -1198,11 +2004,11 @@ const blockConvertBtns = [
   { key: 'ol', title: '有序列表', icon: OrderedListOutlined },
   { key: 'ul', title: '无序列表', icon: UnorderedListOutlined },
 ]
+// 代码入口合并为一个：统一插入代码块（行内代码仍可在选中文字的浮动工具栏使用）
 const blockExtraBtns = [
   { key: 'todo', title: '任务列表', icon: CheckSquareOutlined },
-  { key: 'inline-code', title: '行内代码', glyph: '{}' },
-  { key: 'quote', title: '引用', glyph: '“' },
   { key: 'pre', title: '代码块', icon: CodeOutlined },
+  { key: 'quote', title: '引用', glyph: '“' },
 ]
 const blockSubItems = [
   {
@@ -1268,9 +2074,8 @@ const insertBasics: InsertBasic[] = [
   { key: 'ol', title: '有序列表', icon: OrderedListOutlined },
   { key: 'ul', title: '无序列表', icon: UnorderedListOutlined },
   { key: 'todo', title: '任务列表', icon: CheckSquareOutlined },
-  { key: 'code', title: '行内代码', glyph: '{}' },
-  { key: 'quote', title: '引用', glyph: '“' },
   { key: 'pre', title: '代码块', icon: CodeOutlined },
+  { key: 'quote', title: '引用', glyph: '“' },
   { key: 'attach', title: '视频或文件', icon: PaperClipOutlined },
   { key: 'hr', title: '分割线', icon: MinusOutlined },
   { key: 'link', title: '链接', icon: LinkOutlined },
@@ -1318,17 +2123,21 @@ const imageInputRef = ref<HTMLInputElement | null>(null)
 const fileInputRef = ref<HTMLInputElement | null>(null)
 
 function onEditorHover(e: MouseEvent) {
-  if (!docsEditMode.value) return
   const editor = editorRef.value
   if (!editor) return
   const target = e.target as HTMLElement
   if (!editor.contains(target)) return
   // 向上找到编辑器直属的块级元素（段落 / 标题 / 列表 / 引用 / 代码块）
-  let block: HTMLElement = target
-  while (block !== editor && block.parentElement !== editor && !/^(P|H[1-6]|LI|BLOCKQUOTE|PRE)$/.test(block.tagName)) {
+  let block: HTMLElement | null = target
+  while (
+    block &&
+    block !== editor &&
+    block.parentElement !== editor &&
+    !/^(P|H[1-6]|LI|BLOCKQUOTE|PRE)$/.test(block.tagName)
+  ) {
     block = block.parentElement
   }
-  if (block === editor) {
+  if (!block || block === editor) {
     // 编辑器空白区：仅空文档（只有占位符）时在首行位置显示加号
     if (isEditorEmpty(editor)) {
       hoverBlock.value = editor
@@ -1342,12 +2151,18 @@ function onEditorHover(e: MouseEvent) {
   }
   hoverBlock.value = block
   hoverBlockType.value = blockTypeOf(block)
-  plusTop.value = block.offsetTop
+  hoverFolded.value = block.hasAttribute('data-folded')
+  // 手柄高 24px：与块的首行垂直居中（标题行高比正文大）
+  const cs = getComputedStyle(block)
+  const lineHeight = parseFloat(cs.lineHeight) || parseFloat(cs.fontSize) * 1.5 || HANDLE_SIZE
+  plusTop.value = block.offsetTop + Math.max(0, Math.round((lineHeight - HANDLE_SIZE) / 2))
   plusVisible.value = true
 }
 
 function onEditorLeave(e: MouseEvent) {
   const rt = e.relatedTarget as HTMLElement | null
+  // 仍在编辑器容器内（例如移向行右侧的评论图标）：不隐藏
+  if (rt && (e.currentTarget as HTMLElement).contains(rt)) return
   // 移向加号按钮或插入菜单时不隐藏，否则加号永远点不到
   if (rt && plusBtnRef.value?.contains(rt)) return
   if (rt && rt.closest?.('.ant-dropdown')) return
@@ -1504,6 +2319,8 @@ function applyBlockCmd(cmd: string, arg?: string) {
       tpl.innerHTML = `<div class="docs-todo"><span class="docs-todo-text">${text}</span><span class="docs-todo-box" contenteditable="false"></span></div>`
       const el = tpl.content.firstElementChild as HTMLElement
       if (isEditorRoot) editor.appendChild(el)
+      // 列表项转待办：从列表里拆出来，不能把 div 留在 ul / ol 里面
+      else if (block.tagName === 'LI' && block.parentElement?.parentElement === editor) placeInListGap(block, el, true)
       else block.replaceWith(el)
       // 转换后光标落进任务文字里，与勾选框同一行
       focusTodoText(el)
@@ -1548,13 +2365,19 @@ function applyBlockCmd(cmd: string, arg?: string) {
       document.execCommand('cut')
       break
     case 'copy':
-      selectBlock()
-      document.execCommand('copy')
-      message.success('已复制')
+      // 代码块：复制正文（去掉语言栏），其余块复制选中内容
+      if (block.tagName === 'PRE') void copyCodeBlock(block)
+      else {
+        selectBlock()
+        document.execCommand('copy')
+        message.success('已复制')
+      }
       break
-    case 'comment':
-      message.info('评论功能开发中')
+    case 'comment': {
+      // 块菜单里的评论：以整块内容为引用，在块旁边打开评论输入卡片
+      openLineComposer(block, blockCommentQuote(block))
       break
+    }
     case 'translate':
       message.info('翻译功能开发中')
       break
@@ -1588,6 +2411,31 @@ function applyBlockCmd(cmd: string, arg?: string) {
 
 /** 在当前块下方插入一个空块，并把光标放进去 */
 function insertBlockBelow(editor: HTMLElement, block: HTMLElement, kind: string) {
+  // 列表项里「在下方添加列表」：同类型直接补一个新的列表项（每行独立、编号连续），
+  // 不同类型另起一个列表，避免把列表插进列表里造成非法嵌套
+  if (block.tagName === 'LI' && (kind === 'ul' || kind === 'ol')) {
+    const list = block.parentElement
+    if (list && /^(UL|OL)$/.test(list.tagName)) {
+      const li = document.createElement('li')
+      li.innerHTML = '<br>'
+      if (list.tagName === kind.toUpperCase()) {
+        block.after(li)
+      } else {
+        const newList = document.createElement(kind)
+        newList.appendChild(li)
+        list.after(newList)
+      }
+      editor.focus()
+      const range = document.createRange()
+      range.selectNodeContents(li)
+      range.collapse(true)
+      const sel = window.getSelection()
+      sel?.removeAllRanges()
+      sel?.addRange(range)
+      plusVisible.value = false
+      return
+    }
+  }
   const html =
     kind === 'ul'
       ? '<ul><li><br></li></ul>'
@@ -1654,12 +2502,35 @@ function onAttachPicked(e: Event) {
   onEditorInput()
 }
 
-/** 任务列表勾选 */
+/** 编辑器点击：代码块复制 / 任务列表勾选 */
 function onEditorClick(e: MouseEvent) {
   const target = e.target as HTMLElement
+  const copyBtn = target.closest<HTMLElement>('.docs-code-copy')
+  if (copyBtn) {
+    const pre = copyBtn.closest('pre')
+    if (pre) void copyCodeBlock(pre as HTMLElement, copyBtn)
+    return
+  }
+  const wrapBtn = target.closest<HTMLElement>('.docs-code-wrap')
+  if (wrapBtn) {
+    const pre = wrapBtn.closest('pre')
+    if (pre) toggleCodeWrap(pre as HTMLElement, wrapBtn)
+    return
+  }
+  const langBtn = target.closest<HTMLElement>('.docs-code-lang')
+  if (langBtn) {
+    openCodeLangMenu(langBtn)
+    return
+  }
   if (!target.classList?.contains('docs-todo-box')) return
   target.parentElement?.classList.toggle('is-done')
   onEditorInput()
+}
+
+/** 点击代码块语言栏按钮时保持光标 / 选区不动，避免 contenteditable 抢焦点 */
+function onEditorMouseDown(e: MouseEvent) {
+  const target = e.target as HTMLElement
+  if (target.closest?.('.docs-code-head button')) e.preventDefault()
 }
 
 /**
@@ -1672,6 +2543,52 @@ function normalizeTodoOrder(ed: HTMLElement) {
     const box = todo.querySelector<HTMLElement>('.docs-todo-box')
     if (box && todo.lastElementChild !== box) todo.appendChild(box)
   })
+}
+
+/**
+ * 有序列表整理：
+ * 1. 修正历史数据里「列表直接嵌在列表里」的非法结构（旧版“在下方添加”造成）：
+ *    同类型就地展开成列表项，保证每行是一行、编号连续；不同类型的挪到列表后面。
+ * 2. 相邻的有序列表按顺序设置 start：列表本身保持独立，但序号接着上一个列表往下排。
+ */
+function normalizeOrderedLists(ed: HTMLElement) {
+  // 1. 展开直接嵌在列表里的子列表
+  ed.querySelectorAll<HTMLElement>('ol > ol, ol > ul, ul > ol, ul > ul').forEach((list) => {
+    const parent = list.parentElement
+    if (!parent) return
+    if (parent.tagName === list.tagName) {
+      // 同类型（有序套有序）：内容提升为父列表的项，编号自然连续
+      while (list.firstChild) parent.insertBefore(list.firstChild, list)
+      list.remove()
+    } else {
+      // 不同类型（如有序列表里嵌了无序列表）：挪到父列表后面，避免非法嵌套
+      parent.after(list)
+    }
+  })
+  // 展开后可能留下没有列表项的空列表，直接清掉
+  ed.querySelectorAll<HTMLElement>('ol, ul').forEach((list) => {
+    if (!list.querySelector(':scope > li')) list.remove()
+  })
+  // 2. 同一个父级里相邻的 ol 编号连续
+  const walk = (parent: Element) => {
+    let next = 0
+    for (const node of Array.from(parent.children)) {
+      const el = node as HTMLElement
+      if (el.tagName === 'OL') {
+        const count = el.querySelectorAll(':scope > li').length
+        const start = next || Math.max(1, Number(el.getAttribute('start')) || 1)
+        if (next) el.setAttribute('start', String(next))
+        else if (el.getAttribute('start') === '1') el.removeAttribute('start')
+        next = start + count
+      } else {
+        next = 0
+        // 分栏 / 高亮块 / 表格单元格等容器里也可能有列表；
+        // 列表项内部的嵌套列表单独编号，不在父级序列里处理
+        if (/^(DIV|TD|TH|BLOCKQUOTE)$/.test(el.tagName)) walk(el)
+      }
+    }
+  }
+  walk(ed)
 }
 
 /** 把光标放进任务块的文字里（末尾），保证光标与勾选框同一行 */
@@ -1700,11 +2617,52 @@ function insertTodoAtCaret(editor: HTMLElement, text: string) {
   const tpl = document.createElement('template')
   tpl.innerHTML = `<div class="docs-todo"><span class="docs-todo-text">${escapeHtml(text)}</span><span class="docs-todo-box" contenteditable="false"></span></div>`
   const el = tpl.content.firstElementChild as HTMLElement
-  if (!block || block === editor) editor.appendChild(el)
+  // 光标在顶层列表的某一项里：待办紧跟这一项（空项则替换它），列表从这里拆成两段，
+  // 而不是掉到整个列表的后面
+  const startNode = sel && sel.rangeCount > 0 ? sel.getRangeAt(0).startContainer : null
+  const li = (startNode?.nodeType === 1 ? (startNode as HTMLElement) : startNode?.parentElement)?.closest('li') || null
+  if (li && editor.contains(li) && li.parentElement?.parentElement === editor) {
+    const empty = !(li.textContent || '').trim() && !li.querySelector('img, table, ul, ol, hr, pre')
+    placeInListGap(li, el, empty)
+  } else if (!block) {
+    editor.appendChild(el)
+  } else if (block === editor) {
+    // 光标落在编辑器根上（块与块之间）：插到光标所在的位置，没有位置信息才放到末尾
+    const offset = sel && sel.rangeCount > 0 ? sel.getRangeAt(0).startOffset : -1
+    const ref = offset >= 0 ? editor.childNodes[offset] : null
+    if (ref) editor.insertBefore(el, ref)
+    else editor.appendChild(el)
+  }
   // 空块直接替换，避免留下空行；非空块插到它下方
-  else if (!(block.textContent || '').trim()) block.replaceWith(el)
+  else if (!(block.textContent || '').trim() && !block.querySelector(RICH_CONTENT_SELECTOR)) block.replaceWith(el)
   else block.after(el)
   focusTodoText(el)
+}
+
+/**
+ * 把列表从 li 处拆开，在拆口放入 node：li 之前的项留在原列表，之后的项另起一个列表
+ * （有序列表的序号接着往下排）；removeLi 为真时 li 本身移除（空列表项被替换）。
+ */
+function placeInListGap(li: Element, node: HTMLElement, removeLi: boolean) {
+  const list = li.parentElement
+  if (!list) return
+  const items = Array.from(list.children)
+  const index = items.indexOf(li)
+  const after = items.slice(index + 1)
+  list.after(node)
+  if (after.length) {
+    const rest = list.cloneNode(false) as HTMLElement
+    rest.removeAttribute('id')
+    if (list.tagName === 'OL') {
+      // 后半段的起始序号：li 被移除时沿用它的序号，否则从它的下一个开始
+      const start = (Number(list.getAttribute('start')) || 1) + index + (removeLi ? 0 : 1)
+      rest.setAttribute('start', String(start))
+    }
+    after.forEach((item) => rest.appendChild(item))
+    node.after(rest)
+  }
+  if (removeLi) li.remove()
+  if (!list.children.length) list.remove()
 }
 
 // ==================== 飞书式编辑增强：Markdown 快捷输入 / 斜杠菜单 / 按键 / 粘贴 ====================
@@ -1801,9 +2759,8 @@ const slashItems: SlashItem[] = [
   { key: 'ul', label: '无序列表', keywords: '列表 liebiao', icon: UnorderedListOutlined },
   { key: 'ol', label: '有序列表', keywords: '列表 liebiao', icon: OrderedListOutlined },
   { key: 'todo', label: '任务列表', keywords: '待办 daiban renwu', icon: CheckSquareOutlined },
-  { key: 'code', label: '行内代码', keywords: '代码 daima', glyph: '{}' },
-  { key: 'quote', label: '引用', keywords: 'yinyong', glyph: '“' },
   { key: 'pre', label: '代码块', keywords: '代码 daima', icon: CodeOutlined },
+  { key: 'quote', label: '引用', keywords: 'yinyong', glyph: '“' },
   { key: 'callout', label: '高亮块', keywords: '提示 gaoliangkuai', glyph: '▎' },
   { key: 'table:3', label: '表格', keywords: 'biaoge', icon: TableOutlined },
   { key: 'columns:2', label: '分栏', keywords: 'fenlan', glyph: '▤' },
@@ -1927,6 +2884,151 @@ function applySlashInsert(it: SlashItem) {
   onEditorInput()
 }
 
+/**
+ * 把光标所在块转成指定类型。空文档里没有任何块可转（execCommand 可能什么都不做），
+ * 这时直接建一个空块并把光标放进去，保证选了 H1 / H2 / H3 后该行立刻出现类型提示。
+ */
+function formatBlockAtCaret(editor: HTMLElement, tag: string) {
+  if (!editor.firstElementChild && !(editor.textContent || '').trim()) {
+    editor.innerHTML = `<${tag}><br></${tag}>`
+    const range = document.createRange()
+    range.setStart(editor.children[0], 0)
+    range.collapse(true)
+    const sel = window.getSelection()
+    sel?.removeAllRanges()
+    sel?.addRange(range)
+    return
+  }
+  document.execCommand('formatBlock', false, tag)
+}
+
+/**
+ * 光标在空的列表项（只有序号 / 圆点、没有内容）里时，把这一行变成空的正文行，返回是否已处理。
+ * - 顶层列表项：从列表里拆出来变成空段落；它后面的列表项另起一个列表，有序列表的序号接着往下排
+ * - 嵌套列表项：先退回上一级（仍是列表项），再按一次才变成正文
+ */
+function exitEmptyListItemAtCaret(): boolean {
+  const editor = editorRef.value
+  const sel = window.getSelection()
+  const node = sel?.anchorNode
+  if (!editor || !sel || !sel.isCollapsed || !node || !editor.contains(node)) return false
+  const li = (node.nodeType === Node.ELEMENT_NODE ? (node as HTMLElement) : node.parentElement)?.closest('li')
+  const list = li?.parentElement
+  if (!li || !list || !editor.contains(li) || !/^(UL|OL)$/.test(list.tagName)) return false
+  // 有文字、图片或子列表都不算空
+  if ((li.textContent || '').replace(/[\u200b\ufeff]/g, '') || li.querySelector('img, table, ul, ol, hr, pre')) return false
+
+  if (list.parentElement?.closest('li')) {
+    document.execCommand('outdent')
+    return true
+  }
+
+  const p = document.createElement('p')
+  p.innerHTML = '<br>'
+  placeInListGap(li, p, true)
+
+  const range = document.createRange()
+  range.setStart(p, 0)
+  range.collapse(true)
+  sel.removeAllRanges()
+  sel.addRange(range)
+  return true
+}
+
+/**
+ * 光标在 H1 / H2 / H3 里按回车：标题保持单行，光标后面的文字（如果有）移到下面新起的正文行，
+ * 光标落到新行行首；空标题直接变回正文行。返回是否已处理。
+ */
+function breakOutOfHeadingAtCaret(): boolean {
+  const editor = editorRef.value
+  const sel = window.getSelection()
+  if (!editor || !sel || sel.rangeCount === 0) return false
+  const range = sel.getRangeAt(0)
+  const start = range.startContainer
+  const heading = (start.nodeType === Node.ELEMENT_NODE ? (start as HTMLElement) : start.parentElement)?.closest<HTMLElement>(
+    'h1, h2, h3',
+  )
+  if (!heading || !editor.contains(heading) || !heading.contains(range.endContainer)) return false
+
+  const p = document.createElement('p')
+  if (!heading.textContent && !heading.querySelector('img')) {
+    // 空标题：整行变回正文
+    p.innerHTML = '<br>'
+    heading.replaceWith(p)
+  } else {
+    // 有选区先删掉，再把光标之后的内容搬到新行
+    range.deleteContents()
+    const tail = document.createRange()
+    tail.selectNodeContents(heading)
+    tail.setStart(range.startContainer, range.startOffset)
+    p.appendChild(tail.extractContents())
+    if (!p.textContent && !p.querySelector('img')) p.innerHTML = '<br>'
+    if (!heading.textContent && !heading.querySelector('img')) heading.innerHTML = '<br>'
+    heading.after(p)
+  }
+  const caret = document.createRange()
+  caret.setStart(p, 0)
+  caret.collapse(true)
+  sel.removeAllRanges()
+  sel.addRange(caret)
+  return true
+}
+
+/**
+ * 光标在高亮块里按回车：不在高亮块内部继续嵌套，而是在下方新起正文行。
+ * 光标后面的内容移到新段落；空高亮块则直接变回正文。返回是否已处理。
+ */
+function breakOutOfCalloutAtCaret(): boolean {
+  const editor = editorRef.value
+  const sel = window.getSelection()
+  if (!editor || !sel || sel.rangeCount === 0) return false
+  const range = sel.getRangeAt(0)
+  const start = range.startContainer
+  const callout = (start.nodeType === Node.ELEMENT_NODE ? (start as HTMLElement) : start.parentElement)?.closest<HTMLElement>(
+    '.docs-callout',
+  )
+  if (!callout || !editor.contains(callout) || !callout.contains(range.endContainer)) return false
+
+  const p = document.createElement('p')
+  const empty = !(callout.textContent || '').replace(/[​﻿]/g, '').trim() && !callout.querySelector('img')
+  if (empty) {
+    // 空高亮块：整块变回正文行
+    p.innerHTML = '<br>'
+    callout.replaceWith(p)
+  } else {
+    // 有选区先删掉，再把光标之后的内容搬到新段落
+    range.deleteContents()
+    const tail = document.createRange()
+    tail.selectNodeContents(callout)
+    tail.setStart(range.startContainer, range.startOffset)
+    p.appendChild(tail.extractContents())
+    if (!p.textContent && !p.querySelector('img')) p.innerHTML = '<br>'
+    if (!callout.textContent && !callout.querySelector('img')) callout.innerHTML = '<br>'
+    callout.after(p)
+  }
+  const caret = document.createRange()
+  caret.setStart(p, 0)
+  caret.collapse(true)
+  sel.removeAllRanges()
+  sel.addRange(caret)
+  return true
+}
+
+/** 空标题 / 空引用里按退格：退回普通正文（对标飞书），返回是否已处理 */
+function demoteEmptyBlockAtCaret(): boolean {
+  const editor = editorRef.value
+  const sel = window.getSelection()
+  const node = sel?.anchorNode
+  if (!editor || !sel || !sel.isCollapsed || !node || !editor.contains(node)) return false
+  const el = (node.nodeType === Node.ELEMENT_NODE ? (node as HTMLElement) : node.parentElement)?.closest<HTMLElement>(
+    'h1[data-empty], h2[data-empty], h3[data-empty], blockquote[data-empty]',
+  )
+  if (!el || !editor.contains(el)) return false
+  el.removeAttribute('data-folded')
+  document.execCommand('formatBlock', false, 'p')
+  return true
+}
+
 /** 插入命令执行体（"+"菜单与斜杠菜单共用） */
 function runInsertCommand(editor: HTMLElement, cmd: string, arg?: string) {
   switch (cmd) {
@@ -1934,10 +3036,10 @@ function runInsertCommand(editor: HTMLElement, cmd: string, arg?: string) {
     case 'h1':
     case 'h2':
     case 'h3':
-      document.execCommand('formatBlock', false, cmd)
+      formatBlockAtCaret(editor, cmd)
       break
     case 'quote':
-      document.execCommand('formatBlock', false, 'blockquote')
+      formatBlockAtCaret(editor, 'blockquote')
       break
     case 'pre':
       document.execCommand('formatBlock', false, 'pre')
@@ -1980,6 +3082,30 @@ function runInsertCommand(editor: HTMLElement, cmd: string, arg?: string) {
 
 /** 编辑器按键（参考飞书）：斜杠菜单导航 / Tab 缩进列表 / 空待办退格转正文 */
 function onEditorKeyDown(e: KeyboardEvent) {
+  // 空的有序 / 无序列表项：退格和回车都把这一行变成空的正文行（去掉序号 / 圆点）
+  if ((e.key === 'Backspace' || e.key === 'Enter') && !e.shiftKey && !e.isComposing && !slash.visible && exitEmptyListItemAtCaret()) {
+    e.preventDefault()
+    onEditorInput()
+    return
+  }
+  if (e.key === 'Enter' && !slash.visible) unfoldHeadingAtCaret()
+  // 标题只占一行：回车（含 Shift+回车）不在标题里换行，而是在下面新起一行正文
+  if (e.key === 'Enter' && !e.isComposing && !slash.visible && breakOutOfHeadingAtCaret()) {
+    e.preventDefault()
+    onEditorInput()
+    return
+  }
+  // 高亮块：回车退出高亮块，在下方新起正文行（Shift+回车保留块内换行）
+  if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && !slash.visible && breakOutOfCalloutAtCaret()) {
+    e.preventDefault()
+    onEditorInput()
+    return
+  }
+  if (e.key === 'Backspace' && !slash.visible && demoteEmptyBlockAtCaret()) {
+    e.preventDefault()
+    onEditorInput()
+    return
+  }
   // 斜杠菜单打开时接管导航键
   if (slash.visible) {
     if (e.key === 'ArrowDown') {
@@ -2195,8 +3321,8 @@ function updateBubble() {
     return
   }
   bubbleRange = range.cloneRange()
-  // 工具栏最大宽度按 470px 估算，居中于选区并做视口内避让
-  const half = 235
+  // 工具栏最大宽度按 500px 估算（含评论按钮），居中于选区并做视口内避让
+  const half = 250
   const center = rect.left + rect.width / 2
   const maxLeft = Math.max(window.innerWidth - half - 12, half + 12)
   bubble.left = Math.min(Math.max(center, half + 12), maxLeft)
@@ -2255,6 +3381,13 @@ function applyBubble(cmd: string, value?: string) {
       document.execCommand('insertHTML', false, `<code>${escapeHtml(text)}</code>`)
       break
     }
+    case 'comment': {
+      // 以当前选中的文字为引用，在选区所在行旁边打开评论输入卡片
+      const quote = bubbleRange?.toString() || ''
+      const block = editorBlockOf(bubbleRange?.startContainer ?? null)
+      if (block) openLineComposer(block, quote)
+      break
+    }
     case 'highlight':
       document.execCommand('styleWithCSS', false, 'true')
       document.execCommand('hiliteColor', false, value || bubbleColors[0])
@@ -2307,6 +3440,16 @@ function applyBubble(cmd: string, value?: string) {
 /** 点击工具栏 / 编辑器以外的地方收起工具栏 */
 function onDocMouseDown(e: MouseEvent) {
   const target = e.target as HTMLElement
+  // 代码语言菜单：点菜单和语言按钮以外的位置收起
+  if (!codeLangMenuRef.value?.contains(target) && !target.closest?.('.docs-code-lang')) closeCodeLangMenu()
+  // 行内评论卡片：点卡片外（以及行评论图标外）收起
+  if (
+    lineComposerOpen.value &&
+    !lineComposerRef.value?.contains(target) &&
+    !target.closest?.('.docs-line-comment-hit')
+  ) {
+    closeLineComposer()
+  }
   if (bubbleRef.value?.contains(target)) return
   if (editorRef.value?.contains(target)) return
   hideBubble()
@@ -2317,22 +3460,410 @@ onMounted(() => {
   document.addEventListener('mousedown', onDocMouseDown, true)
   document.addEventListener('scroll', hideFloatPanels, true)
   window.addEventListener('resize', hideFloatPanels)
+  // 窗口宽度变化会重排正文，评论高亮跟着重新定位
+  window.addEventListener('resize', scheduleCommentHighlights)
 })
 onBeforeUnmount(() => {
   document.removeEventListener('selectionchange', updateBubble)
   document.removeEventListener('mousedown', onDocMouseDown, true)
   document.removeEventListener('scroll', hideFloatPanels, true)
   window.removeEventListener('resize', hideFloatPanels)
+  window.removeEventListener('resize', scheduleCommentHighlights)
 })
 
 /** 滚动 / 缩放 / 切换文档时收起所有浮动面板（工具栏 + 斜杠菜单） */
-function hideFloatPanels() {
+function hideFloatPanels(e?: unknown) {
   hideBubble()
   closeSlash()
+  // 代码语言菜单内部的滚动（滚轮 / 拖滚动条 / 触控板）不收起菜单
+  const target = e instanceof Event ? e.target : null
+  if (!(target instanceof Node) || !codeLangMenuRef.value?.contains(target)) closeCodeLangMenu()
 }
 
 /** 切换文档 / 退出编辑时收起工具栏 */
 watch([activeDoc, docsEditMode], hideFloatPanels)
+
+// ==================== 评论（参考飞书云文档） ====================
+/** 右侧评论栏展开状态 */
+const commentPanelOpen = ref(true)
+const commentRailRef = ref<HTMLElement | null>(null)
+/** 行内评论输入卡片：出现在点击的那一行右侧 */
+const lineComposerOpen = ref(false)
+const lineComposerTop = ref(0)
+const lineComposerQuote = ref('')
+const lineComposerDraft = ref('')
+const lineComposerRef = ref<HTMLElement | null>(null)
+const lineComposerInputRef = ref<HTMLTextAreaElement | null>(null)
+/** 点击评论卡片后短暂高亮的评论 id */
+const activeCommentId = ref('')
+/** 正在回复的评论 id 与回复内容 */
+const activeReplyId = ref('')
+const replyDraft = ref('')
+/** 被评论正文的高亮矩形（相对 .docs-editor-wrap，随内容一起滚动） */
+const commentHighlights = ref<{ id: string; top: number; left: number; width: number; height: number }[]>([])
+
+const comments = computed<DocComment[]>(() => {
+  const list = docMeta.value.comments
+  return Array.isArray(list) ? list : []
+})
+/** 行级评论：展示在右侧评论栏 */
+const lineComments = computed(() => comments.value.filter((c) => (c.scope ? c.scope === 'line' : !!c.quote)))
+/** 全文评论：展示在文档底部 */
+const docComments = computed(() => comments.value.filter((c) => (c.scope ? c.scope === 'doc' : !c.quote)))
+
+/** 悬停的行是否有内容：只有有内容的行右侧才显示评论入口 */
+const hoverBlockHasContent = computed(() => {
+  const block = hoverBlock.value
+  const editor = editorRef.value
+  if (!block || !editor || block === editor) return false
+  if (block.tagName === 'PRE') return !!codeTextOf(block).trim()
+  const text = (block.textContent || '').replace(/[​﻿]/g, '').trim()
+  return !!text || !!block.querySelector('img, hr, table')
+})
+
+/** 行评论引用的文字（代码块取正文，不含语言栏 / 彩色层） */
+function blockCommentQuote(block: HTMLElement): string {
+  const text = block.tagName === 'PRE' ? codeTextOf(block) : (block.textContent || '').trim()
+  return text.slice(0, 200)
+}
+
+/** 点击行右侧的评论图标：在该行旁边打开评论输入卡片 */
+function commentHoveredBlock() {
+  const block = hoverBlock.value
+  if (!block) return
+  openLineComposer(block, blockCommentQuote(block))
+}
+
+/** 从选区节点找到编辑器直属的块 */
+function editorBlockOf(node: Node | null): HTMLElement | null {
+  const editor = editorRef.value
+  if (!editor || !node) return null
+  let block: HTMLElement | null = node.nodeType === Node.ELEMENT_NODE ? (node as HTMLElement) : node.parentElement
+  while (block && block !== editor && block.parentElement !== editor) block = block.parentElement
+  return block && block !== editor ? block : null
+}
+/** 当前登录人展示名（评论作者） */
+const commentAuthorName = computed(
+  () => toDisplayName(authUser.value?.realName || authUser.value?.coAccount || getLoginUsername() || '') || '匿名',
+)
+
+function commentAvatarColor(name: string): string {
+  let h = 0
+  for (let i = 0; i < (name || '').length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0
+  return AVATAR_COLORS[h % AVATAR_COLORS.length]
+}
+
+/** 评论时间：刚刚 / n 分钟前 / n 小时前 / n 天前 / 日期 */
+function commentTimeText(ts: number): string {
+  const diff = Date.now() - ts
+  if (diff < 60_000) return '刚刚'
+  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)} 分钟前`
+  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)} 小时前`
+  if (diff < 7 * 86_400_000) return `${Math.floor(diff / 86_400_000)} 天前`
+  return new Date(ts).toLocaleDateString()
+}
+
+function newCommentId(): string {
+  return `c-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`
+}
+
+// ---- 文档底部：点赞 + 评论 ----
+const footCommentDraft = ref('')
+const docLikeCount = computed(() => (Array.isArray(docMeta.value.likedBy) ? docMeta.value.likedBy.length : 0))
+const docLiked = computed(() => {
+  const list = docMeta.value.likedBy
+  return Array.isArray(list) ? list.includes(ownerKey.value) : false
+})
+
+/** 点赞 / 取消点赞（按登录名记录在文档 data 里，随文档一起保存） */
+function toggleDocLike() {
+  const doc = activeDoc.value
+  if (!doc || doc.type !== 'doc') return
+  const key = ownerKey.value
+  const list = Array.isArray(docMeta.value.likedBy) ? [...docMeta.value.likedBy] : []
+  const index = list.indexOf(key)
+  if (index >= 0) list.splice(index, 1)
+  else list.push(key)
+  const meta: DocMeta = { ...docMeta.value }
+  if (list.length) meta.likedBy = list
+  else delete meta.likedBy
+  doc.data = meta
+  onDocChanged(doc)
+}
+
+/** 底部评论：不引用正文，直接作为文档级评论 */
+function submitFootComment() {
+  const content = footCommentDraft.value.trim()
+  if (!content) return
+  const comment: DocComment = {
+    id: newCommentId(),
+    author: commentAuthorName.value,
+    content,
+    createdAt: Date.now(),
+    scope: 'doc',
+    replies: [],
+  }
+  updateComments([...comments.value, comment])
+  footCommentDraft.value = ''
+  activeCommentId.value = comment.id
+  nextTick(scheduleCommentHighlights)
+}
+
+function onFootCommentKeydown(e: KeyboardEvent) {
+  if (e.isComposing || e.keyCode === 229) return
+  e.preventDefault()
+  submitFootComment()
+}
+
+/** 底部评论条：图片 / 更多 */
+function onFootCommentImage() {
+  message.info('评论暂不支持图片')
+}
+
+function onFootCommentMore(e: { key?: string | number }) {
+  const key = String(e?.key ?? '')
+  if (key === 'send') submitFootComment()
+  else if (key === 'clear') footCommentDraft.value = ''
+}
+
+/** 写入评论：comments 存在 DocMeta 里，复用文档内容的防抖保存 */
+function updateComments(next: DocComment[]) {
+  const doc = activeDoc.value
+  if (!doc || doc.type !== 'doc') return
+  const meta: DocMeta = { ...docMeta.value }
+  if (next.length) meta.comments = next
+  else delete meta.comments
+  doc.data = meta
+  onDocChanged(doc)
+}
+
+// ---- 行内评论输入卡片（出现在被评论的那一行右侧，参考飞书） ----
+/** 在 block 所在行旁边打开评论输入卡片；评论栏收起时先展开 */
+function openLineComposer(block: HTMLElement, quote: string) {
+  const editor = editorRef.value
+  if (!editor || !block) return
+  commentPanelOpen.value = true
+  lineComposerQuote.value = quote.trim()
+  lineComposerDraft.value = ''
+  lineComposerOpen.value = true
+  hideBubble()
+  window.getSelection()?.removeAllRanges()
+
+  const place = () => {
+    const rail = commentRailRef.value
+    if (!rail) return
+    const railRect = rail.getBoundingClientRect()
+    const blockRect = block.getBoundingClientRect()
+    const cardHeight = lineComposerRef.value?.offsetHeight || 170
+    // top 相对评论栏内容顶部，评论栏与正文一起滚动，卡片会跟着这一行走
+    const maxTop = Math.max(8, rail.offsetHeight - cardHeight - 12)
+    lineComposerTop.value = Math.max(8, Math.min(blockRect.top - railRect.top - 6, maxTop))
+  }
+  nextTick(() => {
+    place()
+    lineComposerInputRef.value?.focus()
+    // 评论栏从收起展开有 200ms 宽度过渡，正文会重新换行，过渡结束后再校正位置
+    window.setTimeout(place, 240)
+  })
+}
+
+function closeLineComposer() {
+  lineComposerOpen.value = false
+  lineComposerDraft.value = ''
+}
+
+function submitLineComment() {
+  const content = lineComposerDraft.value.trim()
+  if (!content) return
+  const comment: DocComment = {
+    id: newCommentId(),
+    author: commentAuthorName.value,
+    content,
+    createdAt: Date.now(),
+    scope: 'line',
+    replies: [],
+  }
+  const quote = lineComposerQuote.value.trim()
+  if (quote) comment.quote = quote
+  updateComments([...comments.value, comment])
+  activeCommentId.value = comment.id
+  closeLineComposer()
+  nextTick(scheduleCommentHighlights)
+}
+
+/** 行内评论输入框：Enter 发布，Shift + Enter 换行，Esc 关闭 */
+function onLineComposerKeydown(e: KeyboardEvent) {
+  if (e.isComposing || e.keyCode === 229) return
+  if (e.key === 'Escape') {
+    e.preventDefault()
+    closeLineComposer()
+    return
+  }
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault()
+    submitLineComment()
+  }
+}
+
+function startReply(c: DocComment) {
+  activeCommentId.value = c.id
+  activeReplyId.value = c.id
+  replyDraft.value = ''
+}
+
+function cancelReply() {
+  activeReplyId.value = ''
+  replyDraft.value = ''
+}
+
+function submitReply(c: DocComment) {
+  const content = replyDraft.value.trim()
+  if (!content) return
+  const reply = { id: newCommentId(), author: commentAuthorName.value, content, createdAt: Date.now() }
+  updateComments(comments.value.map((it) => (it.id === c.id ? { ...it, replies: [...(it.replies || []), reply] } : it)))
+  cancelReply()
+}
+
+function toggleCommentResolved(c: DocComment) {
+  updateComments(comments.value.map((it) => (it.id === c.id ? { ...it, resolved: !it.resolved } : it)))
+  nextTick(scheduleCommentHighlights)
+}
+
+function removeComment(c: DocComment) {
+  Modal.confirm({
+    title: '删除评论',
+    content: '删除后无法恢复，确定删除这条评论吗？',
+    okText: '删除',
+    okType: 'danger',
+    cancelText: '取消',
+    onOk: () => {
+      updateComments(comments.value.filter((it) => it.id !== c.id))
+      if (activeCommentId.value === c.id) activeCommentId.value = ''
+      nextTick(scheduleCommentHighlights)
+    },
+  })
+}
+
+/** 点击评论卡片：滚动到被引用的正文并短暂高亮 */
+function focusComment(c: DocComment) {
+  activeCommentId.value = c.id
+  if (c.quote) {
+    const range = findCommentRange(c.quote)
+    const node = range?.startContainer
+    const el = node?.nodeType === Node.ELEMENT_NODE ? (node as HTMLElement) : node?.parentElement
+    el?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }
+  window.setTimeout(() => {
+    if (activeCommentId.value === c.id) activeCommentId.value = ''
+  }, 2200)
+}
+
+/**
+ * 在正文里按引用文字找 Range。
+ * 跳过代码块注入的语言栏 / 彩色层，避免把展示文字算进正文。
+ */
+function findCommentRange(rawQuote: string): Range | null {
+  const editor = editorRef.value
+  const quote = rawQuote.trim()
+  if (!editor || !quote) return null
+  const segs: { node: Text; start: number }[] = []
+  let full = ''
+  const walk = (node: Node) => {
+    node.childNodes.forEach((child) => {
+      if (child.nodeType === Node.TEXT_NODE) {
+        const text = child as Text
+        segs.push({ node: text, start: full.length })
+        full += text.data
+      } else if (child.nodeType === Node.ELEMENT_NODE) {
+        const el = child as HTMLElement
+        if (el.matches('.docs-code-head, .docs-code-highlight')) return
+        if (/^(P|DIV|LI|H[1-6]|BLOCKQUOTE|PRE|TR|TD|TH)$/.test(el.tagName)) full += '\n'
+        walk(el)
+      }
+    })
+  }
+  walk(editor)
+  const index = full.indexOf(quote)
+  if (index < 0) return null
+  const locate = (offset: number, isEnd: boolean): [Text, number] | null => {
+    for (let i = 0; i < segs.length; i++) {
+      const seg = segs[i]
+      const segEnd = seg.start + seg.node.data.length
+      if (isEnd) {
+        if (offset > seg.start && offset <= segEnd) return [seg.node, offset - seg.start]
+      } else {
+        if (offset >= seg.start && offset < segEnd) return [seg.node, offset - seg.start]
+        if (offset === segEnd && i === segs.length - 1) return [seg.node, seg.node.data.length]
+      }
+    }
+    return null
+  }
+  const start = locate(index, false)
+  const end = locate(index + quote.length, true)
+  if (!start || !end) return null
+  const range = document.createRange()
+  range.setStart(start[0], start[1])
+  range.setEnd(end[0], end[1])
+  return range
+}
+
+let commentHlFrame = 0
+let commentHlTimer: number | undefined
+/** 输入 / 列表变化 / 宽度变化后重新计算评论高亮（短暂合并，避免每个按键都遍历全文） */
+function scheduleCommentHighlights() {
+  window.clearTimeout(commentHlTimer)
+  commentHlTimer = window.setTimeout(() => {
+    cancelAnimationFrame(commentHlFrame)
+    commentHlFrame = requestAnimationFrame(renderCommentHighlights)
+  }, 80)
+}
+
+function renderCommentHighlights() {
+  const editor = editorRef.value
+  const wrap = editor?.closest('.docs-editor-wrap') as HTMLElement | null
+  if (!editor || !wrap || activeDoc.value?.type !== 'doc') {
+    if (commentHighlights.value.length) commentHighlights.value = []
+    return
+  }
+  const wrapRect = wrap.getBoundingClientRect()
+  const next: typeof commentHighlights.value = []
+  for (const c of comments.value) {
+    if (c.resolved || !c.quote) continue
+    const range = findCommentRange(c.quote)
+    if (!range) continue
+    for (const rect of Array.from(range.getClientRects())) {
+      if (rect.width < 1 || rect.height < 1) continue
+      next.push({
+        id: c.id,
+        top: rect.top - wrapRect.top,
+        left: rect.left - wrapRect.left,
+        width: rect.width,
+        height: rect.height,
+      })
+    }
+  }
+  commentHighlights.value = next
+}
+
+// 评论变化 / 文档切换 / 评论栏展开收起后重新定位高亮
+watch(comments, () => nextTick(scheduleCommentHighlights), { deep: true })
+watch([activeDoc, commentPanelOpen], () => nextTick(scheduleCommentHighlights))
+// 切换文档时清空未发布的评论 / 回复
+watch(
+  () => activeDoc.value?.id,
+  () => {
+    footCommentDraft.value = ''
+    replyDraft.value = ''
+    activeReplyId.value = ''
+    activeCommentId.value = ''
+    closeLineComposer()
+    nextTick(scheduleCommentHighlights)
+  },
+)
+// 收起评论栏时一并收起行内输入卡片
+watch(commentPanelOpen, (open) => {
+  if (!open) closeLineComposer()
+})
 
 /** 收藏 / 取消收藏 */
 function toggleStar(doc: DocItem) {
@@ -2507,6 +4038,25 @@ function folderNameOf(doc: DocItem | null): string {
     <!-- 右侧编辑区 -->
     <main class="docs-main">
       <template v-if="activeDoc">
+        <!-- 文档页：封面 + 正文 + 目录 + 评论共用一个滚动容器，滚动条从封面顶部开始 -->
+        <div class="docs-scroll" :class="{ 'is-scroll-page': activeDoc.type === 'doc' }">
+        <!-- 封面：通栏展示在正文与目录上方；编辑模式下悬停出现「更换封面 / 移除封面」 -->
+        <div
+          v-if="activeDoc.type === 'doc' && docMeta.cover"
+          class="docs-cover"
+          :class="{ 'is-acting': coverEditOpen }"
+          :style="docCoverStyle"
+        >
+          <div v-if="docsEditMode" class="docs-cover-actions">
+            <a-popover v-model:open="coverEditOpen" trigger="click" placement="bottomRight">
+              <template #content>
+                <DocCoverPicker :value="docMeta.cover" @select="setDocCover" />
+              </template>
+              <button type="button" class="docs-cover-btn">更换封面</button>
+            </a-popover>
+            <button type="button" class="docs-cover-btn" @click="setDocCover('')">移除封面</button>
+          </div>
+        </div>
         <!-- 正文 + 左侧大纲 -->
         <div class="docs-body">
           <!-- 文档大纲：一直展示，可折叠 / 展开 -->
@@ -2543,21 +4093,63 @@ function folderNameOf(doc: DocItem | null): string {
             </Transition>
           </aside>
 
+          <!-- 正文 + 评论共用一个滚动容器：滚动条在最右侧，两边一起滚 -->
+          <div
+            class="docs-doc-scroll"
+            :class="{ 'is-scrollable': activeDoc.type === 'doc', 'is-comments-collapsed': !commentPanelOpen }"
+            @transitionend="scheduleCommentHighlights"
+          >
           <div class="docs-canvas">
             <div
               class="docs-canvas-inner"
               :class="{ 'is-wide': activeDoc.type !== 'doc', 'is-sheet': activeDoc.type === 'sheet', 'is-full': wideMode }"
             >
               <!-- 内容区大标题仅文档显示；表格/思维导图/流程图的文件名在顶栏左上角（可编辑） -->
-              <input
+              <div
                 v-if="activeDoc.type === 'doc'"
-                v-model="activeDoc.title"
-                class="docs-title-input"
-                placeholder="无标题文档"
-                maxlength="120"
-                :readonly="!docsEditMode"
-                @input="onDocChanged(activeDoc)"
-              />
+                class="docs-title-zone"
+                :class="{ 'is-acting': iconAddOpen || coverAddOpen }"
+              >
+                <!-- 标题上方：添加图标 / 添加封面（悬停标题区域时出现，已添加的不再显示） -->
+                <div v-if="docsEditMode && (!docMeta.icon || !docMeta.cover)" class="docs-title-actions">
+                  <a-popover v-if="!docMeta.icon" v-model:open="iconAddOpen" trigger="click" placement="bottomLeft">
+                    <template #content>
+                      <DocEmojiPicker @select="setDocIcon" />
+                    </template>
+                    <button type="button" class="docs-title-action"><SmileOutlined /><span>添加图标</span></button>
+                  </a-popover>
+                  <a-popover v-if="!docMeta.cover" v-model:open="coverAddOpen" trigger="click" placement="bottomLeft">
+                    <template #content>
+                      <DocCoverPicker @select="setDocCover" />
+                    </template>
+                    <button type="button" class="docs-title-action"><PictureOutlined /><span>添加封面</span></button>
+                  </a-popover>
+                </div>
+                <!-- 图标与标题同一行：图标在标题前面；编辑模式下点击图标更换 / 移除 -->
+                <div class="docs-title-row">
+                  <template v-if="docMeta.icon">
+                    <a-popover v-if="docsEditMode" v-model:open="iconEditOpen" trigger="click" placement="bottomLeft">
+                      <template #content>
+                        <DocEmojiPicker removable @select="setDocIcon" @remove="setDocIcon('')" />
+                      </template>
+                      <button type="button" class="docs-title-icon" title="更换图标">{{ docMeta.icon }}</button>
+                    </a-popover>
+                    <span v-else class="docs-title-icon is-static">{{ docMeta.icon }}</span>
+                  </template>
+                  <!-- 多行文本框：标题过长时自动换行、高度随内容增长；回车不换行，跳到正文 -->
+                  <textarea
+                    ref="titleInputRef"
+                    :value="docTitleInputValue(activeDoc.title)"
+                    class="docs-title-input"
+                    placeholder="请输入标题"
+                    maxlength="120"
+                    rows="1"
+                    :readonly="!docsEditMode"
+                    @input="onTitleInput($event, activeDoc)"
+                    @keydown.enter.prevent="editorRef?.focus()"
+                  ></textarea>
+                </div>
+              </div>
 
               <div v-if="activeDoc.type === 'doc'" class="docs-doc-meta">
                 <span class="docs-doc-avatar" :style="docAvatarStyle">{{ docAuthor.slice(0, 1).toUpperCase() }}</span>
@@ -2581,9 +4173,53 @@ function folderNameOf(doc: DocItem | null): string {
                   data-placeholder="输入“/”快速插入内容"
                   @input="onEditorInput"
                   @click="onEditorClick"
+                  @mousedown="onEditorMouseDown"
                   @keydown="onEditorKeyDown"
                   @paste="onEditorPaste"
+                  @compositionstart="onEditorCompositionStart"
+                  @compositionend="onEditorCompositionEnd"
                 ></div>
+                <!-- 评论引用高亮：覆盖在被评论的文字上（只读，不参与命中） -->
+                <div class="docs-comment-hl-layer" aria-hidden="true">
+                  <span
+                    v-for="(r, i) in commentHighlights"
+                    :key="`${r.id}-${i}`"
+                    class="docs-comment-hl"
+                    :class="{ 'is-active': activeCommentId === r.id }"
+                    :style="{ top: `${r.top}px`, left: `${r.left}px`, width: `${r.width}px`, height: `${r.height}px` }"
+                  />
+                </div>
+                <!-- 行右侧的评论入口：悬停有内容的行时出现；
+                     外层命中区从正文边缘一直盖到图标，鼠标移向图标时不会离开编辑区而闪掉 -->
+                <div
+                  v-show="plusVisible && hoverBlockHasContent"
+                  class="docs-line-comment-hit"
+                  :style="{ top: plusTop - 2 + 'px' }"
+                >
+                  <a-tooltip title="评论" placement="bottom">
+                    <button
+                      type="button"
+                      class="docs-line-comment"
+                      @mousedown.prevent
+                      @click="commentHoveredBlock"
+                    >
+                      <MessageOutlined />
+                    </button>
+                  </a-tooltip>
+                </div>
+                <!-- 标题折叠三角（预览模式同样可用） -->
+                <button
+                  v-show="plusVisible && hoverFoldable"
+                  type="button"
+                  class="docs-fold-caret"
+                  :class="{ 'is-folded': hoverFolded }"
+                  :style="{ top: plusTop + 'px' }"
+                  :title="hoverFolded ? '展开' : '折叠'"
+                  @mousedown.prevent
+                  @click="toggleHeadingFold"
+                >
+                  <svg viewBox="0 0 10 10" aria-hidden="true"><path d="M1 3h8L5 8z" fill="currentColor" /></svg>
+                </button>
                 <!-- 飞书式块级插入：悬停行的左外侧出现"+"，悬停变暗，点击弹出富文本元素菜单 -->
                 <a-dropdown
                   v-model:open="plusMenuOpen"
@@ -2596,12 +4232,15 @@ function folderNameOf(doc: DocItem | null): string {
                     v-show="plusVisible && docsEditMode"
                     type="button"
                     class="docs-block-plus"
-                    :class="{ 'is-open': plusMenuOpen, 'is-block': plusMode === 'block' }"
+                    :class="{ 'is-open': plusMenuOpen, 'is-block': plusMode === 'block', 'is-heading': hoverIsHeading }"
                     :style="{ top: plusTop + 'px' }"
                     :title="plusMode === 'block' ? '块操作' : '插入'"
                   >
                     <template v-if="plusMode === 'block'">
-                      <span class="docs-block-plus-label">{{ hoverBlockLabel }}</span>
+                      <span class="docs-block-plus-label">
+                        <template v-if="hoverIsHeading">H<sub>{{ hoverBlockType.slice(1) }}</sub></template>
+                        <template v-else>{{ hoverBlockLabel }}</template>
+                      </span>
                       <HolderOutlined class="docs-block-plus-drag" />
                     </template>
                     <PlusOutlined v-else />
@@ -2774,6 +4413,27 @@ function folderNameOf(doc: DocItem | null): string {
                     </div>
                   </template>
                 </a-dropdown>
+                <!-- 代码块语言切换菜单：点击代码块语言栏弹出 -->
+                <div
+                  v-if="codeLangMenu.open"
+                  ref="codeLangMenuRef"
+                  class="docs-code-lang-menu"
+                  :style="{ top: codeLangMenu.top + 'px', left: codeLangMenu.left + 'px' }"
+                  @mousedown.stop
+                  @click.stop
+                >
+                  <button
+                    v-for="opt in CODE_LANG_OPTIONS"
+                    :key="opt.key"
+                    type="button"
+                    class="docs-code-lang-option"
+                    :class="{ 'is-active': codeLangMenu.lang === opt.key }"
+                    @click="pickCodeLang(opt.key)"
+                  >
+                    <span>{{ opt.label }}</span>
+                    <CheckOutlined v-if="codeLangMenu.lang === opt.key" class="docs-code-lang-check" />
+                  </button>
+                </div>
                 <input ref="imageInputRef" type="file" accept="image/*" class="docs-hidden-file" @change="onImagePicked" />
                 <input ref="fileInputRef" type="file" class="docs-hidden-file" @change="onAttachPicked" />
               </div>
@@ -2795,8 +4455,222 @@ function folderNameOf(doc: DocItem | null): string {
                 :graph="flowGraph(activeDoc)"
                 @change="onFlowChange(activeDoc, $event)"
               />
+
+              <!-- 文档底部：点赞 + 评论 -->
+              <div v-if="activeDoc.type === 'doc'" class="docs-doc-foot">
+                <!-- 点赞：大圆按钮 + 文案 -->
+                <div class="docs-doc-like" :class="{ 'is-liked': docLiked }">
+                  <button
+                    type="button"
+                    class="docs-doc-like-btn"
+                    :title="docLiked ? '取消点赞' : '点赞'"
+                    @click="toggleDocLike"
+                  >
+                    <LikeFilled v-if="docLiked" />
+                    <LikeOutlined v-else />
+                  </button>
+                  <div class="docs-doc-like-slogan"><span>真诚点赞，手留余香</span></div>
+                  <div v-if="docLikeCount" class="docs-doc-like-count">{{ docLikeCount }} 人点赞</div>
+                </div>
+
+                <!-- 全文评论（没有引用正文的评论才展示在这里） -->
+                <section v-if="docComments.length" class="docs-doc-comments">
+                  <div
+                    v-for="c in docComments"
+                    :key="c.id"
+                    class="docs-doc-comment"
+                    :class="{ 'is-resolved': c.resolved, 'is-active': activeCommentId === c.id }"
+                    @click="focusComment(c)"
+                  >
+                    <span class="docs-comment-avatar" :style="{ background: commentAvatarColor(c.author) }">
+                      {{ (c.author || '匿').slice(0, 1).toUpperCase() }}
+                    </span>
+                    <div class="docs-doc-comment-main">
+                      <div class="docs-comment-card-head">
+                        <span class="docs-comment-author">{{ c.author || '匿名' }}</span>
+                        <span v-if="c.resolved" class="docs-comment-resolved-tag">已解决</span>
+                        <span class="docs-comment-time">{{ commentTimeText(c.createdAt) }}</span>
+                      </div>
+                      <button v-if="c.quote" type="button" class="docs-comment-quote" @click.stop="focusComment(c)">
+                        “{{ c.quote }}”
+                      </button>
+                      <p class="docs-comment-body">{{ c.content }}</p>
+                      <div v-for="r in (c.replies || [])" :key="r.id" class="docs-comment-reply">
+                        <div class="docs-comment-reply-head">
+                          <span class="docs-comment-reply-author">{{ r.author || '匿名' }}</span>
+                          <span class="docs-comment-time">{{ commentTimeText(r.createdAt) }}</span>
+                        </div>
+                        <p class="docs-comment-reply-body">{{ r.content }}</p>
+                      </div>
+                      <div v-if="activeReplyId === c.id" class="docs-comment-reply-composer" @click.stop>
+                        <textarea v-model="replyDraft" placeholder="回复…"></textarea>
+                        <div class="docs-comment-reply-foot">
+                          <button type="button" class="docs-comment-text-btn" @click="cancelReply">取消</button>
+                          <button
+                            type="button"
+                            class="docs-comment-submit is-small"
+                            :disabled="!replyDraft.trim()"
+                            @click="submitReply(c)"
+                          >回复</button>
+                        </div>
+                      </div>
+                      <div class="docs-comment-actions" @click.stop>
+                        <button type="button" @click="startReply(c)">回复</button>
+                        <button type="button" @click="toggleCommentResolved(c)">
+                          {{ c.resolved ? '重新打开' : '解决' }}
+                        </button>
+                        <button type="button" class="is-danger" @click="removeComment(c)">删除</button>
+                      </div>
+                    </div>
+                  </div>
+
+                </section>
+
+                <!-- 底部评论输入条 -->
+                <div class="docs-doc-comment-bar">
+                  <input
+                    v-model="footCommentDraft"
+                    class="docs-doc-comment-input"
+                    placeholder="输入评论"
+                    @keydown.enter="onFootCommentKeydown"
+                  />
+                  <button type="button" class="docs-doc-comment-tool" title="图片" @click="onFootCommentImage">
+                    <PictureOutlined />
+                  </button>
+                  <a-dropdown trigger="click" placement="topRight">
+                    <button type="button" class="docs-doc-comment-tool" title="更多">
+                      <MoreOutlined />
+                    </button>
+                    <template #overlay>
+                      <a-menu @click="onFootCommentMore">
+                        <a-menu-item key="send">发布评论</a-menu-item>
+                        <a-menu-item key="clear">清空</a-menu-item>
+                      </a-menu>
+                    </template>
+                  </a-dropdown>
+                </div>
+
+                <!-- 有输入内容时展示取消 / 发送 -->
+                <div v-if="footCommentDraft.trim()" class="docs-doc-comment-actions">
+                  <button type="button" class="docs-doc-comment-cancel" @click="footCommentDraft = ''">取消</button>
+                  <button type="button" class="docs-doc-comment-send" @click="submitFootComment">发送</button>
+                </div>
+              </div>
             </div>
           </div>
+
+          <!-- 右侧评论栏（参考飞书）：评论列表 + 输入区；收起后只留一条窄栏 -->
+          <aside
+            v-if="activeDoc.type === 'doc'"
+            ref="commentRailRef"
+            class="docs-comment-rail"
+            :class="{ 'is-collapsed': !commentPanelOpen }"
+            @transitionend="scheduleCommentHighlights"
+          >
+            <div class="docs-comment-rail-head">
+              <template v-if="commentPanelOpen">
+                <span class="docs-comment-rail-title">
+                  评论<span v-if="lineComments.length" class="docs-comment-count">{{ lineComments.length }}</span>
+                </span>
+                <button type="button" class="docs-comment-icon-btn" title="收起评论" @click="commentPanelOpen = false">
+                  <RightOutlined />
+                </button>
+              </template>
+              <button v-else type="button" class="docs-comment-icon-btn" title="展开评论" @click="commentPanelOpen = true">
+                <CommentOutlined />
+              </button>
+            </div>
+
+            <!-- 行内评论输入卡片：出现在被评论的那一行右侧 -->
+            <div
+              v-if="lineComposerOpen && commentPanelOpen"
+              ref="lineComposerRef"
+              class="docs-line-composer"
+              :style="{ top: lineComposerTop + 'px' }"
+              @mousedown.stop
+              @click.stop
+            >
+              <div v-if="lineComposerQuote" class="docs-line-composer-quote">
+                <span>“{{ lineComposerQuote }}”</span>
+                <button type="button" title="关闭" @click="closeLineComposer"><CloseOutlined /></button>
+              </div>
+              <div class="docs-line-composer-author">
+                <span class="docs-comment-avatar" :style="{ background: commentAvatarColor(commentAuthorName) }">
+                  {{ commentAuthorName.slice(0, 1).toUpperCase() }}
+                </span>
+                <span class="docs-comment-author">{{ commentAuthorName }}</span>
+              </div>
+              <div class="docs-line-composer-input">
+                <textarea
+                  ref="lineComposerInputRef"
+                  v-model="lineComposerDraft"
+                  placeholder="输入评论"
+                  rows="1"
+                  @keydown="onLineComposerKeydown"
+                ></textarea>
+                <button
+                  type="button"
+                  class="docs-line-composer-send"
+                  :disabled="!lineComposerDraft.trim()"
+                  title="发布"
+                  @click="submitLineComment"
+                >
+                  <SendOutlined />
+                </button>
+              </div>
+            </div>
+
+            <template v-if="commentPanelOpen">
+              <div class="docs-comment-list">
+                <div
+                  v-for="c in lineComments"
+                  :key="c.id"
+                  class="docs-comment-card"
+                  :class="{ 'is-resolved': c.resolved, 'is-active': activeCommentId === c.id }"
+                  @click="focusComment(c)"
+                >
+                  <div class="docs-comment-card-head">
+                    <span class="docs-comment-avatar" :style="{ background: commentAvatarColor(c.author) }">
+                      {{ (c.author || '匿').slice(0, 1).toUpperCase() }}
+                    </span>
+                    <span class="docs-comment-author">{{ c.author || '匿名' }}</span>
+                    <span v-if="c.resolved" class="docs-comment-resolved-tag">已解决</span>
+                    <span class="docs-comment-time">{{ commentTimeText(c.createdAt) }}</span>
+                  </div>
+                  <button v-if="c.quote" type="button" class="docs-comment-quote" @click.stop="focusComment(c)">
+                    “{{ c.quote }}”
+                  </button>
+                  <p class="docs-comment-body">{{ c.content }}</p>
+                  <div v-for="r in (c.replies || [])" :key="r.id" class="docs-comment-reply">
+                    <div class="docs-comment-reply-head">
+                      <span class="docs-comment-reply-author">{{ r.author || '匿名' }}</span>
+                      <span class="docs-comment-time">{{ commentTimeText(r.createdAt) }}</span>
+                    </div>
+                    <p class="docs-comment-reply-body">{{ r.content }}</p>
+                  </div>
+                  <div v-if="activeReplyId === c.id" class="docs-comment-reply-composer" @click.stop>
+                    <textarea v-model="replyDraft" placeholder="回复…"></textarea>
+                    <div class="docs-comment-reply-foot">
+                      <button type="button" class="docs-comment-text-btn" @click="cancelReply">取消</button>
+                      <button
+                        type="button"
+                        class="docs-comment-submit is-small"
+                        :disabled="!replyDraft.trim()"
+                        @click="submitReply(c)"
+                      >回复</button>
+                    </div>
+                  </div>
+                  <div class="docs-comment-actions" @click.stop>
+                    <button type="button" @click="startReply(c)">回复</button>
+                    <button type="button" @click="toggleCommentResolved(c)">{{ c.resolved ? '重新打开' : '解决' }}</button>
+                    <button type="button" class="is-danger" @click="removeComment(c)">删除</button>
+                  </div>
+                </div>
+              </div>
+            </template>
+          </aside>
+          </div>
+        </div>
         </div>
       </template>
 
@@ -3423,6 +5297,11 @@ function folderNameOf(doc: DocItem | null): string {
           <CodeOutlined />
         </button>
       </a-tooltip>
+      <a-tooltip title="评论" placement="bottom">
+        <button type="button" class="docs-bubble-btn" @click="applyBubble('comment')">
+          <CommentOutlined />
+        </button>
+      </a-tooltip>
 
       <div class="docs-bubble-group">
         <a-tooltip title="高亮颜色" placement="bottom">
@@ -3487,6 +5366,10 @@ function folderNameOf(doc: DocItem | null): string {
 
 <style scoped>
 .docs-page {
+  /* 左侧菜单的顶部留白：目录折叠箭头据此与「主页 / 知识库」两行的中线对齐 */
+  --docs-side-pt: 20px;
+  /* 正文右侧的评论栏宽度：随窗口增大，保证评论卡片和输入区有足够空间 */
+  --docs-comment-rail: clamp(200px, 16vw, 320px);
   /* 父级 workbench-panel 在文档页已无内边距，直接占满 */
   height: 100%;
   width: 100%;
@@ -3507,7 +5390,7 @@ function folderNameOf(doc: DocItem | null): string {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  padding: 20px 12px 14px;
+  padding: var(--docs-side-pt) 12px 14px;
   background: var(--docs-nav-bg);
   border-right: 1px solid var(--docs-border);
 }
@@ -4055,6 +5938,26 @@ function folderNameOf(doc: DocItem | null): string {
   padding-top: var(--app-header-height, 56px);
   background: var(--docs-canvas);
 }
+/* 文档页整体滚动容器：封面在滚动区域内，滚动条从封面顶部开始 */
+.docs-scroll {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.docs-scroll.is-scroll-page {
+  overflow-y: auto;
+}
+/* 文档页：正文区高度随内容增长（不压缩），目录吸顶，评论列和正文一起滚动 */
+.docs-scroll.is-scroll-page .docs-body {
+  flex: 1 0 auto;
+}
+.docs-scroll.is-scroll-page .docs-outline {
+  position: sticky;
+  top: 0;
+  align-self: flex-start;
+  max-height: calc(100vh - var(--app-header-height, 56px));
+}
 /* 正文 + 右侧大纲 */
 .docs-body {
   flex: 1;
@@ -4067,7 +5970,12 @@ function folderNameOf(doc: DocItem | null): string {
   flex-direction: column;
   gap: 2px;
   overflow-y: auto;
-  padding: 20px 14px;
+  /*
+   * 顶部留白让折叠箭头（高 28px）的中心落在左侧菜单「主页」与「知识库」两行的中线上：
+   * 中线 = 菜单顶部留白 + 标题区 38 + 间距 12 + 搜索框 36 + 间距 12 + 主页行 34 + 行距的一半 1；
+   * 再减去顶栏高度（--docs-header-h）和箭头半高 14
+   */
+  padding: calc(var(--docs-side-pt) + 119px - var(--docs-header-h, 56px)) 14px 20px;
   background: var(--docs-canvas);
   /* 宽度变化时与正文区平滑过渡 */
   transition: flex-basis 0.24s cubic-bezier(0.4, 0, 0.2, 1);
@@ -4178,8 +6086,35 @@ function folderNameOf(doc: DocItem | null): string {
 }
 
 /* 正文画布 */
+/* 正文 + 评论的共用滚动容器：文档页用 grid，正文和评论一起滚动、滚动条在最右侧；其他类型保持原布局 */
+.docs-doc-scroll {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+}
+.docs-doc-scroll.is-scrollable {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--docs-comment-rail);
+  align-items: stretch;
+  overflow-y: auto;
+  transition: grid-template-columns 0.2s var(--docs-ease);
+}
+.docs-doc-scroll.is-scrollable.is-comments-collapsed {
+  grid-template-columns: minmax(0, 1fr) 44px;
+}
+/* 文档页的滚动交给外层容器，画布本身不再单独滚动 */
+.docs-doc-scroll.is-scrollable .docs-canvas {
+  overflow: visible;
+}
+/* 文档页的滚动已交给外层 .docs-scroll，内层网格不再单独滚动 */
+.docs-scroll.is-scroll-page .docs-doc-scroll.is-scrollable {
+  overflow: visible;
+}
 .docs-canvas {
   flex: 1;
+  /* 右侧有固定宽度的评论栏：允许正文列收缩，避免长内容把评论栏挤没 */
+  min-width: 0;
   min-height: 0;
   overflow-y: auto;
   background: var(--docs-canvas);
@@ -4194,8 +6129,609 @@ function folderNameOf(doc: DocItem | null): string {
   margin: 0;
   box-sizing: border-box;
   /* 四周留白收到最小：左侧 40px 只为悬停的加号 / 块手柄留位，其余各边 24px 文字安全边距 */
-  padding: 24px 24px 64px 40px;
+  padding: 60px 24px 64px 72px;
   background: var(--docs-canvas);
+}
+/* 文档正文：右侧留出较大的边距，让正文离右侧评论栏更远，也给悬停的评论图标留位置 */
+.docs-canvas-inner:not(.is-wide) {
+  padding-right: 112px;
+}
+/* ---- 右侧评论栏（参考飞书云文档）：评论列表 + 输入区 ---- */
+.docs-comment-rail {
+  position: relative;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--docs-canvas);
+  border-left: 1px solid var(--docs-border);
+  /* clip 不会创建滚动容器，底部输入框可以用 sticky 固定在视口底部 */
+  overflow: clip;
+}
+/* 收起时列宽由外层 grid 控制（.is-comments-collapsed），这里只调整头部 */
+.docs-comment-rail.is-collapsed {
+  min-width: 0;
+}
+.docs-comment-rail-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 18px 12px 8px;
+}
+.docs-comment-rail.is-collapsed .docs-comment-rail-head {
+  justify-content: center;
+  padding: 18px 0 8px;
+}
+.docs-comment-rail-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--docs-text);
+}
+.docs-comment-count {
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 18px;
+  color: var(--docs-text-3);
+  text-align: center;
+  background: var(--docs-hover);
+  border-radius: 9px;
+}
+.docs-comment-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  font-size: 14px;
+  color: var(--docs-text-2);
+  background: transparent;
+  border: none;
+  border-radius: var(--docs-radius-sm);
+  cursor: pointer;
+}
+.docs-comment-icon-btn:hover {
+  color: var(--docs-text);
+  background: var(--docs-hover);
+}
+/* 评论列表不单独滚动：高度随内容撑开，和正文一起由外层容器滚动 */
+.docs-comment-list {
+  flex: 1 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 4px 12px 12px;
+}
+.docs-comment-card {
+  padding: 10px 12px;
+  background: var(--docs-paper);
+  border: 1px solid var(--docs-border);
+  border-radius: var(--docs-radius-lg);
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s, opacity 0.15s;
+}
+.docs-comment-card:hover {
+  border-color: var(--docs-border-strong);
+}
+.docs-comment-card.is-active {
+  border-color: color-mix(in srgb, var(--c-primary) 45%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--c-primary) 10%, transparent);
+}
+.docs-comment-card.is-resolved {
+  opacity: 0.6;
+}
+.docs-comment-card-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.docs-comment-avatar {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  font-size: 11px;
+  color: #fff;
+  border-radius: 50%;
+}
+.docs-comment-author {
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--docs-text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.docs-comment-time {
+  flex: none;
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--docs-text-3);
+  white-space: nowrap;
+}
+.docs-comment-resolved-tag {
+  flex: none;
+  padding: 0 6px;
+  font-size: 11px;
+  line-height: 18px;
+  color: var(--docs-success);
+  background: color-mix(in srgb, var(--docs-success) 10%, transparent);
+  border-radius: 9px;
+}
+.docs-comment-quote {
+  display: -webkit-box;
+  width: 100%;
+  margin: 8px 0 6px;
+  padding: 5px 8px;
+  overflow: hidden;
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--docs-text-2);
+  text-align: left;
+  cursor: pointer;
+  background: rgba(255, 196, 0, 0.12);
+  border: none;
+  border-left: 2px solid #ffc60a;
+  border-radius: 4px;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.docs-comment-quote:hover {
+  background: rgba(255, 196, 0, 0.2);
+}
+.docs-comment-body,
+.docs-comment-reply-body {
+  margin: 2px 0 0;
+  font-size: 13px;
+  line-height: 1.65;
+  color: var(--docs-text);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.docs-comment-reply {
+  margin-top: 9px;
+  padding-left: 8px;
+  border-left: 2px solid var(--docs-border);
+}
+.docs-comment-reply-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.docs-comment-reply-author {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--docs-text-2);
+}
+.docs-comment-reply-body {
+  font-size: 12px;
+  color: var(--docs-text-2);
+}
+.docs-comment-actions {
+  display: flex;
+  gap: 2px;
+  margin-top: 8px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.docs-comment-card:hover .docs-comment-actions,
+.docs-comment-card.is-active .docs-comment-actions {
+  opacity: 1;
+}
+.docs-comment-actions button {
+  height: 22px;
+  padding: 0 6px;
+  font: inherit;
+  font-size: 12px;
+  color: var(--docs-text-2);
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.docs-comment-actions button:hover {
+  color: var(--docs-text);
+  background: var(--docs-hover);
+}
+.docs-comment-actions button.is-danger:hover {
+  color: var(--docs-danger);
+  background: color-mix(in srgb, var(--docs-danger) 8%, transparent);
+}
+.docs-comment-reply-composer {
+  margin-top: 8px;
+}
+.docs-comment-reply-composer textarea {
+  width: 100%;
+  min-height: 54px;
+  padding: 6px 8px;
+  box-sizing: border-box;
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--docs-text);
+  background: var(--docs-canvas);
+  border: 1px solid var(--docs-border);
+  border-radius: var(--docs-radius-sm);
+  outline: none;
+  resize: vertical;
+}
+.docs-comment-reply-composer textarea:focus {
+  border-color: color-mix(in srgb, var(--c-primary) 45%, transparent);
+}
+.docs-comment-reply-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 6px;
+}
+.docs-comment-text-btn {
+  height: 26px;
+  padding: 0 8px;
+  font: inherit;
+  font-size: 12px;
+  color: var(--docs-text-2);
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.docs-comment-text-btn:hover {
+  background: var(--docs-hover);
+}
+.docs-comment-submit {
+  height: 28px;
+  padding: 0 14px;
+  font: inherit;
+  font-size: 13px;
+  color: #fff;
+  background: var(--c-primary);
+  border: none;
+  border-radius: var(--docs-radius-sm);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.docs-comment-submit:hover:not(:disabled) {
+  background: var(--c-primary-active);
+}
+.docs-comment-submit:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+.docs-comment-submit.is-small {
+  height: 26px;
+  padding: 0 12px;
+  font-size: 12px;
+}
+/* 被评论文字的高亮（只读覆盖层，跟随正文滚动） */
+.docs-comment-hl-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+}
+.docs-comment-hl {
+  position: absolute;
+  border-radius: 3px;
+  background: rgba(255, 196, 0, 0.16);
+  box-shadow: inset 0 -2px 0 rgba(255, 168, 0, 0.45);
+  transition: background-color 0.15s;
+}
+.docs-comment-hl.is-active {
+  background: rgba(255, 176, 0, 0.34);
+}
+/* 行右侧的评论入口：外层命中区延伸到正文边缘，避免鼠标经过空白时悬停状态丢失 */
+.docs-line-comment-hit {
+  position: absolute;
+  right: -40px;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  width: 42px;
+  height: 28px;
+}
+.docs-line-comment {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  font-size: 18px;
+  color: var(--docs-text-3);
+  cursor: pointer;
+  background: var(--docs-canvas);
+  border: none;
+  border-radius: var(--docs-radius-sm);
+  transition: color 0.12s, background 0.12s;
+}
+.docs-line-comment:hover {
+  color: var(--docs-text);
+  background: var(--docs-hover);
+}
+/* 行内评论输入卡片：出现在被评论的那一行右侧，随正文一起滚动 */
+.docs-line-composer {
+  position: absolute;
+  right: 10px;
+  left: 10px;
+  z-index: 6;
+  padding: 12px;
+  background: var(--docs-canvas);
+  border: 1px solid var(--docs-border);
+  border-top: 3px solid #ffc60a;
+  border-radius: var(--docs-radius-lg);
+  box-shadow: var(--docs-shadow-float);
+}
+.docs-line-composer-quote {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 10px;
+  padding-left: 8px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--docs-text-2);
+  border-left: 2px solid var(--docs-border-strong);
+}
+.docs-line-composer-quote span {
+  display: -webkit-box;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.docs-line-composer-quote button {
+  flex: none;
+  padding: 0 2px;
+  font-size: 12px;
+  color: var(--docs-text-3);
+  cursor: pointer;
+  background: transparent;
+  border: none;
+}
+.docs-line-composer-author {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.docs-line-composer-author .docs-comment-avatar {
+  width: 28px;
+  height: 28px;
+  font-size: 12px;
+}
+.docs-line-composer-input {
+  position: relative;
+}
+.docs-line-composer-input textarea {
+  width: 100%;
+  min-height: 38px;
+  max-height: 120px;
+  padding: 9px 38px 9px 10px;
+  box-sizing: border-box;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--docs-text);
+  background: var(--docs-canvas);
+  border: 1px solid var(--docs-border-strong);
+  border-radius: var(--docs-radius);
+  outline: none;
+  resize: none;
+}
+.docs-line-composer-input textarea:focus {
+  border-color: var(--c-primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--c-primary) 12%, transparent);
+}
+.docs-line-composer-input textarea::placeholder {
+  color: var(--docs-text-3);
+}
+.docs-line-composer-send {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  font-size: 14px;
+  color: var(--c-primary);
+  cursor: pointer;
+  background: transparent;
+  border: none;
+  border-radius: var(--docs-radius-sm);
+}
+.docs-line-composer-send:hover:not(:disabled) {
+  background: var(--docs-hover);
+}
+.docs-line-composer-send:disabled {
+  color: var(--docs-text-3);
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+/* ---- 文档底部：点赞 + 评论（参考飞书文档底部） ---- */
+.docs-doc-foot {
+  margin-top: 64px;
+  padding-top: 40px;
+  border-top: 1px solid var(--docs-border);
+}
+/* 点赞：大圆按钮 + 文案 */
+.docs-doc-like {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 8px 0 4px;
+}
+.docs-doc-like-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 72px;
+  height: 72px;
+  padding: 0;
+  font-size: 30px;
+  color: var(--c-primary);
+  cursor: pointer;
+  background: transparent;
+  border: 1.5px solid color-mix(in srgb, var(--c-primary) 70%, #fff);
+  border-radius: 50%;
+  transition: background 0.15s, border-color 0.15s, transform 0.15s;
+}
+.docs-doc-like-btn:hover {
+  background: color-mix(in srgb, var(--c-primary) 6%, transparent);
+  transform: translateY(-1px);
+}
+.docs-doc-like.is-liked .docs-doc-like-btn {
+  background: color-mix(in srgb, var(--c-primary) 10%, transparent);
+  border-color: var(--c-primary);
+}
+.docs-doc-like-slogan {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  font-size: 14px;
+  color: var(--docs-text-3);
+}
+.docs-doc-like-slogan::before,
+.docs-doc-like-slogan::after {
+  content: '';
+  width: 96px;
+  height: 1px;
+  background: var(--docs-border);
+}
+.docs-doc-like-count {
+  margin-top: -4px;
+  font-size: 12px;
+  color: var(--docs-text-3);
+}
+/* 评论列表 */
+.docs-doc-comments {
+  margin-top: 28px;
+}
+.docs-doc-comment {
+  display: flex;
+  gap: 10px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--docs-border);
+  cursor: pointer;
+}
+.docs-doc-comment:last-of-type {
+  border-bottom: none;
+}
+.docs-doc-comment.is-resolved {
+  opacity: 0.6;
+}
+.docs-doc-comment .docs-comment-avatar {
+  width: 30px;
+  height: 30px;
+  font-size: 13px;
+}
+.docs-doc-comment-main {
+  flex: 1;
+  min-width: 0;
+}
+.docs-doc-comment:hover .docs-comment-actions,
+.docs-doc-comment.is-active .docs-comment-actions {
+  opacity: 1;
+}
+/* 底部评论输入条 */
+.docs-doc-comment-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 48px;
+  margin-top: 24px;
+  padding: 0 10px 0 14px;
+  box-sizing: border-box;
+  background: var(--docs-canvas);
+  border: 1px solid var(--docs-border-strong);
+  border-radius: 8px;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.docs-doc-comment-bar:focus-within {
+  border-color: var(--c-primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--c-primary) 10%, transparent);
+}
+.docs-doc-comment-input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  padding: 0;
+  font: inherit;
+  font-size: 14px;
+  color: var(--docs-text);
+  background: transparent;
+  border: none;
+  outline: none;
+}
+.docs-doc-comment-input::placeholder {
+  color: var(--docs-text-3);
+}
+.docs-doc-comment-tool {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  font-size: 17px;
+  color: var(--docs-text-2);
+  cursor: pointer;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  transition: color 0.12s, background 0.12s;
+}
+.docs-doc-comment-tool:hover {
+  color: var(--docs-text);
+  background: var(--docs-hover);
+}
+/* 输入框有内容时出现：取消 / 发送 */
+.docs-doc-comment-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 12px;
+}
+.docs-doc-comment-cancel,
+.docs-doc-comment-send {
+  height: 32px;
+  padding: 0 16px;
+  font: inherit;
+  font-size: 13px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.docs-doc-comment-cancel {
+  color: var(--docs-text);
+  background: var(--docs-canvas);
+  border: 1px solid var(--docs-border-strong);
+}
+.docs-doc-comment-cancel:hover {
+  background: var(--docs-hover);
+}
+.docs-doc-comment-send {
+  color: #fff;
+  background: var(--c-primary);
+  border: none;
+}
+.docs-doc-comment-send:hover {
+  background: var(--c-primary-active);
 }
 /* Mac 客户端：文档正文靠左，去掉 max-width 居中产生的大片左侧留白 */
 :global(html.is-mac) .docs-canvas-inner {
@@ -4224,9 +6760,16 @@ function folderNameOf(doc: DocItem | null): string {
   border-radius: 0;
 }
 .docs-title-input {
+  display: block;
   width: 100%;
   padding: 0;
-  font-size: 30px;
+  /* 多行文本框：不出现滚动条和拖拽角，高度由脚本按内容设置 */
+  overflow: hidden;
+  resize: none;
+  font-family: inherit;
+  word-break: break-word;
+  background: transparent;
+  font-size: 34px;
   font-weight: 700;
   line-height: 1.3;
   letter-spacing: -0.02em;
@@ -4237,22 +6780,142 @@ function folderNameOf(doc: DocItem | null): string {
 .docs-title-input::placeholder {
   color: var(--docs-text-3);
 }
+/* 标题区：标题上方的「添加图标 / 添加封面」绝对定位在留白里，不占高度，标题位置不变 */
+.docs-title-zone {
+  position: relative;
+}
+.docs-title-actions {
+  position: absolute;
+  bottom: 100%;
+  left: -6px;
+  display: flex;
+  gap: 4px;
+  /* 用内边距而不是外边距留间隔：鼠标从标题移上来时不会经过"空隙"而丢失悬停 */
+  padding-bottom: 4px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.docs-title-zone:hover .docs-title-actions,
+.docs-title-zone:focus-within .docs-title-actions,
+.docs-title-zone.is-acting .docs-title-actions {
+  opacity: 1;
+}
+.docs-title-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 28px;
+  padding: 0 6px;
+  font: inherit;
+  font-size: 14px;
+  color: var(--docs-text-2);
+  white-space: nowrap;
+  background: transparent;
+  border: none;
+  border-radius: var(--docs-radius);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+.docs-title-action:hover {
+  color: var(--docs-text);
+  background: var(--docs-hover);
+}
+.docs-title-action :deep(.anticon) {
+  font-size: 15px;
+}
+/* 图标 + 标题同一行 */
+.docs-title-row {
+  display: flex;
+  /* 标题可能换成多行：图标对齐第一行 */
+  align-items: flex-start;
+  gap: 6px;
+}
+.docs-title-row .docs-title-input {
+  flex: 1;
+  min-width: 0;
+}
+/* 文档图标：标题前面的 emoji，大小跟随标题字号（1em = 标题字号） */
+.docs-title-icon {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.3em;
+  height: 1.3em;
+  margin-left: -4px;
+  padding: 0;
+  font-size: 34px;
+  line-height: 1;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.docs-title-icon:not(.is-static):hover {
+  background: var(--docs-hover);
+}
+.docs-title-icon.is-static {
+  cursor: default;
+}
+/* 封面：文档区顶部通栏（横跨正文与目录）；
+   宽度随文档区自适应，高度按宽高比联动，并用 min/max 限制在合理范围 */
+.docs-cover {
+  position: relative;
+  flex: none;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 16 / 4.1;
+  min-height: 180px;
+  max-height: 320px;
+  overflow: hidden;
+}
+.docs-cover-actions {
+  position: absolute;
+  right: 24px;
+  bottom: 12px;
+  display: flex;
+  gap: 8px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.docs-cover:hover .docs-cover-actions,
+.docs-cover:focus-within .docs-cover-actions,
+.docs-cover.is-acting .docs-cover-actions {
+  opacity: 1;
+}
+.docs-cover-btn {
+  height: 28px;
+  padding: 0 10px;
+  font: inherit;
+  font-size: 13px;
+  color: #1f2329;
+  background: rgba(255, 255, 255, 0.9);
+  border: none;
+  border-radius: var(--docs-radius);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.docs-cover-btn:hover {
+  background: #fff;
+}
 /* 标题下方作者行：头像 · 作者 · 修改日期 */
 .docs-doc-meta {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-top: 16px;
-  font-size: 12px;
+  margin-top: 22px;
+  font-size: 14px;
   color: var(--docs-text-3);
 }
 .docs-doc-avatar {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
-  font-size: 12px;
+  width: 24px;
+  height: 24px;
+  font-size: 13px;
   color: #fff;
   border-radius: 50%;
   user-select: none;
@@ -4263,64 +6926,100 @@ function folderNameOf(doc: DocItem | null): string {
 }
 .docs-doc-sep {
   width: 1px;
-  height: 12px;
+  height: 14px;
   margin: 0 4px;
   background: var(--docs-border);
 }
 .docs-editor-wrap {
   position: relative;
   /* 左侧预留加号槽位：鼠标从正文移向加号不会离开容器，避免 mouseleave 提前藏掉加号 */
-  padding-left: 34px;
-  margin-left: -34px;
+  --docs-gutter: 66px;
+  padding-left: var(--docs-gutter);
+  margin-left: calc(-1 * var(--docs-gutter));
+  /* 正文与上方作者行的间距 */
+  margin-top: 36px;
 }
-/* 悬停行的左外侧"+"插入按钮 */
+/*
+ * 悬停行左外侧的块手柄（对标飞书）：白底描边胶囊，蓝色块类型 + 灰色六点拖拽柄；
+ * 普通段落是"+"。右对齐到正文左边缘，标题块再让出折叠三角的位置。
+ */
 .docs-block-plus {
   position: absolute;
-  left: 0;
+  right: calc(100% - var(--docs-gutter) + 6px);
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 26px;
-  height: 26px;
-  font-size: 14px;
-  color: var(--docs-text-3);
-  background: var(--docs-canvas);
-  border: 1px solid var(--docs-border);
-  border-radius: var(--docs-radius);
+  width: 24px;
+  height: 24px;
+  font-size: 13px;
+  color: #646a73;
+  background: #fff;
+  border: 1px solid #dee0e3;
+  border-radius: 6px;
   cursor: pointer;
-  transition: background 0.12s, color 0.12s, border-color 0.12s, box-shadow 0.12s;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
 }
-/* 鼠标悬停 / 菜单展开时颜色变暗 */
+.docs-block-plus.is-heading {
+  right: calc(100% - var(--docs-gutter) + 24px);
+}
+/* 鼠标悬停 / 菜单展开时底色变深 */
 .docs-block-plus:hover,
 .docs-block-plus.is-open {
-  color: var(--docs-text);
-  background: var(--docs-hover);
-  border-color: var(--docs-border-strong);
+  color: #1f2329;
+  background: #f2f3f5;
+  border-color: #d0d3d6;
 }
-/* 富文本块：不展示"+",改展示块类型 + 拖拽手柄 */
 .docs-block-plus.is-block {
   gap: 3px;
   width: auto;
-  min-width: 26px;
-  padding: 0 5px;
-  color: var(--docs-text-2);
-  background: var(--docs-hover);
-  border-color: transparent;
-}
-.docs-block-plus.is-block:hover,
-.docs-block-plus.is-block.is-open {
-  color: var(--docs-text);
-  background: var(--docs-hover);
-  border-color: transparent;
+  padding: 0 4px 0 5px;
 }
 .docs-block-plus-label {
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
   line-height: 1;
+  color: #3370ff;
+  white-space: nowrap;
+}
+/* H1 / H2 / H3 的级别数字：小号下标 */
+.docs-block-plus-label sub {
+  bottom: -0.1em;
+  margin-left: 0.5px;
+  font-size: 9px;
+  font-weight: 600;
+  vertical-align: baseline;
+  position: relative;
 }
 .docs-block-plus-drag {
   font-size: 12px;
-  color: var(--docs-text-3);
+  color: #8f959e;
+}
+/* 标题折叠三角：悬停标题时出现在正文左侧，点击折叠 / 展开该标题下的内容 */
+.docs-fold-caret {
+  position: absolute;
+  left: calc(var(--docs-gutter) - 20px);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 24px;
+  padding: 0;
+  color: #1f2329;
+  background: var(--docs-canvas);
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.docs-fold-caret:hover {
+  background: #f2f3f5;
+}
+.docs-fold-caret svg {
+  width: 10px;
+  height: 10px;
+  transition: transform 0.15s;
+}
+.docs-fold-caret.is-folded svg {
+  transform: rotate(-90deg);
 }
 /* "+"下拉面板：基础排版 + 常用富文本元素 */
 .docs-insert-panel {
@@ -4690,6 +7389,43 @@ function folderNameOf(doc: DocItem | null): string {
   color: var(--docs-text-3);
   pointer-events: none;
 }
+/* 空块占位（对标飞书）：该行还没有内容时，显示灰色的块类型（H1 / H2 / H3 / 列表 / 引用）；
+   浮动且不占高度，不会把光标挤到下一行；输入内容后消失 */
+.docs-editor :deep([data-empty]::before) {
+  float: left;
+  height: 0;
+  color: #bbbfc4;
+  pointer-events: none;
+}
+.docs-editor :deep(blockquote[data-empty]::before) {
+  content: '引用';
+}
+.docs-editor :deep(h1[data-empty]::before) {
+  content: 'H1';
+}
+.docs-editor :deep(h2[data-empty]::before) {
+  content: 'H2';
+}
+.docs-editor :deep(h3[data-empty]::before) {
+  content: 'H3';
+}
+/* 已折叠的标题：左侧常驻一个向右的三角；被折叠的内容整体隐藏 */
+.docs-editor :deep([data-folded]) {
+  position: relative;
+}
+.docs-editor :deep([data-folded]::after) {
+  content: '';
+  position: absolute;
+  top: calc(0.65em - 5px);
+  left: -15px;
+  border: 5px solid transparent;
+  border-left-color: #1f2329;
+  border-right-width: 0;
+  pointer-events: none;
+}
+.docs-editor :deep([data-fold-hidden]) {
+  display: none !important;
+}
 .docs-editor :deep(h1) {
   margin: 34px 0 12px;
   font-size: 26px;
@@ -4717,7 +7453,6 @@ function folderNameOf(doc: DocItem | null): string {
 .docs-editor-wrap.is-edit .docs-editor :deep(li:hover),
 .docs-editor-wrap.is-edit .docs-editor :deep(.docs-todo:hover),
 .docs-editor-wrap.is-edit .docs-editor :deep(blockquote:hover),
-.docs-editor-wrap.is-edit .docs-editor :deep(pre:hover),
 .docs-editor-wrap.is-edit .docs-editor :deep(.docs-callout:hover),
 .docs-editor-wrap.is-edit .docs-editor :deep(.docs-cols:hover),
 .docs-editor-wrap.is-edit .docs-editor :deep(.docs-insert-table:hover),
@@ -4815,14 +7550,19 @@ function folderNameOf(doc: DocItem | null): string {
   background: var(--docs-hover);
   border-radius: var(--docs-radius);
 }
+/* 行内代码：等宽字体 + 淡底，与代码块区分开 */
 .docs-editor :deep(code) {
-  padding: 1px 5px;
-  font-size: 14px;
-  background: var(--docs-hover);
+  padding: 1px 6px;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  font-size: 0.88em;
+  color: #c02b48;
+  background: rgba(0, 0, 0, 0.05);
   border-radius: var(--docs-radius-sm);
 }
 .docs-editor :deep(pre code) {
   padding: 0;
+  color: inherit;
+  font-size: inherit;
   background: transparent;
 }
 .docs-editor :deep(p) {
@@ -4855,16 +7595,257 @@ function folderNameOf(doc: DocItem | null): string {
   color: var(--docs-text-2);
   border-left: 3px solid var(--docs-border);
 }
+/* 代码块：顶部语言栏 + 正文的浅色卡片 */
 .docs-editor :deep(pre) {
-  margin: 12px 0;
-  padding: 12px 14px;
-  overflow-x: auto;
+  position: relative;
+  /* 上下留白交给语言栏和底部 padding，左右与语言栏负 margin 对齐 */
+  margin: 16px 0;
+  padding: 0 16px 14px;
+  overflow: hidden;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
   font-size: 13px;
-  line-height: 1.6;
+  line-height: 1.7;
+  tab-size: 2;
   color: var(--docs-text);
   white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: var(--docs-paper);
+  border: 1px solid var(--docs-border);
+  border-radius: var(--docs-radius-lg);
+  transition: border-color 0.15s var(--docs-ease), box-shadow 0.15s var(--docs-ease);
+}
+/* 关闭自动换行：保持单行，横向滚动（语言栏 sticky 固定在顶部） */
+.docs-editor :deep(pre[data-wrap='off']) {
+  white-space: pre;
+  overflow-x: auto;
+}
+/* 彩色代码层：与可编辑文本完全重叠（继承同一套字体 / 行高 / 换行规则），
+   只读、不参与命中测试；顶部 48px = 语言栏 36px + 间距 12px */
+.docs-editor :deep(.docs-code-highlight) {
+  position: absolute;
+  top: 48px;
+  right: 16px;
+  left: 16px;
+  z-index: 0;
+  color: var(--docs-text);
+  white-space: inherit;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+/* 彩色层存在时隐藏原生文字，只显示彩色文字；光标颜色单独保留 */
+.docs-editor :deep(pre.is-code-colored) {
+  color: transparent;
+  caret-color: var(--docs-text);
+}
+/* 输入法组合中：恢复原生文字、暂时隐藏彩色层，保证拼音 / 候选可见 */
+.docs-editor :deep(pre.is-code-colored.is-composing) {
+  color: var(--docs-text);
+}
+.docs-editor :deep(pre.is-composing > .docs-code-highlight) {
+  display: none;
+}
+/* token 配色（浅色代码卡片，参考 GitHub Light 的对比度） */
+.docs-editor :deep(.docs-code-highlight) .tk-c {
+  color: #6e7781;
+  font-style: italic;
+}
+.docs-editor :deep(.docs-code-highlight) .tk-k {
+  color: #cf222e;
+}
+.docs-editor :deep(.docs-code-highlight) .tk-s {
+  color: #0a3069;
+}
+.docs-editor :deep(.docs-code-highlight) .tk-n {
+  color: #0550ae;
+}
+.docs-editor :deep(.docs-code-highlight) .tk-f {
+  color: #8250df;
+}
+.docs-editor :deep(.docs-code-highlight) .tk-t {
+  color: #116329;
+}
+.docs-editor :deep(.docs-code-highlight) .tk-a {
+  color: #0550ae;
+}
+.docs-editor :deep(.docs-code-highlight) .tk-v {
+  color: #953800;
+}
+/* 编辑态：悬停 / 聚焦时描边加深，与其它块的整行底色区分 */
+.docs-editor-wrap.is-edit .docs-editor :deep(pre:hover) {
+  border-color: var(--docs-border-strong);
+}
+.docs-editor-wrap.is-edit .docs-editor :deep(pre:focus-within) {
+  border-color: color-mix(in srgb, var(--c-primary) 45%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--c-primary) 10%, transparent);
+}
+/* 语言栏：负 margin 铺满整个卡片宽度，顶部圆角随卡片裁切；
+   sticky 是为了「不自动换行」横向滚动时代码从语言栏下方滚过，语言栏保持可见 */
+.docs-editor :deep(.docs-code-head) {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 36px;
+  margin: 0 -16px 12px;
+  padding: 0 8px 0 14px;
+  font-family: system-ui, -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  white-space: normal;
   background: var(--docs-side-bg);
-  border-radius: var(--docs-radius);
+  border-bottom: 1px solid var(--docs-border);
+  user-select: none;
+  -webkit-user-select: none;
+}
+.docs-editor :deep(.docs-code-head-actions) {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+/* 语言切换按钮 */
+.docs-editor :deep(.docs-code-lang) {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding: 0 6px;
+  margin-left: -6px;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.2px;
+  color: var(--docs-text-3);
+  cursor: pointer;
+  background: transparent;
+  border: 0;
+  border-radius: var(--docs-radius-sm);
+  transition: background 0.15s var(--docs-ease), color 0.15s var(--docs-ease);
+}
+.docs-editor :deep(.docs-code-lang:hover) {
+  color: var(--docs-text);
+  background: var(--docs-hover);
+}
+.docs-editor :deep(.docs-code-lang-icon) {
+  width: 14px;
+  height: 14px;
+  color: var(--c-primary);
+}
+.docs-editor :deep(.docs-code-lang-caret) {
+  width: 10px;
+  height: 10px;
+  opacity: 0.7;
+}
+/* 自动换行开关：开启时为主色，关闭时置灰 */
+.docs-editor :deep(.docs-code-wrap) {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 24px;
+  padding: 0 7px;
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 1;
+  color: var(--docs-text-3);
+  cursor: pointer;
+  background: transparent;
+  border: 0;
+  border-radius: var(--docs-radius-sm);
+  transition: background 0.15s var(--docs-ease), color 0.15s var(--docs-ease);
+}
+.docs-editor :deep(.docs-code-wrap svg) {
+  width: 13px;
+  height: 13px;
+}
+.docs-editor :deep(.docs-code-wrap.is-on) {
+  color: var(--c-primary);
+}
+.docs-editor :deep(.docs-code-wrap:hover) {
+  background: var(--docs-hover);
+}
+.docs-editor :deep(.docs-code-wrap:not(.is-on)) {
+  color: var(--docs-text-3);
+  opacity: 0.72;
+}
+.docs-editor :deep(.docs-code-copy) {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 24px;
+  padding: 0 8px;
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 1;
+  color: var(--docs-text-2);
+  cursor: pointer;
+  background: transparent;
+  border: 0;
+  border-radius: var(--docs-radius-sm);
+  transition: background 0.15s var(--docs-ease), color 0.15s var(--docs-ease);
+}
+.docs-editor :deep(.docs-code-copy svg) {
+  width: 13px;
+  height: 13px;
+}
+.docs-editor :deep(.docs-code-copy:hover) {
+  color: var(--docs-text);
+  background: var(--docs-hover);
+}
+.docs-editor :deep(.docs-code-copy.is-done) {
+  color: var(--docs-success);
+}
+/* 代码语言切换菜单 */
+.docs-code-lang-menu {
+  position: absolute;
+  z-index: 30;
+  width: 168px;
+  max-height: 300px;
+  padding: 6px;
+  overflow-y: auto;
+  /* 滚到列表尽头时不把滚动传给文档，避免菜单被滚动收起的逻辑误伤 */
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  -webkit-overflow-scrolling: touch;
+  background: var(--docs-canvas);
+  border: 1px solid var(--docs-border);
+  border-radius: var(--docs-radius-lg);
+  box-shadow: var(--docs-shadow-float);
+}
+.docs-code-lang-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  height: 30px;
+  padding: 0 10px;
+  font-size: 13px;
+  color: var(--docs-text);
+  text-align: left;
+  cursor: pointer;
+  background: transparent;
+  border: 0;
+  border-radius: var(--docs-radius-sm);
+}
+.docs-code-lang-option:hover {
+  background: var(--docs-hover);
+}
+.docs-code-lang-option.is-active {
+  font-weight: 500;
+  color: var(--c-primary);
+}
+.docs-code-lang-check {
+  font-size: 12px;
+}
+/* 窄屏：语言栏只留图标，避免挤压代码显示区 */
+@media (max-width: 720px) {
+  .docs-editor :deep(.docs-code-wrap span),
+  .docs-editor :deep(.docs-code-copy-text) {
+    display: none;
+  }
+  .docs-editor :deep(.docs-code-wrap),
+  .docs-editor :deep(.docs-code-copy) {
+    padding: 0 6px;
+  }
 }
 .docs-editor :deep(hr) {
   margin: 24px 0;
@@ -4895,7 +7876,9 @@ function folderNameOf(doc: DocItem | null): string {
 @media (max-width: 1240px) {
   .docs-outline {
     flex-basis: 209px;
-    padding: 24px 10px;
+    padding-right: 10px;
+    padding-bottom: 24px;
+    padding-left: 10px;
   }
 }
 /* 较窄宽度：隐藏目录，正文占满画布 */
@@ -4904,7 +7887,7 @@ function folderNameOf(doc: DocItem | null): string {
     display: none;
   }
   .docs-canvas-inner {
-    padding: 24px 24px 64px 40px;
+    padding: 60px 24px 64px 72px;
   }
   .docs-canvas-inner.is-full,
   .docs-page.is-focus .docs-canvas-inner {
@@ -5939,30 +8922,46 @@ function folderNameOf(doc: DocItem | null): string {
   }
   /* 左侧仍保留 40px 加号槽位，其余各边保持最小留白 */
   .docs-canvas-inner {
-    padding: 24px 24px 64px 40px;
+    padding: 60px 24px 64px 72px;
   }
   .docs-canvas-inner.is-wide {
     padding: 0;
   }
-  .docs-title-input {
-    font-size: 27px;
+  .docs-title-input,
+  .docs-title-icon {
+    font-size: 30px;
+  }
+}
+
+/* 窄屏：收起右侧评论栏，正文优先占满画布（外层 grid 同时去掉评论列） */
+@media (max-width: 860px) {
+  .docs-comment-rail {
+    display: none;
+  }
+  .docs-doc-scroll.is-scrollable,
+  .docs-doc-scroll.is-scrollable.is-comments-collapsed {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 
 /* 极窄宽度：侧栏再收窄、首页留白收紧、列表隐藏次要列，保证正文/表格可用 */
 @media (max-width: 720px) {
+  .docs-page {
+    --docs-side-pt: 12px;
+  }
   .docs-side {
     flex-basis: 160px;
-    padding: 12px 8px 10px;
+    padding: var(--docs-side-pt) 8px 10px;
   }
   .docs-canvas-inner {
-    padding: 24px 16px 64px 40px;
+    padding: 60px 16px 64px 72px;
   }
   .docs-canvas-inner.is-wide {
     padding: 0;
   }
-  .docs-title-input {
-    font-size: 24px;
+  .docs-title-input,
+  .docs-title-icon {
+    font-size: 27px;
   }
   .docs-home {
     padding: 24px 16px 48px;
@@ -5981,14 +8980,14 @@ function folderNameOf(doc: DocItem | null): string {
 /* ---- 高度自适应：矮窗口收紧垂直留白，保证首屏可见更多正文 ---- */
 @media (max-height: 760px) {
   .docs-canvas-inner {
-    padding-top: 24px;
+    padding-top: 56px;
     padding-bottom: 64px;
   }
   .docs-canvas-inner.is-wide {
     padding-top: 0;
   }
-  .docs-side {
-    padding-top: 12px;
+  .docs-page {
+    --docs-side-pt: 12px;
   }
   .docs-home {
     padding-top: 24px;
@@ -5996,11 +8995,10 @@ function folderNameOf(doc: DocItem | null): string {
 }
 /* 极矮窗口（如半屏 / 小窗预览）：标题与首页留白进一步收紧 */
 @media (max-height: 600px) {
-  .docs-canvas-inner {
-    padding-top: 24px;
-  }
-  .docs-title-input {
-    font-size: 26px;
+  /* 标题上方留白不再单独收紧到 24px（沿用上面 760px 档的值），否则在矮窗口里调大上边距看不到变化 */
+  .docs-title-input,
+  .docs-title-icon {
+    font-size: 30px;
   }
   .docs-home {
     padding-top: 16px;

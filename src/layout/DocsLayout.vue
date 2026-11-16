@@ -34,6 +34,9 @@ const moduleTitle = computed(() => {
 
 <style scoped>
 .layout-container {
+  /* 云文档顶栏比全局（56px）高一档；--app-header-height 是整个顶部区域（含客户端页签栏），顶栏和文档页都按它避让 */
+  --docs-header-h: 72px;
+  --app-header-height: calc(var(--docs-header-h) + var(--desktop-tabbar-height, 0px));
   height: 100%;
   min-width: var(--app-min-width);
   background: var(--docs-canvas);
