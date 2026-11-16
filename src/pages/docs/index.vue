@@ -13,7 +13,6 @@ import {
   MoreOutlined,
   DeleteOutlined,
   FolderFilled,
-  FolderOpenFilled,
   RightOutlined,
   DownOutlined,
   UnorderedListOutlined,
@@ -61,8 +60,6 @@ import {
   FileDoneOutlined,
   Html5Outlined,
   ScheduleOutlined,
-  PartitionOutlined,
-  BranchesOutlined,
   SnippetsOutlined,
   PlusSquareOutlined,
 } from '@ant-design/icons-vue'
@@ -921,13 +918,13 @@ function onAddMenu(e: { key?: string | number }) {
 
 /** 新建下拉：悬停 / 点击展开（参考飞书的「新建」面板） */
 const addOpen = ref(false)
-const ADD_TYPE_ITEMS = [
-  { key: 'doc', label: '文档', icon: FileTextOutlined },
-  { key: 'sheet', label: '表格', icon: TableOutlined },
+const ADD_TYPE_ITEMS: { key: DocType; label: string }[] = [
+  { key: 'doc', label: '文档' },
+  { key: 'sheet', label: '表格' },
 ]
-const ADD_APP_ITEMS = [
-  { key: 'mindmap', label: '思维导图', icon: PartitionOutlined },
-  { key: 'flow', label: '流程图', icon: BranchesOutlined },
+const ADD_APP_ITEMS: { key: DocType; label: string }[] = [
+  { key: 'mindmap', label: '思维导图' },
+  { key: 'flow', label: '流程图' },
 ]
 /** 选择文件类型后进入模板选择弹窗 */
 const docTemplateOpen = ref(false)
@@ -2420,7 +2417,7 @@ function folderNameOf(doc: DocItem | null): string {
               :title="f.name"
               @click="openLibrary(f)"
             >
-              <FolderFilled class="docs-folder-icon" />
+              <DocTypeIcon type="folder" mono />
               <span class="docs-pinned-name">{{ f.name }}</span>
             </div>
           </div>
@@ -2438,7 +2435,7 @@ function folderNameOf(doc: DocItem | null): string {
             @click="selectFolder(g.folder)"
           >
             <span class="docs-folder-caret" :class="{ open: expanded[g.folder.id] }"><RightOutlined /></span>
-            <component :is="expanded[g.folder.id] ? FolderOpenFilled : FolderFilled" class="docs-folder-icon" />
+            <DocTypeIcon type="folder" mono />
             <span class="docs-folder-name">{{ g.folder.name }}</span>
             <span class="docs-folder-count">{{ g.docs.length }}</span>
             <a-dropdown trigger="click" placement="bottomRight" @click.stop>
@@ -2862,14 +2859,12 @@ function folderNameOf(doc: DocItem | null): string {
                   class="docs-add-item"
                   @click="onAddItem(it.key)"
                 >
-                  <span class="docs-add-icon" :class="`is-${it.key}`">
-                    <component :is="it.icon" />
-                  </span>
+                  <DocTypeIcon :type="it.key" size="md" />
                   <span>{{ it.label }}</span>
                 </button>
                 <div class="docs-add-divider" />
                 <button type="button" class="docs-add-item" @click="onAddItem('folder')">
-                  <span class="docs-add-icon is-folder"><FolderFilled /></span>
+                  <DocTypeIcon type="folder" size="md" />
                   <span>文件夹</span>
                 </button>
                 <div class="docs-add-divider" />
@@ -2881,9 +2876,7 @@ function folderNameOf(doc: DocItem | null): string {
                   class="docs-add-item"
                   @click="onAddItem(it.key)"
                 >
-                  <span class="docs-add-icon" :class="`is-${it.key}`">
-                    <component :is="it.icon" />
-                  </span>
+                  <DocTypeIcon :type="it.key" size="md" />
                   <span>{{ it.label }}</span>
                 </button>
               </div>
@@ -2981,14 +2974,12 @@ function folderNameOf(doc: DocItem | null): string {
                   class="docs-add-item"
                   @click="onAddItem(it.key)"
                 >
-                  <span class="docs-add-icon" :class="`is-${it.key}`">
-                    <component :is="it.icon" />
-                  </span>
+                  <DocTypeIcon :type="it.key" size="md" />
                   <span>{{ it.label }}</span>
                 </button>
                 <div class="docs-add-divider" />
                 <button type="button" class="docs-add-item" @click="onAddItem('folder')">
-                  <span class="docs-add-icon is-folder"><FolderFilled /></span>
+                  <DocTypeIcon type="folder" size="md" />
                   <span>文件夹</span>
                 </button>
                 <div class="docs-add-divider" />
@@ -3000,9 +2991,7 @@ function folderNameOf(doc: DocItem | null): string {
                   class="docs-add-item"
                   @click="onAddItem(it.key)"
                 >
-                  <span class="docs-add-icon" :class="`is-${it.key}`">
-                    <component :is="it.icon" />
-                  </span>
+                  <DocTypeIcon :type="it.key" size="md" />
                   <span>{{ it.label }}</span>
                 </button>
               </div>
@@ -3308,7 +3297,7 @@ function folderNameOf(doc: DocItem | null): string {
           <div class="doc-tpl-target">
             <span class="doc-tpl-target-label">新建到</span>
             <span class="doc-tpl-target-folder">
-              <FolderFilled />
+              <DocTypeIcon type="folder" mono />
               <span>{{ docTemplateTargetName }}</span>
             </span>
           </div>
@@ -3510,7 +3499,9 @@ function folderNameOf(doc: DocItem | null): string {
 
 /* ---- 左侧：知识库 / 文件树 ---- */
 .docs-side {
-  flex: 0 0 340px;
+  flex: 0 0 327px;
+  /* flex 子项默认 min-width:auto，会被内部最长的不换行标题撑宽；置 0 后宽度固定，长标题走省略号 */
+  min-width: 0;
   height: 100%;
   min-height: 0;
   display: flex;
@@ -3911,11 +3902,6 @@ function folderNameOf(doc: DocItem | null): string {
 .docs-folder-caret.open {
   transform: rotate(90deg);
 }
-.docs-folder-icon {
-  flex: none;
-  font-size: 16px;
-  color: var(--docs-warn);
-}
 .docs-folder-name {
   flex: 1;
   min-width: 0;
@@ -4076,7 +4062,7 @@ function folderNameOf(doc: DocItem | null): string {
   display: flex;
 }
 .docs-outline {
-  flex: 0 0 250px;
+  flex: 0 0 275px;
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -4908,7 +4894,7 @@ function folderNameOf(doc: DocItem | null): string {
 /* 中等宽度：目录收窄，给正文让位 */
 @media (max-width: 1240px) {
   .docs-outline {
-    flex-basis: 190px;
+    flex-basis: 209px;
     padding: 24px 10px;
   }
 }
@@ -5070,21 +5056,6 @@ function folderNameOf(doc: DocItem | null): string {
   border-radius: 8px;
 }
 
-.docs-add-icon.is-doc {
-  background: linear-gradient(135deg, #3370ff, #5b8cff);
-}
-.docs-add-icon.is-sheet {
-  background: linear-gradient(135deg, #00b96b, #34d399);
-}
-.docs-add-icon.is-folder {
-  background: linear-gradient(135deg, #ffc53d, #ffa940);
-}
-.docs-add-icon.is-mindmap {
-  background: linear-gradient(135deg, #36cfc9, #13c2c2);
-}
-.docs-add-icon.is-flow {
-  background: linear-gradient(135deg, #ff7d00, #ffa940);
-}
 .docs-add-icon.is-md {
   background: linear-gradient(135deg, #3f4652, #6b7280);
 }

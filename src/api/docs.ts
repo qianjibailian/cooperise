@@ -197,6 +197,33 @@ export function listSharedDocs(): Promise<Result<DocItem[]>> {
   return request.post(`/docs/shared`)
 }
 
+// ==================== 事项关联文档（事项详情「相关文档」模块） ====================
+
+/** 事项关联的文档摘要（不含 content / data） */
+export interface IssueDocItem {
+  id: string
+  title: string
+  type: DocType
+  /** 创建人 */
+  author?: string
+  updatedAt?: number
+}
+
+/** 事项的相关文档（POST /docs/issue/list）：按关联时间倒序，已进回收站 / 已删除的文档不返回 */
+export function listIssueDocs(issueKey: string): Promise<Result<IssueDocItem[]>> {
+  return request.post(`/docs/issue/list`, { issueKey })
+}
+
+/** 关联文档到事项（POST /docs/issue/link）：docIds 为本次新增的文档，已关联的忽略（幂等） */
+export function linkIssueDocs(data: { issueKey: string; docIds: string[] }): Promise<Result<void>> {
+  return request.post(`/docs/issue/link`, data)
+}
+
+/** 取消事项与文档的关联（POST /docs/issue/unlink）：只解除关联，不删除文档 */
+export function unlinkIssueDoc(data: { issueKey: string; docId: string }): Promise<Result<void>> {
+  return request.post(`/docs/issue/unlink`, data)
+}
+
 // ==================== 附件上传（预留：富文本「视频或文件」块） ====================
 
 /**

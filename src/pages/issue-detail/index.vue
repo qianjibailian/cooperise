@@ -763,6 +763,25 @@
             </a-collapse-panel>
           </a-collapse>
 
+          <!-- 相关文档（折叠板）：从云文档选择关联的文档 -->
+          <a-collapse
+            v-model:activeKey="docCollapseKeys"
+            ghost
+            :bordered="false"
+            class="panel-collapse"
+          >
+            <a-collapse-panel key="doc">
+              <template #header>
+                <div class="collapse-header-inner">
+                  <span class="pch-title">相关文档</span>
+                </div>
+              </template>
+              <div class="panel-card-body">
+                <IssueRelatedDocs :issue-key="issueKey" :reload-trigger="detailData" />
+              </div>
+            </a-collapse-panel>
+          </a-collapse>
+
           <!-- 关联工单（折叠板）：父工单 / 子工单 / 同级工单 -->
           <a-collapse
             v-model:activeKey="relationCollapseKeys"
@@ -819,6 +838,7 @@ import FieldValueEditor from '@/components/FieldValueEditor.vue'
 import RichTextField from '@/components/RichTextField.vue'
 import IssueActionButtons from '@/components/IssueActionButtons.vue'
 import IssueParentChild from '@/components/IssueParentChild.vue'
+import IssueRelatedDocs from '@/components/IssueRelatedDocs.vue'
 import { sanitizeHtml } from '@/utils/sanitizeHtml'
 import { issueTypeIconOf } from '@/utils/issueTypeIcons'
 import IssueRdActivity from '@/components/IssueRdActivity.vue'
@@ -1100,6 +1120,7 @@ const rdCollapseKeys = ref<string[]>(['rd'])
 const okrCollapseKeys = ref<string[]>([])
 const timeCollapseKeys = ref<string[]>(['time'])
 const supplementCollapseKeys = ref<string[]>(['supplement'])
+const docCollapseKeys = ref<string[]>(['doc'])
 const relationCollapseKeys = ref<string[]>(['relation'])
 const attachmentCollapseKeys = ref<string[]>(['attachment'])
 const parentCollapseKeys = ref<string[]>(['parent'])

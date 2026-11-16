@@ -58,7 +58,7 @@ const moduleTitle = computed(() => {
 }
 
 .docs-layout .app-header-flush {
-  left: 340px;
+  left: 327px;
   min-width: 0;
   /* 与文档内容区（主页的「新建」卡片）左边缘对齐 */
   padding-left: 48px;

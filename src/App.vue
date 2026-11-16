@@ -198,11 +198,12 @@ html, body, #app {
   --docs-danger: #d70015;
   --docs-warn: #b25000;
   --docs-success: #248a3d;
-  /* 文档类型（列表 / 侧栏 / 顶栏的类型图标，取苹果系统色） */
-  --docs-type-doc: var(--c-primary);
-  --docs-type-sheet: #34c759;
-  --docs-type-mindmap: #af52de;
-  --docs-type-flow: #ff9500;
+  /* 文档类型色（类型图标 / 插入菜单等），对标飞书云文档：文档蓝 / 表格绿 / 思维导图青 / 流程图橙 / 文件夹黄 */
+  --docs-type-doc: #3370ff;
+  --docs-type-sheet: #34c724;
+  --docs-type-mindmap: #14c0ff;
+  --docs-type-flow: #ff8800;
+  --docs-type-folder: #ffc60a;
   /* 圆角三级：控件 6/8px，面板与卡片 12px，浮层 10px（菜单）/ 14px（大面板） */
   --docs-radius-xs: 4px;
   --docs-radius-sm: 6px;
