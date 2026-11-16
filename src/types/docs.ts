@@ -34,6 +34,8 @@ export interface FlowData {
 export interface DocCommentReply {
   id: string
   author: string
+  /** 头像地址（取文档标题作者的本地头像） */
+  avatar?: string
   content: string
   createdAt: number
 }
@@ -45,6 +47,8 @@ export interface DocCommentReply {
 export interface DocComment {
   id: string
   author: string
+  /** 头像地址（取文档标题作者的本地头像） */
+  avatar?: string
   content: string
   createdAt: number
   /** 评论范围：行级评论 / 全文评论；旧数据没有该字段时按是否带 quote 判断 */
@@ -56,13 +60,16 @@ export interface DocComment {
   replies?: DocCommentReply[]
 }
 
-/** 富文本文档的附加信息（存在 DocItem.data 里）：图标 emoji、封面、评论、点赞 */
+/** 富文本文档的附加信息（存在 DocItem.data 里）：图标 emoji、封面、评论、点赞、创建者信息 */
 export interface DocMeta {
   icon?: string
   cover?: string
   comments?: DocComment[]
   /** 点赞用户列表（存登录名，当前用户在其中即为已点赞） */
   likedBy?: string[]
+  /** 创建者昵称 / 头像（创建文档时取本地登录信息，随 data 一起保存） */
+  authorName?: string
+  authorAvatar?: string
 }
 
 export interface DocItem {
@@ -82,4 +89,6 @@ export interface DocItem {
   starred?: boolean
   /** 创建人（作者），旧数据可能为空 */
   author?: string
+  /** 创建人头像地址（创建文档时取本地登录信息，旧数据可能为空） */
+  authorAvatar?: string
 }
