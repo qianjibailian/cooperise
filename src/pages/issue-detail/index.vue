@@ -2775,4 +2775,190 @@ function formatRichText(v: unknown): string {
   background-clip: content-box;
   border: 2px solid transparent;
 }
+
+/* ============ 视觉层级优化：浅灰底 + 白卡片，重点信息突出 ============ */
+/* 页面底色：浅灰，内容区用白卡片托起，层次分明 */
+.issue-page,
+.detail-body,
+.detail-scroll {
+  background: #f4f5f7 !important;
+}
+.detail-scroll {
+  padding-bottom: 16px;
+}
+
+/* 头部卡：编号做成标签，标题放大（最多两行），图标收小 */
+.detail-header {
+  margin: 14px 16px 0;
+  padding: 20px 24px 18px;
+  gap: 16px;
+  align-items: flex-start;
+  background: #ffffff !important;
+  border-radius: 12px;
+}
+.detail-header::after {
+  display: none;
+}
+.dh-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  font-size: 24px;
+  margin-top: 2px;
+}
+.dh-row {
+  gap: 6px;
+  font-size: 13px;
+  margin-bottom: 4px;
+}
+.dh-project {
+  color: #8c8c8c;
+  font-size: 13px;
+  font-weight: 400;
+}
+.dh-divider {
+  color: #d0d0d0;
+  margin: 0 2px;
+}
+.dh-key {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 6px;
+  color: var(--c-primary);
+  background: color-mix(in srgb, var(--c-primary) 10%, transparent);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+}
+.dh-inline-actions {
+  margin-left: 6px;
+}
+.dh-title,
+.dh-title-empty {
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1.35;
+  color: #111827;
+  -webkit-line-clamp: 2;
+  white-space: normal;
+}
+.dh-title-empty {
+  font-size: 15px;
+  font-weight: 500;
+  color: #8c8c8c;
+}
+.dh-title-edit :deep(.ant-input) {
+  font-size: 20px;
+  font-weight: 600;
+}
+
+/* 属性卡：标签弱化、值加粗，状态一眼可见 */
+.attr-card {
+  margin: 12px 16px 0;
+  padding: 16px 24px 12px;
+  background: #ffffff !important;
+  border-radius: 12px;
+}
+.attr-row-line {
+  gap: 14px 24px;
+}
+.attr-item {
+  align-items: flex-start;
+  flex-direction: column;
+  gap: 6px;
+  padding: 2px 0;
+}
+.attr-label {
+  font-size: 12px;
+  color: #8c8c8c;
+  font-weight: 500;
+  letter-spacing: 0.2px;
+}
+.attr-value-block,
+.attr-value {
+  font-size: 15px;
+  font-weight: 500;
+  color: #1f2937;
+}
+.attr-tag {
+  font-size: 13px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-weight: 600;
+}
+.priority-text,
+.priority-label {
+  font-size: 15px;
+  font-weight: 500;
+}
+
+/* 操作栏：独立白卡，主操作突出 */
+.action-bar {
+  margin: 12px 16px 0;
+  padding: 10px 14px;
+  background: #ffffff !important;
+  border-radius: 12px;
+}
+.action-btn {
+  background: #f3f4f6 !important;
+  color: #374151 !important;
+}
+.action-btn:hover {
+  background: #e5e7eb !important;
+}
+.action-primary {
+  height: 32px !important;
+  padding: 0 18px !important;
+}
+
+/* 主体两栏：每个折叠面板是一张白卡片，左右栏留出统一间距 */
+.scroll-inner {
+  padding: 0 0 4px;
+}
+.scroll-left .panel-collapse {
+  margin: 12px 8px 0 16px !important;
+}
+.scroll-right .panel-collapse {
+  margin: 12px 16px 0 8px !important;
+}
+.panel-collapse {
+  background: #ffffff !important;
+  border-radius: 12px !important;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04) !important;
+  overflow: hidden;
+}
+.panel-collapse :deep(.ant-collapse-header) {
+  padding: 14px 18px !important;
+}
+.panel-collapse :deep(.ant-collapse-content-box) {
+  padding: 0 18px 16px !important;
+}
+.collapse-header-inner {
+  position: relative;
+  padding-left: 12px;
+}
+.collapse-header-inner::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 3px;
+  height: 14px;
+  margin-top: -7px;
+  border-radius: 2px;
+  background: var(--c-primary);
+}
+.collapse-header-inner .pch-title {
+  font-size: 15px;
+  font-weight: 650;
+  color: #111827;
+}
+.panel-card-body {
+  padding: 2px 0 0;
+}
+.footer-spacer {
+  height: 20px;
+}
 </style>

@@ -79,7 +79,8 @@ import DocSheetEditor from '@/components/docs/DocSheetEditor.vue'
 import DocIssuePicker from '@/components/docs/DocIssuePicker.vue'
 import { TEAM_COLLAB_ITEMS, type TeamManageSpec } from '@/utils/team-collab'
 import TeamManageModal from '@/components/docs/TeamManageModal.vue'
-import type { FuzzyIssueItem } from '@/api/faiz'
+import IssueDetailDrawer from '@/components/IssueDetailDrawer.vue'
+import { fuzzyQueryIssues, type FuzzyIssueItem } from '@/api/faiz'
 import DocMindmapEditor from '@/components/docs/DocMindmapEditor.vue'
 import DocFlowEditor from '@/components/docs/DocFlowEditor.vue'
 import DocTypeIcon from '@/components/docs/DocTypeIcon.vue'
@@ -101,6 +102,7 @@ import {
   purgeDoc as purgeDocApi,
   renameDocFolder,
   restoreDoc as restoreDocApi,
+  linkIssueDocs,
   saveDocContent,
   starDoc as starDocApi,
   starDocFolder,
@@ -1177,6 +1179,8 @@ watch(activeDoc, (doc) => {
       refreshOutline()
       refreshEmptyState()
       applyHeadingFolds(editorRef.value)
+      // 打开文档后按事项最新数据刷新卡片
+      void refreshIssueCards()
     } else {
       outline.value = []
       editorEmpty.value = false
@@ -3495,12 +3499,27 @@ const issuePickerOpen = ref(false)
 /** 打开选择弹窗时记下的插入位置（编辑器顶层块，卡片插在它后面） */
 let issueInsertAnchor: HTMLElement | null = null
 
+// 切回窗口时刷新事项卡片（事项可能在别处被改过）
+function onWindowFocusRefreshIssues() {
+  void refreshIssueCards()
+}
+onMounted(() => window.addEventListener('focus', onWindowFocusRefreshIssues))
+onBeforeUnmount(() => window.removeEventListener('focus', onWindowFocusRefreshIssues))
+
+/* ---- 事项卡片：点击在右侧抽屉中查看事项详情（不离开文档） ---- */
+const issueDrawer = reactive({ open: false, key: '' })
+function openIssueDrawer(issueKey: string) {
+  issueDrawer.key = issueKey
+  issueDrawer.open = true
+}
+
 /* ---- 团队协作：点击条目在弹窗中管理（需求 / 任务 / 看板 / 人员 / 部门） ---- */
 const teamManage = reactive({
   open: false,
   title: '',
   kind: 'issue' as TeamManageSpec['kind'],
   typeName: '',
+  insertable: false,
 })
 function openTeamManage(key: string) {
   const item = TEAM_COLLAB_ITEMS.find((t) => t.key === key)
@@ -3508,16 +3527,24 @@ function openTeamManage(key: string) {
   teamManage.title = item.label
   teamManage.kind = item.manage.kind
   teamManage.typeName = item.manage.typeName || ''
+  teamManage.insertable = item.manage.insertable === true
+  // 可插入的弹窗：先记下插入位置（点击「+」所在的块）
+  if (teamManage.insertable) captureIssueInsertAnchor()
   teamManage.open = true
 }
 
-function openIssuePicker(anchorNode?: Node | null) {
+/** 记下插入位置：优先点击「+」所在的块，否则取光标所在的块 */
+function captureIssueInsertAnchor(anchorNode?: Node | null) {
   const editor = editorRef.value
   const hovered = hoverBlock.value
   issueInsertAnchor =
     hovered && editor && hovered !== editor && hovered.parentElement === editor
       ? hovered
       : editorBlockOf(anchorNode ?? window.getSelection()?.anchorNode ?? null)
+}
+
+function openIssuePicker(anchorNode?: Node | null) {
+  captureIssueInsertAnchor(anchorNode)
   issuePickerOpen.value = true
 }
 
@@ -3559,6 +3586,59 @@ function insertIssueCards(items: FuzzyIssueItem[]) {
   else editor.appendChild(frag)
   issueInsertAnchor = null
   onEditorInput()
+  // 把本文档关联到这些事项：事项详情的「相关文档」里就能看到它（接口幂等，重复插入不会重复关联）
+  for (const it of items) {
+    linkIssueDocs({ issueKey: it.issueKey, docIds: [doc.id] }).then(
+      (res) => {
+        if (!res?.success) message.warning(`事项 ${it.issueKey} 关联文档失败`)
+      },
+      () => message.warning(`事项 ${it.issueKey} 关联文档失败`),
+    )
+  }
+}
+
+/**
+ * 按事项最新数据刷新正文里的事项卡片（编号 / 标题 / 状态）。
+ * 只更新页面显示，不写回文档内容，因此打开文档不会产生保存；查不到的事项保留原快照。
+ */
+async function refreshIssueCards() {
+  const editor = editorRef.value
+  const doc = activeDoc.value
+  if (!editor || !doc) return
+  const cards = Array.from(editor.querySelectorAll<HTMLElement>('.docs-issue-card[data-issue-key]'))
+  if (!cards.length) return
+  const docId = doc.id
+  const keys = [...new Set(cards.map((c) => c.dataset.issueKey || ''))].filter(Boolean)
+  const latest = new Map<string, FuzzyIssueItem>()
+  await Promise.all(
+    keys.map(async (key) => {
+      try {
+        const res = await fuzzyQueryIssues({ issueKey: key, pageSize: 10 })
+        const hit = res.success ? res.data?.list?.find((i) => i.issueKey === key) : undefined
+        if (hit) latest.set(key, hit)
+      } catch {
+        // 查询失败：保留卡片原有内容
+      }
+    }),
+  )
+  // 文档已切换：丢弃结果
+  if (activeDoc.value?.id !== docId || editorRef.value !== editor) return
+  for (const card of cards) {
+    const item = latest.get(card.dataset.issueKey || '')
+    if (!item) continue
+    const title = card.querySelector<HTMLElement>('.docs-issue-title')
+    if (title) title.textContent = item.summary || '未命名事项'
+    let status = card.querySelector<HTMLElement>('.docs-issue-status')
+    if (item.statusName) {
+      if (!status) {
+        status = document.createElement('span')
+        status.className = 'docs-issue-status'
+        card.appendChild(status)
+      }
+      status.textContent = item.statusName
+      status.style.color = item.statusColor || ''
+    } else status?.remove()
+  }
 }
 
 function applyInsert(key: string) {
@@ -3863,10 +3943,10 @@ function onAttachPicked(e: Event) {
 /** 编辑器点击：代码块复制 / 任务列表勾选 */
 function onEditorClick(e: MouseEvent) {
   const target = e.target as HTMLElement
-  // 事项卡片：点击在新标签页打开事项详情
+  // 事项卡片：点击在右侧抽屉中打开事项详情
   const issueCard = target.closest<HTMLElement>('.docs-issue-card')
   if (issueCard?.dataset.issueKey) {
-    window.open(router.resolve(`/jira/browse/${issueCard.dataset.issueKey}`).href, '_blank', 'noopener')
+    openIssueDrawer(issueCard.dataset.issueKey)
     return
   }
   // 修订条：接受 / 拒绝这一段修订
@@ -6254,7 +6334,11 @@ function folderNameOf(doc: DocItem | null): string {
                   :kind="teamManage.kind"
                   :title="teamManage.title"
                   :type-name="teamManage.typeName"
+                  :insertable="teamManage.insertable"
+                  @confirm="insertIssueCards"
                 />
+                <!-- 事项卡片：右侧抽屉查看 / 操作事项 -->
+                <IssueDetailDrawer v-model:open="issueDrawer.open" :issue-key="issueDrawer.key" @changed="refreshIssueCards" />
               </div>
               <DocSheetEditor
                 v-else-if="activeDoc.type === 'sheet'"

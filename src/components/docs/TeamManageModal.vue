@@ -11,6 +11,7 @@
       :loading="loading"
       :pagination="{ current: page, pageSize: PAGE_SIZE, total: rows.length, showSizeChanger: false, onChange: (p: number) => (page = p) }"
       :custom-row="customRow"
+      :row-selection="selectable ? { selectedRowKeys: selectedKeys, onChange: onSelectChange } : undefined"
       row-key="key"
       size="middle"
     >
@@ -24,6 +25,10 @@
       </template>
     </a-table>
     <div v-if="truncated" class="tm-hint">仅展示前 {{ FETCH_LIMIT }} 条事项中的匹配结果，可通过搜索缩小范围。</div>
+    <div v-if="selectable" class="tm-foot">
+      <span class="tm-count">已选 {{ selectedKeys.length }} 项</span>
+      <a-button type="primary" :disabled="!selectedKeys.length" @click="confirmInsert">插入到文档</a-button>
+    </div>
   </a-modal>
 
   <IssueDetailDrawer v-if="kind === 'issue'" v-model:open="detailOpen" :issue-key="detailKey" @changed="load" />
@@ -54,8 +59,41 @@ const props = defineProps<{
   title: string
   /** 事项类型名称（需求 / 任务）；为空表示全部事项 */
   typeName?: string
+  /** 允许把选中的事项插入到文档（仅文档正文里打开时开启） */
+  insertable?: boolean
 }>()
-const emit = defineEmits<{ 'update:open': [value: boolean] }>()
+const emit = defineEmits<{
+  'update:open': [value: boolean]
+  /** 插入到文档：选中的事项原始数据 */
+  confirm: [items: FuzzyIssueItem[]]
+}>()
+
+const selectable = computed(() => !!props.insertable && props.kind === 'issue')
+/** 已选事项（跨页保留）：issueKey → 原始事项 */
+const selectedMap: Record<string, FuzzyIssueItem> = {}
+const selectedKeys = ref<string[]>([])
+function clearSelection() {
+  for (const k of Object.keys(selectedMap)) delete selectedMap[k]
+  selectedKeys.value = []
+}
+function onSelectChange(keys: (string | number)[]) {
+  const set = new Set(keys.map(String))
+  // 只对当前页可见的行做增删，其它页的选择保持不变
+  for (const r of rows.value) {
+    if (!r.raw) continue
+    const key = String(r.key)
+    if (set.has(key)) selectedMap[key] = r.raw as FuzzyIssueItem
+    else delete selectedMap[key]
+  }
+  selectedKeys.value = Object.keys(selectedMap)
+}
+function confirmInsert() {
+  const items = Object.values(selectedMap)
+  if (!items.length) return
+  emit('confirm', items)
+  clearSelection()
+  emit('update:open', false)
+}
 
 const PAGE_SIZE = 10
 /** 事项搜索接口没有按类型过滤参数，按类型筛选时最多拉取的条数（每页 10 条，最多 5 页） */
@@ -116,6 +154,7 @@ function issueRow(it: FuzzyIssueItem): Row {
     status: it.statusName || '',
     statusColor: it.statusColor,
     updated: formatTime(it.updateTime),
+    raw: it,
   }
 }
 
@@ -215,6 +254,7 @@ watch(
   (v) => {
     if (!v) return
     keyword.value = ''
+    clearSelection()
     void load()
   },
 )
@@ -234,6 +274,18 @@ watch(
 .tm-hint {
   margin-top: 8px;
   font-size: 12px;
+  color: var(--docs-text-3);
+}
+.tm-foot {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 16px;
+}
+.tm-count {
+  margin-right: auto;
+  font-size: 13px;
   color: var(--docs-text-3);
 }
 </style>
