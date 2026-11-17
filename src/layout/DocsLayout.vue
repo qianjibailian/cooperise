@@ -1,6 +1,6 @@
 <template>
   <!-- 云文档独立布局：自己的顶栏 + 文档页自带的左侧菜单（在 pages/docs 内部） -->
-  <div class="layout-container docs-layout">
+  <div class="layout-container docs-layout" :class="{ 'is-library-page': isLibraryPage }">
     <AppHeader
       class="app-header-flush"
       :class="{ 'app-header-docs-collapsed': docsSideCollapsed, 'is-doc-page': isDocDetail }"
@@ -25,9 +25,11 @@ const route = useRoute()
 /** 是否文档详情页（/docs/wiki/:docId） */
 const isDocDetail = computed(() => route.path.startsWith('/docs/wiki/'))
 /** 顶部菜单标题：主页 / 知识库；打开文档时顶部显示文档标题，不重复显示模块名 */
+/** 知识库详情页（/docs/library/:libraryId）：自带左侧菜单，顶栏左侧对齐该菜单宽度 */
+const isLibraryPage = computed(() => route.path.startsWith('/docs/library/'))
 const moduleTitle = computed(() => {
   if (isDocDetail.value) return ''
-  if (route.path.startsWith('/docs/wiki')) return '知识库'
+  if (isLibraryPage.value || route.path.startsWith('/docs/wiki')) return '知识库'
   return '主页'
 })
 </script>
@@ -60,8 +62,38 @@ const moduleTitle = computed(() => {
   border-bottom: none;
 }
 
+/* 顶栏左偏移必须与文档左侧菜单（pages/docs 内 .docs-side）的宽度一致，两处断点需同步修改 */
+.docs-layout {
+  --docs-side-w: 240px;
+}
+@media (max-width: 1240px) {
+  .docs-layout {
+    --docs-side-w: 280px;
+  }
+}
+@media (max-width: 1060px) {
+  .docs-layout {
+    --docs-side-w: 240px;
+  }
+}
+@media (max-width: 860px) {
+  .docs-layout {
+    --docs-side-w: 200px;
+  }
+}
+@media (max-width: 720px) {
+  .docs-layout {
+    --docs-side-w: 160px;
+  }
+}
+
+/* 知识库详情页的左侧菜单宽度固定为 240px（与 pages/docs/library.vue 的 .lib-side 一致） */
+.docs-layout.is-library-page {
+  --docs-side-w: 240px;
+}
+
 .docs-layout .app-header-flush {
-  left: 327px;
+  left: var(--docs-side-w);
   min-width: 0;
   /* 与文档内容区（主页的「新建」卡片）左边缘对齐 */
   padding-left: 48px;
@@ -78,10 +110,6 @@ const moduleTitle = computed(() => {
 }
 
 @media (max-width: 860px) {
-  .docs-layout .app-header-flush {
-    left: 200px;
-    min-width: 0;
-  }
   .docs-layout .app-header-docs-collapsed {
     left: 0;
   }

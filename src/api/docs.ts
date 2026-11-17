@@ -1,6 +1,6 @@
 import request from '@/utils/request'
 import type { Result } from '@/types/faiz'
-import type { DocItem, DocFolder, DocType, SheetData, MindmapData, FlowData, DocMeta } from '@/types/docs'
+import type { DocItem, DocFolder, DocLibrary, DocType, SheetData, MindmapData, FlowData, DocMeta } from '@/types/docs'
 
 /**
  * ==================== 文档系统 API ====================
@@ -24,7 +24,9 @@ import type { DocItem, DocFolder, DocType, SheetData, MindmapData, FlowData, Doc
 export interface DocCreatePayload {
   title?: string
   type: DocType
-  /** 所属文件夹 id，空表示未分组 */
+  /** 所属知识库 id（空表示个人文档） */
+  libraryId?: string
+  /** 所属文件夹 id（知识库内），空表示知识库根目录 / 未分组 */
   folderId?: string
   /** 富文本初始 HTML（上传 / 模板导入时传入） */
   content?: string
@@ -43,15 +45,52 @@ export interface DocSavePayload {
 /** 回收站文档：文档 + 删除时间 */
 export type TrashedDoc = DocItem & { deletedAt?: number }
 
-// ==================== 文件夹（知识库） ====================
+// ==================== 知识库 ====================
 
-/** 文件夹列表（GET /docs/folder/list）：当前用户的全部文件夹，按 createdAt 升序 */
+/** 知识库列表（GET /docs/library/list）：当前用户可见的全部知识库，按 createdAt 升序 */
+export function listDocLibraries(): Promise<Result<DocLibrary[]>> {
+  return request.get(`/docs/library/list`)
+}
+
+/** 新建知识库（POST /docs/library/create）：id、createdAt 由后端生成 */
+export function createDocLibrary(data: {
+  name: string
+  desc?: string
+  visibility: 'members' | 'all'
+}): Promise<Result<DocLibrary>> {
+  return request.post(`/docs/library/create`, data)
+}
+
+/** 重命名 / 修改简介（POST /docs/library/update） */
+export function updateDocLibrary(data: { id: string; name?: string; desc?: string }): Promise<Result<void>> {
+  return request.post(`/docs/library/update`, data)
+}
+
+/** 知识库置顶 / 取消置顶（POST /docs/library/star） */
+export function starDocLibrary(data: { id: string; starred: boolean }): Promise<Result<void>> {
+  return request.post(`/docs/library/star`, data)
+}
+
+/**
+ * 删除知识库（POST /docs/library/delete）
+ * 库内文件夹一并删除；库内文档移到「不在知识库内」（libraryId / folderId 置空），不删除文档。
+ */
+export function deleteDocLibrary(id: string): Promise<Result<void>> {
+  return request.post(`/docs/library/delete`, { id })
+}
+
+// ==================== 文件夹（归属知识库，可嵌套） ====================
+
+/** 文件夹列表（GET /docs/folder/list）：当前用户全部知识库内的文件夹，按 createdAt 升序 */
 export function listDocFolders(): Promise<Result<DocFolder[]>> {
   return request.get(`/docs/folder/list`)
 }
 
-/** 新建文件夹（POST /docs/folder/create）：id、createdAt 由后端生成 */
-export function createDocFolder(data: { name: string }): Promise<Result<DocFolder>> {
+/**
+ * 新建文件夹（POST /docs/folder/create）：id、createdAt 由后端生成。
+ * libraryId 必填；parentId 为空表示挂在知识库根目录下。
+ */
+export function createDocFolder(data: { name: string; libraryId: string; parentId?: string }): Promise<Result<DocFolder>> {
   return request.post(`/docs/folder/create`, data)
 }
 
@@ -67,7 +106,7 @@ export function starDocFolder(data: { id: string; starred: boolean }): Promise<R
 
 /**
  * 删除文件夹（POST /docs/folder/delete）
- * 文件夹内文档移到「未分组」（folderId 置空），不删除文档。
+ * 文件夹内文档与子文件夹上移一级（folderId / parentId 改为被删文件夹的 parentId，为空则到知识库根目录），不删除文档。
  */
 export function deleteDocFolder(id: string): Promise<Result<void>> {
   return request.post(`/docs/folder/delete`, { id })
@@ -122,7 +161,7 @@ export function renameDoc(data: { id: string; title: string }): Promise<Result<D
 }
 
 /** 移动文档到文件夹（POST /docs/move）：folderId 传空 / null 表示移到「未分组」 */
-export function moveDoc(data: { id: string; folderId?: string | null }): Promise<Result<DocItem>> {
+export function moveDoc(data: { id: string; libraryId?: string | null; folderId?: string | null }): Promise<Result<DocItem>> {
   return request.post(`/docs/move`, data)
 }
 

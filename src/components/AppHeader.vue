@@ -621,7 +621,7 @@ const DOC_MODE_META: Record<string, { label: string; icon: unknown }> = {
 const docModeLabel = computed(() => DOC_MODE_META[docModeKey.value].label)
 const docModeIcon = computed(() => DOC_MODE_META[docModeKey.value].icon)
 /** 顶栏"+"新建菜单：已接入的类型交给文档页新建，其余暂未开放 */
-const DOC_CREATE_SUPPORTED = ['doc', 'sheet', 'mindmap', 'flow']
+const DOC_CREATE_SUPPORTED = ['doc', 'sheet', 'mindmap', 'flow', 'wiki']
 function onDocCreateMenu({ key }: { key: string | number }) {
   const k = String(key)
   if (DOC_CREATE_SUPPORTED.includes(k)) requestDocCreate(k)

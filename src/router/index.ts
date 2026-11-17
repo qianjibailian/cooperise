@@ -7,6 +7,7 @@ import AdminLayout from '@/layout/AdminLayout.vue'
 import PlainLayout from '@/layout/PlainLayout.vue'
 import Todo from '@/pages/todo/index.vue'
 import Docs from '@/pages/docs/index.vue'
+import DocsLibrary from '@/pages/docs/library.vue'
 import MyBoard from '@/pages/my-board/index.vue'
 import Dashboard from '@/pages/dashboard/index.vue'
 import Users from '@/pages/users/index.vue'
@@ -111,6 +112,8 @@ const routes: RouteRecordRaw[] = [
       { path: 'wiki', component: Docs, name: 'DocsWiki', meta: { title: '知识库' } },
       // 文档详情：参考飞书 /docs/wiki/{docId}
       { path: 'wiki/:docId', component: Docs, name: 'WikiDoc', meta: { title: '云文档' } },
+      // 知识库详情：独立页面（自己的左侧菜单 + 主内容）
+      { path: 'library/:libraryId', component: DocsLibrary, name: 'DocsLibrary', meta: { title: '知识库' } },
     ],
   },
   // 旧地址 /wiki/{docId} → /docs/wiki/{docId}，保留兼容

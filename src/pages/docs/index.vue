@@ -12,7 +12,6 @@ import {
   SmileOutlined,
   MoreOutlined,
   DeleteOutlined,
-  FolderFilled,
   RightOutlined,
   DownOutlined,
   UnorderedListOutlined,
@@ -70,9 +69,10 @@ import {
   ScheduleOutlined,
   SnippetsOutlined,
   PlusSquareOutlined,
+  LockOutlined,
 } from '@ant-design/icons-vue'
 import { getLoginUsername, useAuth } from '@/utils/auth'
-import type { DocType, DocFolder, DocItem, DocMeta, DocComment, MindNode, SheetData, MindmapData, FlowData } from '@/types/docs'
+import type { DocType, DocFolder, DocLibrary, DocItem, DocMeta, DocComment, MindNode, SheetData, MindmapData, FlowData } from '@/types/docs'
 import DocEmojiPicker from '@/components/docs/DocEmojiPicker.vue'
 import DocCoverPicker from '@/components/docs/DocCoverPicker.vue'
 import { docCoverBackground } from '@/utils/doc-cover'
@@ -98,10 +98,15 @@ import { openDocSharePanel } from '@/utils/doc-share'
 import {
   createDoc as createDocApi,
   createDocFolder,
+  createDocLibrary,
   deleteDocFolder,
+  deleteDocLibrary,
   emptyTrash as emptyTrashApi,
   getDocDetail,
   listDocFolders,
+  listDocLibraries,
+  starDocLibrary,
+  updateDocLibrary,
   listDocs as listDocsApi,
   listTrashDocs,
   moveDoc as moveDocApi,
@@ -152,7 +157,11 @@ const ownerName = computed(() => {
   const raw = authUser.value?.realName || authUser.value?.coAccount || getLoginUsername() || ''
   return toDisplayName(raw) || '-'
 })
-/** 当前新建文档默认归属的文件夹（点击文件夹标题时更新） */
+/** 当前打开的知识库（空 = 知识库列表 / 主页） */
+const activeLibraryId = ref('')
+/** 知识库列表（顶层实体） */
+const libraries = ref<DocLibrary[]>([])
+/** 当前新建文档默认归属的文件夹（点击文件夹标题时更新；必须在 activeLibraryId 之内） */
 const activeFolderId = ref('')
 /** 文件夹展开状态 */
 const expanded = reactive<Record<string, boolean>>({})
@@ -209,25 +218,69 @@ function stripHtml(html: string): string {
 /** 左侧导航：主页 / 知识库 / 收藏 */
 const navMode = ref<'recent' | 'owned' | 'shared' | 'starred' | 'library' | 'trash'>('recent')
 
-/** 分组数据：搜索时平铺；收藏模式只列星标；否则未分组 + 各文件夹（空文件夹也展示） */
-const groups = computed<{ folder: DocFolder | null; docs: DocItem[]; flat?: boolean }[]>(() => {
+/** 侧栏分组：folder 为空表示该组是「不带文件夹的文档」（主页下为个人文档，知识库下为库根目录文档） */
+interface DocGroup {
+  folder: DocFolder | null
+  docs: DocItem[]
+  flat?: boolean
+  /** 文件夹在知识库内的层级（0 = 库根目录下的一级文件夹） */
+  depth?: number
+}
+
+/**
+ * 知识库内的文件夹树（深度优先，子文件夹紧跟父文件夹）。
+ * hidden：其任一祖先文件夹被折叠，侧栏中不展示，但仍参与「库根目录文档」的判定。
+ */
+function folderTree(libraryId: string): { folder: DocFolder; depth: number; hidden: boolean }[] {
+  const inLib = folders.value.filter((f) => f.libraryId === libraryId)
+  const ids = new Set(inLib.map((f) => f.id))
+  const out: { folder: DocFolder; depth: number; hidden: boolean }[] = []
+  const walk = (parentId: string | undefined, depth: number, hidden: boolean) => {
+    for (const f of inLib) {
+      const p = f.parentId && ids.has(f.parentId) ? f.parentId : undefined
+      if (p !== parentId) continue
+      out.push({ folder: f, depth, hidden })
+      walk(f.id, depth + 1, hidden || expanded[f.id] === false)
+    }
+  }
+  walk(undefined, 0, false)
+  return out
+}
+
+/** 分组数据：搜索时平铺；收藏模式只列星标；打开知识库时列库内目录树；主页只列不属于任何知识库的文档 */
+const groups = computed<DocGroup[]>(() => {
   const kw = keyword.value.trim().toLowerCase()
   const match = (d: DocItem) =>
     !kw || d.title.toLowerCase().includes(kw) || stripHtml(d.content).toLowerCase().includes(kw)
-  const visible = docs.value.filter(match)
+  // 打开知识库时，侧栏内容（含搜索结果）只限于该知识库，个人文档不再出现
+  const scope = activeLibraryId.value
+    ? docs.value.filter((d) => d.libraryId === activeLibraryId.value)
+    : docs.value
+  const visible = scope.filter(match)
   if (navMode.value === 'starred') {
     return [{ folder: null, docs: visible.filter((d) => d.starred), flat: true }]
   }
   if (kw) return [{ folder: null, docs: visible, flat: true }]
 
-  const folderIds = new Set(folders.value.map((f) => f.id))
-  const result: { folder: DocFolder | null; docs: DocItem[] }[] = []
-  const ungrouped = visible.filter((d) => !d.folderId || !folderIds.has(d.folderId))
-  if (ungrouped.length) result.push({ folder: null, docs: ungrouped })
-  for (const f of folders.value) {
-    result.push({ folder: f, docs: visible.filter((d) => d.folderId === f.id) })
+  if (activeLibraryId.value) {
+    const libId = activeLibraryId.value
+    const libDocs = visible.filter((d) => d.libraryId === libId)
+    const tree = folderTree(libId)
+    const inTree = new Set(tree.map((t) => t.folder.id))
+    const result: DocGroup[] = [
+      { folder: null, docs: libDocs.filter((d) => !d.folderId || !inTree.has(d.folderId)) },
+    ]
+    for (const t of tree) {
+      if (t.hidden) continue
+      result.push({
+        folder: t.folder,
+        docs: libDocs.filter((d) => d.folderId === t.folder.id),
+        depth: t.depth,
+      })
+    }
+    return result
   }
-  return result
+  return [{ folder: null, docs: visible.filter((d) => !d.libraryId) }]
 })
 
 // ---- 文档类型 / 数据兜底 ----
@@ -280,6 +333,7 @@ function normalizeDoc(d: any): DocItem {
     content: String(d.content || ''),
     updatedAt: Number(d.updatedAt) || Date.now(),
     createdAt: Number(d.createdAt) || Number(d.updatedAt) || Date.now(),
+    libraryId: d.libraryId ? String(d.libraryId) : undefined,
     folderId: d.folderId ? String(d.folderId) : undefined,
     author: d.author ? String(d.author) : undefined,
     authorAvatar: d.authorAvatar ? String(d.authorAvatar) : d.avatarUrl ? String(d.avatarUrl) : undefined,
@@ -294,8 +348,21 @@ function normalizeFolder(f: any): DocFolder {
   return {
     id: String(f.id),
     name: String(f.name || '未命名文件夹'),
+    libraryId: String(f.libraryId || ''),
+    parentId: f.parentId ? String(f.parentId) : undefined,
     createdAt: Number(f.createdAt) || Date.now(),
     starred: !!f.starred,
+  }
+}
+
+function normalizeLibrary(l: any): DocLibrary {
+  return {
+    id: String(l.id),
+    name: String(l.name || '未命名知识库'),
+    desc: l.desc ? String(l.desc) : undefined,
+    visibility: l.visibility === 'all' ? 'all' : 'members',
+    createdAt: Number(l.createdAt) || Date.now(),
+    starred: !!l.starred,
   }
 }
 
@@ -309,12 +376,21 @@ const ownerKey = computed(() => getLoginUsername() || 'anonymous')
 async function loadDocs() {
   loading.value = true
   try {
-    const [fRes, dRes, tRes] = await Promise.all([listDocFolders(), listDocsApi(), listTrashDocs()])
+    const [lRes, fRes, dRes, tRes] = await Promise.all([
+      // 知识库接口失败不影响文档 / 文件夹列表加载
+      listDocLibraries().catch(() => null),
+      listDocFolders(),
+      listDocsApi(),
+      listTrashDocs(),
+    ])
+    if (lRes?.success) libraries.value = (lRes.data || []).map(normalizeLibrary)
     if (fRes.success) folders.value = (fRes.data || []).map(normalizeFolder)
     if (dRes.success) docs.value = (dRes.data || []).map(normalizeDoc)
     if (tRes.success) trash.value = (tRes.data || []).map(normalizeDoc)
     // 默认展开全部文件夹
     for (const f of folders.value) expanded[f.id] = expanded[f.id] ?? true
+    // 打开的知识库已被删除 / 不存在时回到知识库列表
+    if (activeLibraryId.value && !libraries.value.some((l) => l.id === activeLibraryId.value)) activeLibraryId.value = ''
     // 从 URL 恢复当前文档；没有则停留在列表页
     const target = routeDocId.value
     // 新页面直接打开文档时，列表里可能还没有这篇（或列表只返回摘要）：按 id 拉一次详情
@@ -496,7 +572,11 @@ function createDoc(type: DocType = 'doc', folderId?: string) {
       : type === 'mindmap' ? defaultMindmap()
         : type === 'flow' ? { graph: null }
           : localAuthorMeta()
-  createDocApi({ title: DOC_TYPE_TITLE[type], type, folderId: folderId || undefined, data })
+  // 文件夹必然属于某个知识库；不在文件夹内时，若正打开知识库则新建到该库根目录，否则为个人文档
+  const libraryId = folderId
+    ? folders.value.find((f) => f.id === folderId)?.libraryId
+    : activeLibraryId.value || undefined
+  createDocApi({ title: DOC_TYPE_TITLE[type], type, libraryId: libraryId || undefined, folderId: folderId || undefined, data })
     .then((res) => {
       if (!res.success || !res.data) return
       const doc = normalizeDoc(res.data)
@@ -543,7 +623,14 @@ function escapeAttr(s: string): string {
 
 /** 新建并写入标题 / 内容（上传文件、模板库共用） */
 function createDocWithContent(type: DocType, title: string, content: string) {
-  createDocApi({ type, title, content, data: type === 'doc' ? localAuthorMeta() : undefined })
+  createDocApi({
+    type,
+    title,
+    content,
+    libraryId: activeLibraryId.value || undefined,
+    folderId: activeFolderId.value || undefined,
+    data: type === 'doc' ? localAuthorMeta() : undefined,
+  })
     .then((res) => {
       if (!res.success || !res.data) return
       const doc = normalizeDoc(res.data)
@@ -646,7 +733,9 @@ function backToList() {
 /** 切换左侧导航：主页（/docs/drive/home）、知识库（/docs/wiki）等 */
 function switchNav(mode: 'recent' | 'owned' | 'shared' | 'starred' | 'library' | 'trash') {
   navMode.value = mode
-  if (mode === 'recent' || mode === 'owned' || mode === 'shared') activeFolderId.value = ''
+  // 切换任何导航都回到该导航的顶层（知识库列表 / 主页列表），不保留库内的选中状态
+  activeLibraryId.value = ''
+  activeFolderId.value = ''
   activeId.value = ''
   const target = mode === 'library' ? 'DocsWiki' : 'DocsHome'
   if (route.name !== target) router.push({ name: target })
@@ -662,12 +751,13 @@ watch(
   { immediate: true },
 )
 
-// 顶栏"+"新建：文档 / 表格 / 思维导图 / 流程图（其余类型暂未开放，顶栏已提示）
+// 顶栏"+"新建：文档 / 表格 / 思维导图 / 流程图 / 知识库（其余类型暂未开放，顶栏已提示）
 watch(
   () => docsCreateRequest.value.seq,
   () => {
     const type = docsCreateRequest.value.type
-    if (['doc', 'sheet', 'mindmap', 'flow'].includes(type)) createDoc(type as DocType, activeFolderId.value || undefined)
+    if (type === 'wiki') openCreateLibrary()
+    else if (['doc', 'sheet', 'mindmap', 'flow'].includes(type)) createDoc(type as DocType, activeFolderId.value || undefined)
   },
 )
 
@@ -695,35 +785,72 @@ watch(
 )
 
 /** 置顶文档 / 置顶知识库 */
+/** 打开知识库时只置顶该库内的文档，且不再列出其它知识库 */
 const pinnedDocs = computed(() =>
-  docs.value.filter((d) => d.starred).sort((a, b) => b.updatedAt - a.updatedAt),
+  docs.value
+    .filter((d) => d.starred && (!activeLibraryId.value || d.libraryId === activeLibraryId.value))
+    .sort((a, b) => b.updatedAt - a.updatedAt),
 )
-const pinnedFolders = computed(() => folders.value.filter((f) => f.starred))
+const pinnedLibraries = computed(() =>
+  activeLibraryId.value ? [] : libraries.value.filter((l) => l.starred),
+)
 
 /** 知识库搜索 */
 const libraryKeyword = ref('')
-const libraryFolders = computed(() => {
+/** 左侧「知识库」下方的知识库列表是否展开 */
+const libNavOpen = ref(true)
+/** 知识库首页视图（卡片 / 列表） */
+const libraryView = ref<'grid' | 'list'>('grid')
+
+/** 知识库卡片里展示的最近文档（按修改时间倒序，最多 3 篇） */
+function recentDocsOf(libraryId: string): DocItem[] {
+  return docs.value
+    .filter((d) => d.libraryId === libraryId)
+    .sort((a, b) => b.updatedAt - a.updatedAt)
+    .slice(0, 3)
+}
+const libraryList = computed(() => {
   const kw = libraryKeyword.value.trim().toLowerCase()
-  return kw ? folders.value.filter((f) => f.name.toLowerCase().includes(kw)) : folders.value
+  return kw ? libraries.value.filter((l) => l.name.toLowerCase().includes(kw)) : libraries.value
 })
 
-function docsOfFolder(folder: DocFolder): number {
-  return docs.value.filter((d) => d.folderId === folder.id).length
+function docsOfLibrary(lib: DocLibrary): number {
+  return docs.value.filter((d) => d.libraryId === lib.id).length
 }
 
-/** 从知识库视图打开某个知识库（文件夹） */
-function openLibrary(folder: DocFolder) {
-  activeFolderId.value = folder.id
-  navMode.value = 'recent'
-  backToList()
+/** 当前知识库 */
+const activeLibrary = computed(() => libraries.value.find((l) => l.id === activeLibraryId.value) || null)
+/** 当前选中的知识库内文件夹 */
+const activeFolder = computed(() => folders.value.find((f) => f.id === activeFolderId.value) || null)
+
+/** 移动菜单中的文件夹显示：「知识库 / 上级文件夹 / 文件夹」 */
+function folderPathLabel(folder: DocFolder): string {
+  const parts: string[] = [folder.name]
+  let cur = folder
+  for (let i = 0; i < 10 && cur.parentId; i++) {
+    const p = folders.value.find((f) => f.id === cur.parentId)
+    if (!p) break
+    parts.unshift(p.name)
+    cur = p
+  }
+  const lib = libraries.value.find((l) => l.id === folder.libraryId)
+  return [lib?.name || '未命名知识库', ...parts].join(' / ')
 }
 
-/** 列表首页数据：搜索 + 收藏筛选 + 当前文件夹过滤 + 排序 */
+/** 打开某个知识库：跳转到知识库独立页面（自己的左侧菜单 + 主内容） */
+function openLibrary(lib: DocLibrary) {
+  activeLibraryId.value = ''
+  router.push({ name: 'DocsLibrary', params: { libraryId: lib.id } })
+}
+
+/** 列表首页数据：搜索 + 收藏筛选 + 知识库 / 文件夹范围 + 排序 */
 const listDocs = computed(() => {
   const kw = keyword.value.trim().toLowerCase()
   let list = docs.value
   if (navMode.value === 'starred') list = list.filter((d) => d.starred)
-  else if (navMode.value === 'shared' || navMode.value === 'library') list = []
+  else if (navMode.value === 'shared') list = []
+  else if (navMode.value === 'library') list = activeLibraryId.value ? list.filter((d) => d.libraryId === activeLibraryId.value) : []
+  else list = list.filter((d) => !d.libraryId)
   if (activeFolderId.value) list = list.filter((d) => d.folderId === activeFolderId.value)
   const matched = list.filter((d) => {
     if (!kw) return true
@@ -869,14 +996,18 @@ function emptyTrash() {
   })
 }
 
-async function moveDoc(doc: DocItem, folderId: string) {
-  const target = folderId === 'none' ? undefined : folderId
+/** 移动文档：target 为文件夹 id（所属知识库随文件夹走）；'none' 表示移出知识库，变为个人文档 */
+async function moveDoc(doc: DocItem, target: string) {
+  const folder = target === 'none' ? undefined : folders.value.find((f) => f.id === target)
+  if (target !== 'none' && !folder) return
+  const libraryId = folder ? folder.libraryId : undefined
   try {
-    const res = await moveDocApi({ id: doc.id, folderId: target || null })
+    const res = await moveDocApi({ id: doc.id, libraryId: libraryId || null, folderId: folder?.id || null })
     if (!res.success) return
-    doc.folderId = target
+    doc.libraryId = libraryId
+    doc.folderId = folder?.id
     doc.updatedAt = res.data?.updatedAt || doc.updatedAt
-    if (doc.folderId) expanded[doc.folderId] = true
+    if (folder) expanded[folder.id] = true
   } catch {}
 }
 
@@ -887,13 +1018,20 @@ function onDocMenu(e: { key?: string | number }, doc: DocItem) {
   else if (key.startsWith('move:')) moveDoc(doc, key.slice(5))
 }
 
-// ---- 文件夹操作 ----
+// ---- 文件夹 / 知识库名称弹窗（新建 / 重命名共用） ----
 const folderModalOpen = ref(false)
-const folderForm = reactive({ id: '', name: '' })
+/** kind：library 为知识库，folder 为文件夹；parentId 为新建时的父文件夹（空 = 知识库根目录） */
+const folderForm = reactive({ id: '', name: '', kind: 'folder' as 'folder' | 'library' })
 
+/** 在当前知识库内新建文件夹；若已选中某个文件夹，则嵌套到它下面 */
 function openCreateFolder() {
+  if (!activeLibraryId.value) {
+    message.info('请先进入一个知识库再新建文件夹')
+    return
+  }
   folderForm.id = ''
   folderForm.name = ''
+  folderForm.kind = 'folder'
   folderModalOpen.value = true
 }
 
@@ -939,13 +1077,17 @@ async function submitLibraryInfo() {
   if (libraryInfoSubmitting.value) return
   libraryInfoSubmitting.value = true
   try {
-    const res = await createDocFolder({ name })
+    const res = await createDocLibrary({
+      name,
+      desc: libraryInfoForm.desc.trim() || undefined,
+      visibility: libraryInfoForm.visibility,
+    })
     if (!res.success || !res.data) return
-    const folder = normalizeFolder(res.data)
-    folders.value.push(folder)
-    expanded[folder.id] = true
-    activeFolderId.value = folder.id
+    const lib = normalizeLibrary(res.data)
+    libraries.value.push(lib)
     libraryInfoOpen.value = false
+    // 新建后直接进入该知识库
+    openLibrary(lib)
   } finally {
     libraryInfoSubmitting.value = false
   }
@@ -958,13 +1100,32 @@ function onLibraryFeedback() {
 function openRenameFolder(folder: DocFolder) {
   folderForm.id = folder.id
   folderForm.name = folder.name
+  folderForm.kind = 'folder'
+  folderModalOpen.value = true
+}
+
+function openRenameLibrary(lib: DocLibrary) {
+  folderForm.id = lib.id
+  folderForm.name = lib.name
+  folderForm.kind = 'library'
   folderModalOpen.value = true
 }
 
 function submitFolder() {
   const name = folderForm.name.trim()
   if (!name) {
-    message.warning('请输入文件夹名称')
+    message.warning(folderForm.kind === 'library' ? '请输入知识库名称' : '请输入文件夹名称')
+    return
+  }
+  if (folderForm.kind === 'library') {
+    updateDocLibrary({ id: folderForm.id, name })
+      .then((res) => {
+        if (!res.success) return
+        const l = libraries.value.find((x) => x.id === folderForm.id)
+        if (l) l.name = name
+        folderModalOpen.value = false
+      })
+      .catch(() => {})
     return
   }
   if (folderForm.id) {
@@ -977,12 +1138,18 @@ function submitFolder() {
       })
       .catch(() => {})
   } else {
-    createDocFolder({ name })
+    if (!activeLibraryId.value) return
+    createDocFolder({
+      name,
+      libraryId: activeLibraryId.value,
+      parentId: activeFolderId.value || undefined,
+    })
       .then((res) => {
         if (!res.success || !res.data) return
         const folder = normalizeFolder(res.data)
         folders.value.push(folder)
         expanded[folder.id] = true
+        if (folder.parentId) expanded[folder.parentId] = true
         activeFolderId.value = folder.id
         folderModalOpen.value = false
       })
@@ -990,10 +1157,53 @@ function submitFolder() {
   }
 }
 
+/** 知识库置顶 / 取消置顶 */
+function toggleStarLibrary(lib: DocLibrary) {
+  const next = !lib.starred
+  starDocLibrary({ id: lib.id, starred: next })
+    .then((res) => {
+      if (res.success) lib.starred = next
+    })
+    .catch(() => {})
+}
+
+/** 删除知识库：库内文档保留，移为个人文档（不删除文档） */
+function deleteLibrary(lib: DocLibrary) {
+  Modal.confirm({
+    title: `删除知识库「${lib.name}」`,
+    content: '知识库内的文件夹会一并删除，文档会移到个人文档，不会删除文档。',
+    okText: '删除',
+    okType: 'danger',
+    cancelText: '取消',
+    onOk: async () => {
+      try {
+        const res = await deleteDocLibrary(lib.id)
+        if (!res.success) return
+        docs.value.forEach((d) => {
+          if (d.libraryId === lib.id) {
+            d.libraryId = undefined
+            d.folderId = undefined
+          }
+        })
+        folders.value = folders.value.filter((f) => f.libraryId !== lib.id)
+        libraries.value = libraries.value.filter((l) => l.id !== lib.id)
+        if (activeLibraryId.value === lib.id) activeLibraryId.value = ''
+      } catch {}
+    },
+  })
+}
+
+function onLibraryMenu(e: { key?: string | number }, lib: DocLibrary) {
+  const key = String(e?.key ?? '')
+  if (key === 'star') toggleStarLibrary(lib)
+  else if (key === 'rename') openRenameLibrary(lib)
+  else if (key === 'delete') deleteLibrary(lib)
+}
+
 function deleteFolder(folder: DocFolder) {
   Modal.confirm({
     title: `删除文件夹「${folder.name}」`,
-    content: '文件夹内的文档会移到未分组，不会删除文档。',
+    content: '文件夹内的文档和子文件夹会移到上一级，不会删除文档。',
     okText: '删除',
     okType: 'danger',
     cancelText: '取消',
@@ -1001,9 +1211,12 @@ function deleteFolder(folder: DocFolder) {
       try {
         const res = await deleteDocFolder(folder.id)
         if (!res.success) return
-        // 文件夹内文档移到未分组（后端同步把 folderId 置空）
+        // 文档和子文件夹上移一级（上一级为空则到知识库根目录）；与后端约定一致
         docs.value.forEach((d) => {
-          if (d.folderId === folder.id) d.folderId = undefined
+          if (d.folderId === folder.id) d.folderId = folder.parentId
+        })
+        folders.value.forEach((f) => {
+          if (f.parentId === folder.id) f.parentId = folder.parentId
         })
         folders.value = folders.value.filter((f) => f.id !== folder.id)
         if (activeFolderId.value === folder.id) activeFolderId.value = ''
@@ -1080,7 +1293,10 @@ const DOC_TEMPLATE_CATEGORIES = [
 
 /** 新建到哪个文档库 */
 const docTemplateTargetName = computed(
-  () => folders.value.find((f) => f.id === activeFolderId.value)?.name || '我的文档库',
+  () =>
+    folders.value.find((f) => f.id === activeFolderId.value)?.name
+    || activeLibrary.value?.name
+    || '我的文档库',
 )
 
 function openDocTemplate(type: DocType) {
@@ -5857,15 +6073,39 @@ function folderNameOf(doc: DocItem | null): string {
           <HomeOutlined />
           <span>{{ tr('主页', 'Home') }}</span>
         </button>
-        <button type="button" class="docs-nav-item" :class="{ active: navMode === 'library' }" @click="switchNav('library')">
-          <ReadOutlined />
-          <span>{{ tr('知识库', 'Wiki') }}</span>
-        </button>
+        <div class="docs-nav-row">
+          <button type="button" class="docs-nav-item" :class="{ active: navMode === 'library' && !activeLibraryId }" @click="switchNav('library')">
+            <ReadOutlined />
+            <span>{{ tr('知识库', 'Wiki') }}</span>
+          </button>
+          <span
+            class="docs-nav-caret"
+            :class="{ open: libNavOpen }"
+            :title="libNavOpen ? '收起知识库' : '展开知识库'"
+            @click="libNavOpen = !libNavOpen"
+          ><RightOutlined /></span>
+        </div>
+        <!-- 知识库列表：新建的知识库直接展示在「知识库」下方，点击进入 -->
+        <div v-if="libNavOpen" class="docs-nav-libs">
+          <button
+            v-for="l in libraries"
+            :key="l.id"
+            type="button"
+            class="docs-nav-sub"
+            :class="{ active: activeLibraryId === l.id }"
+            :title="l.name"
+            @click="openLibrary(l)"
+          >
+            <span class="docs-nav-sub-name">{{ l.name }}</span>
+          </button>
+
+          <div v-if="!libraries.length" class="docs-nav-sub-empty">暂无知识库</div>
+        </div>
       </nav>
 
       <div class="docs-list">
         <!-- 置顶：文档 + 知识库，左右两列分布 -->
-        <div v-if="pinnedDocs.length || pinnedFolders.length" class="docs-group">
+        <div v-if="pinnedDocs.length || pinnedLibraries.length" class="docs-group">
           <div class="docs-group-title">{{ tr('置顶', 'Pinned') }}</div>
           <div class="docs-pinned-grid">
             <button
@@ -5881,30 +6121,39 @@ function folderNameOf(doc: DocItem | null): string {
               <span class="docs-pinned-name">{{ d.title || '无标题文档' }}</span>
             </button>
             <div
-              v-for="f in pinnedFolders"
-              :key="`pinf-${f.id}`"
+              v-for="l in pinnedLibraries"
+              :key="`pinl-${l.id}`"
               class="docs-pinned-item"
-              :title="f.name"
-              @click="openLibrary(f)"
+              :title="l.name"
+              @click="openLibrary(l)"
             >
-              <DocTypeIcon type="folder" mono />
-              <span class="docs-pinned-name">{{ f.name }}</span>
+              <DocsLibraryCover class="docs-pinned-cover" :name="l.name" />
+              <span class="docs-pinned-name">{{ l.name }}</span>
             </div>
           </div>
         </div>
 
-        <!-- 我的文档库 -->
-        <div class="docs-group-title docs-group-title-main docs-collapsible" @click="myDocsCollapsed = !myDocsCollapsed">
-          <span>{{ tr('我的文档库', 'My docs') }}</span>
+        <!-- 打开知识库时：返回知识库列表 + 库名；否则为个人文档 -->
+        <div
+          v-if="activeLibrary"
+          class="docs-library-head"
+          @click="switchNav('library')"
+        >
+          <LeftOutlined class="docs-library-back" />
+          <span class="docs-library-head-name">{{ activeLibrary.name }}</span>
+        </div>
+        <div v-else class="docs-group-title docs-group-title-main docs-collapsible" @click="myDocsCollapsed = !myDocsCollapsed">
+          <span>{{ tr('个人文档', 'My docs') }}</span>
           <span class="docs-group-caret" :class="{ open: !myDocsCollapsed }"><RightOutlined /></span>
         </div>
 
-        <template v-for="g in myDocsCollapsed ? [] : groups" :key="g.folder?.id || '__ungrouped__'">
-          <!-- 文件夹标题 -->
+        <template v-for="g in myDocsCollapsed && !activeLibrary ? [] : groups" :key="g.folder?.id || '__ungrouped__'">
+          <!-- 文件夹标题（知识库内的目录，可嵌套） -->
           <div
             v-if="g.folder"
             class="docs-folder"
             :class="{ active: activeFolderId === g.folder.id }"
+            :style="{ paddingLeft: `${8 + (g.depth || 0) * 14}px` }"
             @click="selectFolder(g.folder)"
           >
             <span class="docs-folder-caret" :class="{ open: expanded[g.folder.id] }"><RightOutlined /></span>
@@ -5947,8 +6196,8 @@ function folderNameOf(doc: DocItem | null): string {
                   <a-menu @click="onDocMenu($event, d)">
                     <a-menu-item key="star">{{ d.starred ? '取消收藏' : '收藏' }}</a-menu-item>
                     <a-sub-menu key="move" title="移动到">
-                      <a-menu-item key="move:none">未分组</a-menu-item>
-                      <a-menu-item v-for="f in folders" :key="`move:${f.id}`">{{ f.name }}</a-menu-item>
+                      <a-menu-item key="move:none">个人文档（移出知识库）</a-menu-item>
+                      <a-menu-item v-for="f in folders" :key="`move:${f.id}`">{{ folderPathLabel(f) }}</a-menu-item>
                     </a-sub-menu>
                     <a-menu-item key="delete" danger>删除</a-menu-item>
                   </a-menu>
@@ -6805,122 +7054,144 @@ function folderNameOf(doc: DocItem | null): string {
       </div>
 
       <!-- 知识库列表 -->
-      <div v-else-if="navMode === 'library'" class="docs-home docs-home-main">
-        <!-- 快捷入口：新建 / 模板库 / 新建知识库 -->
-        <div class="docs-quick-cards">
-          <a-dropdown
-            v-model:open="addOpen"
-            :trigger="['hover', 'click']"
-            placement="bottomLeft"
-            overlay-class-name="docs-add-popover"
-          >
-            <button type="button" class="docs-quick-card" style="order: 1" :class="{ 'is-open': addOpen }">
-              <span class="docs-quick-icon is-new"><PlusOutlined /></span>
-              <span class="docs-quick-text"><b>新建</b><small>新建文档开始协作</small></span>
-              <DownOutlined class="docs-quick-caret" />
-            </button>
-            <template #overlay>
-              <div class="docs-add-panel" @mousedown.stop>
-                <button
-                  v-for="it in ADD_TYPE_ITEMS"
-                  :key="it.key"
-                  type="button"
-                  class="docs-add-item"
-                  @click="onAddItem(it.key)"
-                >
-                  <DocTypeIcon :type="it.key" size="md" />
-                  <span>{{ it.label }}</span>
-                </button>
-                <div class="docs-add-divider" />
-                <button type="button" class="docs-add-item" @click="onAddItem('folder')">
-                  <DocTypeIcon type="folder" size="md" />
-                  <span>文件夹</span>
-                </button>
-                <div class="docs-add-divider" />
-                <div class="docs-add-section">文档应用</div>
-                <button
-                  v-for="it in ADD_APP_ITEMS"
-                  :key="it.key"
-                  type="button"
-                  class="docs-add-item"
-                  @click="onAddItem(it.key)"
-                >
-                  <DocTypeIcon :type="it.key" size="md" />
-                  <span>{{ it.label }}</span>
-                </button>
-              </div>
-            </template>
-          </a-dropdown>
+      <div v-else-if="navMode === 'library' && !activeLibraryId" class="docs-home docs-home-main docs-lib-home">
+        <div class="docs-lib-home-bar">
+          <div class="docs-lib-home-label">全部知识库</div>
 
-          <a-dropdown
-            v-model:open="templateOpen"
-            :trigger="['hover', 'click']"
-            placement="bottomLeft"
-            overlay-class-name="docs-add-popover"
-          >
-            <button type="button" class="docs-quick-card" style="order: 3" :class="{ 'is-open': templateOpen }">
-              <span class="docs-quick-icon is-template"><AppstoreOutlined /></span>
-              <span class="docs-quick-text"><b>模板库</b><small>选择模板快速新建</small></span>
-              <DownOutlined class="docs-quick-caret" />
-            </button>
-            <template #overlay>
-              <div class="docs-add-panel" @mousedown.stop>
-                <button
-                  v-for="it in TEMPLATE_ITEMS"
-                  :key="it.key"
-                  type="button"
-                  class="docs-add-item"
-                  @click="onTemplateItem(it.key)"
-                >
-                  <span class="docs-add-icon" :class="`is-${it.key}`">
-                    <component :is="it.icon" />
-                  </span>
-                  <span>{{ it.label }}</span>
-                </button>
-              </div>
-            </template>
-          </a-dropdown>
-
-          <button type="button" class="docs-quick-card" @click="openCreateLibrary">
-            <span class="docs-quick-icon is-newlib"><FolderFilled /></span>
-            <span class="docs-quick-text"><b>新建知识库</b><small>让知识创造价值</small></span>
-          </button>
-        </div>
-
-        <div class="docs-library-toolbar">
-          <div class="docs-library-heading">
-            <span>全部知识库</span>
-            <ControlOutlined class="docs-library-filter" />
+          <div class="docs-lib-home-actions">
+            <a-input
+              v-model:value="libraryKeyword"
+              allow-clear
+              placeholder="搜索知识库"
+              class="docs-lib-search"
+            >
+              <template #prefix><SearchOutlined class="docs-library-search-icon" /></template>
+            </a-input>
+            <a-dropdown trigger="click" placement="bottomRight">
+              <button type="button" class="docs-lib-add" title="新建">
+                <PlusOutlined />
+                <DownOutlined class="docs-lib-add-caret" />
+              </button>
+              <template #overlay>
+                <a-menu>
+                  <a-menu-item key="new-library" @click="openCreateLibrary()">新建知识库</a-menu-item>
+                </a-menu>
+              </template>
+            </a-dropdown>
+            <div class="docs-lib-views" role="group" aria-label="视图">
+              <button
+                type="button"
+                class="docs-lib-view-btn"
+                :class="{ active: libraryView === 'grid' }"
+                title="卡片视图"
+                @click="libraryView = 'grid'"
+              ><AppstoreOutlined /></button>
+              <button
+                type="button"
+                class="docs-lib-view-btn"
+                :class="{ active: libraryView === 'list' }"
+                title="列表视图"
+                @click="libraryView = 'list'"
+              ><UnorderedListOutlined /></button>
+            </div>
           </div>
-          <a-input
-            v-model:value="libraryKeyword"
-            allow-clear
-            placeholder="搜索知识库"
-            class="docs-library-search"
-          >
-            <template #prefix><SearchOutlined class="docs-library-search-icon" /></template>
-          </a-input>
         </div>
 
-        <div class="docs-library-grid">
-          <button
-            v-for="f in libraryFolders"
-            :key="f.id"
-            type="button"
-            class="docs-library-card"
-            @click="openLibrary(f)"
-          >
-            <DocsLibraryCover class="docs-library-cover" :name="f.name" />
-            <span class="docs-library-cover-title">{{ f.name }}</span>
-            <span class="docs-library-cover-meta">{{ docsOfFolder(f) }} 篇文档</span>
-          </button>
-        </div>
-        <div v-if="!folders.length" class="docs-home-empty">还没有知识库，点击上方卡片新建</div>
-        <div v-else-if="!libraryFolders.length" class="docs-home-empty">没有匹配的知识库</div>
+        <!-- 卡片视图：图标 + 名称 + 可见范围锁 + 最近文档 -->
+          <div v-if="libraryView === 'grid'" class="docs-lib-cards">
+            <div
+              v-for="l in libraryList"
+              :key="l.id"
+              role="button"
+              tabindex="0"
+              class="docs-lib-card"
+              @click="openLibrary(l)"
+              @keydown.enter="openLibrary(l)"
+            >
+              <div class="docs-lib-card-head">
+                <ReadOutlined class="docs-lib-card-book" />
+                <span class="docs-lib-card-name">{{ l.name }}</span>
+                <LockOutlined v-if="l.visibility === 'members'" class="docs-lib-card-lock" title="仅成员可见" />
+                <a-dropdown trigger="click" placement="bottomRight" @click.stop>
+                  <span class="docs-lib-card-more" @click.stop><MoreOutlined /></span>
+                  <template #overlay>
+                    <a-menu @click="onLibraryMenu($event, l)">
+                      <a-menu-item key="star">{{ l.starred ? '取消置顶' : '置顶' }}</a-menu-item>
+                      <a-menu-item key="rename">重命名</a-menu-item>
+                      <a-menu-item key="delete" danger>删除知识库</a-menu-item>
+                    </a-menu>
+                  </template>
+                </a-dropdown>
+              </div>
+              <ul class="docs-lib-recent">
+                <li v-for="d in recentDocsOf(l.id)" :key="d.id" class="docs-lib-recent-item">
+                  <span class="docs-lib-recent-title">{{ d.title || '无标题文档' }}</span>
+                  <span class="docs-lib-recent-time">{{ formatSmartTime(d.updatedAt) }}</span>
+                </li>
+                <li v-if="!recentDocsOf(l.id).length" class="docs-lib-recent-empty">暂无文档</li>
+              </ul>
+            </div>
+            <!-- 新建知识库：放在列表底部 -->
+            <button type="button" class="docs-lib-card docs-lib-card-new" @click="openCreateLibrary()">
+              <PlusOutlined class="docs-lib-card-new-icon" />
+              <span>新建知识库</span>
+            </button>
+          </div>
+
+          <!-- 列表视图：一行一个知识库 -->
+          <div v-else class="docs-lib-rows">
+            <div
+              v-for="l in libraryList"
+              :key="l.id"
+              role="button"
+              tabindex="0"
+              class="docs-lib-row"
+              @click="openLibrary(l)"
+              @keydown.enter="openLibrary(l)"
+            >
+              <ReadOutlined class="docs-lib-card-book" />
+              <span class="docs-lib-row-name">{{ l.name }}</span>
+              <LockOutlined v-if="l.visibility === 'members'" class="docs-lib-card-lock" title="仅成员可见" />
+              <span class="docs-lib-row-meta">{{ docsOfLibrary(l) }} 篇文档</span>
+              <span class="docs-lib-row-meta">{{ formatSmartTime(l.createdAt) }}</span>
+              <a-dropdown trigger="click" placement="bottomRight" @click.stop>
+                <span class="docs-lib-card-more" @click.stop><MoreOutlined /></span>
+                <template #overlay>
+                  <a-menu @click="onLibraryMenu($event, l)">
+                    <a-menu-item key="star">{{ l.starred ? '取消置顶' : '置顶' }}</a-menu-item>
+                    <a-menu-item key="rename">重命名</a-menu-item>
+                    <a-menu-item key="delete" danger>删除知识库</a-menu-item>
+                  </a-menu>
+                </template>
+              </a-dropdown>
+            </div>
+            <!-- 新建知识库：放在列表底部 -->
+            <button type="button" class="docs-lib-row docs-lib-row-new" @click="openCreateLibrary()">
+              <PlusOutlined />
+              <span>新建知识库</span>
+            </button>
+          </div>
+
+          <div v-if="!libraries.length" class="docs-home-empty">还没有知识库，点击右上角「+」新建</div>
+          <div v-else-if="!libraryList.length" class="docs-home-empty">没有匹配的知识库</div>
       </div>
 
       <!-- 文档列表首页 -->
       <div v-else class="docs-home docs-home-main">
+        <!-- 知识库内部：面包屑（知识库 / 库名 / 文件夹），与个人主页区分 -->
+        <nav v-if="activeLibrary" class="docs-lib-crumb" aria-label="知识库路径">
+          <span class="docs-lib-crumb-link" @click="switchNav('library')">知识库</span>
+          <span class="docs-lib-crumb-sep">/</span>
+          <span
+            class="docs-lib-crumb-link"
+            :class="{ 'is-current': !activeFolder }"
+            @click="activeFolderId = ''"
+          >{{ activeLibrary.name }}</span>
+          <template v-if="activeFolder">
+            <span class="docs-lib-crumb-sep">/</span>
+            <span class="docs-lib-crumb-link is-current">{{ activeFolder.name }}</span>
+          </template>
+        </nav>
         <!-- 快捷入口（参考飞书首页）：第一行 新建文档 / 新建知识库 / 模板中心 / 百宝箱；第二行 AI 对话写文档 / 语雀 Board / 上传 -->
         <div class="docs-quick-cards">
           <a-dropdown
@@ -7024,7 +7295,7 @@ function folderNameOf(doc: DocItem | null): string {
               </div>
             </template>
           </a-dropdown>
-          <button type="button" class="docs-quick-card" style="order: 2" @click="openCreateLibrary">
+          <button v-if="!activeLibrary" type="button" class="docs-quick-card" style="order: 2" @click="openCreateLibrary">
             <span class="docs-quick-icon is-newlib"><ReadOutlined /></span>
             <span class="docs-quick-text"><b>新建知识库</b><small>使用知识库整理知识</small></span>
           </button>
@@ -7077,8 +7348,8 @@ function folderNameOf(doc: DocItem | null): string {
                     <a-menu @click="onDocMenu($event, d)">
                       <a-menu-item key="star">{{ d.starred ? '取消收藏' : '收藏' }}</a-menu-item>
                       <a-sub-menu key="move" title="移动到">
-                        <a-menu-item key="move:none">未分组</a-menu-item>
-                        <a-menu-item v-for="f in folders" :key="`move:${f.id}`">{{ f.name }}</a-menu-item>
+                        <a-menu-item key="move:none">个人文档（移出知识库）</a-menu-item>
+                        <a-menu-item v-for="f in folders" :key="`move:${f.id}`">{{ folderPathLabel(f) }}</a-menu-item>
                       </a-sub-menu>
                       <a-menu-item key="delete" danger>删除</a-menu-item>
                     </a-menu>
@@ -7106,7 +7377,7 @@ function folderNameOf(doc: DocItem | null): string {
     <!-- 新建 / 重命名文件夹 -->
     <a-modal
       v-model:open="folderModalOpen"
-      :title="folderForm.id ? '重命名文件夹' : '新建文件夹'"
+      :title="folderForm.kind === 'library' ? '重命名知识库' : folderForm.id ? '重命名文件夹' : '新建文件夹'"
       :width="360"
       centered
       :footer="null"
@@ -7115,7 +7386,7 @@ function folderNameOf(doc: DocItem | null): string {
     >
       <a-input
         v-model:value="folderForm.name"
-        placeholder="文件夹名称"
+        :placeholder="folderForm.kind === 'library' ? '知识库名称' : '文件夹名称'"
         :maxlength="30"
         @press-enter="submitFolder"
       />
@@ -8086,6 +8357,26 @@ function folderNameOf(doc: DocItem | null): string {
   box-shadow: 0 10px 24px rgba(15, 23, 42, 0.1);
   transform: translateY(-2px);
 }
+/* 知识库卡片右上角的更多菜单（置顶 / 重命名 / 删除） */
+.docs-library-more {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  color: var(--docs-text-2);
+  background: rgba(255, 255, 255, 0.85);
+  cursor: pointer;
+}
+.docs-library-more:hover {
+  color: var(--docs-text);
+  background: #fff;
+}
 /* 插画铺满卡片；顶部 / 底部加一层淡白渐变，保证标题和文档数可读 */
 .docs-library-cover {
   position: absolute;
@@ -8154,6 +8445,79 @@ function folderNameOf(doc: DocItem | null): string {
 .docs-nav-item :deep(.anticon) {
   font-size: 16px;
   color: var(--docs-text-2);
+}
+/* 「知识库」行：导航按钮 + 右侧展开箭头 */
+.docs-nav-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.docs-nav-row > .docs-nav-item {
+  flex: 1;
+  min-width: 0;
+}
+.docs-nav-caret {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  font-size: 11px;
+  color: var(--docs-text-3);
+  border-radius: var(--docs-radius);
+  cursor: pointer;
+  transition: transform 0.15s, background 0.12s;
+}
+.docs-nav-caret:hover {
+  background: var(--docs-hover);
+  color: var(--docs-text);
+}
+.docs-nav-caret.open {
+  transform: translateY(-50%) rotate(90deg);
+}
+/* 知识库下的列表（缩进） */
+.docs-nav-libs {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-left: 14px;
+}
+.docs-nav-sub {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  height: 30px;
+  padding: 0 10px;
+  font-size: 14px;
+  color: var(--docs-text-2);
+  text-align: left;
+  background: transparent;
+  border: none;
+  border-radius: var(--docs-radius);
+  cursor: pointer;
+}
+.docs-nav-sub:hover {
+  background: var(--docs-hover);
+  color: var(--docs-text);
+}
+.docs-nav-sub.active {
+  color: var(--docs-selected-fg);
+  background: var(--docs-selected);
+}
+.docs-nav-sub-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.docs-nav-sub-empty {
+  padding: 4px 10px;
+  font-size: 13px;
+  color: var(--docs-text-3);
 }
 .docs-nav-item:hover {
   background: var(--docs-hover);
@@ -8281,6 +8645,327 @@ function folderNameOf(doc: DocItem | null): string {
   padding: 5px 8px 5px 30px;
   font-size: 13px;
   color: var(--docs-text-3);
+}
+
+/* 侧栏：打开知识库时的标题行（返回知识库列表） */
+.docs-library-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 6px 8px;
+  margin-top: 4px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--docs-text);
+  border-radius: var(--docs-radius);
+  cursor: pointer;
+}
+.docs-library-head:hover {
+  background: var(--docs-hover);
+}
+.docs-library-back {
+  flex: none;
+  font-size: 12px;
+  color: var(--docs-text-3);
+}
+.docs-library-head-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.docs-pinned-cover {
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+}
+
+/* 知识库内部面包屑：知识库 / 库名 / 文件夹 */
+.docs-lib-crumb {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 4px 0 12px;
+  font-size: 14px;
+  color: var(--docs-text-3);
+}
+.docs-lib-crumb-link {
+  cursor: pointer;
+  color: var(--docs-text-2);
+}
+.docs-lib-crumb-link:hover {
+  color: var(--docs-text);
+}
+.docs-lib-crumb-link.is-current {
+  color: var(--docs-text);
+  font-weight: 600;
+  cursor: default;
+}
+.docs-lib-crumb-sep {
+  color: var(--docs-text-3);
+}
+
+/* ---- 知识库首页（参考：标题 / 范围切换 / 卡片网格） ---- */
+.docs-lib-home {
+  padding: 28px 40px 40px;
+  box-sizing: border-box;
+}
+.docs-lib-home-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+/* 首页左上角标签：全部知识库 */
+.docs-lib-home-label {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--docs-text);
+}
+.docs-lib-home-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.docs-lib-search {
+  width: 200px;
+}
+.docs-lib-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 12px;
+  font-size: 16px;
+  color: var(--docs-text);
+  background: #fff;
+  border: 1px solid var(--docs-border);
+  border-radius: 10px;
+  cursor: pointer;
+}
+.docs-lib-add:hover {
+  border-color: var(--docs-border-strong);
+}
+.docs-lib-add-caret {
+  font-size: 12px;
+  color: var(--docs-text-3);
+}
+/* 视图切换：卡片 / 列表 */
+.docs-lib-views {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px;
+  gap: 2px;
+  border-left: 1px solid var(--docs-border);
+  margin-left: 4px;
+  padding-left: 8px;
+}
+.docs-lib-view-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  font-size: 16px;
+  color: var(--docs-text-3);
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.docs-lib-view-btn.active {
+  color: var(--docs-text);
+  background: #f2f3f5;
+}
+.docs-lib-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 16px;
+}
+.docs-lib-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 220px;
+  padding: 20px 22px;
+  background: #fff;
+  border: 1px solid #ebedf0;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: box-shadow 0.15s, border-color 0.15s;
+}
+.docs-lib-card:hover {
+  border-color: #d5d9e0;
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.07);
+}
+.docs-lib-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.docs-lib-card-book {
+  flex: none;
+  font-size: 22px;
+  color: #3370ff;
+}
+.docs-lib-card-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--docs-text);
+}
+.docs-lib-card-lock {
+  flex: none;
+  font-size: 13px;
+  color: var(--docs-text-3);
+}
+.docs-lib-card-more {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  color: var(--docs-text-3);
+  border-radius: 8px;
+  cursor: pointer;
+}
+.docs-lib-card-more:hover {
+  color: var(--docs-text);
+  background: #f2f3f5;
+}
+.docs-lib-recent {
+  flex: 1;
+  margin: 26px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.docs-lib-recent-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 0 6px 14px;
+  font-size: 14px;
+  color: var(--docs-text-3);
+}
+.docs-lib-recent-item::before {
+  content: '';
+  position: absolute;
+  left: 2px;
+  top: 50%;
+  width: 4px;
+  height: 4px;
+  margin-top: -2px;
+  border-radius: 50%;
+  background: #9aa0a6;
+}
+.docs-lib-recent-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.docs-lib-recent-time {
+  flex: none;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.docs-lib-recent-empty {
+  padding: 6px 0 6px 14px;
+  font-size: 14px;
+  color: var(--docs-text-3);
+}
+/* 列表视图 */
+.docs-lib-rows {
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  border: 1px solid #ebedf0;
+  border-radius: 12px;
+  overflow: hidden;
+}
+.docs-lib-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 18px;
+  cursor: pointer;
+}
+.docs-lib-row + .docs-lib-row {
+  border-top: 1px solid #f0f1f3;
+}
+.docs-lib-row:hover {
+  background: #fafbfc;
+}
+.docs-lib-row-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 15px;
+  color: var(--docs-text);
+}
+.docs-lib-row-meta {
+  flex: none;
+  font-size: 13px;
+  color: var(--docs-text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 「新建知识库」占位：虚线框，放在卡片 / 列表底部 */
+.docs-lib-card-new {
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 220px;
+  font-size: 15px;
+  color: var(--docs-text-2);
+  background: transparent;
+  border: 1px dashed #d5d9e0;
+  box-shadow: none;
+  font-family: inherit;
+}
+.docs-lib-card-new:hover {
+  color: #3370ff;
+  border-color: #3370ff;
+  box-shadow: none;
+  transform: none;
+}
+.docs-lib-card-new-icon {
+  font-size: 22px;
+}
+.docs-lib-row-new {
+  justify-content: center;
+  gap: 8px;
+  font-size: 15px;
+  color: var(--docs-text-2);
+  background: transparent;
+  border: none;
+  font-family: inherit;
+  width: 100%;
+  cursor: pointer;
+}
+.docs-lib-row-new:hover {
+  color: #3370ff;
+}
+
+@media (max-width: 720px) {
+  .docs-lib-home {
+    padding: 20px 16px 32px;
+  }
+  .docs-lib-search {
+    width: 140px;
+  }
 }
 
 /* 文档行 */

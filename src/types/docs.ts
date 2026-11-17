@@ -1,11 +1,32 @@
 /** 文档类型：富文本文档 / 表格 / 思维导图 / 流程图 */
 export type DocType = 'doc' | 'sheet' | 'mindmap' | 'flow'
 
+/**
+ * 知识库：顶层实体，拥有自己的封面 / 描述 / 可见范围，内部可以有文件夹和文档。
+ * 知识库与文件夹是两个概念：知识库不是文件夹，也不会出现在「主页」的文件夹列表里。
+ */
+export interface DocLibrary {
+  id: string
+  name: string
+  /** 简介 */
+  desc?: string
+  /** 可见范围：仅成员 / 全员 */
+  visibility: 'members' | 'all'
+  createdAt: number
+  /** 是否置顶 */
+  starred?: boolean
+}
+
+/** 文件夹：归属某个知识库，可嵌套（parentId 为空表示知识库根目录下的一级文件夹） */
 export interface DocFolder {
   id: string
   name: string
+  /** 所属知识库 */
+  libraryId: string
+  /** 父文件夹，空表示知识库根目录 */
+  parentId?: string
   createdAt: number
-  /** 是否置顶（置顶知识库） */
+  /** 是否置顶 */
   starred?: boolean
 }
 
@@ -123,7 +144,9 @@ export interface DocItem {
   updatedAt: number
   /** 创建时间 */
   createdAt?: number
-  /** 所属文件夹；空表示未分组 */
+  /** 所属知识库；空表示不在任何知识库内（个人文档，主页中展示） */
+  libraryId?: string
+  /** 所属文件夹（在知识库内）；空表示位于知识库根目录，或未分组 */
   folderId?: string
   /** 是否收藏 */
   starred?: boolean
