@@ -54,6 +54,7 @@ import {
   FontColorsOutlined,
   HighlightOutlined,
   FormOutlined,
+  RobotOutlined,
   ScissorOutlined,
   CopyOutlined,
   CommentOutlined,
@@ -80,6 +81,9 @@ import DocIssuePicker from '@/components/docs/DocIssuePicker.vue'
 import { TEAM_COLLAB_ITEMS, type TeamManageSpec } from '@/utils/team-collab'
 import TeamManageModal from '@/components/docs/TeamManageModal.vue'
 import IssueDetailDrawer from '@/components/IssueDetailDrawer.vue'
+import DocAiDrawer from '@/components/docs/DocAiDrawer.vue'
+import { textToParagraphsHtml, type AiReplacePayload } from '@/utils/ai-blocks'
+import { defaultSheetData, normalizeSheetData } from '@/utils/doc-sheet'
 import { fuzzyQueryIssues, type FuzzyIssueItem } from '@/api/faiz'
 import DocMindmapEditor from '@/components/docs/DocMindmapEditor.vue'
 import DocFlowEditor from '@/components/docs/DocFlowEditor.vue'
@@ -235,7 +239,7 @@ function genDocId(prefix: string): string {
 }
 
 function defaultSheet(): SheetData {
-  return { rows: Array.from({ length: 8 }, () => Array(5).fill('')) }
+  return defaultSheetData()
 }
 
 function defaultMindmap(): MindmapData {
@@ -244,8 +248,9 @@ function defaultMindmap(): MindmapData {
 
 /** 补齐各类型需要的数据，兼容历史 / 异常数据 */
 function ensureDocData(doc: DocItem) {
-  if (doc.type === 'sheet' && !(doc.data as SheetData | undefined)?.rows) {
-    doc.data = defaultSheet()
+  if (doc.type === 'sheet') {
+    // 老数据（单表）包装成 Sheet1；多表数据原样保留
+    if (!(doc.data as SheetData | undefined)?.sheets?.length) doc.data = normalizeSheetData(doc.data)
   } else if (doc.type === 'mindmap' && !(doc.data as MindmapData | undefined)?.root) {
     doc.data = defaultMindmap()
   } else if (doc.type === 'flow' && !doc.data) {
@@ -502,9 +507,10 @@ function createDoc(type: DocType = 'doc', folderId?: string) {
 }
 
 // ---- 各类型数据 / 展示 ----
-function sheetRows(doc: DocItem): string[][] {
+/** 表格整体数据（行 + 单元格样式 + 冻结），编辑器直接修改它并通过 change 保存 */
+function sheetData(doc: DocItem): SheetData {
   ensureDocData(doc)
-  return (doc.data as SheetData).rows
+  return doc.data as SheetData
 }
 
 function mindRoot(doc: DocItem): MindNode {
@@ -3506,6 +3512,153 @@ function onWindowFocusRefreshIssues() {
 onMounted(() => window.addEventListener('focus', onWindowFocusRefreshIssues))
 onBeforeUnmount(() => window.removeEventListener('focus', onWindowFocusRefreshIssues))
 
+/* ---- 问问 AI：记住正文中最近一次选中的内容，右侧抽屉交给 AI 处理，结果可替换回原处 ---- */
+const aiOpen = ref(false)
+const aiSelectionText = ref('')
+/** 选中内容的富文本 HTML（发给 AI；与文档保存格式一致） */
+const aiSelectionHtml = ref('')
+/** 选中区域的快照（Range 随 DOM 变化自动更新，替换前会校验文字是否一致） */
+let aiRange: Range | null = null
+/** 记录选区时判定：是否选中了整篇正文（选区之前、之后都没有文字） */
+const aiWholeDoc = ref(false)
+
+/** 选区起点之前、终点之后都没有文字，即整篇正文被选中（不依赖文字长度比例，代码标签等不影响判断） */
+function isWholeEditorSelected(range: Range, editor: HTMLElement): boolean {
+  const before = document.createRange()
+  before.setStart(editor, 0)
+  before.setEnd(range.startContainer, range.startOffset)
+  const after = document.createRange()
+  after.setStart(range.endContainer, range.endOffset)
+  after.setEnd(editor, editor.childNodes.length)
+  return squashText(before.toString()) === '' && squashText(after.toString()) === ''
+}
+
+function captureAiSelection() {
+  const editor = editorRef.value
+  const sel = window.getSelection()
+  if (!editor || !sel || sel.rangeCount === 0 || sel.isCollapsed) return
+  const range = sel.getRangeAt(0)
+  if (!editor.contains(range.commonAncestorContainer)) return
+  const text = sel.toString().trim()
+  if (!text) return
+  aiSelectionText.value = text
+  aiRange = range.cloneRange()
+  aiWholeDoc.value = isWholeEditorSelected(range, editor)
+  aiSelectionHtml.value = aiWholeDoc.value ? editorContentHtml(editor) : selectionHtmlOf(range)
+}
+
+/** 选区的富文本 HTML：去掉代码块语言栏、彩色层、修订条等运行时元素 */
+function selectionHtmlOf(range: Range): string {
+  const box = document.createElement('div')
+  box.appendChild(range.cloneContents())
+  box.querySelectorAll('.docs-code-head, .docs-code-highlight, .docs-suggest-bar').forEach((el) => el.remove())
+  box.querySelectorAll('.docs-suggest-ins').forEach((el) => el.classList.remove('docs-suggest-ins'))
+  return box.innerHTML
+}
+
+function openAi() {
+  captureAiSelection()
+  aiOpen.value = true
+}
+
+/** 去掉全部空白后比较，用于判断选中的是不是整篇正文 */
+function squashText(s: string): string {
+  return s.replace(/\s+/g, '')
+}
+
+/** 行内元素：局部选区里只需替换文字，不需要替换整段 */
+const AI_INLINE_TAGS = new Set(['SPAN', 'STRONG', 'B', 'EM', 'I', 'U', 'S', 'DEL', 'CODE', 'A', 'BR'])
+
+/**
+ * 把 AI 返回的富文本 HTML 写入正文。
+ * - 先按粘贴的清洗规则过滤（只保留允许的结构和样式，事项卡片保留编号）；
+ * - 整篇选中：整篇替换；
+ * - 局部选中：返回的是行内内容则只替换选中的文字，否则替换选区所在的整段。
+ */
+function applyAiHtml(rawHtml: string) {
+  const editor = editorRef.value
+  const doc = activeDoc.value
+  if (!editor || !doc) {
+    message.warning('请先打开文档')
+    return
+  }
+  const html = sanitizePasteHtml(rawHtml).trim()
+  if (!html) {
+    message.warning('AI 没有返回可用的内容')
+    return
+  }
+  const docLen = squashText(editor.textContent || '').length
+  const selLen = squashText(aiSelectionText.value).length
+  let done = ''
+  if (aiWholeDoc.value || (selLen > 0 && docLen > 0 && selLen >= docLen * 0.95)) {
+    editor.innerHTML = html
+    done = '已全文替换'
+  } else {
+    // 优先用记录的选区；若编辑器期间有改动导致选区端点失效，则按选中的文字在正文中重新定位
+    let range = aiRange?.cloneRange() ?? null
+    const valid =
+      !!range && editor.contains(range.commonAncestorContainer) && range.toString().trim() === aiSelectionText.value
+    if (!valid) range = findCommentRange(aiSelectionText.value)
+    if (!range || !editor.contains(range.commonAncestorContainer)) {
+      message.warning('正文中找不到原来选中的内容，请重新选中后再试')
+      return
+    }
+    const tpl = document.createElement('template')
+    tpl.innerHTML = html
+    const inlineOnly = Array.from(tpl.content.childNodes).every(
+      (n) => n.nodeType === Node.TEXT_NODE || (n.nodeType === Node.ELEMENT_NODE && AI_INLINE_TAGS.has((n as Element).tagName)),
+    )
+    const first = editorBlockOf(range.startContainer)
+    const last = editorBlockOf(range.endContainer)
+    if (inlineOnly && first && first === last) {
+      editor.focus()
+      const sel = window.getSelection()
+      sel?.removeAllRanges()
+      sel?.addRange(range)
+      range.deleteContents()
+      range.insertNode(tpl.content)
+      done = '已替换'
+    } else {
+      if (!first || !last) {
+        message.warning('原选区已变化，请重新选中内容后再试')
+        return
+      }
+      // 收集选区覆盖的顶层块（从第一个到最后一个）
+      const covered: HTMLElement[] = []
+      let cur: Element | null = first
+      while (cur) {
+        covered.push(cur as HTMLElement)
+        if (cur === last) break
+        cur = cur.nextElementSibling
+      }
+      if (!covered.includes(last)) {
+        message.warning('原选区已变化，请重新选中内容后再试')
+        return
+      }
+      first.before(tpl.content)
+      covered.forEach((el) => el.remove())
+      done = '已替换'
+    }
+  }
+  // 事项卡片保持不可编辑（整体点击打开详情）
+  editor.querySelectorAll<HTMLElement>('.docs-issue-card').forEach((c) => (c.contentEditable = 'false'))
+  onEditorChange(editor, doc)
+  refreshSuggestMarks()
+  aiRange = null
+  aiSelectionText.value = ''
+  aiSelectionHtml.value = ''
+  aiWholeDoc.value = false
+  message.success(done)
+}
+
+/** 「问问 AI」抽屉的替换入口：结果为富文本 HTML（纯文本会先转段落） */
+function replaceAiSelection(payload: AiReplacePayload) {
+  applyAiHtml(payload.html ?? textToParagraphsHtml(payload.text ?? ''))
+}
+
+onMounted(() => document.addEventListener('selectionchange', captureAiSelection))
+onBeforeUnmount(() => document.removeEventListener('selectionchange', captureAiSelection))
+
 /* ---- 事项卡片：点击在右侧抽屉中查看事项详情（不离开文档） ---- */
 const issueDrawer = reactive({ open: false, key: '' })
 function openIssueDrawer(issueKey: string) {
@@ -4766,7 +4919,9 @@ function sanitizePasteHtml(html: string): string {
             ? ['src', 'alt']
             : el.tagName === 'TD' || el.tagName === 'TH'
               ? ['colspan', 'rowspan']
-              : []
+              : el.tagName === 'DIV' && el.classList.contains('docs-issue-card')
+                ? ['data-issue-key'] // 事项卡片保留编号，用于点击打开详情
+                : []
       Array.from(el.attributes).forEach((attr) => {
         const val = attr.value || ''
         // style 只保留白名单内、值合法的声明（文字 / 背景颜色、对齐、分栏列宽），其余丢弃
@@ -5716,6 +5871,11 @@ function folderNameOf(doc: DocItem | null): string {
           <BookOutlined />
           <span>知识库</span>
         </button>
+        <!-- 问问 AI：把正文中选中的内容交给 AI 润色 / 精简 / 扩写 / 修正 -->
+        <button type="button" class="docs-nav-item" :class="{ active: aiOpen }" @click="openAi">
+          <RobotOutlined />
+          <span>问问 AI</span>
+        </button>
       </nav>
 
       <div class="docs-list">
@@ -6337,13 +6497,22 @@ function folderNameOf(doc: DocItem | null): string {
                   :insertable="teamManage.insertable"
                   @confirm="insertIssueCards"
                 />
+                <!-- 问问 AI：右侧抽屉（不遮罩，选中内容时可边看边改） -->
+                <DocAiDrawer
+                  v-model:open="aiOpen"
+                  :selected-text="aiSelectionText"
+                  :selected-html="aiSelectionHtml"
+                  :can-replace="docsEditMode"
+                  :whole-doc="aiWholeDoc"
+                  @replace="replaceAiSelection"
+                />
                 <!-- 事项卡片：右侧抽屉查看 / 操作事项 -->
                 <IssueDetailDrawer v-model:open="issueDrawer.open" :issue-key="issueDrawer.key" @changed="refreshIssueCards" />
               </div>
               <DocSheetEditor
                 v-else-if="activeDoc.type === 'sheet'"
                 :key="`sheet-${activeDoc.id}`"
-                :rows="sheetRows(activeDoc)"
+                :data="sheetData(activeDoc)"
                 @change="onDocChanged(activeDoc)"
               />
               <DocMindmapEditor
@@ -7168,6 +7337,11 @@ function folderNameOf(doc: DocItem | null): string {
       :style="{ top: bubble.top + 'px', left: bubble.left + 'px' }"
       @mousedown.prevent
     >
+      <!-- 问问 AI：把选中的内容交给 AI 润色 / 精简 / 扩写 / 修正（选区在鼠标按下时已保留） -->
+      <button type="button" class="docs-bubble-btn is-ai" @click="openAi">
+        <RobotOutlined /><span>问问 AI</span>
+      </button>
+      <span class="docs-bubble-sep" />
       <div class="docs-bubble-group">
         <a-tooltip title="块类型" placement="bottom">
           <button
@@ -9716,6 +9890,21 @@ function folderNameOf(doc: DocItem | null): string {
   font-size: 10px;
   color: var(--docs-text-3);
 }
+/* 气泡工具条最左侧：问问 AI（图标 + 文字，主色突出） */
+.docs-bubble-btn.is-ai {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  width: auto;
+  padding: 0 8px;
+  font-size: 13px;
+  color: var(--c-primary);
+  font-weight: 500;
+  white-space: nowrap;
+}
+.docs-bubble-btn.is-ai:hover {
+  background: color-mix(in srgb, var(--c-primary) 10%, transparent);
+}
 .docs-bubble-sep {
   flex: none;
   width: 1px;
@@ -10081,8 +10270,9 @@ function folderNameOf(doc: DocItem | null): string {
   min-height: 46vh;
   /* 正文顶部间距收紧：不再与作者行、首个块的 margin 叠加出大片留白 */
   padding: 0 0 40px;
-  font-size: 15px;
-  line-height: 1.75;
+  font-size: 16px;
+  line-height: 1.8;
+  letter-spacing: 0.1px;
   color: var(--docs-text);
   outline: none;
 }
@@ -10135,21 +10325,23 @@ function folderNameOf(doc: DocItem | null): string {
   display: none !important;
 }
 .docs-editor :deep(h1) {
-  margin: 34px 0 12px;
-  font-size: 26px;
+  margin: 40px 0 14px;
+  font-size: 30px;
   font-weight: 700;
   line-height: 1.3;
+  letter-spacing: -0.3px;
 }
 .docs-editor :deep(h2) {
-  margin: 30px 0 10px;
-  font-size: 21px;
-  font-weight: 600;
-  line-height: 1.3;
+  margin: 34px 0 12px;
+  font-size: 24px;
+  font-weight: 650;
+  line-height: 1.35;
+  letter-spacing: -0.2px;
 }
 .docs-editor :deep(h3) {
-  margin: 24px 0 8px;
-  font-size: 18px;
-  font-weight: 600;
+  margin: 28px 0 10px;
+  font-size: 19px;
+  font-weight: 650;
   line-height: 1.4;
 }
 /* "+"插入的富文本元素 */
@@ -10439,7 +10631,7 @@ function folderNameOf(doc: DocItem | null): string {
   background: transparent;
 }
 .docs-editor :deep(p) {
-  margin: 0 0 10px;
+  margin: 0 0 12px;
 }
 /* 鼠标选中文案时的背景色：段落 / 有序 / 无序 / 待办 / 引用等所有块统一为主题蓝半透明 */
 .docs-editor ::selection,
@@ -10450,8 +10642,8 @@ function folderNameOf(doc: DocItem | null): string {
 }
 .docs-editor :deep(ul),
 .docs-editor :deep(ol) {
-  margin: 10px 0;
-  padding-left: 24px;
+  margin: 12px 0;
+  padding-left: 26px;
 }
 /* 有序列表序号 / 无序列表圆点显示为主题蓝 */
 .docs-editor :deep(ol li)::marker,
@@ -10460,13 +10652,15 @@ function folderNameOf(doc: DocItem | null): string {
   font-weight: 600;
 }
 .docs-editor :deep(li) {
-  margin: 3px 0;
+  margin: 4px 0;
 }
 .docs-editor :deep(blockquote) {
-  margin: 12px 0;
-  padding: 4px 0 4px 14px;
+  margin: 14px 0;
+  padding: 10px 14px;
   color: var(--docs-text-2);
-  border-left: 3px solid var(--docs-border);
+  background: var(--docs-side-bg);
+  border-left: 3px solid color-mix(in srgb, var(--c-primary) 60%, transparent);
+  border-radius: 0 8px 8px 0;
 }
 /* 代码块：顶部语言栏 + 正文的浅色卡片 */
 .docs-editor :deep(pre) {

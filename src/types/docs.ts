@@ -10,8 +10,40 @@ export interface DocFolder {
 }
 
 /** 表格数据：二维字符串数组 */
-export interface SheetData {
+/** 单元格样式（按 "行,列" 存放在 SheetData.styles 中；未设置的属性取默认值） */
+export interface SheetCellStyle {
+  bold?: boolean
+  italic?: boolean
+  underline?: boolean
+  strike?: boolean
+  /** 文字颜色 / 背景色（CSS 颜色值） */
+  color?: string
+  bg?: string
+  /** 字体 / 字号（px） */
+  font?: string
+  size?: number
+  align?: 'left' | 'center' | 'right'
+  valign?: 'top' | 'middle' | 'bottom'
+  /** 数字格式：仅影响展示，单元格里保存的仍是原始值 */
+  format?: 'general' | 'number' | 'percent' | 'currency'
+  /** 小数位数（数字 / 百分比 / 货币） */
+  decimals?: number
+}
+
+/** 一个工作表（页签） */
+export interface SheetPage {
+  name: string
   rows: string[][]
+  /** 单元格样式：key 为 "行,列"（从 0 开始） */
+  styles?: Record<string, SheetCellStyle>
+  /** 冻结首行 */
+  frozenHeader?: boolean
+}
+
+/** 表格文档数据：多个工作表 + 当前激活的工作表下标 */
+export interface SheetData {
+  sheets: SheetPage[]
+  active?: number
 }
 
 /** 思维导图节点 */
