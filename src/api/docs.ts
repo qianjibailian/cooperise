@@ -163,12 +163,16 @@ export function emptyTrash(): Promise<Result<void>> {
 /** 链接分享范围：OFF-未开启（仅协作者可访问）/ ORG-组织内可访问 / ALL-所有人可访问（拿到链接即可查看） */
 export type DocLinkScope = 'OFF' | 'ORG' | 'ALL'
 
-/** 协作者：姓名、工号、头像由后端按 memberId 补全 */
+/** 协作者权限：MANAGE 可管理（可设置分享与协作者）/ EDIT 可编辑 / READ 可阅读（默认） */
+export type DocPermission = 'MANAGE' | 'EDIT' | 'READ'
+
+/** 协作者：姓名、工号、头像由后端按 memberId 补全；permission 缺省按 READ 处理 */
 export interface DocShareMember {
   memberId: string
   realName?: string
   coAccount?: string
   avatarUrl?: string | null
+  permission?: DocPermission
 }
 
 /** 分享信息：owner 表示当前用户是否为创建人（仅创建人可修改） */
@@ -183,8 +187,14 @@ export function getDocShareInfo(id: string): Promise<Result<DocShareInfo>> {
   return request.post(`/docs/share/info`, { id })
 }
 
-/** 设置协作者（POST /docs/share/collaborators，仅创建人）：memberIds 为完整列表，整体覆盖 */
-export function setDocCollaborators(data: { id: string; memberIds: string[] }): Promise<Result<void>> {
+/**
+ * 设置协作者（POST /docs/share/collaborators，仅创建人）：collaborators 为完整列表，整体覆盖。
+ * 每个协作者带权限：MANAGE / EDIT / READ；后端需按权限做访问控制。
+ */
+export function setDocCollaborators(data: {
+  id: string
+  collaborators: { memberId: string; permission: DocPermission }[]
+}): Promise<Result<void>> {
   return request.post(`/docs/share/collaborators`, data)
 }
 

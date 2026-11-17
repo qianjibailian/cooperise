@@ -24,6 +24,8 @@ export interface SheetCellStyle {
   size?: number
   align?: 'left' | 'center' | 'right'
   valign?: 'top' | 'middle' | 'bottom'
+  /** 文本溢出方式：overflow 溢出（不截断）/ clip 截断（默认，显示省略号）/ wrap 自动换行 */
+  wrap?: 'overflow' | 'clip' | 'wrap'
   /** 数字格式：仅影响展示，单元格里保存的仍是原始值 */
   format?: 'general' | 'number' | 'percent' | 'currency'
   /** 小数位数（数字 / 百分比 / 货币） */
@@ -38,6 +40,10 @@ export interface SheetPage {
   styles?: Record<string, SheetCellStyle>
   /** 冻结首行 */
   frozenHeader?: boolean
+  /** 合并单元格区域（r1..r2 行、c1..c2 列，左上角为显示的单元格） */
+  merges?: { r1: number; c1: number; r2: number; c2: number }[]
+  /** 筛选：第 c 列包含 keyword 的行才显示（不区分大小写） */
+  filter?: { c: number; keyword: string }
 }
 
 /** 表格文档数据：多个工作表 + 当前激活的工作表下标 */

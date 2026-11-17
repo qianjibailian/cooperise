@@ -204,21 +204,23 @@ html, body, #app {
   /* 画布与面（苹果中性灰） */
   --docs-canvas: #ffffff;
   --docs-paper: #fbfbfd;
-  --docs-side-bg: #f5f5f7;
+  --docs-side-bg: #f7f6f3;
   /* 评论区底色：低饱和度的白（比纯白略带冷灰），用于评论栏、评论卡片与评论输入区；
      系统其它背景仍是纯白 */
   --comment-surface: #ffffff;
   /* 文档左侧菜单底色：比 --docs-side-bg 更浅，只用于 .docs-side（工作台侧栏仍用 --docs-side-bg） */
-  --docs-nav-bg: #fafafb;
-  --docs-hover: rgba(0, 0, 0, 0.05);
-  --docs-selected: var(--c-primary-bg);
+  --docs-nav-bg: #f7f8fa;
+  --docs-hover: rgba(55, 53, 47, 0.08);
+  /* 选中态（菜单 / 文档 / 工具栏）：飞书、钉钉文档式的浅蓝底 + 蓝字 */
+  --docs-selected: #e6efff;
+  --docs-selected-fg: #1456f0;
   /* 细线：苹果分隔线用不透明度控制，不用实色 */
-  --docs-border: rgba(0, 0, 0, 0.08);
-  --docs-border-strong: rgba(0, 0, 0, 0.14);
-  /* 文字（苹果三级文字色） */
-  --docs-text: #1d1d1f;
-  --docs-text-2: #6e6e73;
-  --docs-text-3: #86868b;
+  --docs-border: rgba(55, 53, 47, 0.09);
+  --docs-border-strong: rgba(55, 53, 47, 0.16);
+  /* 文字（Notion 三级文字色：深灰正文 / 次级灰 / 弱化灰） */
+  --docs-text: #37352f;
+  --docs-text-2: #787774;
+  --docs-text-3: #9b9a97;
   /* 状态（文字用深一档保证对比度） */
   --docs-danger: #d70015;
   --docs-warn: #b25000;
@@ -270,13 +272,13 @@ html, body, #app {
   --docs-lh-ui: 1.4;
   --docs-tracking-title: -0.02em;
   /* 字体：苹方优先（中文），SF 为西文 */
-  --docs-font: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', 'PingFang SC',
+  --docs-font: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
     'Hiragino Sans GB', 'Helvetica Neue', 'Segoe UI', 'Microsoft YaHei', 'Noto Sans CJK SC', Arial, sans-serif;
 }
 
 html, body {
   /* 字体栈（参考 Apple 官网中文站）：苹方 → 微软雅黑 → 思源黑体，西文用系统字体 */
-  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, 'Helvetica Neue',
+  font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue',
     'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Source Han Sans SC', Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;

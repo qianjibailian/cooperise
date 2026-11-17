@@ -61,6 +61,18 @@
               <span class="dsp-member-name">{{ personName(asPerson(m)) || m.memberId }}</span>
               <span v-if="personAccount(asPerson(m))" class="dsp-member-sub">{{ personAccount(asPerson(m)) }}</span>
             </div>
+            <a-select
+              v-if="owner"
+              class="dsp-member-perm"
+              size="small"
+              :bordered="false"
+              :value="m.permission ?? 'READ'"
+              :options="PERMISSION_OPTIONS"
+              :disabled="saving"
+              :get-popup-container="popupContainer"
+              @change="(v: DocPermission) => changePermission(m.memberId, v)"
+            />
+            <span v-else class="dsp-perm-text">{{ permissionLabel(m.permission) }}</span>
             <button
               v-if="owner"
               type="button"
@@ -74,20 +86,24 @@
           <li v-if="!collaborators.length" class="dsp-muted dsp-members-empty">还没有协作者</li>
         </ul>
 
+        <div class="dsp-invite">
         <a-select
           class="dsp-select"
-          :value="pickedMemberId"
+          mode="multiple"
+          :bordered="false"
+          :value="pendingIds"
           :search-value="searchText"
           show-search
           :filter-option="false"
           :disabled="!owner || saving"
           :loading="searching"
-          :options="searchOptions"
+          :options="selectOptions"
           :get-popup-container="popupContainer"
           :not-found-content="searchText.trim() ? '未找到用户' : '输入姓名或工号搜索'"
           placeholder="可搜索用户名添加协作者"
           @search="onSearch"
           @select="onPickMember"
+          @deselect="onUnpickMember"
         >
           <template #option="item">
             <div class="dsp-option">
@@ -102,6 +118,21 @@
             </div>
           </template>
         </a-select>
+        <!-- 权限：选中框右侧，默认可阅读；作用于本次选中的所有协作者 -->
+        <a-select
+          class="dsp-perm-select"
+          :bordered="false"
+          :value="newPermission"
+          :options="PERMISSION_OPTIONS"
+          :disabled="!owner || saving"
+          :get-popup-container="popupContainer"
+          @change="onNewPermissionChange"
+        />
+        </div>
+        <div v-if="pendingIds.length" class="dsp-invite-actions">
+          <button type="button" class="dsp-cancel" :disabled="saving" @click="clearPending">取消</button>
+          <button type="button" class="dsp-send" :disabled="saving" @click="addPending">添加协作者</button>
+        </div>
       </div>
 
       <!-- 链接分享 -->
@@ -157,6 +188,7 @@ import {
   setDocCollaborators,
   setDocLinkScope,
   type DocLinkScope,
+  type DocPermission,
   type DocShareMember,
 } from '@/api/docs'
 import { queryUsers } from '@/api/faiz'
@@ -194,7 +226,20 @@ const expanded = ref(false)
 /** 写操作进行中：禁止重复提交 */
 const saving = ref(false)
 
-const pickedMemberId = ref<string | undefined>(undefined)
+/** 权限选项：可管理 / 可编辑 / 可阅读（默认可阅读） */
+const PERMISSION_OPTIONS: { value: DocPermission; label: string }[] = [
+  { value: 'MANAGE', label: '可管理' },
+  { value: 'EDIT', label: '可编辑' },
+  { value: 'READ', label: '可阅读' },
+]
+function permissionLabel(p?: DocPermission): string {
+  return PERMISSION_OPTIONS.find((o) => o.value === (p ?? 'READ'))?.label ?? '可阅读'
+}
+
+/** 待添加的协作者（多选）与本次统一的权限，默认可阅读 */
+const pendingIds = ref<string[]>([])
+const pendingPeople = new Map<string, SearchOption>()
+const newPermission = ref<DocPermission>('READ')
 const searchText = ref('')
 const searchOptions = ref<SearchOption[]>([])
 const searching = ref(false)
@@ -266,6 +311,7 @@ watch(
     loadFailed.value = false
     collaborators.value = []
     expanded.value = false
+    clearPending()
     if (docSharePanelOpen.value) void loadInfo()
   },
 )
@@ -284,9 +330,13 @@ async function runWrite(task: () => Promise<unknown>) {
   }
 }
 
-/** 协作者列表整体覆盖保存 */
-function saveCollaborators(memberIds: string[]) {
-  return runWrite(() => setDocCollaborators({ id: props.docId, memberIds }))
+/** 当前协作者（带权限，缺省为可阅读）整体覆盖保存 */
+function currentCollaboratorItems(): { memberId: string; permission: DocPermission }[] {
+  return collaborators.value.map((m) => ({ memberId: m.memberId, permission: m.permission ?? 'READ' }))
+}
+
+function saveCollaborators(items: { memberId: string; permission: DocPermission }[]) {
+  return runWrite(() => setDocCollaborators({ id: props.docId, collaborators: items }))
 }
 
 let searchTimer: ReturnType<typeof setTimeout> | undefined
@@ -338,20 +388,64 @@ onBeforeUnmount(() => {
   if (searchTimer) clearTimeout(searchTimer)
 })
 
-/** 选中一个用户：加入协作者，然后清空搜索框 */
-async function onPickMember(value: unknown) {
+/** 多选：选中一个用户加入待添加列表，清空搜索词（可继续选别人） */
+function onPickMember(value: unknown) {
   const memberId = String(value ?? '')
-  pickedMemberId.value = undefined
+  // 先记下这个人的名称（清空搜索结果之后就找不到了）
+  const person = searchOptions.value.find((o) => o.value === memberId)
   searchSeq++
   searchText.value = ''
   searchOptions.value = []
   if (!owner.value || !memberId || excludedIds.value.has(memberId)) return
-  await saveCollaborators([...collaborators.value.map((m) => m.memberId), memberId])
+  if (person) pendingPeople.set(memberId, person)
+  if (!pendingIds.value.includes(memberId)) pendingIds.value = [...pendingIds.value, memberId]
+}
+
+/** 多选框的选项：已选的人（保证能显示名字）+ 当前搜索结果 */
+const selectOptions = computed<SearchOption[]>(() => {
+  const picked = pendingIds.value
+    .map((id) => pendingPeople.get(id))
+    .filter((o): o is SearchOption => Boolean(o))
+  const seen = new Set(picked.map((o) => o.value))
+  return [...picked, ...searchOptions.value.filter((o) => !seen.has(o.value))]
+})
+
+/** 多选：取消选中 */
+function onUnpickMember(value: unknown) {
+  const memberId = String(value ?? '')
+  pendingIds.value = pendingIds.value.filter((id) => id !== memberId)
+  pendingPeople.delete(memberId)
+}
+
+function clearPending() {
+  pendingIds.value = []
+  pendingPeople.clear()
+}
+
+/** 权限下拉改动：只影响之后要添加的协作者 */
+function onNewPermissionChange(value: unknown) {
+  newPermission.value = (value as DocPermission) ?? 'READ'
+}
+
+/** 把待添加的协作者按统一权限加入列表 */
+async function addPending() {
+  if (!owner.value || !pendingIds.value.length) return
+  const added = pendingIds.value.map((memberId) => ({ memberId, permission: newPermission.value }))
+  await saveCollaborators([...currentCollaboratorItems(), ...added])
+  clearPending()
+}
+
+/** 修改已有协作者的权限 */
+function changePermission(memberId: string, permission: DocPermission) {
+  if (!owner.value) return
+  saveCollaborators(
+    currentCollaboratorItems().map((m) => (m.memberId === memberId ? { ...m, permission } : m)),
+  )
 }
 
 async function removeCollaborator(memberId: string) {
   if (!owner.value) return
-  await saveCollaborators(collaborators.value.map((m) => m.memberId).filter((id) => id !== memberId))
+  await saveCollaborators(currentCollaboratorItems().filter((m) => m.memberId !== memberId))
 }
 
 function onLinkScopeClick({ key }: { key: string | number }) {
@@ -711,5 +805,66 @@ function onSettingsClick() {
 
 .dsp-copy:hover {
   background: var(--docs-hover);
+}
+
+/* 邀请协作者：多选框与右侧权限合在一个边框里（参考飞书） */
+.dsp-invite {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 12px;
+  padding-right: 4px;
+  border: 1px solid var(--docs-border-strong);
+  border-radius: var(--docs-radius);
+  background: var(--docs-canvas);
+}
+.dsp-invite .dsp-select {
+  flex: 1;
+  min-width: 0;
+  margin-top: 0;
+}
+.dsp-perm-select {
+  flex: none;
+  width: 92px;
+}
+.dsp-invite-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 10px;
+}
+.dsp-cancel,
+.dsp-send {
+  height: 30px;
+  padding: 0 14px;
+  font-size: 13px;
+  border-radius: var(--docs-radius);
+  cursor: pointer;
+}
+.dsp-cancel {
+  color: var(--docs-text);
+  background: var(--docs-canvas);
+  border: 1px solid var(--docs-border-strong);
+}
+.dsp-send {
+  color: #fff;
+  background: var(--c-primary);
+  border: none;
+}
+.dsp-send:disabled,
+.dsp-cancel:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* 已有协作者的权限 */
+.dsp-member-perm {
+  flex: none;
+  width: 88px;
+}
+.dsp-perm-text {
+  flex: none;
+  font-size: 13px;
+  color: var(--docs-text-3);
 }
 </style>

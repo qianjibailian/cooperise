@@ -34,7 +34,7 @@ import {
   MinusOutlined,
   StarFilled,
   HomeOutlined,
-  BookOutlined,
+  ReadOutlined,
   AppstoreOutlined,
   SortAscendingOutlined,
   UploadOutlined,
@@ -84,6 +84,8 @@ import IssueDetailDrawer from '@/components/IssueDetailDrawer.vue'
 import DocAiDrawer from '@/components/docs/DocAiDrawer.vue'
 import { textToParagraphsHtml, type AiReplacePayload } from '@/utils/ai-blocks'
 import { defaultSheetData, normalizeSheetData } from '@/utils/doc-sheet'
+import { formatUsDate, formatUsRelative } from '@/utils/us-format'
+import { tr } from '@/i18n'
 import { fuzzyQueryIssues, type FuzzyIssueItem } from '@/api/faiz'
 import DocMindmapEditor from '@/components/docs/DocMindmapEditor.vue'
 import DocFlowEditor from '@/components/docs/DocFlowEditor.vue'
@@ -133,6 +135,8 @@ const route = useRoute()
 const router = useRouter()
 /** 当前文档 ID：/docs/wiki/:docId 优先，兼容旧链接 /docs?doc=xxx */
 const routeDocId = computed(() => String(route.params.docId || route.query.doc || ''))
+/** 「我的文档库」是否折叠（仅本次页面有效） */
+const myDocsCollapsed = ref(false)
 /** 列表页排序 */
 const sortBy = ref<'updated' | 'created' | 'title'>('updated')
 const SORT_OPTIONS = [
@@ -732,18 +736,9 @@ const listDocs = computed(() => {
   return sorted
 })
 
-function formatDate(ts?: number): string {
-  if (!ts) return '-'
-  const d = new Date(ts)
-  const p = (n: number) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
-}
-
-/** 详情页顶栏 / 作者行使用的中文长日期，如 2025年11月26日 */
+/** 详情页顶栏 / 作者行使用的美式日期，如 Nov 26, 2025 */
 function formatLongDate(ts?: number): string {
-  if (!ts) return '-'
-  const d = new Date(ts)
-  return `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`
+  return formatUsDate(ts)
 }
 
 /** 邮箱转显示名：取 @ 前的部分并首字母大写，非邮箱原样返回 */
@@ -5395,14 +5390,9 @@ function commentAvatarStyle(c: { author?: string; avatar?: string }): Record<str
   return commentAvatarUrl(c) ? {} : { background: commentAvatarColor(c.author || '') }
 }
 
-/** 评论时间：刚刚 / n 分钟前 / n 小时前 / n 天前 / 日期 */
+/** 评论时间：just now / 5 min ago / 2 hr ago / 3 days ago / 日期（美式） */
 function commentTimeText(ts: number): string {
-  const diff = Date.now() - ts
-  if (diff < 60_000) return '刚刚'
-  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)} 分钟前`
-  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)} 小时前`
-  if (diff < 7 * 86_400_000) return `${Math.floor(diff / 86_400_000)} 天前`
-  return new Date(ts).toLocaleDateString()
+  return formatUsRelative(ts)
 }
 
 function newCommentId(): string {
@@ -5850,13 +5840,13 @@ function folderNameOf(doc: DocItem | null): string {
         <div v-if="!docsSideCollapsed" class="docs-side-brand">
           <AppLogo class="docs-side-logo" />
           <div class="docs-side-brand-text">
-            <span class="docs-side-title">云文档</span>
+            <span class="docs-side-title">{{ tr('云文档', 'Docs') }}</span>
           </div>
         </div>
       </header>
 
       <div class="docs-search-wrap">
-        <a-input ref="searchRef" v-model:value="keyword" size="small" allow-clear placeholder="搜索" class="docs-search">
+        <a-input ref="searchRef" v-model:value="keyword" size="small" allow-clear :placeholder="tr('搜索', 'Search')" class="docs-search">
           <template #prefix><SearchOutlined class="docs-search-icon" /></template>
         </a-input>
         <span class="docs-search-kbd">⌘K</span>
@@ -5865,23 +5855,18 @@ function folderNameOf(doc: DocItem | null): string {
       <nav class="docs-nav">
         <button type="button" class="docs-nav-item" :class="{ active: ['recent', 'owned', 'shared', 'starred'].includes(navMode) }" @click="switchNav('recent')">
           <HomeOutlined />
-          <span>主页</span>
+          <span>{{ tr('主页', 'Home') }}</span>
         </button>
         <button type="button" class="docs-nav-item" :class="{ active: navMode === 'library' }" @click="switchNav('library')">
-          <BookOutlined />
-          <span>知识库</span>
-        </button>
-        <!-- 问问 AI：把正文中选中的内容交给 AI 润色 / 精简 / 扩写 / 修正 -->
-        <button type="button" class="docs-nav-item" :class="{ active: aiOpen }" @click="openAi">
-          <RobotOutlined />
-          <span>问问 AI</span>
+          <ReadOutlined />
+          <span>{{ tr('知识库', 'Wiki') }}</span>
         </button>
       </nav>
 
       <div class="docs-list">
         <!-- 置顶：文档 + 知识库，左右两列分布 -->
         <div v-if="pinnedDocs.length || pinnedFolders.length" class="docs-group">
-          <div class="docs-group-title">置顶</div>
+          <div class="docs-group-title">{{ tr('置顶', 'Pinned') }}</div>
           <div class="docs-pinned-grid">
             <button
               v-for="d in pinnedDocs"
@@ -5909,9 +5894,12 @@ function folderNameOf(doc: DocItem | null): string {
         </div>
 
         <!-- 我的文档库 -->
-        <div class="docs-group-title docs-group-title-main">我的文档库</div>
+        <div class="docs-group-title docs-group-title-main docs-collapsible" @click="myDocsCollapsed = !myDocsCollapsed">
+          <span>{{ tr('我的文档库', 'My docs') }}</span>
+          <span class="docs-group-caret" :class="{ open: !myDocsCollapsed }"><RightOutlined /></span>
+        </div>
 
-        <template v-for="g in groups" :key="g.folder?.id || '__ungrouped__'">
+        <template v-for="g in myDocsCollapsed ? [] : groups" :key="g.folder?.id || '__ungrouped__'">
           <!-- 文件夹标题 -->
           <div
             v-if="g.folder"
@@ -5927,9 +5915,9 @@ function folderNameOf(doc: DocItem | null): string {
               <span class="docs-folder-more" @click.stop><MoreOutlined /></span>
               <template #overlay>
                 <a-menu @click="onFolderMenu($event, g.folder)">
-                  <a-menu-item key="star">{{ g.folder.starred ? '取消置顶' : '置顶' }}</a-menu-item>
-                  <a-menu-item key="rename">重命名</a-menu-item>
-                  <a-menu-item key="delete" danger>删除文件夹</a-menu-item>
+                  <a-menu-item key="star">{{ g.folder.starred ? tr('取消置顶', 'Unpin') : tr('置顶', 'Pin') }}</a-menu-item>
+                  <a-menu-item key="rename">{{ tr('重命名', 'Rename') }}</a-menu-item>
+                  <a-menu-item key="delete" danger>{{ tr('删除文件夹', 'Delete folder') }}</a-menu-item>
                 </a-menu>
               </template>
             </a-dropdown>
@@ -5971,7 +5959,7 @@ function folderNameOf(doc: DocItem | null): string {
           </template>
         </template>
 
-        <div v-if="!groups.length" class="docs-list-empty">
+        <div v-if="!groups.length && !myDocsCollapsed" class="docs-list-empty">
           {{ keyword ? '没有匹配的文档' : '还没有文档，点击右上角 + 新建' }}
         </div>
       </div>
@@ -6826,7 +6814,7 @@ function folderNameOf(doc: DocItem | null): string {
             placement="bottomLeft"
             overlay-class-name="docs-add-popover"
           >
-            <button type="button" class="docs-quick-card" :class="{ 'is-open': addOpen }">
+            <button type="button" class="docs-quick-card" style="order: 1" :class="{ 'is-open': addOpen }">
               <span class="docs-quick-icon is-new"><PlusOutlined /></span>
               <span class="docs-quick-text"><b>新建</b><small>新建文档开始协作</small></span>
               <DownOutlined class="docs-quick-caret" />
@@ -6870,7 +6858,7 @@ function folderNameOf(doc: DocItem | null): string {
             placement="bottomLeft"
             overlay-class-name="docs-add-popover"
           >
-            <button type="button" class="docs-quick-card" :class="{ 'is-open': templateOpen }">
+            <button type="button" class="docs-quick-card" style="order: 3" :class="{ 'is-open': templateOpen }">
               <span class="docs-quick-icon is-template"><AppstoreOutlined /></span>
               <span class="docs-quick-text"><b>模板库</b><small>选择模板快速新建</small></span>
               <DownOutlined class="docs-quick-caret" />
@@ -6933,7 +6921,7 @@ function folderNameOf(doc: DocItem | null): string {
 
       <!-- 文档列表首页 -->
       <div v-else class="docs-home docs-home-main">
-        <!-- 快捷入口：新建 / 上传 / 模板库 -->
+        <!-- 快捷入口（参考飞书首页）：第一行 新建文档 / 新建知识库 / 模板中心 / 百宝箱；第二行 AI 对话写文档 / 语雀 Board / 上传 -->
         <div class="docs-quick-cards">
           <a-dropdown
             v-model:open="addOpen"
@@ -6941,7 +6929,7 @@ function folderNameOf(doc: DocItem | null): string {
             placement="bottomLeft"
             overlay-class-name="docs-add-popover"
           >
-            <button type="button" class="docs-quick-card" :class="{ 'is-open': addOpen }">
+            <button type="button" class="docs-quick-card" style="order: 1" :class="{ 'is-open': addOpen }">
               <span class="docs-quick-icon is-new"><PlusOutlined /></span>
               <span class="docs-quick-text"><b>新建</b><small>新建文档开始协作</small></span>
               <DownOutlined class="docs-quick-caret" />
@@ -6985,7 +6973,7 @@ function folderNameOf(doc: DocItem | null): string {
             placement="bottomLeft"
             overlay-class-name="docs-add-popover"
           >
-            <button type="button" class="docs-quick-card" :class="{ 'is-open': uploadOpen }">
+            <button type="button" class="docs-quick-card" style="order: 7" :class="{ 'is-open': uploadOpen }">
               <span class="docs-quick-icon is-upload"><UploadOutlined /></span>
               <span class="docs-quick-text"><b>上传</b><small>上传本地文件</small></span>
               <DownOutlined class="docs-quick-caret" />
@@ -7014,7 +7002,7 @@ function folderNameOf(doc: DocItem | null): string {
             placement="bottomLeft"
             overlay-class-name="docs-add-popover"
           >
-            <button type="button" class="docs-quick-card" :class="{ 'is-open': templateOpen }">
+            <button type="button" class="docs-quick-card" style="order: 3" :class="{ 'is-open': templateOpen }">
               <span class="docs-quick-icon is-template"><AppstoreOutlined /></span>
               <span class="docs-quick-text"><b>模板库</b><small>选择模板快速新建</small></span>
               <DownOutlined class="docs-quick-caret" />
@@ -7036,6 +7024,10 @@ function folderNameOf(doc: DocItem | null): string {
               </div>
             </template>
           </a-dropdown>
+          <button type="button" class="docs-quick-card" style="order: 2" @click="openCreateLibrary">
+            <span class="docs-quick-icon is-newlib"><ReadOutlined /></span>
+            <span class="docs-quick-text"><b>新建知识库</b><small>使用知识库整理知识</small></span>
+          </button>
         </div>
 
         <input
@@ -7046,12 +7038,14 @@ function folderNameOf(doc: DocItem | null): string {
           @change="onFileSelected"
         />
 
+        <h2 class="docs-home-section">文档</h2>
         <div class="docs-home-toolbar">
           <div class="docs-home-tabs">
-            <button type="button" :class="{ active: navMode === 'recent' }" @click="switchNav('recent')">最近访问</button>
-            <button type="button" :class="{ active: navMode === 'owned' }" @click="switchNav('owned')">归我所有</button>
-            <button type="button" :class="{ active: navMode === 'shared' }" @click="switchNav('shared')">与我共享</button>
-            <button type="button" :class="{ active: navMode === 'starred' }" @click="switchNav('starred')">收藏</button>
+            <!-- 编辑过 / 浏览过：对应归我所有 / 最近访问；点赞、评论的数据后端暂未提供 -->
+            <button type="button" :class="{ active: navMode === 'owned' }" @click="switchNav('owned')">编辑过</button>
+            <button type="button" :class="{ active: navMode === 'recent' }" @click="switchNav('recent')">浏览过</button>
+            <button type="button" @click="message.info(tr('我点赞的即将开放', 'Liked docs coming soon'))">我点赞的</button>
+            <button type="button" @click="message.info(tr('我评论的即将开放', 'Commented docs coming soon'))">我评论的</button>
           </div>
           <div class="docs-home-right">
             <a-select v-model:value="sortBy" size="small" :options="SORT_OPTIONS" class="docs-home-sort">
@@ -7065,16 +7059,6 @@ function folderNameOf(doc: DocItem | null): string {
         </div>
 
         <table v-if="listView === 'list'" class="docs-table">
-          <thead>
-            <tr>
-              <th>标题</th>
-              <th class="docs-col-location">位置</th>
-              <th class="docs-col-owner">所有者</th>
-              <th class="docs-col-time">创建时间</th>
-              <th class="docs-col-time">最近访问</th>
-              <th class="docs-col-op"></th>
-            </tr>
-          </thead>
           <tbody>
             <tr v-for="d in listDocs" :key="d.id" @click="openDocInNewPage(d)">
               <td>
@@ -7084,10 +7068,8 @@ function folderNameOf(doc: DocItem | null): string {
                   <StarFilled v-if="d.starred" class="docs-item-star" />
                 </span>
               </td>
-              <td class="docs-table-muted">{{ folderNameOf(d) || '未分组' }}</td>
-              <td class="docs-table-muted">{{ ownerName }}</td>
-              <td class="docs-table-muted">{{ formatDate(d.createdAt) }}</td>
-              <td class="docs-table-muted">{{ formatSmartTime(d.updatedAt) }}</td>
+              <td class="docs-table-muted">{{ ownerName }} / {{ folderNameOf(d) || '未分组' }}</td>
+              <td class="docs-table-muted docs-col-time">{{ formatSmartTime(d.updatedAt) }}</td>
               <td class="docs-col-op" @click.stop>
                 <a-dropdown trigger="click" placement="bottomRight">
                   <span class="docs-table-more"><MoreOutlined /></span>
@@ -7822,7 +7804,7 @@ function folderNameOf(doc: DocItem | null): string {
 
 /* ---- 左侧：知识库 / 文件树 ---- */
 .docs-side {
-  flex: 0 0 327px;
+  flex: 0 0 240px;
   /* flex 子项默认 min-width:auto，会被内部最长的不换行标题撑宽；置 0 后宽度固定，长标题走省略号 */
   min-width: 0;
   height: 100%;
@@ -8014,7 +7996,28 @@ function folderNameOf(doc: DocItem | null): string {
 .docs-group-title-main {
   margin-top: 4px;
   padding-top: 10px;
-  border-top: 1px solid var(--docs-border);
+  font-weight: 400;
+}
+/* 「我的文档库」可折叠：标题右侧箭头，展开时朝下 */
+.docs-collapsible {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 4px;
+  cursor: pointer;
+  user-select: none;
+  border-radius: var(--docs-radius-sm);
+}
+.docs-collapsible:hover {
+  color: var(--docs-text-2);
+}
+.docs-group-caret {
+  display: inline-flex;
+  font-size: 10px;
+  transition: transform 0.2s var(--docs-ease);
+}
+.docs-group-caret.open {
+  transform: rotate(90deg);
 }
 
 .docs-list {
@@ -8156,7 +8159,7 @@ function folderNameOf(doc: DocItem | null): string {
   background: var(--docs-hover);
 }
 .docs-nav-item.active {
-  color: var(--c-primary);
+  color: var(--docs-selected-fg);
   background: var(--docs-selected);
 }
 .docs-nav-item.active :deep(.anticon) {
@@ -8306,7 +8309,7 @@ function folderNameOf(doc: DocItem | null): string {
   box-shadow: none;
 }
 .docs-item.active .docs-item-title-text {
-  color: var(--c-primary);
+  color: var(--docs-selected-fg);
   font-weight: 500;
 }
 .docs-item-main {
@@ -11018,11 +11021,48 @@ function folderNameOf(doc: DocItem | null): string {
 /* 快捷入口卡片：新建 / 上传 / 模板库 */
 .docs-quick-cards {
   display: grid;
-  /* 三个入口卡片比内容区略窄，左侧对齐 */
-  grid-template-columns: repeat(3, minmax(0, 300px));
-  justify-content: start;
+  /* 参考飞书首页：四列入口卡片，两行 */
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px;
   margin-top: 12px;
+}
+/* 首页分区标题：开始 / 文档 */
+.docs-home-section {
+  margin: 28px 0 0;
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--docs-text);
+}
+.docs-quick-card.is-disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+.docs-quick-card.is-disabled:hover {
+  background: var(--docs-canvas);
+}
+.docs-quick-tag {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 6px;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 18px;
+  color: #b25000;
+  background: #fff1e0;
+  border-radius: 4px;
+  vertical-align: middle;
+}
+.docs-quick-icon.is-box {
+  background: linear-gradient(135deg, #14c0ff, #8b5cf6);
+  color: #ffffff;
+}
+.docs-quick-icon.is-ai {
+  background: linear-gradient(135deg, #3370ff, #60a8ff);
+  color: #ffffff;
+}
+.docs-quick-icon.is-board {
+  background: #111111;
+  color: #ffffff;
 }
 
 /* 主页：新建 / 上传 / 模板库 一行与左侧菜单搜索框顶部水平对齐 */
@@ -11266,35 +11306,34 @@ function folderNameOf(doc: DocItem | null): string {
   margin-top: 24px;
   border-bottom: 1px solid var(--docs-border);
 }
+/* 分段控件（参考飞书首页）：浅灰底容器，选中项为白底圆角块 */
 .docs-home-tabs {
-  display: flex;
-  gap: 22px;
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  background: var(--docs-side-bg);
+  border-radius: var(--docs-radius);
 }
 .docs-home-tabs button {
   position: relative;
-  padding: 0 0 10px;
+  height: 30px;
+  padding: 0 16px;
   font-size: 14px;
   color: var(--docs-text-2);
   background: none;
   border: none;
+  border-radius: var(--docs-radius-sm);
   cursor: pointer;
+  transition: background 0.15s, color 0.15s;
 }
 .docs-home-tabs button:hover {
   color: var(--docs-text);
 }
 .docs-home-tabs button.active {
-  color: var(--c-primary);
+  color: var(--docs-text);
   font-weight: 500;
-}
-.docs-home-tabs button.active::after {
-  content: '';
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: -1px;
-  height: 2px;
-  background: var(--c-primary);
-  border-radius: 1px;
+  background: var(--docs-canvas);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
 }
 .docs-home-right {
   display: flex;
@@ -11419,7 +11458,12 @@ function folderNameOf(doc: DocItem | null): string {
   text-overflow: ellipsis;
   white-space: nowrap;
   border-bottom: 1px solid var(--docs-border);
-  height: 40px;
+  height: 56px;
+}
+/* 参考飞书文档列表：位置列宽、时间列固定宽度，无表头 */
+.docs-table td.docs-col-time {
+  width: 180px;
+  text-align: right;
 }
 .docs-table tbody tr {
   cursor: pointer;

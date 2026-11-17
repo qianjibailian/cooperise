@@ -44,6 +44,7 @@ import {
   type FuzzyIssueItem,
   type OrganizationNode,
 } from '@/api/faiz'
+import { formatUsDateTime } from '@/utils/us-format'
 import IssueDetailDrawer from '@/components/IssueDetailDrawer.vue'
 import NewIssueFormModal from '@/components/NewIssueFormModal.vue'
 
@@ -142,7 +143,7 @@ const pagedRows = computed(() => rows.value.slice((page.value - 1) * PAGE_SIZE, 
 function formatTime(v?: string): string {
   if (!v) return '-'
   const d = new Date(v)
-  return Number.isNaN(d.getTime()) ? v : d.toLocaleString('zh-CN', { hour12: false })
+  return Number.isNaN(d.getTime()) ? v : formatUsDateTime(d.getTime())
 }
 
 function issueRow(it: FuzzyIssueItem): Row {

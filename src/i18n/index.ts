@@ -356,3 +356,12 @@ export function loadRemoteDictionary(): Promise<void> {
 export function useLocale() {
   return { locale, setLocale }
 }
+
+/**
+ * 双语文案：源码同时写中文和英文，随顶栏的「切换到英文 / 切换到中文」即时切换。
+ * 用在需要 English 版本的新文案上；已有中文文案仍走词典翻译（见上）。
+ * 在模板 / 计算属性 / 函数里调用都是响应式的。
+ */
+export function tr(zh: string, en: string): string {
+  return locale.value === 'en' ? en : zh
+}
