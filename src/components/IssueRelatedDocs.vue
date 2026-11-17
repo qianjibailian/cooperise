@@ -129,7 +129,7 @@ import DocTypeIcon from '@/components/docs/DocTypeIcon.vue'
 
 /**
  * 事项相关文档：展示事项关联的云文档，支持从云文档（我的文档 / 共享给我）选择关联、取消关联。
- * 点击文档在新页面（客户端为新页签）打开 /wiki/{docId}。数据走 /docs/issue/*。
+ * 点击文档在新页面（客户端为新页签）打开 /docs/wiki/{docId}。数据走 /docs/issue/*。
  */
 const props = withDefaults(defineProps<{
   issueKey: string

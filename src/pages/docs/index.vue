@@ -52,6 +52,8 @@ import {
   VerticalAlignMiddleOutlined,
   VerticalAlignBottomOutlined,
   FontColorsOutlined,
+  HighlightOutlined,
+  FormOutlined,
   ScissorOutlined,
   CopyOutlined,
   CommentOutlined,
@@ -74,13 +76,17 @@ import DocEmojiPicker from '@/components/docs/DocEmojiPicker.vue'
 import DocCoverPicker from '@/components/docs/DocCoverPicker.vue'
 import { docCoverBackground } from '@/utils/doc-cover'
 import DocSheetEditor from '@/components/docs/DocSheetEditor.vue'
+import DocIssuePicker from '@/components/docs/DocIssuePicker.vue'
+import { TEAM_COLLAB_ITEMS, type TeamManageSpec } from '@/utils/team-collab'
+import TeamManageModal from '@/components/docs/TeamManageModal.vue'
+import type { FuzzyIssueItem } from '@/api/faiz'
 import DocMindmapEditor from '@/components/docs/DocMindmapEditor.vue'
 import DocFlowEditor from '@/components/docs/DocFlowEditor.vue'
 import DocTypeIcon from '@/components/docs/DocTypeIcon.vue'
 import DocsLibraryCover from '@/components/docs/DocsLibraryCover.vue'
 import AppLogo from '@/components/AppLogo.vue'
 import { isDesktop } from '@/utils/desktop'
-import { docsSideCollapsed, docsEditMode, docsActiveDoc, docsSaveState, docsTitleRev, DOC_UNTITLED, docTitleInputValue } from '@/utils/docs-layout'
+import { docsSideCollapsed, docsEditMode, docsSuggestMode, docsActiveDoc, docsSaveState, docsTitleRev, docsCreateRequest, DOC_UNTITLED, docTitleInputValue } from '@/utils/docs-layout'
 import { openDocSharePanel } from '@/utils/doc-share'
 import {
   createDoc as createDocApi,
@@ -119,7 +125,7 @@ const editorRef = ref<HTMLElement | null>(null)
 const searchRef = ref<any>(null)
 const route = useRoute()
 const router = useRouter()
-/** 当前文档 ID：/wiki/:docId 优先，兼容旧链接 /docs?doc=xxx */
+/** 当前文档 ID：/docs/wiki/:docId 优先，兼容旧链接 /docs?doc=xxx */
 const routeDocId = computed(() => String(route.params.docId || route.query.doc || ''))
 /** 列表页排序 */
 const sortBy = ref<'updated' | 'created' | 'title'>('updated')
@@ -310,7 +316,7 @@ async function loadDocs() {
       }
     }
     activeId.value = target && docs.value.some((d) => d.id === target) ? target : ''
-    // 旧链接 /docs?doc=xxx → /wiki/xxx
+    // 旧链接 /docs?doc=xxx → /docs/wiki/xxx
     if (activeId.value && !route.params.docId && route.query.doc) {
       router.replace({ name: 'WikiDoc', params: { docId: activeId.value } })
     }
@@ -603,7 +609,7 @@ function onTemplateMenu(e: { key?: string | number }) {
 
 function selectDoc(doc: DocItem) {
   activeId.value = doc.id
-  // 文档详情统一走 /wiki/:docId（参考飞书）
+  // 文档详情统一走 /docs/wiki/:docId（参考飞书）
   router.replace({ name: 'WikiDoc', params: { docId: doc.id } })
 }
 
@@ -643,6 +649,29 @@ watch(
   },
   { immediate: true },
 )
+
+// 顶栏"+"新建：文档 / 表格 / 思维导图 / 流程图（其余类型暂未开放，顶栏已提示）
+watch(
+  () => docsCreateRequest.value.seq,
+  () => {
+    const type = docsCreateRequest.value.type
+    if (['doc', 'sheet', 'mindmap', 'flow'].includes(type)) createDoc(type as DocType, activeFolderId.value || undefined)
+  },
+)
+
+// 切换到其他文档（列表点开 / 地址变化）时回到只读；编辑中途仅改地址的情况下同样收起编辑
+watch(routeDocId, () => {
+  docsEditMode.value = false
+  docsSuggestMode.value = false
+})
+
+// 点「更新」退出编辑时，立即把防抖中的内容落盘，避免退出后丢最后几次修改
+watch(docsEditMode, (edit, wasEdit) => {
+  if (wasEdit && !edit) {
+    clearTimeout(saveTimer)
+    void flushSave()
+  }
+})
 
 // 浏览器前进 / 后退时同步当前文档
 watch(
@@ -1206,7 +1235,7 @@ function refreshEmptyState() {
  */
 const CODE_HEAD_SELECTOR = ':scope > .docs-code-head'
 /** 注入到代码块里的只读节点：语言栏 + 彩色代码叠层，落盘前统一剥离 */
-const CODE_INJECTED_SELECTOR = '.docs-code-head, .docs-code-highlight'
+const CODE_INJECTED_SELECTOR = '.docs-code-head, .docs-code-highlight, .docs-suggest-bar'
 /** 语言切换菜单的候选项（对齐常见代码块组件，覆盖主流语言） */
 const CODE_LANG_OPTIONS: { key: string; label: string }[] = [
   { key: 'text', label: '纯文本' },
@@ -1719,6 +1748,7 @@ function updateCodeLang(pre: HTMLElement) {
 
 /** 给所有代码块补齐语言栏（新建 / 粘贴 / 打开文档后调用） */
 function ensureCodeHeads(editor: HTMLElement) {
+  ensureTrailingParagraph(editor)
   editor.querySelectorAll('pre').forEach((node) => {
     const pre = node as HTMLElement
     // 代码块不做拼写检查（透明文字上的红色波浪线会干扰彩色层）
@@ -1761,6 +1791,56 @@ function caretCodeBlock(): HTMLElement | null {
   return el?.closest<HTMLElement>('pre') ?? null
 }
 
+/** 文末是代码块时补一个空段落：否则代码块下面没有地方继续输入 / 新增内容 */
+function ensureTrailingParagraph(editor: HTMLElement) {
+  if (editor.lastElementChild?.tagName !== 'PRE') return
+  const p = document.createElement('p')
+  p.innerHTML = '<br>'
+  editor.appendChild(p)
+}
+
+/**
+ * 代码块内连按两次回车（光标在空行末尾）：删掉多余的换行，跳出代码块，
+ * 在代码块下方新建一个正文段落并把光标放进去。
+ */
+function exitCodeBlockOnEnter(editor: HTMLElement | null): boolean {
+  if (!editor) return false
+  const sel = window.getSelection()
+  if (!sel || !sel.isCollapsed || !sel.anchorNode || sel.anchorNode.nodeType !== Node.TEXT_NODE) return false
+  const pre = caretCodeBlock()
+  if (!pre || !editor.contains(pre)) return false
+  // 统计光标前后的代码正文（跳过语言栏与彩色层）
+  const walker = document.createTreeWalker(pre, NodeFilter.SHOW_TEXT, {
+    acceptNode: (n) =>
+      n.parentElement?.closest('.docs-code-head, .docs-code-highlight') ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT,
+  })
+  let before = ''
+  let after = ''
+  let reached = false
+  let n: Node | null
+  while ((n = walker.nextNode())) {
+    const t = n as Text
+    if (t === sel.anchorNode) {
+      before += t.data.slice(0, sel.anchorOffset)
+      after += t.data.slice(sel.anchorOffset)
+      reached = true
+    } else if (reached) after += t.data
+    else before += t.data
+  }
+  if (!reached || !before.endsWith('\n') || after.trim() !== '') return false
+  // 删掉回车产生的那个换行（光标在该文本节点内，delete 删除前一个字符）
+  document.execCommand('delete')
+  const p = document.createElement('p')
+  p.innerHTML = '<br>'
+  pre.after(p)
+  const caret = document.createRange()
+  caret.setStart(p, 0)
+  caret.collapse(true)
+  sel.removeAllRanges()
+  sel.addRange(caret)
+  return true
+}
+
 /** 只刷新光标所在代码块（语言标签 + 彩色层），避免每次输入处理全部代码块 */
 function refreshCodeBlockAtCaret(editor: HTMLElement) {
   const pre = caretCodeBlock()
@@ -1795,10 +1875,19 @@ function editorContentHtml(editor: HTMLElement): string {
     editor.querySelector('pre.is-composing') ||
     editor.querySelector('.is-handle-hover') ||
     editor.querySelector('.docs-cell-active') ||
-    editor.querySelector('.docs-row-selected, .docs-col-selected')
+    editor.querySelector('.docs-row-selected, .docs-col-selected') ||
+    editor.querySelector('.is-resize-hover, .is-resizing') ||
+    editor.querySelector('.docs-suggest-ins')
   if (!hasRuntime) return editor.innerHTML
   const clone = editor.cloneNode(true) as HTMLElement
   clone.querySelectorAll(CODE_INJECTED_SELECTOR).forEach((h) => h.remove())
+  // 分栏拖拽线 / 拖拽态是运行时状态，不写进文档
+  clone.querySelectorAll('.is-resize-hover, .is-resizing').forEach((el) => {
+    el.classList.remove('is-resize-hover', 'is-resizing')
+    ;(el as HTMLElement).style.removeProperty('--resize-x')
+  })
+  // 修订底色是运行时标记（修订条已在上面按 CODE_INJECTED_SELECTOR 移除）
+  clone.querySelectorAll('.docs-suggest-ins').forEach((el) => el.classList.remove('docs-suggest-ins'))
   // 手柄悬停高亮 / 表格当前格描边 / 行列选中底色是运行时类名，不写进文档
   clone.querySelectorAll('.is-handle-hover').forEach((el) => el.classList.remove('is-handle-hover'))
   clone.querySelectorAll('.docs-cell-active').forEach((el) => el.classList.remove('docs-cell-active'))
@@ -1950,7 +2039,204 @@ function onEditorChange(editor: HTMLElement, doc: DocItem) {
   }
   // 内容有变化：400ms 防抖实时保存（输入 / 工具栏 / 插入块 / 粘贴 / 勾选待办等所有编辑入口都汇聚到这里）
   scheduleSave()
+  scheduleSuggestRefresh()
 }
+
+/* ---- 修订：以"修订基准"（最后一次接受后的正文）比对当前正文，逐段接受 / 拒绝 ---- */
+/** 一处待处理修订：基准 [bStart, bEnd) 被当前正文 [cStart, cEnd) 替换（按顶层块计） */
+interface SuggestHunk {
+  bStart: number
+  bEnd: number
+  cStart: number
+  cEnd: number
+}
+let suggestHunks: SuggestHunk[] = []
+const suggestCount = ref(0)
+let suggestTimer: ReturnType<typeof setTimeout> | undefined
+
+/** HTML 拆成顶层元素：每个元素是一个比对单位（块） */
+function blocksOfHtml(html: string): string[] {
+  const tpl = document.createElement('template')
+  tpl.innerHTML = html
+  return Array.from(tpl.content.children).map((el) => el.outerHTML)
+}
+
+/** 块的纯文字（用于删除段落的预览） */
+function textOfBlock(html: string): string {
+  const tpl = document.createElement('template')
+  tpl.innerHTML = html
+  return (tpl.content.textContent || '').replace(/\s+/g, ' ').trim()
+}
+
+/** 基准 a → 当前 b 的最长公共子序列比对，返回连续的差异段 */
+function diffBlocks(a: string[], b: string[]): SuggestHunk[] {
+  const n = a.length
+  const m = b.length
+  // dp[i][j]：a[i..] 与 b[j..] 的最长公共子序列长度
+  const dp: Uint32Array[] = Array.from({ length: n + 1 }, () => new Uint32Array(m + 1))
+  for (let i = n - 1; i >= 0; i--) {
+    for (let j = m - 1; j >= 0; j--) {
+      dp[i][j] = a[i] === b[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1])
+    }
+  }
+  const out: SuggestHunk[] = []
+  let i = 0
+  let j = 0
+  while (i < n || j < m) {
+    if (i < n && j < m && a[i] === b[j]) {
+      i++
+      j++
+      continue
+    }
+    const h: SuggestHunk = { bStart: i, cStart: j, bEnd: i, cEnd: j }
+    while (i < n || j < m) {
+      if (i < n && j < m && a[i] === b[j]) break
+      if (j >= m || (i < n && dp[i + 1][j] >= dp[i][j + 1])) i++
+      else j++
+    }
+    h.bEnd = i
+    h.cEnd = j
+    out.push(h)
+  }
+  return out
+}
+
+function suggestBaseOf(doc: DocItem): string | undefined {
+  return (doc.data as DocMeta | undefined)?.suggestBase
+}
+
+/** 写入修订基准（随文档 data 保存） */
+function setSuggestBase(doc: DocItem, html: string) {
+  doc.data = { ...((doc.data as DocMeta | undefined) ?? {}), suggestBase: html } as DocItem['data']
+  scheduleSave()
+}
+
+/** 当前正文的顶层块（与基准同一套序列化，保证可以逐块比对） */
+function currentBlocks(editor: HTMLElement): string[] {
+  return blocksOfHtml(editorContentHtml(editor))
+}
+
+function clearSuggestMarks(editor: HTMLElement) {
+  editor.querySelectorAll('.docs-suggest-bar').forEach((el) => el.remove())
+  editor.querySelectorAll('.docs-suggest-ins').forEach((el) => el.classList.remove('docs-suggest-ins'))
+}
+
+/** 修订条：标明这段修订的类型与内容预览，提供接受 / 拒绝 */
+function buildSuggestBar(idx: number, h: SuggestHunk, baseBlocks: string[]): HTMLElement {
+  const added = h.cEnd - h.cStart
+  const removed = h.bEnd - h.bStart
+  const bar = document.createElement('div')
+  bar.className = 'docs-suggest-bar'
+  bar.contentEditable = 'false'
+  const label = document.createElement('span')
+  label.className = 'docs-suggest-label'
+  if (added === 0) {
+    const preview = textOfBlock(baseBlocks[h.bStart] ?? '')
+    label.textContent = `删除 ${removed} 段${preview ? `：${preview.slice(0, 30)}` : ''}`
+  } else if (removed === 0) {
+    label.textContent = `新增 ${added} 段`
+  } else {
+    label.textContent = `修改 ${added} 段（原 ${removed} 段）`
+  }
+  bar.appendChild(label)
+  for (const [act, text] of [
+    ['reject', '拒绝'],
+    ['accept', '接受'],
+  ] as const) {
+    const btn = document.createElement('button')
+    btn.type = 'button'
+    btn.className = `docs-suggest-btn${act === 'accept' ? ' is-primary' : ''}`
+    btn.dataset.act = act
+    btn.dataset.idx = String(idx)
+    btn.textContent = text
+    bar.appendChild(btn)
+  }
+  return bar
+}
+
+/** 按基准与当前正文重新标出修订（只在修订模式下有标记） */
+function refreshSuggestMarks() {
+  const editor = editorRef.value
+  const doc = activeDoc.value
+  if (!editor) return
+  clearSuggestMarks(editor)
+  suggestHunks = []
+  suggestCount.value = 0
+  if (!docsSuggestMode.value || !doc || doc.type !== 'doc') return
+  const base = suggestBaseOf(doc)
+  if (base === undefined) return
+  const baseBlocks = blocksOfHtml(base)
+  suggestHunks = diffBlocks(baseBlocks, currentBlocks(editor))
+  suggestCount.value = suggestHunks.length
+  const kids = Array.from(editor.children)
+  suggestHunks.forEach((h, idx) => {
+    for (let k = h.cStart; k < h.cEnd; k++) kids[k]?.classList.add('docs-suggest-ins')
+    // 修订条放在这段修订的第一个块之前（删除段则放在后面一个块之前）
+    editor.insertBefore(buildSuggestBar(idx, h, baseBlocks), kids[h.cStart] ?? null)
+  })
+}
+
+function scheduleSuggestRefresh() {
+  if (!docsSuggestMode.value) return
+  clearTimeout(suggestTimer)
+  suggestTimer = setTimeout(refreshSuggestMarks, 300)
+}
+
+/** 用新的正文替换编辑器内容，并落盘 */
+function applyEditorHtml(editor: HTMLElement, doc: DocItem, html: string) {
+  clearSuggestMarks(editor)
+  editor.innerHTML = html
+  onEditorChange(editor, doc)
+  refreshSuggestMarks()
+}
+
+/** 接受一处修订：基准采用当前这段内容 */
+function acceptSuggest(idx: number) {
+  const doc = activeDoc.value
+  const editor = editorRef.value
+  const h = suggestHunks[idx]
+  if (!doc || !editor || !h) return
+  const base = blocksOfHtml(suggestBaseOf(doc) ?? '')
+  const cur = currentBlocks(editor)
+  setSuggestBase(doc, [...base.slice(0, h.bStart), ...cur.slice(h.cStart, h.cEnd), ...base.slice(h.bEnd)].join(''))
+  refreshSuggestMarks()
+}
+
+/** 拒绝一处修订：正文中这段恢复为基准内容 */
+function rejectSuggest(idx: number) {
+  const doc = activeDoc.value
+  const editor = editorRef.value
+  const h = suggestHunks[idx]
+  if (!doc || !editor || !h) return
+  const base = blocksOfHtml(suggestBaseOf(doc) ?? '')
+  const cur = currentBlocks(editor)
+  applyEditorHtml(editor, doc, [...cur.slice(0, h.cStart), ...base.slice(h.bStart, h.bEnd), ...cur.slice(h.cEnd)].join(''))
+}
+
+function acceptAllSuggest() {
+  const doc = activeDoc.value
+  const editor = editorRef.value
+  if (!doc || !editor) return
+  setSuggestBase(doc, currentBlocks(editor).join(''))
+  refreshSuggestMarks()
+}
+
+function rejectAllSuggest() {
+  const doc = activeDoc.value
+  const editor = editorRef.value
+  if (!doc || !editor) return
+  applyEditorHtml(editor, doc, suggestBaseOf(doc) ?? '')
+}
+
+// 进入修订模式：首次进入时以当前正文作为修订基准；之后的改动都会与基准比对
+watch(docsSuggestMode, (on) => {
+  const doc = activeDoc.value
+  const editor = editorRef.value
+  if (on && doc && doc.type === 'doc' && editor && suggestBaseOf(doc) === undefined) {
+    setSuggestBase(doc, editorContentHtml(editor))
+  }
+  refreshSuggestMarks()
+})
 
 /** 打开文档时：空文档默认在首行显示"+"（参考飞书，与输入提示并排） */
 watch(activeDoc, async (d) => {
@@ -2211,6 +2497,8 @@ const insertCommons: InsertCommon[] = [
     sub: [
       { key: 'columns:2', label: '两栏' },
       { key: 'columns:3', label: '三栏' },
+      { key: 'columns:4', label: '四栏' },
+      { key: 'columns:5', label: '五栏' },
     ],
   },
   { key: 'callout', label: '高亮块', icon: BgColorsOutlined, color: 'var(--docs-type-flow)' },
@@ -2219,6 +2507,9 @@ const insertCommons: InsertCommon[] = [
 const activeInsertSub = ref('')
 /** 表格插入尺寸选择：悬停网格高亮 */
 const tablePickerHover = reactive({ rows: 0, cols: 0 })
+/** 分栏栏数选择：图形化缩略图（每个缩略图的竖条数 = 栏数），悬停高亮 */
+const colsPickerOptions = [2, 3, 4, 5]
+const colsPickerHover = ref(0)
 /** 图片 / 文件选择框 */
 const imageInputRef = ref<HTMLInputElement | null>(null)
 const fileInputRef = ref<HTMLInputElement | null>(null)
@@ -2296,6 +2587,7 @@ function schedulePlusHide() {
 }
 
 function onEditorLeave(e: MouseEvent) {
+  clearColsHover()
   const rt = e.relatedTarget as HTMLElement | null
   // 仍在编辑器容器内（例如移向行右侧的评论图标）：不隐藏
   if (rt && (e.currentTarget as HTMLElement).contains(rt)) return
@@ -2389,6 +2681,9 @@ const tableTool = reactive({
   /** 对齐 / 高亮颜色下拉菜单与当前单元格对齐状态 */
   alignOpen: false,
   colorOpen: false,
+  /** 文字颜色 / 单元格背景色下拉菜单 */
+  fontColorOpen: false,
+  cellBgOpen: false,
   hAlign: 'left',
   vAlign: 'top',
 })
@@ -2779,11 +3074,20 @@ function applyTableCellFormat(cmd: string, value?: string) {
   editor?.focus()
   const sel = window.getSelection()
   cells.forEach((cell) => {
+    // 单元格背景色：直接写在单元格上，不动文字
+    if (cmd === 'cellBg') {
+      cell.style.backgroundColor = value || ''
+      if (!cell.getAttribute('style')) cell.removeAttribute('style')
+      return
+    }
     const range = document.createRange()
     range.selectNodeContents(cell)
     sel?.removeAllRanges()
     sel?.addRange(range)
-    if (cmd === 'inline-code') {
+    if (cmd === 'textColor') {
+      document.execCommand('styleWithCSS', false, 'true')
+      document.execCommand('foreColor', false, value || textColors[0])
+    } else if (cmd === 'inline-code') {
       document.execCommand('insertHTML', false, `<code>${escapeHtml(cell.textContent || '')}</code>`)
     } else if (cmd === 'hilite') {
       document.execCommand('styleWithCSS', false, 'true')
@@ -2804,8 +3108,20 @@ function applyTableCellFormat(cmd: string, value?: string) {
     sel?.addRange(range)
   }
   tableTool.colorOpen = false
+  tableTool.fontColorOpen = false
+  tableTool.cellBgOpen = false
   onEditorInput()
   nextTick(updateTableTool)
+}
+
+/** 表格工具条下拉菜单：同一时间只开一个 */
+function toggleTableMenu(key: 'fontColorOpen' | 'cellBgOpen') {
+  const open = !tableTool[key]
+  tableTool.colorOpen = false
+  tableTool.alignOpen = false
+  tableTool.fontColorOpen = false
+  tableTool.cellBgOpen = false
+  tableTool[key] = open
 }
 
 function currentTableCell(): HTMLTableCellElement | null {
@@ -2990,13 +3306,163 @@ function applyCellAlign(kind: string) {
   nextTick(updateTableTool)
 }
 
-/** 插入分栏 */
+/** 分栏：栏数范围、拖拽最小栏宽、窄屏堆叠断点（与样式里的 @media 保持一致） */
+const COLS_MIN = 2
+const COLS_MAX = 5
+const COLS_MIN_PX = 120
+const COLS_STACK_QUERY = '(max-width: 720px)'
+/** 允许写入文档的列宽模板（粘贴时校验，防止外部样式注入） */
+const COLS_TEMPLATE_RE = /^(minmax\(0,\s*\d+(\.\d+)?fr\)\s*)+$/
+
+function equalColsTemplate(count: number): string {
+  return Array.from({ length: count }, () => 'minmax(0,1fr)').join(' ')
+}
+
+/** 构造一组等宽分栏：每栏一个空段落，不写入占位文字 */
+function buildColumns(count: number): HTMLElement {
+  const cols = document.createElement('div')
+  cols.className = 'docs-cols'
+  cols.style.gridTemplateColumns = equalColsTemplate(count)
+  for (let i = 0; i < count; i++) {
+    const col = document.createElement('div')
+    col.className = 'docs-col'
+    col.innerHTML = '<p><br></p>'
+    cols.appendChild(col)
+  }
+  return cols
+}
+
+/**
+ * 插入分栏（块级插入）：光标所在的顶层块为空则替换它，否则插在它之后；
+ * 分栏之后补一个空段落，光标落到第一栏。不再把 div 塞进段落里。
+ */
 function insertColumns(editor: HTMLElement, count: number) {
-  const cols = Array.from({ length: count }, (_, i) => `<div class="docs-col">栏 ${i + 1}</div>`).join('')
-  insertHtmlAtCaret(
-    editor,
-    `<div class="docs-cols" style="grid-template-columns:repeat(${count},1fr)">${cols}</div><p><br></p>`,
-  )
+  const n = Math.min(COLS_MAX, Math.max(COLS_MIN, count))
+  const cols = buildColumns(n)
+  const sel = window.getSelection()
+  let block: HTMLElement | null = null
+  const anchor = sel && sel.rangeCount > 0 ? sel.anchorNode : null
+  if (anchor && editor.contains(anchor)) {
+    let node: Node | null = anchor
+    while (node && node.parentNode !== editor) node = node.parentNode
+    block = node as HTMLElement | null
+  }
+  if (block && block !== editor) {
+    const isEmptyP =
+      block.tagName === 'P' &&
+      !(block.textContent || '').replace(/[​﻿]/g, '').trim() &&
+      !block.querySelector('img, table, hr, ul, ol, pre')
+    if (isEmptyP) block.replaceWith(cols)
+    else block.after(cols)
+  } else {
+    editor.appendChild(cols)
+  }
+  const after = document.createElement('p')
+  after.innerHTML = '<br>'
+  cols.after(after)
+  editor.focus()
+  const first = cols.querySelector('.docs-col p')
+  if (first && sel) {
+    const caret = document.createRange()
+    caret.setStart(first, 0)
+    caret.collapse(true)
+    sel.removeAllRanges()
+    sel.addRange(caret)
+  }
+}
+
+/* ---- 分栏：悬停分隔缝显示拖拽线，拖动调整相邻两栏宽度，双击恢复等宽 ---- */
+/** 当前悬停的分栏容器（运行时类名 / 变量，保存时剥离） */
+let colsHoverEl: HTMLElement | null = null
+let colsDrag: { cols: HTMLElement; gap: number; startX: number; widths: number[]; moved: boolean } | null = null
+/** 分隔缝命中宽度（缝两侧各 6px） */
+const COLS_HIT_PX = 6
+
+function colCellsOf(cols: HTMLElement): HTMLElement[] {
+  return Array.from(cols.children).filter((el) => el.classList.contains('docs-col')) as HTMLElement[]
+}
+
+/** 指针 x 落在哪一条分隔缝上（第 i 缝位于第 i 栏与第 i+1 栏之间）；不在缝上或已堆叠时返回 -1 */
+function colsGapAt(cols: HTMLElement, x: number): number {
+  if (window.matchMedia(COLS_STACK_QUERY).matches) return -1
+  const rects = colCellsOf(cols).map((c) => c.getBoundingClientRect())
+  for (let i = 0; i < rects.length - 1; i++) {
+    if (x >= rects[i].right - COLS_HIT_PX && x <= rects[i + 1].left + COLS_HIT_PX) return i
+  }
+  return -1
+}
+
+function clearColsHover() {
+  if (!colsHoverEl) return
+  colsHoverEl.classList.remove('is-resize-hover')
+  colsHoverEl.style.removeProperty('--resize-x')
+  colsHoverEl = null
+}
+
+/** 编辑态下悬停分隔缝：显示拖拽线 */
+function onColsHover(e: MouseEvent) {
+  const editor = editorRef.value
+  if (!editor || !docsEditMode.value || colsDrag) return
+  const cols = (e.target as HTMLElement).closest?.('.docs-cols') as HTMLElement | null
+  const gap = cols && editor.contains(cols) ? colsGapAt(cols, e.clientX) : -1
+  if (!cols || gap < 0) {
+    clearColsHover()
+    return
+  }
+  if (colsHoverEl !== cols) clearColsHover()
+  const rects = colCellsOf(cols).map((c) => c.getBoundingClientRect())
+  const x = (rects[gap].right + rects[gap + 1].left) / 2 - cols.getBoundingClientRect().left
+  colsHoverEl = cols
+  cols.classList.add('is-resize-hover')
+  cols.style.setProperty('--resize-x', `${x}px`)
+}
+
+/** 把各栏的实际宽度写成 minmax(0, Nfr)，比例保持、总和保持 */
+function colsTemplateOf(widths: number[]): string {
+  const total = widths.reduce((a, b) => a + b, 0) || 1
+  const n = widths.length
+  return widths.map((w) => `minmax(0,${((w / total) * n).toFixed(3)}fr)`).join(' ')
+}
+
+function startColsDrag(cols: HTMLElement, gap: number, startX: number) {
+  const widths = colCellsOf(cols).map((c) => c.getBoundingClientRect().width)
+  colsDrag = { cols, gap, startX, widths, moved: false }
+  cols.classList.add('is-resizing')
+  document.body.style.cursor = 'col-resize'
+  document.addEventListener('mousemove', onColsDragMove)
+  document.addEventListener('mouseup', onColsDragEnd)
+}
+
+function onColsDragMove(e: MouseEvent) {
+  const d = colsDrag
+  if (!d) return
+  const { cols, gap, widths } = d
+  // 相邻两栏都不能小于最小栏宽
+  const minDx = -Math.max(0, widths[gap] - COLS_MIN_PX)
+  const maxDx = Math.max(0, widths[gap + 1] - COLS_MIN_PX)
+  const dx = Math.min(maxDx, Math.max(minDx, e.clientX - d.startX))
+  const next = widths.slice()
+  next[gap] += dx
+  next[gap + 1] -= dx
+  cols.style.gridTemplateColumns = colsTemplateOf(next)
+  if (dx !== 0) d.moved = true
+}
+
+function onColsDragEnd() {
+  const d = colsDrag
+  document.removeEventListener('mousemove', onColsDragMove)
+  document.removeEventListener('mouseup', onColsDragEnd)
+  document.body.style.cursor = ''
+  colsDrag = null
+  if (!d) return
+  d.cols.classList.remove('is-resizing')
+  if (d.moved) onEditorInput()
+}
+
+/** 双击分隔缝：恢复等宽 */
+function resetColsWidths(cols: HTMLElement) {
+  cols.style.gridTemplateColumns = equalColsTemplate(colCellsOf(cols).length)
+  onEditorInput()
 }
 
 /** 插入空高亮块，并把光标放进去（不再写入默认提示文字） */
@@ -3024,12 +3490,93 @@ function insertCalloutAtCaret(editor: HTMLElement) {
 }
 
 /** "+"菜单：把枚举的富文本元素应用到悬停的块 */
+/* ---- 项目管理：选择事项后以事项卡片的形式插入正文 ---- */
+const issuePickerOpen = ref(false)
+/** 打开选择弹窗时记下的插入位置（编辑器顶层块，卡片插在它后面） */
+let issueInsertAnchor: HTMLElement | null = null
+
+/* ---- 团队协作：点击条目在弹窗中管理（需求 / 任务 / 看板 / 人员 / 部门） ---- */
+const teamManage = reactive({
+  open: false,
+  title: '',
+  kind: 'issue' as TeamManageSpec['kind'],
+  typeName: '',
+})
+function openTeamManage(key: string) {
+  const item = TEAM_COLLAB_ITEMS.find((t) => t.key === key)
+  if (!item) return
+  teamManage.title = item.label
+  teamManage.kind = item.manage.kind
+  teamManage.typeName = item.manage.typeName || ''
+  teamManage.open = true
+}
+
+function openIssuePicker(anchorNode?: Node | null) {
+  const editor = editorRef.value
+  const hovered = hoverBlock.value
+  issueInsertAnchor =
+    hovered && editor && hovered !== editor && hovered.parentElement === editor
+      ? hovered
+      : editorBlockOf(anchorNode ?? window.getSelection()?.anchorNode ?? null)
+  issuePickerOpen.value = true
+}
+
+/** 事项卡片：编号 + 标题 + 状态，点击在新标签页打开事项详情 */
+function buildIssueCard(it: FuzzyIssueItem): HTMLElement {
+  const card = document.createElement('div')
+  card.className = 'docs-issue-card'
+  card.contentEditable = 'false'
+  card.dataset.issueKey = it.issueKey
+  const key = document.createElement('span')
+  key.className = 'docs-issue-key'
+  key.textContent = it.issueKey
+  const title = document.createElement('span')
+  title.className = 'docs-issue-title'
+  title.textContent = it.summary || '未命名事项'
+  card.append(key, title)
+  if (it.statusName) {
+    const status = document.createElement('span')
+    status.className = 'docs-issue-status'
+    status.textContent = it.statusName
+    if (it.statusColor) status.style.color = it.statusColor
+    card.appendChild(status)
+  }
+  return card
+}
+
+function insertIssueCards(items: FuzzyIssueItem[]) {
+  const editor = editorRef.value
+  const doc = activeDoc.value
+  if (!editor || !doc || !items.length) return
+  const frag = document.createDocumentFragment()
+  for (const it of items) frag.appendChild(buildIssueCard(it))
+  // 卡片之后补一个空段落，方便继续输入
+  const tail = document.createElement('p')
+  tail.innerHTML = '<br>'
+  frag.appendChild(tail)
+  const anchor = issueInsertAnchor && editor.contains(issueInsertAnchor) ? issueInsertAnchor : null
+  if (anchor) anchor.after(frag)
+  else editor.appendChild(frag)
+  issueInsertAnchor = null
+  onEditorInput()
+}
+
 function applyInsert(key: string) {
   const editor = editorRef.value
   if (!editor) return
   plusMenuOpen.value = false
   activeInsertSub.value = ''
   const [cmd, arg] = key.split(':')
+  // 项目管理：先选事项，确认后再插入卡片
+  if (cmd === 'issue') {
+    openIssuePicker()
+    return
+  }
+  // 团队协作：在弹窗中管理（不插入内容、不跳转页面）
+  if (cmd === 'team') {
+    openTeamManage(arg)
+    return
+  }
   // 图片 / 文件走系统选择框，插入在文件选中后完成
   if (cmd === 'image' || cmd === 'attach') {
     const input = cmd === 'image' ? imageInputRef.value : fileInputRef.value
@@ -3316,6 +3863,20 @@ function onAttachPicked(e: Event) {
 /** 编辑器点击：代码块复制 / 任务列表勾选 */
 function onEditorClick(e: MouseEvent) {
   const target = e.target as HTMLElement
+  // 事项卡片：点击在新标签页打开事项详情
+  const issueCard = target.closest<HTMLElement>('.docs-issue-card')
+  if (issueCard?.dataset.issueKey) {
+    window.open(router.resolve(`/jira/browse/${issueCard.dataset.issueKey}`).href, '_blank', 'noopener')
+    return
+  }
+  // 修订条：接受 / 拒绝这一段修订
+  const suggestBtn = target.closest<HTMLElement>('.docs-suggest-btn')
+  if (suggestBtn) {
+    const idx = Number(suggestBtn.dataset.idx)
+    if (suggestBtn.dataset.act === 'accept') acceptSuggest(idx)
+    else rejectSuggest(idx)
+    return
+  }
   const copyBtn = target.closest<HTMLElement>('.docs-code-copy')
   if (copyBtn) {
     const pre = copyBtn.closest('pre')
@@ -3341,7 +3902,24 @@ function onEditorClick(e: MouseEvent) {
 /** 点击代码块语言栏按钮时保持光标 / 选区不动，避免 contenteditable 抢焦点 */
 function onEditorMouseDown(e: MouseEvent) {
   const target = e.target as HTMLElement
-  if (target.closest?.('.docs-code-head button')) e.preventDefault()
+  // 修订条不参与选区，点按钮时保持光标位置
+  if (target.closest?.('.docs-suggest-bar')) {
+    e.preventDefault()
+    return
+  }
+  if (target.closest?.('.docs-code-head button')) {
+    e.preventDefault()
+    return
+  }
+  if (e.button !== 0 || !docsEditMode.value) return
+  // 分栏分隔缝：拖动调宽，双击恢复等宽（不让浏览器开始文字选区）
+  const cols = target.closest?.('.docs-cols') as HTMLElement | null
+  if (!cols) return
+  const gap = colsGapAt(cols, e.clientX)
+  if (gap < 0) return
+  e.preventDefault()
+  if (e.detail >= 2) resetColsWidths(cols)
+  else startColsDrag(cols, gap, e.clientX)
 }
 
 /**
@@ -3638,6 +4216,7 @@ const slashItems: SlashItem[] = [
   { key: 'pre', label: '代码块', keywords: '代码 daima', glyph: '{}' },
   { key: 'quote', label: '引用', keywords: 'yinyong', glyph: '❝' },
   { key: 'callout', label: '高亮块', keywords: '提示 gaoliangkuai', glyph: '▎' },
+  { key: 'issue', label: '项目管理', keywords: '事项 xiangmuguanli', glyph: '▣' },
   { key: 'table:3', label: '表格', keywords: 'biaoge', icon: TableOutlined },
   { key: 'columns:2', label: '分栏', keywords: 'fenlan', glyph: '▤' },
   { key: 'hr', label: '分割线', keywords: '分隔 fengexian', icon: MinusOutlined },
@@ -3750,6 +4329,11 @@ function applySlashInsert(it: SlashItem) {
     }
   }
   editor.focus()
+  if (it.key === 'issue') {
+    openIssuePicker()
+    onEditorInput()
+    return
+  }
   if (it.key === 'image') {
     imageInputRef.value?.click()
     onEditorInput()
@@ -3943,6 +4527,12 @@ function onEditorKeyDown(e: KeyboardEvent) {
     onEditorInput()
     return
   }
+  // 代码块：连按两次回车跳出代码块，在下方新建正文
+  if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && !slash.visible && exitCodeBlockOnEnter(editorRef.value)) {
+    e.preventDefault()
+    onEditorInput()
+    return
+  }
   if (e.key === 'Enter' && !slash.visible) unfoldHeadingAtCaret()
   // 标题只占一行：回车（含 Shift+回车）不在标题里换行，而是在下面新起一行正文
   if (e.key === 'Enter' && !e.isComposing && !slash.visible && breakOutOfHeadingAtCaret()) {
@@ -4043,6 +4633,30 @@ const PASTE_ALLOWED_TAGS = new Set([
 ])
 
 /** 粘贴清洗：去脚本 / 事件属性，a/img 只留安全属性（并校验协议），自家 docs-* 类名保留 */
+/** 内联样式白名单：属性 → 值校验。只放行文字 / 背景颜色、对齐和分栏列宽 */
+const COLOR_VALUE_RE = /^(#[0-9a-f]{3,8}|rgba?\(\s*[\d.,%\s]+\))$/i
+const INLINE_STYLE_RULES: Record<string, RegExp> = {
+  color: COLOR_VALUE_RE,
+  'background-color': COLOR_VALUE_RE,
+  'text-align': /^(left|center|right|justify)$/,
+  'vertical-align': /^(top|middle|bottom)$/,
+  'grid-template-columns': COLS_TEMPLATE_RE,
+}
+function cleanInlineStyle(raw: string): string {
+  return raw
+    .split(';')
+    .map((decl) => {
+      const i = decl.indexOf(':')
+      if (i < 0) return ''
+      const prop = decl.slice(0, i).trim().toLowerCase()
+      const val = decl.slice(i + 1).trim()
+      const ok = Object.prototype.hasOwnProperty.call(INLINE_STYLE_RULES, prop) && INLINE_STYLE_RULES[prop].test(val)
+      return ok ? `${prop}: ${val}` : ''
+    })
+    .filter(Boolean)
+    .join('; ')
+}
+
 function sanitizePasteHtml(html: string): string {
   const tpl = document.createElement('template')
   tpl.innerHTML = html
@@ -4075,7 +4689,12 @@ function sanitizePasteHtml(html: string): string {
               : []
       Array.from(el.attributes).forEach((attr) => {
         const val = attr.value || ''
-        if (!keep.includes(attr.name)) el.removeAttribute(attr.name)
+        // style 只保留白名单内、值合法的声明（文字 / 背景颜色、对齐、分栏列宽），其余丢弃
+        if (attr.name === 'style') {
+          const s = cleanInlineStyle(val)
+          if (s) el.setAttribute('style', s)
+          else el.removeAttribute('style')
+        } else if (!keep.includes(attr.name)) el.removeAttribute(attr.name)
         else if (attr.name === 'href' && !/^(https?:|mailto:)/i.test(val)) el.removeAttribute('href')
         else if (attr.name === 'src' && !/^(https?:|data:image\/)/i.test(val)) el.removeAttribute('src')
       })
@@ -4128,7 +4747,7 @@ function onEditorPaste(e: ClipboardEvent) {
 }
 
 // ---- 选中文字的浮动格式工具栏 ----
-type BubbleMenu = '' | 'heading' | 'color'
+type BubbleMenu = '' | 'heading' | 'color' | 'fontcolor'
 const bubble = reactive({
   visible: false,
   top: 0,
@@ -4142,6 +4761,11 @@ const bubble = reactive({
 const bubbleRef = ref<HTMLElement | null>(null)
 const bubbleColors = ['#ffe58f', '#ffd6e7', '#d3e5ff', '#d9f7be', '#ffccc7']
 const bubbleColorNames = ['柠檬黄', '樱花粉', '天空蓝', '青草绿', '珊瑚红']
+/** 文字颜色 / 单元格背景色调色板（参考飞书） */
+const textColors = ['#1f1f1f', '#8c8c8c', '#f5222d', '#fa8c16', '#fadb14', '#52c41a', '#1677ff', '#722ed1']
+const textColorNames = ['默认', '灰色', '红色', '橙色', '黄色', '绿色', '蓝色', '紫色']
+const cellBgColors = ['#fff1b8', '#ffd6e7', '#d6e4ff', '#d9f7be', '#ffccc7', '#f0f0f0', '#e6f7ff', '#f9f0ff']
+const cellBgColorNames = ['柠檬黄', '樱花粉', '天空蓝', '青草绿', '珊瑚红', '浅灰', '浅蓝', '浅紫']
 interface BubbleBlockType {
   key: string
   label: string
@@ -4311,6 +4935,13 @@ function applyBubble(cmd: string, value?: string) {
       document.execCommand('styleWithCSS', false, 'true')
       document.execCommand('hiliteColor', false, 'transparent')
       break
+    case 'textColor':
+      document.execCommand('styleWithCSS', false, 'true')
+      document.execCommand('foreColor', false, value || textColors[0])
+      break
+    case 'align':
+      document.execCommand(`justify${value === 'center' ? 'Center' : value === 'right' ? 'Right' : 'Left'}`)
+      break
     case 'clear':
       document.execCommand('removeFormat')
       break
@@ -4393,7 +5024,11 @@ function onDocMouseDown(e: MouseEvent) {
   }
   // 表格对齐 / 高亮菜单：点菜单外收起
   if (tableTool.alignOpen && !target.closest?.('.docs-table-tool-align')) tableTool.alignOpen = false
-  if (tableTool.colorOpen && !target.closest?.('.docs-table-tool-color-wrap')) tableTool.colorOpen = false
+  if (!target.closest?.('.docs-table-tool-color-wrap')) {
+    tableTool.colorOpen = false
+    tableTool.fontColorOpen = false
+    tableTool.cellBgOpen = false
+  }
   // 点击表格外侧边条与工具条以外的位置：清空行 / 列选中态
   // （点工具条里的删除 / 对齐 / 格式按钮时要保留选中的行或列）
   if (!target.closest?.('.docs-table-frame-seg') && !target.closest?.('.docs-table-tool')) {
@@ -4416,6 +5051,10 @@ onMounted(() => {
   window.addEventListener('resize', scheduleCommentHighlights)
 })
 onBeforeUnmount(() => {
+  // 分栏拖拽中途切换页面：撤掉拖拽监听，恢复光标
+  document.removeEventListener('mousemove', onColsDragMove)
+  document.removeEventListener('mouseup', onColsDragEnd)
+  document.body.style.cursor = ''
   document.removeEventListener('selectionchange', updateBubble)
   document.removeEventListener('mousedown', onDocMouseDown, true)
   document.removeEventListener('mousemove', onDocMouseMove)
@@ -4463,6 +5102,8 @@ const comments = computed<DocComment[]>(() => {
 })
 /** 行级评论：展示在右侧评论栏 */
 const lineComments = computed(() => comments.value.filter((c) => (c.scope ? c.scope === 'line' : !!c.quote)))
+/** 右侧评论栏是否展示：没有行内评论、也没有正在输入的评论时整栏折叠隐藏，正文占满 */
+const commentRailShown = computed(() => lineComments.value.length > 0 || lineComposerOpen.value)
 /** 全文评论：展示在文档底部 */
 const docComments = computed(() => comments.value.filter((c) => (c.scope ? c.scope === 'doc' : !c.quote)))
 
@@ -4757,8 +5398,23 @@ function findCommentRange(rawQuote: string): Range | null {
     })
   }
   walk(editor)
-  const index = full.indexOf(quote)
-  if (index < 0) return null
+  // 匹配时忽略空白（块与块之间的换行、引文里的空格差异都不影响定位），
+  // 同时记下每个非空白字符在原文中的偏移，用于映射回 Range
+  const norm: string[] = []
+  const origin: number[] = []
+  for (let k = 0; k < full.length; k++) {
+    if (/\s/.test(full[k])) continue
+    norm.push(full[k])
+    origin.push(k)
+  }
+  const normFull = norm.join('')
+  const normQuote = quote.replace(/\s+/g, '')
+  if (!normQuote) return null
+  const normIndex = normFull.indexOf(normQuote)
+  if (normIndex < 0) return null
+  const index = origin[normIndex]
+  const lastIndex = origin[normIndex + normQuote.length - 1]
+  if (index === undefined || lastIndex === undefined) return null
   const locate = (offset: number, isEnd: boolean): [Text, number] | null => {
     for (let i = 0; i < segs.length; i++) {
       const seg = segs[i]
@@ -4773,7 +5429,7 @@ function findCommentRange(rawQuote: string): Range | null {
     return null
   }
   const start = locate(index, false)
-  const end = locate(index + quote.length, true)
+  const end = locate(lastIndex + 1, true)
   if (!start || !end) return null
   const range = document.createRange()
   range.setStart(start[0], start[1])
@@ -4800,13 +5456,19 @@ function renderCommentHighlights() {
     return
   }
   const wrapRect = wrap.getBoundingClientRect()
+  const railRect = commentRailRef.value?.getBoundingClientRect() ?? null
   const next: typeof commentHighlights.value = []
+  const anchors: Record<string, number> = {}
   for (const c of comments.value) {
-    if (c.resolved || !c.quote) continue
+    if (!c.quote) continue
     const range = findCommentRange(c.quote)
     if (!range) continue
-    for (const rect of Array.from(range.getClientRects())) {
-      if (rect.width < 1 || rect.height < 1) continue
+    const rects = Array.from(range.getClientRects()).filter((r) => r.width >= 1 && r.height >= 1)
+    if (!rects.length) continue
+    // 评论卡片对齐到被评论文字的第一行（已解决的评论也要对齐，只是不再画高亮）
+    if (railRect) anchors[c.id] = rects[0].top - railRect.top
+    if (c.resolved) continue
+    for (const rect of rects) {
       next.push({
         id: c.id,
         top: rect.top - wrapRect.top,
@@ -4817,11 +5479,89 @@ function renderCommentHighlights() {
     }
   }
   commentHighlights.value = next
+  commentAnchorMap = anchors
+  // 折叠态标记：行内评论按锚点行聚合，同一行的评论合并为一个标记
+  const lineIds = new Set(lineComments.value.map((c) => c.id))
+  const groups = new Map<number, { count: number; firstId: string }>()
+  for (const c of comments.value) {
+    const anchor = anchors[c.id]
+    if (!lineIds.has(c.id) || anchor === undefined) continue
+    const key = Math.round(anchor)
+    const g = groups.get(key)
+    if (g) g.count++
+    else groups.set(key, { count: 1, firstId: c.id })
+  }
+  const markers = Array.from(groups.entries())
+    .sort((a, b) => a[0] - b[0])
+    .map(([top, g]) => ({ key: String(top), top, count: g.count, firstId: g.firstId }))
+  // 原文已找不到的行内评论：不丢弃，放在已定位标记的下方，与展开态里排在最后的卡片一致
+  const unanchored = lineComments.value.filter((c) => anchors[c.id] === undefined)
+  if (unanchored.length) {
+    const lastTop = markers.length ? markers[markers.length - 1].top : -24
+    markers.push({ key: 'unanchored', top: lastTop + 24, count: unanchored.length, firstId: unanchored[0].id })
+  }
+  commentMarkers.value = markers
+  nextTick(layoutCommentCards)
 }
+
+/* ---- 评论卡片与被评论内容水平对齐：卡片顶端对齐被评论文字的第一行，重叠时向下顺延 ---- */
+/** 评论锚点：评论 id → 被评论文字第一行相对评论栏顶部的位置 */
+let commentAnchorMap: Record<string, number> = {}
+/** 各卡片在评论列表中的 top（已扣除列表偏移） */
+const commentCardTop = ref<Record<string, number>>({})
+const COMMENT_CARD_GAP = 10
+const COMPOSER_KEY = '__composer__'
+/** 折叠态评论标记：按被评论的行聚合，top 为该行在评论栏内的位置 */
+const commentMarkers = ref<{ key: string; top: number; count: number; firstId: string }[]>([])
+
+/** 点击折叠态的标记：展开评论栏，并定位到这条评论 */
+function expandToComment(id: string) {
+  const c = comments.value.find((x) => x.id === id)
+  commentPanelOpen.value = true
+  if (c) nextTick(() => focusComment(c))
+}
+
+/** 按锚点排布评论卡片（与正文水平对齐），行内评论输入卡片同样参与排布 */
+function layoutCommentCards() {
+  const list = commentRailRef.value?.querySelector<HTMLElement>('.docs-comment-list')
+  if (!list) return
+  const offset = list.offsetTop
+  const items: { id: string; anchor: number; height: number }[] = Array.from(
+    list.querySelectorAll<HTMLElement>('.docs-comment-card[data-cid]'),
+  ).map((el) => {
+    const id = el.dataset.cid || ''
+    return { id, anchor: commentAnchorMap[id] ?? Infinity, height: el.offsetHeight }
+  })
+  const composer = lineComposerOpen.value ? lineComposerRef.value : null
+  if (composer) items.push({ id: COMPOSER_KEY, anchor: lineComposerTop.value, height: composer.offsetHeight })
+  // 按锚点从上到下排；没有锚点（原文已删除）的排在最后
+  items.sort((a, b) => (a.anchor === b.anchor ? 0 : a.anchor < b.anchor ? -1 : 1))
+  const tops: Record<string, number> = {}
+  let bottom = 0
+  items.forEach((it, idx) => {
+    const minY = idx === 0 ? 0 : bottom + COMMENT_CARD_GAP
+    const y = Math.max(Number.isFinite(it.anchor) ? it.anchor : minY, minY)
+    tops[it.id] = y
+    bottom = y + it.height
+  })
+  const next: Record<string, number> = {}
+  for (const [id, y] of Object.entries(tops)) {
+    if (id === COMPOSER_KEY) {
+      if (lineComposerTop.value !== y) lineComposerTop.value = y
+    } else next[id] = y - offset
+  }
+  commentCardTop.value = next
+  list.style.minHeight = `${Math.max(0, bottom - offset) + 12}px`
+}
+
+// 输入卡片出现 / 移动、评论栏展开收起时重新排布卡片
+watch([lineComposerOpen, lineComposerTop, commentPanelOpen, activeCommentId, activeReplyId, replyDraft], () =>
+  nextTick(layoutCommentCards),
+)
 
 // 评论变化 / 文档切换 / 评论栏展开收起后重新定位高亮
 watch(comments, () => nextTick(scheduleCommentHighlights), { deep: true })
-watch([activeDoc, commentPanelOpen], () => nextTick(scheduleCommentHighlights))
+watch([activeDoc, commentPanelOpen, commentRailShown], () => nextTick(scheduleCommentHighlights))
 // 切换文档时清空未发布的评论 / 回复
 watch(
   () => activeDoc.value?.id,
@@ -4888,7 +5628,7 @@ function folderNameOf(doc: DocItem | null): string {
       </div>
 
       <nav class="docs-nav">
-        <button type="button" class="docs-nav-item" :class="{ active: ['recent', 'owned', 'shared'].includes(navMode) }" @click="switchNav('recent')">
+        <button type="button" class="docs-nav-item" :class="{ active: ['recent', 'owned', 'shared', 'starred'].includes(navMode) }" @click="switchNav('recent')">
           <HomeOutlined />
           <span>主页</span>
         </button>
@@ -5070,7 +5810,11 @@ function folderNameOf(doc: DocItem | null): string {
           <!-- 正文 + 评论共用一个滚动容器：滚动条在最右侧，两边一起滚 -->
           <div
             class="docs-doc-scroll"
-            :class="{ 'is-scrollable': activeDoc.type === 'doc', 'is-comments-collapsed': !commentPanelOpen }"
+            :class="{
+              'is-scrollable': activeDoc.type === 'doc',
+              'is-comments-collapsed': !commentPanelOpen,
+              'is-comments-hidden': activeDoc.type === 'doc' && !commentRailShown,
+            }"
             @transitionend="scheduleCommentHighlights"
           >
           <div class="docs-canvas">
@@ -5135,11 +5879,23 @@ function folderNameOf(doc: DocItem | null): string {
                 <span class="docs-doc-date">{{ formatLongDate(activeDoc.updatedAt) }}修改</span>
               </div>
 
+              <!-- 修订模式状态条：待处理修订数量，支持全部接受 / 全部拒绝 -->
+              <div v-if="docsSuggestMode && activeDoc.type === 'doc'" class="docs-suggest-banner">
+                <span class="docs-suggest-banner-text">
+                  <FormOutlined />
+                  修订模式{{ suggestCount ? `：${suggestCount} 处待处理修订` : '：暂无待处理修订' }}
+                </span>
+                <template v-if="suggestCount">
+                  <button type="button" class="docs-suggest-banner-btn" @click="rejectAllSuggest">全部拒绝</button>
+                  <button type="button" class="docs-suggest-banner-btn is-primary" @click="acceptAllSuggest">全部接受</button>
+                </template>
+              </div>
               <div
                 v-if="activeDoc.type === 'doc'"
                 class="docs-editor-wrap"
                 :class="{ 'is-edit': docsEditMode }"
                 @mouseover="onEditorHover"
+                @mousemove="onColsHover"
                 @mouseleave="onEditorLeave"
               >
                 <div
@@ -5287,6 +6043,34 @@ function folderNameOf(doc: DocItem | null): string {
                                 {{ tablePickerHover.rows ? `${tablePickerHover.rows} × ${tablePickerHover.cols}` : '选择大小' }}
                               </div>
                             </div>
+                            <div
+                              v-else-if="it.key === 'columns'"
+                              class="docs-cols-picker"
+                              @mouseleave="colsPickerHover = 0"
+                            >
+                              <div class="docs-cols-picker-title">选择栏数</div>
+                              <div class="docs-cols-picker-box">
+                                <button
+                                  v-for="n in colsPickerOptions"
+                                  :key="n"
+                                  type="button"
+                                  class="docs-cols-picker-opt"
+                                  :class="{ 'is-on': colsPickerHover === n }"
+                                  @mouseenter="colsPickerHover = n"
+                                  @click.stop="applyInsert(`columns:${n}`)"
+                                >
+                                  <span
+                                    v-for="c in n"
+                                    :key="c"
+                                    class="docs-cols-picker-bar"
+                                    :class="{ 'is-on': colsPickerHover === n }"
+                                  />
+                                </button>
+                              </div>
+                              <div class="docs-table-picker-label">
+                                {{ colsPickerHover ? `${colsPickerHover} 栏` : '悬停选择' }}
+                              </div>
+                            </div>
                             <template v-else>
                               <button
                                 v-for="s in it.sub"
@@ -5297,6 +6081,20 @@ function folderNameOf(doc: DocItem | null): string {
                               >{{ s.label }}</button>
                             </template>
                           </div>
+                        </div>
+                      </div>
+
+                      <!-- 团队协作：与「常用」同级的分组，直接列出各协作入口，点击跳转 -->
+                      <div class="docs-insert-label">团队协作</div>
+                      <div class="docs-insert-list">
+                        <div
+                          v-for="t in TEAM_COLLAB_ITEMS"
+                          :key="t.key"
+                          class="docs-insert-item"
+                          @click="applyInsert(`team:${t.key}`)"
+                        >
+                          <component :is="t.icon" class="docs-insert-item-icon" :style="{ color: t.color, background: `color-mix(in srgb, ${t.color} 10%, transparent)` }" />
+                          <span class="docs-insert-item-label">{{ t.label }}</span>
                         </div>
                       </div>
                     </div>
@@ -5448,6 +6246,15 @@ function folderNameOf(doc: DocItem | null): string {
                 </div>
                 <input ref="imageInputRef" type="file" accept="image/*" class="docs-hidden-file" @change="onImagePicked" />
                 <input ref="fileInputRef" type="file" class="docs-hidden-file" @change="onAttachPicked" />
+                <!-- 项目管理：选择事项，插入为事项卡片 -->
+                <DocIssuePicker v-model:open="issuePickerOpen" @confirm="insertIssueCards" />
+                <!-- 团队协作：需求 / 任务 / 看板 / 人员 / 部门，在弹窗中管理 -->
+                <TeamManageModal
+                  v-model:open="teamManage.open"
+                  :kind="teamManage.kind"
+                  :title="teamManage.title"
+                  :type-name="teamManage.typeName"
+                />
               </div>
               <DocSheetEditor
                 v-else-if="activeDoc.type === 'sheet'"
@@ -5481,7 +6288,7 @@ function folderNameOf(doc: DocItem | null): string {
                     <LikeFilled v-if="docLiked" />
                     <LikeOutlined v-else />
                   </button>
-                  <div class="docs-doc-like-slogan"><span>真诚点赞，手留余香</span></div>
+                  <div class="docs-doc-like-slogan"><span>若有收获，就点个赞吧</span></div>
                   <div v-if="docLikeCount" class="docs-doc-like-count">{{ docLikeCount }} 人点赞</div>
                 </div>
 
@@ -5578,7 +6385,7 @@ function folderNameOf(doc: DocItem | null): string {
 
           <!-- 右侧评论栏（参考飞书）：评论列表 + 输入区；收起后只留一条窄栏 -->
           <aside
-            v-if="activeDoc.type === 'doc'"
+            v-if="activeDoc.type === 'doc' && commentRailShown"
             ref="commentRailRef"
             class="docs-comment-rail"
             :class="{ 'is-collapsed': !commentPanelOpen }"
@@ -5593,10 +6400,29 @@ function folderNameOf(doc: DocItem | null): string {
                   <RightOutlined />
                 </button>
               </template>
-              <button v-else type="button" class="docs-comment-icon-btn" title="展开评论" @click="commentPanelOpen = true">
-                <CommentOutlined />
+              <!-- 与正文右侧的评论入口同款（MessageOutlined + .docs-line-comment） -->
+              <button
+                v-else
+                type="button"
+                class="docs-line-comment is-bordered"
+                title="展开评论"
+                @click="commentPanelOpen = true"
+              >
+                <MessageOutlined />
               </button>
             </div>
+            <!-- 折叠态：每条评论在它所评论的那一行高度上放一个标记（数字为该行的评论数），点击展开并定位 -->
+            <template v-if="!commentPanelOpen">
+              <button
+                v-for="m in commentMarkers"
+                :key="m.key"
+                type="button"
+                class="docs-comment-marker"
+                :style="{ top: m.top + 'px' }"
+                :title="`${m.count} 条评论`"
+                @click="expandToComment(m.firstId)"
+              >{{ m.count }}</button>
+            </template>
 
             <!-- 行内评论输入卡片：出现在被评论的那一行右侧 -->
             <div
@@ -5647,6 +6473,8 @@ function folderNameOf(doc: DocItem | null): string {
                   v-for="c in lineComments"
                   :key="c.id"
                   class="docs-comment-card"
+                  :data-cid="c.id"
+                  :style="{ top: (commentCardTop[c.id] ?? 0) + 'px' }"
                   :class="{ 'is-resolved': c.resolved, 'is-active': activeCommentId === c.id }"
                   @click="focusComment(c)"
                 >
@@ -6340,6 +7168,40 @@ function folderNameOf(doc: DocItem | null): string {
         </div>
       </div>
 
+      <div class="docs-bubble-group">
+        <a-tooltip title="文字颜色" placement="bottom">
+          <button
+            type="button"
+            class="docs-bubble-btn"
+            :class="{ 'is-open': bubble.menu === 'fontcolor' }"
+            @click="toggleBubbleMenu('fontcolor')"
+          >
+            <FontColorsOutlined /><DownOutlined class="docs-bubble-caret" />
+          </button>
+        </a-tooltip>
+        <div v-if="bubble.menu === 'fontcolor'" class="docs-bubble-menu is-right docs-bubble-colors">
+          <a-tooltip v-for="(c, i) in textColors" :key="c" :title="textColorNames[i]" placement="bottom">
+            <button
+              type="button"
+              class="docs-bubble-color"
+              :style="{ background: c }"
+              @click="applyBubble('textColor', c)"
+            ></button>
+          </a-tooltip>
+        </div>
+      </div>
+
+      <span class="docs-bubble-sep" />
+      <a-tooltip title="左对齐" placement="bottom">
+        <button type="button" class="docs-bubble-btn" @click="applyBubble('align', 'left')"><AlignLeftOutlined /></button>
+      </a-tooltip>
+      <a-tooltip title="居中对齐" placement="bottom">
+        <button type="button" class="docs-bubble-btn" @click="applyBubble('align', 'center')"><AlignCenterOutlined /></button>
+      </a-tooltip>
+      <a-tooltip title="右对齐" placement="bottom">
+        <button type="button" class="docs-bubble-btn" @click="applyBubble('align', 'right')"><AlignRightOutlined /></button>
+      </a-tooltip>
+
       <span class="docs-bubble-sep" />
       <a-tooltip title="清除格式" placement="bottom">
         <button type="button" class="docs-bubble-btn" @click="applyBubble('clear')"><ClearOutlined /></button>
@@ -6451,10 +7313,10 @@ function folderNameOf(doc: DocItem | null): string {
             type="button"
             class="docs-table-tool-btn is-align"
             :class="{ 'is-on': tableTool.colorOpen }"
-            title="高亮颜色"
-            @click="tableTool.colorOpen = !tableTool.colorOpen; tableTool.alignOpen = false"
+            title="文字背景"
+            @click="tableTool.colorOpen = !tableTool.colorOpen; tableTool.alignOpen = false; tableTool.fontColorOpen = false; tableTool.cellBgOpen = false"
           >
-            <FontColorsOutlined /><DownOutlined class="docs-table-tool-caret" />
+            <HighlightOutlined /><DownOutlined class="docs-table-tool-caret" />
           </button>
           <div v-if="tableTool.colorOpen" class="docs-table-tool-menu is-color">
             <div class="docs-table-tool-colors">
@@ -6470,6 +7332,57 @@ function folderNameOf(doc: DocItem | null): string {
             </div>
             <button type="button" class="docs-table-tool-menu-item" @click="applyTableCellFormat('unhighlight')">
               <ClearOutlined /><span>清除高亮</span>
+            </button>
+          </div>
+        </div>
+        <div class="docs-table-tool-color-wrap">
+          <button
+            type="button"
+            class="docs-table-tool-btn is-align"
+            :class="{ 'is-on': tableTool.fontColorOpen }"
+            title="文字颜色"
+            @click="toggleTableMenu('fontColorOpen')"
+          >
+            <FontColorsOutlined /><DownOutlined class="docs-table-tool-caret" />
+          </button>
+          <div v-if="tableTool.fontColorOpen" class="docs-table-tool-menu is-color">
+            <div class="docs-table-tool-colors">
+              <button
+                v-for="(c, i) in textColors"
+                :key="c"
+                type="button"
+                class="docs-table-tool-color"
+                :style="{ background: c }"
+                :title="textColorNames[i]"
+                @click="applyTableCellFormat('textColor', c)"
+              />
+            </div>
+          </div>
+        </div>
+        <div class="docs-table-tool-color-wrap">
+          <button
+            type="button"
+            class="docs-table-tool-btn is-align"
+            :class="{ 'is-on': tableTool.cellBgOpen }"
+            title="单元格背景色"
+            @click="toggleTableMenu('cellBgOpen')"
+          >
+            <BgColorsOutlined /><DownOutlined class="docs-table-tool-caret" />
+          </button>
+          <div v-if="tableTool.cellBgOpen" class="docs-table-tool-menu is-color">
+            <div class="docs-table-tool-colors">
+              <button
+                v-for="(c, i) in cellBgColors"
+                :key="c"
+                type="button"
+                class="docs-table-tool-color"
+                :style="{ background: c }"
+                :title="cellBgColorNames[i]"
+                @click="applyTableCellFormat('cellBg', c)"
+              />
+            </div>
+            <button type="button" class="docs-table-tool-menu-item" @click="applyTableCellFormat('cellBg', '')">
+              <ClearOutlined /><span>清除背景</span>
             </button>
           </div>
         </div>
@@ -7370,7 +8283,12 @@ function folderNameOf(doc: DocItem | null): string {
   transition: grid-template-columns 0.2s var(--docs-ease);
 }
 .docs-doc-scroll.is-scrollable.is-comments-collapsed {
-  grid-template-columns: minmax(0, 1fr) 44px;
+  grid-template-columns: minmax(0, 1fr) 48px;
+}
+/* 没有评论时评论栏整栏隐藏，正文占满（比收起态的 44px 窄条优先级更高） */
+.docs-doc-scroll.is-scrollable.is-comments-hidden,
+.docs-doc-scroll.is-scrollable.is-comments-hidden.is-comments-collapsed {
+  grid-template-columns: minmax(0, 1fr);
 }
 /* 文档页的滚动交给外层容器，画布本身不再单独滚动 */
 .docs-doc-scroll.is-scrollable .docs-canvas {
@@ -7411,7 +8329,7 @@ function folderNameOf(doc: DocItem | null): string {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  background: var(--docs-canvas);
+  background: var(--comment-surface);
   border-left: 1px solid var(--docs-border);
   /* clip 不会创建滚动容器，底部输入框可以用 sticky 固定在视口底部 */
   overflow: clip;
@@ -7419,6 +8337,7 @@ function folderNameOf(doc: DocItem | null): string {
 /* 收起时列宽由外层 grid 控制（.is-comments-collapsed），这里只调整头部 */
 .docs-comment-rail.is-collapsed {
   min-width: 0;
+  border-left: none;
 }
 .docs-comment-rail-head {
   flex: none;
@@ -7466,21 +8385,58 @@ function folderNameOf(doc: DocItem | null): string {
   border-radius: var(--docs-radius-sm);
   cursor: pointer;
 }
+/* 折叠态：标记贴在被评论的那一行上（左右居中于 44px 的折叠条） */
+/* 黄色评论气泡：数量写在气泡里，底部带小尾巴，指向所评论的那一行 */
+.docs-comment-marker {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  min-width: 24px;
+  height: 22px;
+  padding: 0 6px;
+  font-size: 12px;
+  line-height: 22px;
+  font-weight: 600;
+  text-align: center;
+  color: #fff;
+  background: #ffc60a;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  box-sizing: border-box;
+}
+.docs-comment-marker::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: -5px;
+  margin-left: -5px;
+  border-width: 5px 5px 0;
+  border-style: solid;
+  border-color: #ffc60a transparent transparent;
+}
+.docs-comment-marker:hover {
+  background: #ffb800;
+}
+.docs-comment-marker:hover::after {
+  border-top-color: #ffb800;
+}
 .docs-comment-icon-btn:hover {
   color: var(--docs-text);
   background: var(--docs-hover);
 }
 /* 评论列表不单独滚动：高度随内容撑开，和正文一起由外层容器滚动 */
 .docs-comment-list {
+  position: relative;
   flex: 1 0 auto;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 4px 12px 12px;
 }
+/* 卡片绝对定位：顶端由 layoutCommentCards 对齐到被评论的文字 */
 .docs-comment-card {
+  position: absolute;
+  left: 12px;
+  right: 12px;
   padding: 10px 12px;
-  background: var(--docs-paper);
+  background: var(--comment-surface);
   border: 1px solid var(--docs-border);
   border-radius: var(--docs-radius-lg);
   cursor: pointer;
@@ -7642,7 +8598,7 @@ function folderNameOf(doc: DocItem | null): string {
   font-size: 12px;
   line-height: 1.5;
   color: var(--docs-text);
-  background: var(--docs-canvas);
+  background: var(--comment-surface);
   border: 1px solid var(--docs-border);
   border-radius: var(--docs-radius-sm);
   outline: none;
@@ -7743,6 +8699,26 @@ function folderNameOf(doc: DocItem | null): string {
   color: var(--docs-text);
   background: var(--docs-hover);
 }
+/* 折叠态评论栏的展开按钮：贴住右侧边缘，像从右侧长出来的标签（只有左 / 上 / 下边框，左侧圆角） */
+.docs-comment-rail.is-collapsed .docs-comment-rail-head {
+  justify-content: flex-end;
+  padding: 18px 0 8px;
+}
+.docs-line-comment.is-bordered {
+  width: 48px;
+  height: 40px;
+  margin: 0;
+  color: var(--docs-text-2);
+  background: var(--docs-canvas);
+  border: 1px solid var(--docs-border-strong);
+  border-right: none;
+  border-radius: 18px 0 0 18px;
+  box-shadow: -2px 0 6px rgba(0, 0, 0, 0.04);
+}
+.docs-line-comment.is-bordered:hover {
+  color: var(--docs-text);
+  background: var(--docs-hover);
+}
 /* 行内评论输入卡片：出现在被评论的那一行右侧，随正文一起滚动 */
 .docs-line-composer {
   position: absolute;
@@ -7750,7 +8726,7 @@ function folderNameOf(doc: DocItem | null): string {
   left: 10px;
   z-index: 6;
   padding: 12px;
-  background: var(--docs-canvas);
+  background: var(--comment-surface);
   border: 1px solid var(--docs-border);
   border-top: 3px solid #ffc60a;
   border-radius: var(--docs-radius-lg);
@@ -7808,7 +8784,7 @@ function folderNameOf(doc: DocItem | null): string {
   font-size: 13px;
   line-height: 1.5;
   color: var(--docs-text);
-  background: var(--docs-canvas);
+  background: var(--comment-surface);
   border: 1px solid var(--docs-border-strong);
   border-radius: var(--docs-radius);
   outline: none;
@@ -7860,42 +8836,26 @@ function folderNameOf(doc: DocItem | null): string {
   gap: 14px;
   padding: 8px 0 4px;
 }
+/* 点赞图标：黄色线性大拇指，无圆圈、无底色；悬停微微上浮，点赞后实心 */
 .docs-doc-like-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 72px;
-  height: 72px;
   padding: 0;
-  font-size: 30px;
-  color: var(--c-primary);
+  font-size: 40px;
+  line-height: 1;
+  color: #faad14;
   cursor: pointer;
   background: transparent;
-  border: 1.5px solid color-mix(in srgb, var(--c-primary) 70%, #fff);
-  border-radius: 50%;
-  transition: background 0.15s, border-color 0.15s, transform 0.15s;
+  border: none;
+  transition: transform 0.15s;
 }
 .docs-doc-like-btn:hover {
-  background: color-mix(in srgb, var(--c-primary) 6%, transparent);
-  transform: translateY(-1px);
-}
-.docs-doc-like.is-liked .docs-doc-like-btn {
-  background: color-mix(in srgb, var(--c-primary) 10%, transparent);
-  border-color: var(--c-primary);
+  transform: translateY(-2px);
 }
 .docs-doc-like-slogan {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  font-size: 14px;
+  font-size: 15px;
   color: var(--docs-text-3);
-}
-.docs-doc-like-slogan::before,
-.docs-doc-like-slogan::after {
-  content: '';
-  width: 96px;
-  height: 1px;
-  background: var(--docs-border);
 }
 .docs-doc-like-count {
   margin-top: -4px;
@@ -7941,7 +8901,7 @@ function folderNameOf(doc: DocItem | null): string {
   margin-top: 24px;
   padding: 0 10px 0 14px;
   box-sizing: border-box;
-  background: var(--docs-canvas);
+  background: var(--comment-surface);
   border: 1px solid var(--docs-border-strong);
   border-radius: 8px;
   transition: border-color 0.15s, box-shadow 0.15s;
@@ -8002,7 +8962,7 @@ function folderNameOf(doc: DocItem | null): string {
 }
 .docs-doc-comment-cancel {
   color: var(--docs-text);
-  background: var(--docs-canvas);
+  background: var(--comment-surface);
   border: 1px solid var(--docs-border-strong);
 }
 .docs-doc-comment-cancel:hover {
@@ -8496,6 +9456,49 @@ function folderNameOf(doc: DocItem | null): string {
   font-size: 12px;
   color: var(--docs-text-3);
   text-align: center;
+}
+/* 分栏插入：图形化选栏数，每个缩略图的竖条数即栏数 */
+.docs-cols-picker {
+  width: 220px;
+  padding: 4px 2px 2px;
+}
+.docs-cols-picker-title {
+  padding: 0 4px 8px;
+  font-size: 13px;
+  color: var(--docs-text-3);
+}
+.docs-cols-picker-box {
+  display: flex;
+  gap: 8px;
+  padding: 10px;
+  background: var(--docs-side-bg);
+  border: 1px solid var(--docs-border);
+  border-radius: var(--docs-radius);
+}
+.docs-cols-picker-opt {
+  flex: 1;
+  display: flex;
+  gap: 3px;
+  height: 56px;
+  padding: 6px;
+  background: var(--docs-canvas);
+  border: 1px solid var(--docs-border-strong);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: border-color 0.1s;
+}
+.docs-cols-picker-opt.is-on {
+  border-color: var(--c-primary);
+}
+.docs-cols-picker-bar {
+  flex: 1;
+  min-width: 0;
+  background: var(--docs-hover);
+  border-radius: 2px;
+  transition: background 0.1s;
+}
+.docs-cols-picker-bar.is-on {
+  background: color-mix(in srgb, var(--c-primary) 16%, transparent);
 }
 .docs-insert-sub-item {
   display: block;
@@ -9159,16 +10162,165 @@ function folderNameOf(doc: DocItem | null): string {
 .docs-editor :deep(.docs-insert-table th.docs-cell-active) {
   box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--c-primary) 60%, transparent);
 }
+/* 分栏（参考飞书）：栏与栏之间用细缝分隔，悬停缝显示拖拽线，拖动调宽 */
 .docs-editor :deep(.docs-cols) {
+  position: relative;
   display: grid;
-  gap: 16px;
+  gap: 12px;
   margin: 12px 0;
 }
 .docs-editor :deep(.docs-col) {
+  min-width: 0;
   min-height: 44px;
-  padding: 8px 10px;
-  border: 1px dashed var(--docs-border);
+  padding: 4px 8px;
+  background: var(--docs-side-bg);
   border-radius: var(--docs-radius);
+  transition: background-color 0.15s;
+}
+.docs-editor :deep(.docs-col > :first-child) {
+  margin-top: 0;
+}
+.docs-editor :deep(.docs-col > :last-child) {
+  margin-bottom: 0;
+}
+/* 编辑态下分栏边界一直可见（浅色虚线），悬停时再加底色 */
+.docs-editor-wrap.is-edit .docs-editor :deep(.docs-col) {
+  border: 1px dashed var(--docs-border);
+}
+.docs-editor-wrap.is-edit .docs-editor :deep(.docs-col:hover) {
+  background: color-mix(in srgb, var(--docs-side-bg) 88%, #000);
+}
+.docs-editor :deep(.docs-cols.is-resize-hover::after),
+.docs-editor :deep(.docs-cols.is-resizing::after) {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: var(--resize-x, 0);
+  width: 2px;
+  margin-left: -1px;
+  border-radius: 2px;
+  background: var(--c-primary);
+  pointer-events: none;
+}
+.docs-editor :deep(.docs-cols.is-resizing) {
+  cursor: col-resize;
+}
+/* 窄屏（手机 / 窄窗口）：分栏自动上下堆叠，不再拖拽 */
+@media (max-width: 720px) {
+  .docs-editor :deep(.docs-cols) {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+}
+/* 修订：待处理修订的块用绿色底 + 左侧色条标出；块前的修订条给出类型、预览与接受 / 拒绝 */
+.docs-editor :deep(.docs-suggest-ins) {
+  background: color-mix(in srgb, #52c41a 10%, transparent);
+  box-shadow: inset 3px 0 0 #52c41a;
+  border-radius: var(--docs-radius-sm);
+}
+.docs-editor :deep(.docs-suggest-bar) {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 6px 0;
+  padding: 4px 8px;
+  font-size: 12px;
+  color: var(--docs-text-2);
+  background: var(--docs-side-bg);
+  border-radius: var(--docs-radius);
+  user-select: none;
+}
+.docs-editor :deep(.docs-suggest-label) {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.docs-editor :deep(.docs-suggest-btn) {
+  height: 22px;
+  padding: 0 8px;
+  font-size: 12px;
+  color: var(--docs-text-2);
+  background: var(--docs-canvas);
+  border: 1px solid var(--docs-border-strong);
+  border-radius: var(--docs-radius-sm);
+  cursor: pointer;
+}
+.docs-editor :deep(.docs-suggest-btn.is-primary) {
+  color: #fff;
+  background: var(--c-primary);
+  border-color: var(--c-primary);
+}
+.docs-suggest-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 8px;
+  padding: 6px 12px;
+  font-size: 13px;
+  color: var(--docs-text-2);
+  background: color-mix(in srgb, var(--c-primary) 8%, transparent);
+  border-radius: var(--docs-radius);
+}
+.docs-suggest-banner-text {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--c-primary);
+}
+.docs-suggest-banner-btn {
+  height: 26px;
+  padding: 0 10px;
+  font-size: 12px;
+  color: var(--docs-text-2);
+  background: var(--docs-canvas);
+  border: 1px solid var(--docs-border-strong);
+  border-radius: var(--docs-radius-sm);
+  cursor: pointer;
+}
+.docs-suggest-banner-btn.is-primary {
+  color: #fff;
+  background: var(--c-primary);
+  border-color: var(--c-primary);
+}
+/* 项目管理：事项卡片（编号 + 标题 + 状态），整张卡可点击打开事项详情 */
+.docs-editor :deep(.docs-issue-card) {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 6px 0;
+  padding: 8px 12px;
+  font-size: 14px;
+  color: var(--docs-text);
+  background: var(--docs-canvas);
+  border: 1px solid var(--docs-border);
+  border-left: 3px solid var(--c-primary);
+  border-radius: var(--docs-radius);
+  cursor: pointer;
+  user-select: none;
+  transition: background-color 0.15s;
+}
+.docs-editor :deep(.docs-issue-card:hover) {
+  background: var(--docs-hover);
+}
+.docs-editor :deep(.docs-issue-key) {
+  flex: none;
+  color: var(--c-primary);
+  font-weight: 500;
+}
+.docs-editor :deep(.docs-issue-title) {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.docs-editor :deep(.docs-issue-status) {
+  flex: none;
+  font-size: 12px;
+  color: var(--docs-text-2);
 }
 .docs-editor :deep(.docs-callout) {
   margin: 12px 0;
@@ -9553,6 +10705,21 @@ function folderNameOf(doc: DocItem | null): string {
   .docs-canvas-inner.is-full,
   .docs-page.is-focus .docs-canvas-inner {
     max-width: none;
+  }
+}
+
+/* 中等宽度：侧栏与评论栏逐级收窄，保证正文列在 860–1240px 之间仍有足够宽度 */
+@media (max-width: 1240px) {
+  .docs-side {
+    flex-basis: 280px;
+  }
+}
+@media (max-width: 1060px) {
+  .docs-side {
+    flex-basis: 240px;
+  }
+  .docs-page {
+    --docs-comment-rail: 220px;
   }
 }
 

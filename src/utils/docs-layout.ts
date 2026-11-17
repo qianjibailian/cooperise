@@ -15,8 +15,17 @@ export function docTitleInputValue(title?: string): string {
   return !title || title === DOC_UNTITLED ? '' : title
 }
 
-/** 详情页编辑 / 预览模式（顶栏"编辑"下拉切换，文档页与顶栏共享） */
-export const docsEditMode = ref(true)
+/**
+ * 详情页编辑模式（文档页与顶栏共享）：默认只读；顶栏"编辑"进入编辑，"更新"退出编辑。
+ * 切换到其他文档时回到只读。
+ */
+export const docsEditMode = ref(false)
+
+/**
+ * 修订模式：文档可编辑（docsEditMode 为 true），但修改以"修订"的形式呈现，
+ * 与修订基准比对，逐段接受 / 拒绝（只在修订模式下生效）
+ */
+export const docsSuggestMode = ref(false)
 
 /** 当前打开的文档（顶栏"分享 / 编辑"按钮使用；离开文档页时置空） */
 export const docsActiveDoc = ref<DocItem | null>(null)
@@ -26,6 +35,14 @@ export const docsActiveDoc = ref<DocItem | null>(null)
  * 文档页 watch 后触发防抖保存（onDocChanged 在页面内，顶栏只发信号）
  */
 export const docsTitleRev = ref(0)
+
+/**
+ * 顶栏"+"新建请求：类型 + 序号。顶栏每点一次 seq +1，文档页监听序号后按类型新建文档。
+ */
+export const docsCreateRequest = ref<{ type: string; seq: number }>({ type: '', seq: 0 })
+export function requestDocCreate(type: string) {
+  docsCreateRequest.value = { type, seq: docsCreateRequest.value.seq + 1 }
+}
 
 /**
  * 详情页保存状态（顶栏分享按钮左侧轻提示，文档页与顶栏共享）：

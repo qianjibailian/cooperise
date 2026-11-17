@@ -22,11 +22,11 @@ import AppHeader from '@/components/AppHeader.vue'
 import { docsSideCollapsed } from '@/utils/docs-layout'
 
 const route = useRoute()
-/** 是否文档详情页（/wiki/:docId） */
-const isDocDetail = computed(() => route.path.startsWith('/wiki/'))
+/** 是否文档详情页（/docs/wiki/:docId） */
+const isDocDetail = computed(() => route.path.startsWith('/docs/wiki/'))
 /** 顶部菜单标题：主页 / 知识库；打开文档时顶部显示文档标题，不重复显示模块名 */
 const moduleTitle = computed(() => {
-  if (route.path.startsWith('/wiki/')) return ''
+  if (isDocDetail.value) return ''
   if (route.path.startsWith('/docs/wiki')) return '知识库'
   return '主页'
 })

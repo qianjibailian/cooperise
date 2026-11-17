@@ -109,17 +109,13 @@ const routes: RouteRecordRaw[] = [
       { path: 'drive/home', component: Docs, name: 'DocsHome', meta: { title: '云文档' } },
       // 知识库
       { path: 'wiki', component: Docs, name: 'DocsWiki', meta: { title: '知识库' } },
+      // 文档详情：参考飞书 /docs/wiki/{docId}
+      { path: 'wiki/:docId', component: Docs, name: 'WikiDoc', meta: { title: '云文档' } },
     ],
   },
-  // 文档详情：参考飞书 /wiki/{docId}
-  {
-    path: '/wiki',
-    component: DocsLayout,
-    children: [
-      { path: '', redirect: '/docs' },
-      { path: ':docId', component: Docs, name: 'WikiDoc', meta: { title: '云文档' } },
-    ],
-  },
+  // 旧地址 /wiki/{docId} → /docs/wiki/{docId}，保留兼容
+  { path: '/wiki', redirect: '/docs' },
+  { path: '/wiki/:docId', redirect: (to) => `/docs/wiki/${String(to.params.docId)}` },
 
   // ============ 空间（独立布局：自己的顶栏 + 空间侧栏） ============
   {

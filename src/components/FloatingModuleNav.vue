@@ -1,6 +1,14 @@
 <template>
   <!-- 右侧贴边的模块切换悬浮条（参考淘宝 / 京东客服条）：图标 + 文字竖排，可收起 -->
-  <div class="module-rail" :class="{ 'is-hidden': hidden }" role="menu" aria-label="切换模块">
+  <div
+    ref="railRef"
+    class="module-rail"
+    :class="{ 'is-hidden': hidden }"
+    role="menu"
+    aria-label="切换模块"
+    @mouseenter="onRailEnter"
+    @mouseleave="onRailLeave"
+  >
     <button
       v-for="item in NAV_ITEMS"
       :key="item.key"
@@ -36,7 +44,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   AppstoreOutlined,
@@ -77,6 +85,46 @@ function setHidden(value: boolean) {
     // 存储不可用：只在本次会话生效
   }
 }
+
+/**
+ * 展开时点击菜单以外的任何地方：自动收起。
+ * 这是临时收起，不写入记忆（下次打开仍按用户手动设置的状态显示）。
+ */
+const railRef = ref<HTMLElement | null>(null)
+function onDocMouseDown(e: MouseEvent) {
+  if (hidden.value) return
+  if (railRef.value?.contains(e.target as Node)) return
+  hidden.value = true
+}
+/**
+ * 鼠标离开菜单后自动收起（同样是临时收起）。
+ * 离开后等 300ms 再收，避免鼠标轻微划出时误收；期间重新进入则取消。
+ */
+const LEAVE_COLLAPSE_DELAY = 300
+let leaveTimer: number | undefined
+function cancelLeaveCollapse() {
+  if (leaveTimer !== undefined) {
+    window.clearTimeout(leaveTimer)
+    leaveTimer = undefined
+  }
+}
+function onRailEnter() {
+  cancelLeaveCollapse()
+}
+function onRailLeave() {
+  if (hidden.value) return
+  cancelLeaveCollapse()
+  leaveTimer = window.setTimeout(() => {
+    leaveTimer = undefined
+    hidden.value = true
+  }, LEAVE_COLLAPSE_DELAY)
+}
+
+onMounted(() => document.addEventListener('mousedown', onDocMouseDown, true))
+onBeforeUnmount(() => {
+  document.removeEventListener('mousedown', onDocMouseDown, true)
+  cancelLeaveCollapse()
+})
 
 function goNav(item: (typeof NAV_ITEMS)[number]) {
   router.push(item.path)

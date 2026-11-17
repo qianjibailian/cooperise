@@ -14,9 +14,6 @@
           @click="activate(tab)"
           @mousedown.middle.prevent="close(tab)"
         >
-          <span class="dt-kind" :class="`dt-kind-${kindOf(tab.key)}`">
-            <component :is="KIND_META[kindOf(tab.key)].icon" />
-          </span>
           <span class="dt-title">{{ tab.title }}</span>
           <span
             v-if="tabs.length > 1"
@@ -52,7 +49,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute, useRouter, type RouteLocationNormalizedLoaded } from 'vue-router'
-import { CloseOutlined, EllipsisOutlined, LinkOutlined, MenuOutlined, FileTextOutlined, CloudOutlined, AppstoreOutlined } from '@ant-design/icons-vue'
+import { CloseOutlined, EllipsisOutlined } from '@ant-design/icons-vue'
 import { useViewStore } from '@/utils/view-store'
 import { isMacDesktop } from '@/utils/desktop'
 import { getLoginUsername } from '@/utils/auth'
@@ -74,12 +71,13 @@ const HOME = '/workbench/board'
  * - page：其他功能页面（空间、设置、管理后台、个人中心等）
  */
 type TabKind = 'link' | 'menu' | 'page' | 'docs' | 'space'
-const KIND_META: Record<TabKind, { label: string; icon: unknown }> = {
-  link: { label: '链接', icon: LinkOutlined },
-  menu: { label: '菜单', icon: MenuOutlined },
-  page: { label: '页面', icon: FileTextOutlined },
-  docs: { label: '云文档', icon: CloudOutlined },
-  space: { label: '空间', icon: AppstoreOutlined },
+/** 页签类型只用于 hover 提示文字，页签本身不再显示类型图标 */
+const KIND_META: Record<TabKind, { label: string }> = {
+  link: { label: '链接' },
+  menu: { label: '菜单' },
+  page: { label: '页面' },
+  docs: { label: '云文档' },
+  space: { label: '空间' },
 }
 function kindOf(path: string): TabKind {
   if (path.startsWith('/jira/browse/')) return 'link'
@@ -111,8 +109,8 @@ const activeKey = computed(() => keyOf(route))
 
 /** 页签标识：云文档按完整路径区分（每个文档一个页签），其余页面按 path 区分 */
 function keyOf(r: RouteLocationNormalizedLoaded): string {
-  // 文档详情（/wiki/:docId）每篇一个页签；文档列表按完整路径区分导航状态
-  if (r.path.startsWith('/wiki/')) return r.path
+  // 文档详情（/docs/wiki/:docId）每篇一个页签；文档列表按完整路径区分导航状态
+  if (r.path.startsWith('/docs/wiki/')) return r.path
   return r.path === '/docs' ? r.fullPath : r.path
 }
 
@@ -131,7 +129,7 @@ function docTitleOf(id: string): string {
 
 function titleOf(r: RouteLocationNormalizedLoaded): string {
   if (r.name === 'IssueDetail' && r.params.issueKey) return String(r.params.issueKey)
-  if (r.path.startsWith('/wiki/') && r.params.docId) return docTitleOf(String(r.params.docId))
+  if (r.path.startsWith('/docs/wiki/') && r.params.docId) return docTitleOf(String(r.params.docId))
   if (r.path === '/docs' && r.query.doc) return docTitleOf(String(r.query.doc))
   if (r.name === 'ViewEntry' && r.params.filterCode) {
     return findViewItem(String(r.params.filterCode))?.filterName || '视图'
@@ -441,43 +439,6 @@ function scrollIntoView(key: string) {
   bottom: 7px;
   width: 1px;
   background: #d5d9df;
-}
-
-.dt-kind {
-  flex-shrink: 0;
-  width: 16px;
-  height: 16px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 4px;
-  font-size: 10px;
-}
-
-/* 三种类型用颜色 + 图标区分 */
-.dt-kind-link {
-  color: #1677ff;
-  background: rgba(22, 119, 255, 0.1);
-}
-
-.dt-kind-menu {
-  color: #722ed1;
-  background: rgba(114, 46, 209, 0.1);
-}
-
-.dt-kind-page {
-  color: #5c6370;
-  background: rgba(92, 99, 112, 0.1);
-}
-
-.dt-kind-docs {
-  color: #3370ff;
-  background: rgba(51, 112, 255, 0.1);
-}
-
-.dt-kind-space {
-  color: #8b5cf6;
-  background: rgba(139, 92, 246, 0.1);
 }
 
 .dt-title {

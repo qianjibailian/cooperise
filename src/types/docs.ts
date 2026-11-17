@@ -70,6 +70,8 @@ export interface DocMeta {
   /** 创建者昵称 / 头像（创建文档时取本地登录信息，随 data 一起保存） */
   authorName?: string
   authorAvatar?: string
+  /** 修订基准：最后一次"接受"后的正文 HTML；修订模式下与当前正文比对出待处理的修订 */
+  suggestBase?: string
 }
 
 export interface DocItem {

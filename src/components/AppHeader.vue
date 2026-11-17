@@ -56,19 +56,108 @@
             <ShareAltOutlined /> 分享
           </button>
         </a-popover>
+        <!-- 文档模式：编辑 / 修订 / 阅读（默认阅读）；切换即改变页面是否可编辑 -->
         <a-dropdown trigger="click" placement="bottomRight">
           <button type="button" class="docs-edit-btn">
-            <span class="docs-seg" :class="{ 'is-active': docsEditMode }"><EditOutlined />编辑</span>
-            <span class="docs-seg" :class="{ 'is-active': !docsEditMode }"><EyeOutlined />预览</span>
-            <CaretDownOutlined class="docs-edit-caret" />
+            <component :is="docModeIcon" />
+            <span>{{ docModeLabel }}</span>
+            <DownOutlined class="docs-edit-caret" />
           </button>
           <template #overlay>
-            <a-menu :selected-keys="[docsEditMode ? 'edit' : 'preview']" @click="onEditModeMenu">
-              <a-menu-item key="edit"><EditOutlined /> 编辑模式</a-menu-item>
-              <a-menu-item key="preview"><EyeOutlined /> 预览模式</a-menu-item>
+            <a-menu :selected-keys="[docModeKey]" class="docs-mode-menu" @click="onDocModeMenu">
+              <a-menu-item key="edit">
+                <div class="docs-mode-item">
+                  <div class="docs-mode-title"><EditOutlined /><span>编辑</span><CheckOutlined v-if="docModeKey === 'edit'" class="docs-mode-check" /></div>
+                  <div class="docs-mode-desc">可编辑文档</div>
+                </div>
+              </a-menu-item>
+              <a-menu-item key="revision">
+                <div class="docs-mode-item">
+                  <div class="docs-mode-title"><FormOutlined /><span>修订</span><CheckOutlined v-if="docsSuggestMode" class="docs-mode-check" /></div>
+                  <div class="docs-mode-desc">提出修改建议</div>
+                </div>
+              </a-menu-item>
+              <a-menu-item key="read">
+                <div class="docs-mode-item">
+                  <div class="docs-mode-title"><EyeOutlined /><span>阅读</span><CheckOutlined v-if="!docsEditMode" class="docs-mode-check" /></div>
+                  <div class="docs-mode-desc">仅查看或者评论文档</div>
+                </div>
+              </a-menu-item>
             </a-menu>
           </template>
         </a-dropdown>
+        <!-- 新建：文档 / 表格 / 思维导图 / 流程图已接入，其余类型提示开发中 -->
+        <button
+          ref="createBtnRef"
+          type="button"
+          class="docs-create-btn"
+          :class="{ 'is-open': createMenuOpen }"
+          title="新建"
+          @click="toggleCreateMenu"
+        >
+          <PlusOutlined />
+        </button>
+        <!-- 新建菜单：自绘浮层挂到 body，位置紧贴「+」按钮正下方、右对齐（与头像菜单同一方式） -->
+        <Teleport to="body">
+          <div v-if="createMenuOpen" ref="createMenuRef" class="docs-create-panel" :style="createMenuStyle">
+            <button type="button" class="docs-create-item" @click="pickDocCreate('doc')">
+              <FileTextOutlined class="docs-create-ico" style="color: #3370ff" /><span>文档</span>
+            </button>
+            <button type="button" class="docs-create-item" @click="pickDocCreate('sheet')">
+              <TableOutlined class="docs-create-ico" style="color: #34c724" /><span>表格</span>
+            </button>
+            <button type="button" class="docs-create-item" @click="pickDocCreate('slides')">
+              <PieChartOutlined class="docs-create-ico" style="color: #ff7a00" /><span>幻灯片</span>
+            </button>
+            <button type="button" class="docs-create-item" @click="pickDocCreate('bitable')">
+              <AppstoreOutlined class="docs-create-ico" style="color: #7b61ff" /><span>多维表格</span>
+            </button>
+            <button type="button" class="docs-create-item" @click="pickDocCreate('survey')">
+              <FormOutlined class="docs-create-ico" style="color: #ffc60a" /><span>问卷</span>
+            </button>
+            <button type="button" class="docs-create-item" @click="pickDocCreate('notes')">
+              <BulbOutlined class="docs-create-ico" style="color: #14c0ff" /><span>思维笔记</span>
+            </button>
+            <div class="docs-create-sep" />
+            <button type="button" class="docs-create-item" @click="pickDocCreate('wiki')">
+              <ReadOutlined class="docs-create-ico" style="color: #3370ff" /><span>知识库</span>
+            </button>
+            <div class="docs-create-sep" />
+            <div class="docs-create-group">文档应用</div>
+            <button type="button" class="docs-create-item" @click="pickDocCreate('whiteboard')">
+              <EditOutlined class="docs-create-ico" style="color: #34c724" /><span>画板</span>
+            </button>
+            <button type="button" class="docs-create-item" @click="pickDocCreate('mindmap')">
+              <ApartmentOutlined class="docs-create-ico" style="color: #14c0ff" /><span>思维导图</span>
+            </button>
+            <button type="button" class="docs-create-item" @click="pickDocCreate('flow')">
+              <NodeIndexOutlined class="docs-create-ico" style="color: #ff8800" /><span>流程图</span>
+            </button>
+            <div class="docs-create-sep" />
+            <div class="docs-create-group">团队协作</div>
+            <button
+              v-for="t in TEAM_COLLAB_ITEMS"
+              :key="t.key"
+              type="button"
+              class="docs-create-item"
+              @click="pickTeamItem(t.key)"
+            >
+              <component :is="t.icon" class="docs-create-ico" :style="{ color: t.color }" /><span>{{ t.label }}</span>
+            </button>
+            <div class="docs-create-sep" />
+            <button type="button" class="docs-create-item" @click="pickDocCreate('upload')">
+              <UploadOutlined class="docs-create-ico" style="color: #3370ff" /><span>上传及导入</span>
+              <RightOutlined class="docs-create-caret" />
+            </button>
+          </div>
+        </Teleport>
+        <!-- 团队协作：点击条目在弹窗中管理 -->
+        <TeamManageModal
+          v-model:open="teamManage.open"
+          :kind="teamManage.kind"
+          :title="teamManage.title"
+          :type-name="teamManage.typeName"
+        />
       </template>
       <!-- 搜索框 + 自控下拉面板（不用 a-dropdown：受控 open 会被组件内部重置，结果有数据也不弹出） -->
       <div v-if="isWorkbench" class="header-search-wrap">
@@ -242,7 +331,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, nextTick, onMounted, onBeforeUnmount, watch } from 'vue'
+import { ref, reactive, computed, nextTick, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 
 import {
@@ -257,11 +346,23 @@ import {
   ShareAltOutlined,
   EditOutlined,
   EyeOutlined,
-  CaretDownOutlined,
+  FormOutlined,
+  FileTextOutlined,
+  TableOutlined,
+  PieChartOutlined,
+  AppstoreOutlined,
+  BulbOutlined,
+  ReadOutlined,
+  ApartmentOutlined,
+  NodeIndexOutlined,
+  UploadOutlined,
 } from '@ant-design/icons-vue'
 import HeaderBanner from './HeaderBanner.vue'
 import AppLogo from './AppLogo.vue'
-import { docsEditMode, docsActiveDoc, docsSideCollapsed, docsSaveState, docsTitleRev, docTitleInputValue } from '@/utils/docs-layout'
+import { docsEditMode, docsSuggestMode, docsActiveDoc, docsSideCollapsed, docsSaveState, docsTitleRev, docTitleInputValue, requestDocCreate } from '@/utils/docs-layout'
+import { message } from 'ant-design-vue'
+import { TEAM_COLLAB_ITEMS, type TeamManageSpec } from '@/utils/team-collab'
+import TeamManageModal from '@/components/docs/TeamManageModal.vue'
 import { docSharePanelOpen } from '@/utils/doc-share'
 import DocSharePanel from './DocSharePanel.vue'
 import DesktopSettingsModal from './DesktopSettingsModal.vue'
@@ -510,9 +611,99 @@ const sharePanelOpen = computed({
 })
 const sharePanelDocId = computed(() => docsActiveDoc.value?.id ?? '')
 
-/** 顶栏"编辑"下拉：切换编辑 / 预览模式 */
-function onEditModeMenu({ key }: { key: string | number }) {
-  docsEditMode.value = key === 'edit'
+/** 当前文档模式：阅读（只读）/ 编辑 / 修订（可编辑，但修改以修订形式呈现） */
+const docModeKey = computed(() => (!docsEditMode.value ? 'read' : docsSuggestMode.value ? 'revision' : 'edit'))
+const DOC_MODE_META: Record<string, { label: string; icon: unknown }> = {
+  read: { label: '阅读', icon: EyeOutlined },
+  edit: { label: '编辑', icon: EditOutlined },
+  revision: { label: '修订', icon: FormOutlined },
+}
+const docModeLabel = computed(() => DOC_MODE_META[docModeKey.value].label)
+const docModeIcon = computed(() => DOC_MODE_META[docModeKey.value].icon)
+/** 顶栏"+"新建菜单：已接入的类型交给文档页新建，其余暂未开放 */
+const DOC_CREATE_SUPPORTED = ['doc', 'sheet', 'mindmap', 'flow']
+function onDocCreateMenu({ key }: { key: string | number }) {
+  const k = String(key)
+  if (DOC_CREATE_SUPPORTED.includes(k)) requestDocCreate(k)
+  else message.info('功能开发中')
+}
+
+/* 新建菜单（自绘浮层）：紧贴「+」按钮正下方、右对齐；点击菜单外或选中项后收起 */
+const createBtnRef = ref<HTMLElement | null>(null)
+const createMenuRef = ref<HTMLElement | null>(null)
+const createMenuOpen = ref(false)
+const createMenuStyle = ref<Record<string, string>>({})
+function toggleCreateMenu() {
+  if (createMenuOpen.value) {
+    createMenuOpen.value = false
+    return
+  }
+  const rect = createBtnRef.value?.getBoundingClientRect()
+  if (rect) {
+    createMenuStyle.value = {
+      top: `${rect.bottom + 8}px`,
+      right: `${Math.max(8, window.innerWidth - rect.right)}px`,
+    }
+  }
+  createMenuOpen.value = true
+}
+function pickDocCreate(key: string) {
+  createMenuOpen.value = false
+  onDocCreateMenu({ key })
+}
+
+/** 团队协作：点击在弹窗中管理（需求 / 任务 / 看板 / 人员 / 部门），不跳转页面 */
+const teamManage = reactive({
+  open: false,
+  title: '',
+  kind: 'issue' as TeamManageSpec['kind'],
+  typeName: '',
+})
+function openTeamManage(key: string) {
+  const item = TEAM_COLLAB_ITEMS.find((t) => t.key === key)
+  if (!item) return
+  teamManage.title = item.label
+  teamManage.kind = item.manage.kind
+  teamManage.typeName = item.manage.typeName || ''
+  teamManage.open = true
+}
+function pickTeamItem(key: string) {
+  createMenuOpen.value = false
+  openTeamManage(key)
+}
+function onCreateOutsideDown(e: MouseEvent) {
+  if (!createMenuOpen.value) return
+  const target = e.target as Node
+  if (createBtnRef.value?.contains(target) || createMenuRef.value?.contains(target)) return
+  createMenuOpen.value = false
+}
+function onCreateViewportChange() {
+  createMenuOpen.value = false
+}
+onMounted(() => {
+  document.addEventListener('mousedown', onCreateOutsideDown, true)
+  window.addEventListener('resize', onCreateViewportChange)
+})
+onBeforeUnmount(() => {
+  document.removeEventListener('mousedown', onCreateOutsideDown, true)
+  window.removeEventListener('resize', onCreateViewportChange)
+})
+
+/**
+ * 文档模式菜单：编辑 = 可编辑；修订 = 可编辑但修改记为修订；阅读 = 只读。
+ * 切换时由文档页负责把未保存内容落盘、刷新修订标记。
+ */
+function onDocModeMenu({ key }: { key: string | number }) {
+  if (key === 'read') {
+    docsEditMode.value = false
+    docsSuggestMode.value = false
+  } else if (key === 'edit') {
+    docsEditMode.value = true
+    docsSuggestMode.value = false
+  } else if (key === 'revision') {
+    docsEditMode.value = true
+    docsSuggestMode.value = true
+  }
 }
 // 离开工作台时收起搜索面板，避免回来时残留展开状态
 watch(isWorkbench, (v) => { if (!v) closeSearchDropdown() })
@@ -884,9 +1075,9 @@ async function handleLogout() {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  height: 30px;
-  padding: 0 14px;
-  font-size: 13px;
+  height: 34px;
+  padding: 0 16px;
+  font-size: 14px;
   font-weight: 500;
   color: #fff;
   /* 静止底色用主题的按下色（苹果蓝 #0071E3）：白字对比度 4.7:1，达到 AA */
@@ -911,9 +1102,9 @@ async function handleLogout() {
   display: inline-flex;
   align-items: center;
   gap: 2px;
-  height: 30px;
+  height: 34px;
   padding: 0 6px 0 2px;
-  font-size: 13px;
+  font-size: 14px;
   color: var(--docs-text-2);
   background: var(--docs-canvas);
   border: 1px solid var(--docs-border-strong);
@@ -923,6 +1114,110 @@ async function handleLogout() {
 }
 .docs-edit-btn:hover {
   border-color: var(--docs-text-3);
+}
+.docs-edit-btn {
+  gap: 6px;
+  padding: 0 12px;
+}
+.docs-edit-btn .docs-edit-caret {
+  margin-left: 2px;
+  font-size: 10px;
+}
+/* 顶栏「+」新建按钮：与编辑 / 分享同高，仅图标 */
+.docs-create-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  font-size: 22px;
+  color: var(--docs-text-2);
+  background: transparent;
+  border: none;
+  border-radius: var(--docs-radius);
+  cursor: pointer;
+}
+.docs-create-btn:hover,
+.docs-create-btn.is-open {
+  color: var(--docs-text);
+  background: var(--docs-hover);
+}
+/* 新建菜单浮层：固定定位，宽一些、字号 15px，分组标题与分隔线同截图 */
+.docs-create-panel {
+  position: fixed;
+  z-index: 1000;
+  box-sizing: border-box;
+  width: 264px;
+  max-height: calc(100vh - 80px);
+  overflow-y: auto;
+  padding: 8px;
+  background: var(--docs-canvas);
+  border-radius: var(--docs-radius-xl);
+  box-shadow: var(--docs-shadow-float);
+}
+.docs-create-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  height: 42px;
+  padding: 0 12px;
+  font-size: 15px;
+  color: var(--docs-text);
+  text-align: left;
+  background: transparent;
+  border: none;
+  border-radius: var(--docs-radius);
+  cursor: pointer;
+}
+.docs-create-item:hover {
+  background: var(--docs-hover);
+}
+.docs-create-ico {
+  flex: none;
+  font-size: 20px;
+}
+.docs-create-caret {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--docs-text-3);
+}
+.docs-create-group {
+  padding: 10px 12px 4px;
+  font-size: 13px;
+  color: var(--docs-text-3);
+}
+.docs-create-sep {
+  height: 1px;
+  margin: 6px 4px;
+  background: var(--docs-border);
+}
+/* 文档模式下拉：每项两行（标题 + 说明），当前模式打勾 */
+.docs-mode-menu {
+  min-width: 220px;
+  padding: 6px 0;
+}
+.docs-mode-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 2px 0;
+}
+.docs-mode-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+.docs-mode-check {
+  margin-left: auto;
+  color: var(--c-primary);
+}
+.docs-mode-desc {
+  padding-left: 24px;
+  font-size: 12px;
+  color: var(--docs-text-3);
 }
 .docs-edit-btn:focus-visible {
   outline: none;
