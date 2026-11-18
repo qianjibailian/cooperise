@@ -48,6 +48,8 @@
           <div v-else class="lib-desc" @click="startEditDesc">{{ library?.desc || '暂无描述，点击添加' }}</div>
           <div class="lib-visibility">{{ visibilityText }}</div>
         </div>
+        <!-- 知识库设置：基本信息之外的配置（Git 仓库同步等） -->
+        <button type="button" class="lib-more-btn lib-settings-btn" title="设置" @click="syncOpen = true"><SettingOutlined /></button>
         <a-dropdown trigger="click" placement="bottomRight">
           <button type="button" class="lib-more-btn" title="更多"><MoreOutlined /></button>
           <template #overlay>
@@ -124,6 +126,9 @@
       </div>
     </main>
 
+    <!-- 仓库同步（GitLab） -->
+    <DocSyncModal v-model:open="syncOpen" :library-id="library?.id || ''" />
+
     <!-- 更换封面：默认插画 / 自动生成 -->
     <a-modal
       v-model:open="coverPickerOpen"
@@ -191,11 +196,13 @@ import { useRoute, useRouter } from 'vue-router'
 import { Modal, message } from 'ant-design-vue'
 import {
   MoreOutlined,
+  SettingOutlined,
   RightOutlined,
 } from '@ant-design/icons-vue'
 import DocsLibraryCover from '@/components/docs/DocsLibraryCover.vue'
 import { LIBRARY_COVERS } from '@/utils/library-cover'
 import DocTypeIcon from '@/components/docs/DocTypeIcon.vue'
+import DocSyncModal from '@/components/docs/DocSyncModal.vue'
 import LibrarySide from '@/components/docs/LibrarySide.vue'
 import { startGlobalLoading, stopGlobalLoading } from '@/utils/global-loading'
 import {
@@ -564,6 +571,7 @@ function openRenameLibrary() {
 
 // ---------- 封面插画 ----------
 const coverPickerOpen = ref(false)
+const syncOpen = ref(false)
 
 function openCoverPicker() {
   if (library.value) coverPickerOpen.value = true
@@ -649,6 +657,8 @@ async function onLibMenu({ key }: { key: string | number }) {
   const k = String(key)
   if (k === 'rename') {
     openRenameLibrary()
+  } else if (k === 'sync') {
+    syncOpen.value = true
   } else if (k === 'star') {
     const next = !lib.starred
     try {
@@ -796,6 +806,9 @@ async function onLibMenu({ key }: { key: string | number }) {
   margin-top: 12px;
   font-size: 13px;
   color: #8f959e;
+}
+.lib-settings-btn {
+  margin-right: 8px;
 }
 .lib-more-btn {
   flex: none;

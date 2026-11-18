@@ -305,3 +305,87 @@ export function submitDocParse(docId: string, fileName: string): Promise<Result<
 export function getDocParseStatus(docId: string): Promise<Result<{ state: string; message?: string }>> {
   return request.get(`/docs/parse/${docId}`)
 }
+
+/** 知识库仓库同步配置（凭证不回显） */
+export interface DocSyncConfig {
+  libraryId: string
+  configured: boolean
+  gitlabUrl?: string
+  projectPath?: string
+  branch?: string
+  subdir?: string
+  hasToken: boolean
+  editable: boolean
+  enabled: boolean
+  webhookSecret?: string
+  status?: string
+  lastSyncedAt?: number
+  lastCommit?: string
+  lastError?: string
+}
+
+export function getDocSync(libraryId: string): Promise<Result<DocSyncConfig>> {
+  return request.get(`/docs/sync/${libraryId}`)
+}
+
+export function saveDocSync(data: {
+  libraryId: string
+  gitlabUrl: string
+
+  branch: string
+  subdir?: string
+  token?: string
+  editable: boolean
+  enabled: boolean
+}): Promise<Result<void>> {
+  return request.post(`/docs/sync/save`, data)
+}
+
+export function runDocSync(libraryId: string): Promise<Result<void>> {
+  return request.post(`/docs/sync/${libraryId}/run`)
+}
+
+/** 测试仓库连接（不保存、不同步）：凭证留空则沿用已保存的凭证 */
+export interface DocSyncTestResult {
+  ok: boolean
+  message: string
+  commit?: string
+  docFiles?: number
+}
+
+export function testDocSync(data: {
+  libraryId: string
+  gitlabUrl: string
+
+  branch: string
+  subdir?: string
+  token?: string
+  editable: boolean
+  enabled: boolean
+}): Promise<Result<DocSyncTestResult>> {
+  return request.post(`/docs/sync/test`, data)
+}
+
+/** 同步进度看板（GET /docs/sync/{libraryId}/progress）：status 为 none 表示尚未同步过 */
+export interface DocSyncProgress {
+  libraryId: string
+  status: 'none' | 'running' | 'done' | 'failed'
+  phase: string
+  current?: string
+  total: number
+  processed: number
+  created: number
+  updated: number
+  skipped: number
+  conflicts: number
+  removed: number
+  failed: number
+  startedAt?: number
+  finishedAt?: number
+  message?: string
+  errors: string[]
+}
+
+export function getDocSyncProgress(libraryId: string): Promise<Result<DocSyncProgress>> {
+  return request.get(`/docs/sync/${libraryId}/progress`)
+}
