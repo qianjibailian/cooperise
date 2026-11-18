@@ -3,7 +3,14 @@
   <div class="sync-board">
     <div class="sync-board-head">
       <span class="sync-board-title">同步进度</span>
-      <span :class="['sync-board-status', `is-${p?.status || 'none'}`]">{{ statusText }}</span>
+      <div class="sync-board-head-right">
+        <!-- 运行中：暂停（断点续传）/ 取消（丢弃本轮未落库结果） -->
+        <template v-if="p?.status === 'running'">
+          <button type="button" class="sync-board-act" @click="doPause">暂停</button>
+          <button type="button" class="sync-board-act is-danger" @click="doCancel">取消</button>
+        </template>
+        <span :class="['sync-board-status', `is-${p?.status || 'none'}`]">{{ statusText }}</span>
+      </div>
     </div>
 
     <div v-if="!p || p.status === 'none'" class="sync-board-empty">尚未同步过，保存设置后点击「立即同步」</div>
@@ -49,7 +56,8 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { getDocSyncProgress, type DocSyncProgress } from '@/api/docs'
+import { message } from 'ant-design-vue'
+import { getDocSyncProgress, pauseDocSync, cancelDocSync, type DocSyncProgress } from '@/api/docs'
 
 const props = defineProps<{ libraryId: string; active: boolean }>()
 
@@ -62,8 +70,28 @@ const STATUS_TEXT: Record<string, string> = {
   running: '同步中',
   done: '已完成',
   failed: '失败',
+  paused: '已暂停',
+  cancelled: '已取消',
 }
 const statusText = computed(() => STATUS_TEXT[p.value?.status || 'none'] || '未同步')
+
+/** 暂停：在最近的阶段检查点停下，剩余文件下次同步继续 */
+async function doPause() {
+  try {
+    await pauseDocSync(props.libraryId)
+    message.success('已请求暂停，同步将在检查点停下')
+    void poll()
+  } catch {}
+}
+
+/** 取消：中止本轮并丢弃未落库的结果，保持库内现状 */
+async function doCancel() {
+  try {
+    await cancelDocSync(props.libraryId)
+    message.success('已请求取消，同步将尽快中止')
+    void poll()
+  } catch {}
+}
 
 const percent = computed(() => {
   const v = p.value
@@ -153,6 +181,33 @@ onBeforeUnmount(stop)
   background: #fdecec;
   color: #d70015;
 }
+.sync-board-status.is-paused {
+  background: #fff4e5;
+  color: #b25000;
+}
+.sync-board-head-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.sync-board-act {
+  padding: 1px 10px;
+  font-size: 12px;
+  color: #646a73;
+  background: #fff;
+  border: 1px solid #dcdfe4;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: color 0.12s, border-color 0.12s;
+}
+.sync-board-act:hover {
+  color: #1f2329;
+  border-color: #b9bdc4;
+}
+.sync-board-act.is-danger:hover {
+  color: #d70015;
+  border-color: #f54a45;
+}
 .sync-board-empty {
   margin-top: 8px;
   font-size: 12px;
@@ -185,6 +240,12 @@ onBeforeUnmount(stop)
 }
 .sync-board-bar-fill.is-failed {
   background: #f54a45;
+}
+.sync-board-bar-fill.is-paused {
+  background: #ff8800;
+}
+.sync-board-bar-fill.is-cancelled {
+  background: #b9bdc4;
 }
 .sync-board-count {
   margin-top: 6px;

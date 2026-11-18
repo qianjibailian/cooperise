@@ -163,6 +163,12 @@ export interface DocItem {
   authorAvatar?: string
 }
 
+/**
+ * 文档列表项（摘要）：后端列表接口（list / trash/list / shared）只返回摘要，
+ * 不含 content / data；打开文档时用 getDocDetail 按需拉全量。
+ */
+export type DocSummary = Omit<DocItem, 'content' | 'data'>
+
 /** 知识库左侧菜单的一行：文件夹或文档，由页面按层级整理好后传给 LibrarySide */
 export interface LibSideRow {
   key: string

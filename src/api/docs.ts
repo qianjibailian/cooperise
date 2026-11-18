@@ -345,6 +345,16 @@ export function runDocSync(libraryId: string): Promise<Result<void>> {
   return request.post(`/docs/sync/${libraryId}/run`)
 }
 
+/** 暂停进行中的同步：已同步部分保留，下次「立即同步」自动从断点继续（按 sha 跳过已完成文件） */
+export function pauseDocSync(libraryId: string): Promise<Result<void>> {
+  return request.post(`/docs/sync/${libraryId}/pause`)
+}
+
+/** 取消进行中的同步：中止本轮并丢弃未落库的结果，状态记为已取消 */
+export function cancelDocSync(libraryId: string): Promise<Result<void>> {
+  return request.post(`/docs/sync/${libraryId}/cancel`)
+}
+
 /** 测试仓库连接（不保存、不同步）：凭证留空则沿用已保存的凭证 */
 export interface DocSyncTestResult {
   ok: boolean
@@ -369,7 +379,7 @@ export function testDocSync(data: {
 /** 同步进度看板（GET /docs/sync/{libraryId}/progress）：status 为 none 表示尚未同步过 */
 export interface DocSyncProgress {
   libraryId: string
-  status: 'none' | 'running' | 'done' | 'failed'
+  status: 'none' | 'running' | 'done' | 'failed' | 'paused' | 'cancelled'
   phase: string
   current?: string
   total: number

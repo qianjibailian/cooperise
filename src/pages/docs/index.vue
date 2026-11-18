@@ -676,10 +676,9 @@ function createDoc(type: DocType = 'doc', folderId?: string) {
       : type === 'mindmap' ? defaultMindmap()
         : type === 'flow' ? { graph: null }
           : localAuthorMeta()
-  // 文件夹必然属于某个知识库；不在文件夹内时，若正打开知识库则新建到该库根目录，否则为个人文档
-  const libraryId = folderId
-    ? folders.value.find((f) => f.id === folderId)?.libraryId
-    : activeLibraryId.value || undefined
+  // 归属推断：显式文件夹 → 正打开的知识库 → 当前文档所在知识库（参考飞书：在知识库文档里新建，新文档同库）
+  const folder = folderId ? folders.value.find((f) => f.id === folderId) : undefined
+  const libraryId = folder?.libraryId || activeLibraryId.value || activeDoc.value?.libraryId || undefined
   // 先调用创建接口，拿到后端返回的 id 之后才跳转到文档页；等待期间显示全局加载
   startGlobalLoading()
   createDocApi({
@@ -696,6 +695,12 @@ function createDoc(type: DocType = 'doc', folderId?: string) {
       stampLocalAuthor(doc)
       docs.value.unshift(doc)
       if (folderId) expanded[folderId] = true
+      // 新文档归入知识库时，左侧菜单切到该知识库（展示库内目录树，文档在树中可见）
+      if (libraryId && activeLibraryId.value !== libraryId) {
+        activeLibraryId.value = libraryId
+        activeFolderId.value = ''
+        navMode.value = 'library'
+      }
       // 后端生成文档 id（24 位 Base62），打开新的文档页面加载内容
       router.push(docRoute(doc))
       if (type === 'doc') nextTick(() => editorRef.value?.focus())
@@ -737,11 +742,13 @@ function escapeAttr(s: string): string {
 
 /** 新建并写入标题 / 内容（上传文件、模板库共用） */
 function createDocWithContent(type: DocType, title: string, content: string) {
+  // 归属推断与 createDoc 一致：正打开的知识库 → 当前文档所在知识库 → 个人文档
+  const libraryId = activeLibraryId.value || activeDoc.value?.libraryId || undefined
   createDocApi({
     type,
     title,
     content,
-    libraryId: activeLibraryId.value || undefined,
+    libraryId: libraryId || undefined,
     folderId: activeFolderId.value || undefined,
     position: activeLibraryId.value ? 'library' : 'home',
     data: type === 'doc' ? localAuthorMeta() : undefined,
@@ -751,6 +758,12 @@ function createDocWithContent(type: DocType, title: string, content: string) {
       const doc = normalizeDoc(res.data)
       stampLocalAuthor(doc)
       docs.value.unshift(doc)
+      // 新文档归入知识库时，左侧菜单切到该知识库
+      if (libraryId && activeLibraryId.value !== libraryId) {
+        activeLibraryId.value = libraryId
+        activeFolderId.value = ''
+        navMode.value = 'library'
+      }
       // 打开新的文档页面（后端生成的文档 id）
       router.push(docRoute(doc))
       if (type === 'doc') {
@@ -960,6 +973,32 @@ watch(
   },
   { immediate: true },
 )
+
+// 打开的文档按归属决定左侧菜单（对齐飞书）：属于知识库 → 沿用该知识库；个人文档 → 回到主页左侧菜单
+watch(activeId, (id) => {
+  if (!id || navMode.value === 'trash') return
+  const doc = docs.value.find((d) => d.id === id)
+  if (!doc) return
+  if (doc.libraryId) {
+    if (navMode.value === 'library' && activeLibraryId.value === doc.libraryId) {
+      // 已在该库视图：确保文档所在文件夹展开可见
+      if (doc.folderId) expanded[doc.folderId] = true
+      return
+    }
+    navMode.value = 'library'
+    activeLibraryId.value = doc.libraryId
+    // 新建默认归属跟随文档所在文件夹（对齐飞书：同级新建）
+    activeFolderId.value = doc.folderId || ''
+    if (doc.folderId) expanded[doc.folderId] = true
+    return
+  }
+  // 个人文档：左侧从知识库视图回到主页（避免残留上一个库的目录树）
+  if (navMode.value === 'library') {
+    navMode.value = 'recent'
+    activeLibraryId.value = ''
+    activeFolderId.value = ''
+  }
+})
 
 // 顶栏"+"新建：文档 / 表格 / 思维导图 / 流程图 / 知识库（其余类型暂未开放，顶栏已提示）
 watch(
@@ -1256,6 +1295,8 @@ function folderPathLabel(folder: DocFolder): string {
 /** 打开某个知识库：跳转到知识库独立页面（自己的左侧菜单 + 主内容） */
 function openLibrary(lib: DocLibrary) {
   activeLibraryId.value = ''
+  // 清掉上一个库残留的文件夹选中，避免后续新建文档挂到错误的库
+  activeFolderId.value = ''
   router.push({ name: 'DocsLibrary', params: { libraryId: lib.id } })
 }
 
@@ -1801,24 +1842,57 @@ function scrollToHeading(id: string) {
   el?.scrollIntoView({ behavior: 'smooth', block: 'start' })
 }
 
-watch(activeDoc, (doc) => {
+/** 渲染当前打开的富文本文档（打开文档 / 拉到详情后调用） */
+function renderActiveDoc(doc: DocItem | null = activeDoc.value) {
   nextTick(() => {
-    if (doc?.type === 'doc' && editorRef.value) {
+    if (doc?.type === 'doc' && editorRef.value && doc.id === activeId.value) {
       editorRef.value.innerHTML = doc.content || ''
       normalizeTodoOrder(editorRef.value)
       normalizeOrderedLists(editorRef.value)
       ensureCodeHeads(editorRef.value)
+      ensureColsToolbars(editorRef.value)
       refreshOutline()
       refreshEmptyState()
       applyHeadingFolds(editorRef.value)
       // 打开文档后按事项最新数据刷新卡片
       void refreshIssueCards()
-    } else {
+    } else if (!doc || doc.type !== 'doc') {
+      // 表格 / 脑图 / 流程图 / 列表态：大纲与空态提示不适用
       outline.value = []
       editorEmpty.value = false
     }
   })
-}, { immediate: true })
+}
+
+watch(activeDoc, (doc) => renderActiveDoc(doc), { immediate: true })
+
+// ---- 正文按需加载：列表接口只返回摘要，打开文档时拉详情渲染 ----
+
+/** 已拉过详情的文档 id（之后正文随编辑 / 保存本地维护，不再重复拉取） */
+const detailLoadedIds = new Set<string>()
+
+/** 列表项缺正文时拉详情，合并进本地列表项（content / data） */
+async function ensureDocDetail(doc: DocItem) {
+  const hasBody = doc.type === 'doc' ? !!doc.content : !!doc.data
+  if (hasBody || detailLoadedIds.has(doc.id)) return
+  detailLoadedIds.add(doc.id)
+  try {
+    const res = await getDocDetail(doc.id)
+    if (!res.success || !res.data) return
+    doc.content = String(res.data.content || '')
+    doc.data = res.data.data && typeof res.data.data === 'object' ? res.data.data : doc.data
+    doc.updatedAt = Number(res.data.updatedAt) || doc.updatedAt
+    // 详情晚于渲染到达时补一次渲染（表格 / 脑图 / 流程图由 props 响应式自动更新）
+    if (activeId.value === doc.id) renderActiveDoc(doc)
+  } catch {}
+}
+
+// 打开文档时按需拉详情（回收站里的文档同样预览，需要正文）
+watch(activeId, (id) => {
+  if (!id) return
+  const doc = docs.value.find((d) => d.id === id) || trash.value.find((d) => d.id === id)
+  if (doc) void ensureDocDetail(doc)
+})
 
 /** 编辑器是否为空（无文字，最多残留一个 br） */
 function isEditorEmpty(ed: HTMLElement): boolean {
@@ -5572,7 +5646,7 @@ function sanitizePasteHtml(html: string): string {
   return tpl.innerHTML
 }
 
-/** 粘贴（参考飞书）：HTML 清洗后插入；纯文本多行转段落；URL 智能成链 */
+/** 粘贴（参考飞书）：HTML 清洗后插入；剪贴板图片上传后插入；纯文本多行转段落；URL 智能成链 */
 function onEditorPaste(e: ClipboardEvent) {
   const editor = editorRef.value
   if (!editor || !docsEditMode.value) return
@@ -5582,6 +5656,16 @@ function onEditorPaste(e: ClipboardEvent) {
   const text = dt.getData('text/plain')
   const url = (text || '').trim()
   const isUrl = /^https?:\/\/\S+$/.test(url)
+  // 剪贴板图片（截图 / 复制图片，无文本载体时）：上传附件接口后按光标插入
+  const imageItem = Array.from(dt.items || []).find(
+    (it) => it.kind === 'file' && it.type.startsWith('image/') && !html && !text,
+  )
+  if (imageItem) {
+    e.preventDefault()
+    const file = imageItem.getAsFile()
+    if (file) void insertPastedImage(editor, file)
+    return
+  }
   if (html) {
     e.preventDefault()
     insertHtmlAtCaret(editor, sanitizePasteHtml(html))
@@ -5604,6 +5688,26 @@ function onEditorPaste(e: ClipboardEvent) {
         insertHtmlAtCaret(editor, escapeHtml(text))
       }
     }
+  }
+}
+
+/** 粘贴的剪贴板图片：上传到附件接口，成功后按光标插入（富文本图片 src 指向附件地址） */
+async function insertPastedImage(editor: HTMLElement, file: File) {
+  message.loading({ content: '图片上传中…', key: 'paste-image', duration: 0 })
+  try {
+    const res = await uploadDocAttachment(file)
+    if (!res.success || !res.data?.url) {
+      message.error({ content: '图片上传失败', key: 'paste-image' })
+      return
+    }
+    insertHtmlAtCaret(
+      editor,
+      `<img src="${escapeAttr(res.data.url)}" alt="${escapeAttr(file.name || '图片')}">`,
+    )
+    onEditorInput()
+    message.success({ content: '图片已插入', key: 'paste-image', duration: 1.5 })
+  } catch {
+    message.error({ content: '图片上传失败', key: 'paste-image' })
   }
 }
 

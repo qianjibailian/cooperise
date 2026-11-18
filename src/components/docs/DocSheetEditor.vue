@@ -688,6 +688,66 @@ function notImplemented(zh: string, en: string) {
 }
 
 const rowsHeight = computed(() => rows.value.length)
+
+// ---- 粘贴（参考飞书表格）：Excel / 飞书表格 / 网页表格复制的内容解析后从选区左上角填充 ----
+
+/** 解析剪贴板为二维数组：优先 text/html 里的 <table>（Excel / 网页复制），否则按 TSV（\t 分列、\n 分行） */
+function parseClipboardGrid(html: string, text: string): string[][] {
+  if (html) {
+    const tpl = document.createElement('template')
+    tpl.innerHTML = html
+    const table = tpl.content.querySelector('table')
+    if (table) {
+      const out: string[][] = []
+      table.querySelectorAll('tr').forEach((tr) => {
+        const cells = Array.from(tr.querySelectorAll('td, th')).map((td) =>
+          (td.textContent || '').replace(/\u00a0/g, ' ').replace(/\s+/g, ' ').trim(),
+        )
+        if (cells.length) out.push(cells)
+      })
+      if (out.length) return out
+    }
+  }
+  if (!text) return []
+  return text
+    .replace(/\r\n?/g, '\n')
+    .replace(/\n+$/, '')
+    .split('\n')
+    .map((line) => line.split('\t').map((v) => v.replace(/\n/g, ' ')))
+}
+
+/** 粘贴上限：与「添加行」一致，防止异常剪贴板撑爆表格 */
+const PASTE_MAX_ROWS = 5000
+const PASTE_MAX_COLS = 200
+
+function onSheetPaste(e: ClipboardEvent) {
+  const dt = e.clipboardData
+  if (!dt) return
+  const grid = parseClipboardGrid(dt.getData('text/html'), dt.getData('text/plain'))
+  if (!grid.length) return
+  // 单值粘贴进正在编辑的单元格：走 input 默认行为（追加到已有内容，@input 自动记录历史）
+  if (grid.length === 1 && grid[0].length === 1 && (e.target as HTMLElement).tagName === 'INPUT') return
+  e.preventDefault()
+  // 起点：多选区域左上角，否则当前单元格
+  const rect = rangeRect()
+  const start = rect ? { r: rect.r1, c: rect.c1 } : activeCell.value
+  const needRows = start.r + grid.length
+  const needCols = Math.max(...grid.map((line) => start.c + line.length))
+  pushHistory()
+  // 超出现有网格的部分自动扩展行 / 列
+  while (rows.value.length < Math.min(needRows, PASTE_MAX_ROWS)) rows.value.push([])
+  for (const row of rows.value) {
+    while (row.length < Math.min(needCols, PASTE_MAX_COLS)) row.push('')
+  }
+  grid.forEach((line, ri) => {
+    const row = rows.value[start.r + ri]
+    if (!row) return
+    line.forEach((val, ci) => {
+      row[start.c + ci] = val
+    })
+  })
+  nextTick(computeFillerRows)
+}
 </script>
 
 <template>
@@ -901,8 +961,8 @@ const rowsHeight = computed(() => rows.value.length)
       <input class="sheet-formula-input" :value="activeValue" :placeholder="tr('在此输入内容', 'Enter a value')" @input="setActiveValue" />
     </div>
 
-    <!-- 表格 -->
-    <div ref="scrollRef" class="sheet-scroll">
+    <!-- 表格：监听粘贴（单元格 input 聚焦或选中区域内粘贴均可） -->
+    <div ref="scrollRef" class="sheet-scroll" @paste="onSheetPaste">
       <table class="sheet-table" :class="{ 'is-frozen': curSheet().frozenHeader }" :style="{ width: tableWidth + 'px' }">
         <colgroup>
           <col :style="{ width: ROW_NO_WIDTH + 'px' }" />

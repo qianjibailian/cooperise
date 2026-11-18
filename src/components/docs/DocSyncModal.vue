@@ -42,7 +42,14 @@
         <div class="sync-status-row">
           <span class="sync-label">同步状态</span>
           <span :class="['sync-badge', `is-${config.status || 'idle'}`]">{{ statusText }}</span>
-          <a-button size="small" :disabled="!config.enabled" :loading="running" @click="runNow">立即同步</a-button>
+          <a-button v-if="config.status === 'running'" size="small" :loading="pausing" @click="pause">暂停</a-button>
+          <a-button v-if="config.status === 'running'" size="small" danger :loading="cancelling" @click="cancel">取消</a-button>
+          <a-button
+            size="small"
+            :disabled="!config.enabled || config.status === 'running'"
+            :loading="running"
+            @click="runNow"
+          >{{ config.status === 'paused' ? '继续同步' : '立即同步' }}</a-button>
         </div>
         <div class="sync-meta">
           上次同步：{{ config.lastSyncedAt ? fmt(config.lastSyncedAt) : '—' }}
@@ -74,7 +81,7 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
 import { message } from 'ant-design-vue'
-import { getDocSync, runDocSync, saveDocSync, testDocSync, type DocSyncConfig } from '@/api/docs'
+import { getDocSync, pauseDocSync, cancelDocSync, runDocSync, saveDocSync, testDocSync, type DocSyncConfig } from '@/api/docs'
 import DocSyncBoard from '@/components/docs/DocSyncBoard.vue'
 
 const props = defineProps<{ open: boolean; libraryId: string }>()
@@ -83,6 +90,8 @@ const emit = defineEmits<{ 'update:open': [value: boolean] }>()
 const loading = ref(false)
 const saving = ref(false)
 const running = ref(false)
+const pausing = ref(false)
+const cancelling = ref(false)
 const testing = ref(false)
 const testResult = ref<{ ok: boolean; message: string; commit?: string } | null>(null)
 const config = ref<DocSyncConfig | null>(null)
@@ -106,6 +115,8 @@ const STATUS_TEXT: Record<string, string> = {
   running: '同步中',
   done: '已同步',
   failed: '同步失败',
+  paused: '已暂停',
+  cancelled: '已取消',
 }
 const statusText = computed(() => STATUS_TEXT[config.value?.status || 'idle'] || '未同步')
 
@@ -218,6 +229,34 @@ async function testConn() {
   }
 }
 
+/** 「暂停」：在当前阶段检查点停下，已同步部分保留，点「继续同步」从断点继续 */
+async function pause() {
+  pausing.value = true
+  try {
+    const res = await pauseDocSync(props.libraryId)
+    if (res.success) message.success('已请求暂停，正在处理的文件完成后停止')
+    await load()
+  } catch {
+    message.error('暂停失败')
+  } finally {
+    pausing.value = false
+  }
+}
+
+/** 「取消」：中止本轮并丢弃未落库的结果，库内保持现状 */
+async function cancel() {
+  cancelling.value = true
+  try {
+    const res = await cancelDocSync(props.libraryId)
+    if (res.success) message.success('已请求取消，同步将尽快中止')
+    await load()
+  } catch {
+    message.error('取消失败')
+  } finally {
+    cancelling.value = false
+  }
+}
+
 /** 「立即同步」：先保存当前设置，再同步，弹窗保持打开并刷新同步状态 */
 async function runNow() {
   running.value = true
@@ -290,6 +329,10 @@ async function runNow() {
 .sync-badge.is-failed {
   background: #fdecec;
   color: #d70015;
+}
+.sync-badge.is-paused {
+  background: #fff4e5;
+  color: #b25000;
 }
 .sync-meta {
   margin-top: 6px;
