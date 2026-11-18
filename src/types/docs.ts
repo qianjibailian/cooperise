@@ -10,6 +10,8 @@ export interface DocLibrary {
   name: string
   /** 简介 */
   desc?: string
+  /** 封面插画 key（sunset / ocean / forest / lavender / peach）；空 = 按名称自动生成 */
+  cover?: string
   /** 可见范围：仅成员 / 全员 */
   visibility: 'members' | 'all'
   createdAt: number
@@ -133,6 +135,9 @@ export interface DocMeta {
   suggestBase?: string
 }
 
+/** 文档创建位置：主页 / 知识库 */
+export type DocPosition = 'home' | 'library'
+
 export interface DocItem {
   id: string
   title: string
@@ -148,10 +153,24 @@ export interface DocItem {
   libraryId?: string
   /** 所属文件夹（在知识库内）；空表示位于知识库根目录，或未分组 */
   folderId?: string
+  /** 创建位置：home = 在主页（云文档）创建，library = 在某个知识库内创建；旧数据可能为空 */
+  position?: DocPosition
   /** 是否收藏 */
   starred?: boolean
   /** 创建人（作者），旧数据可能为空 */
   author?: string
   /** 创建人头像地址（创建文档时取本地登录信息，旧数据可能为空） */
   authorAvatar?: string
+}
+
+/** 知识库左侧菜单的一行：文件夹或文档，由页面按层级整理好后传给 LibrarySide */
+export interface LibSideRow {
+  key: string
+  kind: 'folder' | 'doc'
+  /** 缩进层级（0 = 库根目录） */
+  depth: number
+  folder?: DocFolder
+  /** 文件夹是否展开（仅 folder 行） */
+  expanded?: boolean
+  doc?: DocItem
 }

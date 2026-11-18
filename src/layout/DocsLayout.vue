@@ -22,15 +22,17 @@ import AppHeader from '@/components/AppHeader.vue'
 import { docsSideCollapsed } from '@/utils/docs-layout'
 
 const route = useRoute()
-/** 是否文档详情页（/docs/wiki/:docId） */
-const isDocDetail = computed(() => route.path.startsWith('/docs/wiki/'))
+/** 是否文档详情页（/docs/wiki/:docId，知识库内的文档 /docs/library/wiki/:docId） */
+const isDocDetail = computed(() => route.path.startsWith('/docs/wiki/') || route.path.startsWith('/docs/library/wiki/'))
 /** 顶部菜单标题：主页 / 知识库；打开文档时顶部显示文档标题，不重复显示模块名 */
 /** 知识库详情页（/docs/library/:libraryId）：自带左侧菜单，顶栏左侧对齐该菜单宽度 */
-const isLibraryPage = computed(() => route.path.startsWith('/docs/library/'))
+const isLibraryPage = computed(() => route.path.startsWith('/docs/library/') && !isDocDetail.value)
 const moduleTitle = computed(() => {
   if (isDocDetail.value) return ''
-  if (isLibraryPage.value || route.path.startsWith('/docs/wiki')) return '知识库'
-  return '主页'
+  // 知识库页自带左侧菜单与标题，顶栏不再重复显示「知识库」
+  if (isLibraryPage.value) return ''
+  if (route.path.startsWith('/docs/wiki')) return '知识库'
+  return '首页'
 })
 </script>
 

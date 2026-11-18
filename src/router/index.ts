@@ -1,5 +1,6 @@
 import { defineComponent, h, markRaw, onMounted, ref, watch } from 'vue'
 import { createRouter, createWebHistory, createWebHashHistory, useRoute, type RouteRecordRaw } from 'vue-router'
+import { startGlobalLoading, stopGlobalLoading } from '@/utils/global-loading'
 import WorkspaceLayout from '@/layout/WorkspaceLayout.vue'
 import DocsLayout from '@/layout/DocsLayout.vue'
 import SpaceLayout from '@/layout/SpaceLayout.vue'
@@ -106,12 +107,16 @@ const routes: RouteRecordRaw[] = [
     component: DocsLayout,
     children: [
       { path: '', redirect: '/docs/drive/home' },
+      // 回收站：独立路由 /docs/trash
+      { path: 'trash', component: Docs, name: 'DocsTrash', meta: { title: '回收站' } },
       // 主页
       { path: 'drive/home', component: Docs, name: 'DocsHome', meta: { title: '云文档' } },
       // 知识库
       { path: 'wiki', component: Docs, name: 'DocsWiki', meta: { title: '知识库' } },
       // 文档详情：参考飞书 /docs/wiki/{docId}
       { path: 'wiki/:docId', component: Docs, name: 'WikiDoc', meta: { title: '云文档' } },
+      // 知识库内的文档：/docs/library/wiki/{docId}（所属知识库以详情接口为准）
+      { path: 'library/wiki/:docId', component: Docs, name: 'LibraryWikiDoc', meta: { title: '云文档' } },
       // 知识库详情：独立页面（自己的左侧菜单 + 主内容）
       { path: 'library/:libraryId', component: DocsLibrary, name: 'DocsLibrary', meta: { title: '知识库' } },
     ],
@@ -208,6 +213,14 @@ export function setupRouter() {
       return { name: 'Login', query: { redirect: to.fullPath } }
     }
     return true
+  })
+
+  // 文档路由切换时显示全局加载（与 afterEach 成对；导航被重定向 / 失败时 afterEach 同样会触发）
+  router.beforeEach((to) => {
+    if (to.path.startsWith('/docs')) startGlobalLoading()
+  })
+  router.afterEach((to) => {
+    if (to.path.startsWith('/docs')) stopGlobalLoading()
   })
 
   return router

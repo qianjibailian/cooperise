@@ -50,3 +50,15 @@ export function requestDocCreate(type: string) {
  */
 export type DocsSaveState = 'saved' | 'saving' | 'unsaved'
 export const docsSaveState = ref<DocsSaveState>('saved')
+
+/**
+ * 顶栏「更多」菜单的动作请求：动作（move / star / download / print / info / trash）+ 目标 + 序号。
+ * 顶栏每点一次 seq +1，文档页监听序号后对当前文档执行动作。
+ */
+export const docsMoreRequest = ref<{ action: string; target?: string; seq: number }>({ action: '', seq: 0 })
+export function requestDocMore(action: string, target?: string) {
+  docsMoreRequest.value = { action, target, seq: docsMoreRequest.value.seq + 1 }
+}
+
+/** 「移动到」可选位置（由文档页维护，顶栏菜单展示用） */
+export const docsMoveTargets = ref<{ key: string; label: string }[]>([])

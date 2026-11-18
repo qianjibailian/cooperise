@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { computed, useId } from 'vue'
+import { LIBRARY_COVERS } from '@/utils/library-cover'
 
 /**
  * 知识库封面插画：按知识库名称生成固定风格的彩色山景插画（纯 SVG，无外部图片）。
  * 同一个知识库每次渲染的插画 / 配色保持一致。
  */
-const props = defineProps<{ name: string }>()
+const props = defineProps<{ name: string; cover?: string }>()
 
 const uid = useId()
 
@@ -38,10 +39,12 @@ const hash = computed(() => {
   return h
 })
 
-const palette = computed(() => PALETTES[hash.value % PALETTES.length])
-const variant = computed(() => Math.floor(hash.value / 7) % 2)
-const sunX = computed(() => 46 + (hash.value % 80))
-const sunY = computed(() => 56 + (hash.value % 22))
+/** 指定了封面插画（cover）时固定使用该配色；否则按名称自动生成 */
+const fixedIndex = computed(() => LIBRARY_COVERS.findIndex((c) => c.key === props.cover))
+const palette = computed(() => PALETTES[fixedIndex.value >= 0 ? fixedIndex.value : hash.value % PALETTES.length])
+const variant = computed(() => (fixedIndex.value >= 0 ? 0 : Math.floor(hash.value / 7) % 2))
+const sunX = computed(() => (fixedIndex.value >= 0 ? 110 : 46 + (hash.value % 80)))
+const sunY = computed(() => (fixedIndex.value >= 0 ? 60 : 56 + (hash.value % 22)))
 </script>
 
 <template>

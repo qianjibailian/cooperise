@@ -5,7 +5,7 @@
       <MenuUnfoldOutlined />
     </button>
     <!-- 文档详情：顶栏最左侧文件名（上，可直接改名）+ 保存状态轻提示（下），参考飞书；文档/表格/思维导图/流程图共用 -->
-    <div v-if="isDocs && docsActiveDoc" class="docs-head-meta">
+    <div v-if="isDocDetailPage && docsActiveDoc" class="docs-head-meta">
       <!-- 外层用隐藏的同款文字撑出宽度：输入框宽度 = 文件名长度，最长到分享按钮前，再长显示省略号 -->
       <span class="docs-head-title-wrap" :data-value="docTitleInputValue(docsActiveDoc.title) || '请输入标题'">
         <input
@@ -41,7 +41,7 @@
 
     <div class="header-right">
       <!-- 文档详情：分享 / 编辑（原详情页工具条按钮，移至顶栏） -->
-      <template v-if="isDocs && docsActiveDoc">
+      <template v-if="isDocDetailPage && docsActiveDoc">
         <a-popover
           v-model:open="sharePanelOpen"
           trigger="click"
@@ -86,6 +86,45 @@
             </a-menu>
           </template>
         </a-dropdown>
+        <!-- 编辑右侧：横向三个点（更多）：移动到 / 收藏 / 下载 / 打印 / 文档信息 / 移到回收站 -->
+        <a-dropdown trigger="click" placement="bottomRight" overlay-class-name="docs-more-popover">
+          <button type="button" class="docs-more-btn" title="更多">
+            <EllipsisOutlined />
+          </button>
+          <template #overlay>
+            <a-menu class="docs-more-menu" @click="onDocMoreMenu">
+              <a-sub-menu key="move" title="移动到">
+                <template #icon><SwapOutlined /></template>
+                <a-menu-item v-for="t in docsMoveTargets" :key="`move:${t.key}`">{{ t.label }}</a-menu-item>
+              </a-sub-menu>
+              <a-menu-item key="star">
+                <template #icon><StarOutlined /></template>
+                {{ docsActiveDoc?.starred ? '取消收藏' : '添加到收藏' }}
+              </a-menu-item>
+              <a-sub-menu key="download" title="下载为">
+                <template #icon><DownloadOutlined /></template>
+                <a-menu-item key="download:word">Word</a-menu-item>
+                <a-menu-item key="download:pdf">PDF</a-menu-item>
+                <a-menu-item key="download:md">Markdown</a-menu-item>
+              </a-sub-menu>
+              <a-menu-item key="print">
+                <template #icon><PrinterOutlined /></template>
+                打印
+              </a-menu-item>
+              <a-menu-item key="info">
+                <template #icon><InfoCircleOutlined /></template>
+                文档信息
+              </a-menu-item>
+              <a-menu-divider />
+              <a-menu-item key="trash" danger>
+                <template #icon><DeleteOutlined /></template>
+                移到回收站
+              </a-menu-item>
+            </a-menu>
+          </template>
+        </a-dropdown>
+        <!-- 编辑 与 新建（+）之间的竖线分隔 -->
+        <span class="docs-header-sep" aria-hidden="true" />
         <!-- 新建：文档 / 表格 / 思维导图 / 流程图已接入，其余类型提示开发中 -->
         <button
           ref="createBtnRef"
@@ -335,6 +374,13 @@ import { ref, reactive, computed, nextTick, onMounted, onBeforeUnmount, watch } 
 import { useRouter, useRoute } from 'vue-router'
 
 import {
+  EllipsisOutlined,
+  SwapOutlined,
+  StarOutlined,
+  DownloadOutlined,
+  PrinterOutlined,
+  InfoCircleOutlined,
+  DeleteOutlined,
   SearchOutlined,
   RightOutlined,
   DownOutlined,
@@ -359,7 +405,7 @@ import {
 } from '@ant-design/icons-vue'
 import HeaderBanner from './HeaderBanner.vue'
 import AppLogo from './AppLogo.vue'
-import { docsEditMode, docsSuggestMode, docsActiveDoc, docsSideCollapsed, docsSaveState, docsTitleRev, docTitleInputValue, requestDocCreate } from '@/utils/docs-layout'
+import { docsEditMode, docsSuggestMode, docsActiveDoc, docsSideCollapsed, docsSaveState, docsTitleRev, docTitleInputValue, requestDocCreate, requestDocMore, docsMoveTargets } from '@/utils/docs-layout'
 import { message } from 'ant-design-vue'
 import { TEAM_COLLAB_ITEMS, type TeamManageSpec } from '@/utils/team-collab'
 import TeamManageModal from '@/components/docs/TeamManageModal.vue'
@@ -585,6 +631,8 @@ const isWorkbench = computed(() => route.path.startsWith('/workbench'))
 
 /** 文档页：不显示搜索 / 新建 */
 const isDocs = computed(() => route.path.startsWith('/docs') || route.path.startsWith('/wiki'))
+/** 文档详情页（/docs/wiki/:id、/docs/library/wiki/:id）才显示标题、保存状态、分享 / 编辑 / 更多 等文档操作 */
+const isDocDetailPage = computed(() => /^\/(docs\/wiki|docs\/library\/wiki|wiki)\/[^/]+/.test(route.path))
 
 /** 文档保存状态轻提示文案（分享按钮左侧，参考飞书：不显眼的灰色小字） */
 /** 顶栏文件名输入（输入框里默认标题显示为空，所以不用 v-model，手动回写） */
@@ -784,6 +832,13 @@ async function handleLogout() {
 
   // 接口成功后清除 cookie
   auth.logout()
+}
+/** 「更多」菜单：动作交给文档页执行（移动 / 收藏 / 下载 / 打印 / 文档信息 / 回收站） */
+function onDocMoreMenu(e: { key?: string | number }) {
+  const key = String(e?.key ?? '')
+  if (key.startsWith('move:')) requestDocMore('move', key.slice(5))
+  else if (key.startsWith('download:')) requestDocMore('download', key.slice(9))
+  else requestDocMore(key)
 }
 </script>
 
@@ -1123,6 +1178,41 @@ async function handleLogout() {
   margin-left: 2px;
   font-size: 10px;
 }
+/* 编辑右侧的「更多」（横向三个点） */
+/* 「更多」下拉：宽度与内容适中，与参考菜单一致的紧凑样式 */
+.docs-more-popover .docs-more-menu {
+  min-width: 200px;
+  padding: 6px 0;
+  border-radius: 10px;
+}
+.docs-more-btn {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--docs-text-2);
+  font-size: 18px;
+  cursor: pointer;
+}
+.docs-more-btn:hover {
+  background: var(--docs-hover);
+  color: var(--docs-text);
+}
+
+/* 编辑 与 新建（+）之间的竖线 */
+.docs-header-sep {
+  flex: none;
+  width: 1px;
+  height: 18px;
+  margin: 0 8px;
+  background: var(--docs-border-strong);
+}
+
 /* 顶栏「+」新建按钮：与编辑 / 分享同高，仅图标 */
 .docs-create-btn {
   display: inline-flex;

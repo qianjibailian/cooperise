@@ -1,83 +1,38 @@
 <template>
+  <template v-if="libLoaded">
   <div class="lib-page">
-    <!-- 左侧：知识库自己的菜单（新建 / 主页 / 目录） -->
-    <aside class="lib-side">
-      <div class="lib-side-head">
-        <div class="lib-side-cover">
-          <DocsLibraryCover class="lib-fill" :name="library?.name || ''" />
-        </div>
-        <div class="lib-side-title">
-          <div class="lib-side-name">{{ library?.name || '知识库' }}</div>
-          <div class="lib-side-sub" @click="backToList">知识库</div>
-        </div>
-      </div>
-
-      <div class="lib-side-new">
-        <a-dropdown trigger="click" placement="bottomLeft">
-          <button type="button" class="lib-new-btn"><PlusOutlined /><span>新建</span></button>
-          <template #overlay>
-            <a-menu @click="onNewMenu">
-              <a-menu-item key="doc">文档</a-menu-item>
-              <a-menu-item key="folder">文件夹</a-menu-item>
-            </a-menu>
-          </template>
-        </a-dropdown>
-      </div>
-
-      <button type="button" class="lib-nav-item active">
-        <AppstoreOutlined />
-        <span>主页</span>
-      </button>
-
-      <div class="lib-tree-head">
-        <button type="button" class="lib-tree-toggle" @click="treeOpen = !treeOpen">
-          <UnorderedListOutlined />
-          <span>目录</span>
-          <DownOutlined class="lib-caret" :class="{ closed: !treeOpen }" />
-        </button>
-        <SearchOutlined class="lib-search-btn" title="搜索" @click="searchOpen = !searchOpen" />
-      </div>
-      <a-input
-        v-if="searchOpen"
-        v-model:value="keyword"
-        allow-clear
-        size="small"
-        placeholder="搜索文档 / 文件夹"
-        class="lib-search-input"
-      />
-
-      <div v-if="treeOpen" class="lib-tree">
-        <template v-for="r in treeRows" :key="r.key">
-          <div
-            v-if="r.kind === 'folder' && r.folder"
-            class="lib-tree-row lib-tree-folder"
-            :style="{ paddingLeft: `${8 + r.depth * 14}px` }"
-            @click="toggleFolder(r.folder.id)"
-          >
-            <RightOutlined class="lib-row-caret" :class="{ open: isExpanded(r.folder.id) }" />
-            <DocTypeIcon type="folder" size="sm" />
-            <span class="lib-row-name">{{ r.folder.name }}</span>
-          </div>
-          <button
-            v-else-if="r.doc"
-            type="button"
-            class="lib-tree-row lib-tree-doc"
-            :style="{ paddingLeft: `${8 + r.depth * 14 + 14}px` }"
-            @click="openDoc(r.doc.id)"
-          >
-            <DocTypeIcon :type="r.doc.type" size="sm" />
-            <span class="lib-row-name">{{ r.doc.title || '无标题文档' }}</span>
-          </button>
-        </template>
-        <div v-if="!treeRows.length" class="lib-tree-empty">{{ keyword ? '没有匹配的内容' : '暂无文档，点击「新建」开始' }}</div>
-      </div>
-    </aside>
+    <!-- 左侧：知识库菜单（与知识库内文档页共用 LibrarySide） -->
+    <LibrarySide
+      :library-name="library?.name || ''"
+      :library-cover="library?.cover"
+      :keyword="keyword"
+      :rows="sideRows"
+      :move-targets="moveTargets"
+      @update:keyword="keyword = $event"
+      @home="goHome"
+      :home-active="true"
+      @library-home="() => {}"
+      @library="backToList"
+      @new="onNewKey"
+      @toggle-folder="(f) => toggleFolder(f.id)"
+      @open-doc="(d) => openDoc(d.id)"
+      @folder-menu="(k, f) => onFolderMenu({ key: k }, f)"
+      @doc-menu="(k, d) => onDocMenu({ key: k }, d)"
+    />
 
     <!-- 右侧：知识库主内容 -->
     <main class="lib-main">
       <div class="lib-hero">
-        <div class="lib-hero-cover">
-          <DocsLibraryCover class="lib-fill" :name="library?.name || ''" />
+        <!-- 点击封面可更换插画 -->
+        <div
+          class="lib-hero-cover lib-hero-cover-btn"
+          role="button"
+          tabindex="0"
+          title="更换封面"
+          @click="openCoverPicker"
+          @keydown.enter="openCoverPicker"
+        >
+          <DocsLibraryCover class="lib-fill" :name="library?.name || ''" :cover="library?.cover" />
         </div>
         <div class="lib-hero-info">
           <h1 class="lib-title">{{ library?.name || '' }}</h1>
@@ -112,11 +67,22 @@
 
       <!-- 动态：最近修改的文档；没有则显示空状态 -->
       <div v-if="mainTab === 'activity'" class="lib-body">
-        <ul v-if="recentDocs.length" class="lib-activity">
-          <li v-for="d in recentDocs" :key="d.id" class="lib-activity-item" @click="openDoc(d.id)">
-            <DocTypeIcon :type="d.type" size="sm" />
-            <span class="lib-activity-title">{{ d.title || '无标题文档' }}</span>
-            <span class="lib-activity-time">{{ fmtTime(d.updatedAt) }}</span>
+        <ul v-if="recentDocs.length" class="lib-feed">
+          <li v-for="d in recentDocs" :key="d.id" class="lib-feed-item">
+            <div class="lib-feed-head">
+              <span class="lib-feed-avatar">
+                <img v-if="d.authorAvatar" :src="d.authorAvatar" alt="" />
+                <template v-else>{{ (d.author || '-').slice(0, 1) }}</template>
+              </span>
+              <span class="lib-feed-text">
+                {{ d.author || '-' }} 在 <b>{{ library?.name || '' }}</b> {{ feedVerb(d) }}文档
+              </span>
+              <span class="lib-feed-time">{{ fmtTime(d.updatedAt) }}</span>
+            </div>
+            <div class="lib-feed-card" @click="openDoc(d.id)">
+              <DocTypeIcon :type="d.type" size="sm" />
+              <span class="lib-feed-title">{{ d.title || '无标题文档' }}</span>
+            </div>
           </li>
         </ul>
         <div v-else class="lib-empty">
@@ -158,6 +124,43 @@
       </div>
     </main>
 
+    <!-- 更换封面：默认插画 / 自动生成 -->
+    <a-modal
+      v-model:open="coverPickerOpen"
+      title="更换封面"
+      :width="520"
+      centered
+      destroy-on-close
+      :footer="null"
+    >
+      <div class="lib-cover-grid">
+        <button
+          v-for="c in LIBRARY_COVERS"
+          :key="c.key"
+          type="button"
+          class="lib-cover-option"
+          :class="{ active: library?.cover === c.key }"
+          @click="pickCover(c.key)"
+        >
+          <span class="lib-cover-preview">
+            <DocsLibraryCover class="lib-fill" :name="library?.name || ''" :cover="c.key" />
+          </span>
+          <span>{{ c.label }}</span>
+        </button>
+        <button
+          type="button"
+          class="lib-cover-option"
+          :class="{ active: !library?.cover }"
+          @click="pickCover('')"
+        >
+          <span class="lib-cover-preview">
+            <DocsLibraryCover class="lib-fill" :name="library?.name || ''" />
+          </span>
+          <span>自动生成</span>
+        </button>
+      </div>
+    </a-modal>
+
     <!-- 新建 / 重命名 文件夹或知识库 -->
     <a-modal
       v-model:open="modal.open"
@@ -172,11 +175,14 @@
       <a-input
         v-model:value="modal.name"
         :maxlength="30"
-        :placeholder="modal.kind === 'library' ? '知识库名称' : '文件夹名称'"
+        :placeholder="modal.kind === 'library' ? '知识库名称' : modal.kind === 'doc' ? '文档名称' : '文件夹名称'"
         @press-enter="submitModal"
       />
     </a-modal>
   </div>
+  </template>
+  <!-- 数据加载完成前不渲染知识库页，避免先闪出空白菜单 / 空内容 -->
+  <div v-else class="lib-page lib-page-pending" aria-busy="true" />
 </template>
 
 <script setup lang="ts">
@@ -184,28 +190,32 @@ import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Modal, message } from 'ant-design-vue'
 import {
-  AppstoreOutlined,
-  DownOutlined,
   MoreOutlined,
-  PlusOutlined,
   RightOutlined,
-  SearchOutlined,
-  UnorderedListOutlined,
 } from '@ant-design/icons-vue'
 import DocsLibraryCover from '@/components/docs/DocsLibraryCover.vue'
+import { LIBRARY_COVERS } from '@/utils/library-cover'
 import DocTypeIcon from '@/components/docs/DocTypeIcon.vue'
+import LibrarySide from '@/components/docs/LibrarySide.vue'
+import { startGlobalLoading, stopGlobalLoading } from '@/utils/global-loading'
 import {
   createDoc,
   createDocFolder,
+  deleteDocFolder,
   deleteDocLibrary,
   listDocFolders,
   listDocLibraries,
   listDocs,
+  moveDoc,
+  renameDoc,
   renameDocFolder,
+  starDoc,
+  starDocFolder,
   starDocLibrary,
+  trashDoc,
   updateDocLibrary,
 } from '@/api/docs'
-import type { DocFolder, DocItem, DocLibrary } from '@/types/docs'
+import type { DocFolder, DocItem, DocLibrary, LibSideRow } from '@/types/docs'
 
 const route = useRoute()
 const router = useRouter()
@@ -227,6 +237,7 @@ function normalizeLibrary(l: any): DocLibrary {
     id: String(l.id),
     name: String(l.name || '未命名知识库'),
     desc: l.desc ? String(l.desc) : undefined,
+    cover: l.cover ? String(l.cover) : undefined,
     visibility: l.visibility === 'all' ? 'all' : 'members',
     createdAt: Number(l.createdAt) || Date.now(),
     starred: !!l.starred,
@@ -259,6 +270,9 @@ function normalizeDoc(d: any): DocItem {
   }
 }
 
+/** 首次加载完成标记：之后切换知识库不再重新显示占位 */
+const libLoaded = ref(false)
+
 async function load() {
   try {
     const [lRes, fRes, dRes] = await Promise.all([listDocLibraries(), listDocFolders(), listDocs()])
@@ -268,6 +282,7 @@ async function load() {
   } catch {
     message.error('加载知识库失败')
   }
+  libLoaded.value = true
   if (!library.value) {
     message.warning('知识库不存在或已删除')
     router.replace({ name: 'DocsWiki' })
@@ -282,8 +297,6 @@ watch(libraryId, () => {
 })
 
 // ---------- 目录树 ----------
-const treeOpen = ref(true)
-const searchOpen = ref(false)
 const keyword = ref('')
 /** 文件夹展开状态（默认展开） */
 const expanded = reactive<Record<string, boolean>>({})
@@ -344,8 +357,19 @@ function backToList() {
   router.push({ name: 'DocsWiki' })
 }
 
+/** 返回主页（云文档首页） */
+function goHome() {
+  router.push({ name: 'DocsHome' })
+}
+
+/** 打开本知识库内的文档：/docs/library/wiki/:docId */
 function openDoc(docId: string) {
-  router.push({ name: 'WikiDoc', params: { docId } })
+  router.push({ name: 'LibraryWikiDoc', params: { docId } })
+}
+
+/** 动态里的动词：创建时间与修改时间基本一致视为「创建了」，否则「编辑了」 */
+function feedVerb(d: DocItem): string {
+  return Math.abs((d.updatedAt || 0) - (d.createdAt || 0)) < 1000 ? '创建了' : '编辑了'
 }
 
 function fmtTime(ts?: number): string {
@@ -361,24 +385,44 @@ function fmtTime(ts?: number): string {
 }
 
 // ---------- 新建 ----------
+const creatingDoc = ref(false)
+/** 先调用创建接口，拿到后端返回的 id 之后才跳转到文档页；创建中不允许重复点击 */
 async function newDoc() {
+  if (creatingDoc.value) return
+  creatingDoc.value = true
+  startGlobalLoading()
   try {
-    const res = await createDoc({ type: 'doc', title: '无标题文档', libraryId: libraryId.value })
+    const res = await createDoc({ type: 'doc', title: '无标题文档', libraryId: libraryId.value, position: 'library' })
     if (res.success && res.data) openDoc(String(res.data.id))
   } catch {
     message.error('新建文档失败')
+  } finally {
+    creatingDoc.value = false
+    stopGlobalLoading()
   }
 }
 
-function onNewMenu({ key }: { key: string | number }) {
-  if (String(key) === 'doc') newDoc()
+/** 左侧菜单「新建」：doc 文档 / folder 文件夹 */
+function onNewKey(key: string) {
+  if (key === 'doc') newDoc()
   else openNewFolder()
 }
+
+/** 左侧目录的行（文件夹 + 文档），展开状态随行下发 */
+const sideRows = computed<LibSideRow[]>(() =>
+  treeRows.value.map((r) => (r.kind === 'folder' && r.folder ? { ...r, expanded: isExpanded(r.folder.id) } : r)),
+)
+
+/** 文档「移动到」的目标：库根目录 + 本库内的文件夹 */
+const moveTargets = computed(() => [
+  { key: 'root', label: '知识库根目录' },
+  ...libFolders.value.map((f) => ({ key: f.id, label: folderPathLabel(f) })),
+])
 
 // ---------- 文件夹 / 知识库 名称弹窗（新建 / 重命名共用） ----------
 const modal = reactive({
   open: false,
-  kind: 'folder' as 'folder' | 'library',
+  kind: 'folder' as 'folder' | 'library' | 'doc',
   id: '',
   name: '',
   parentId: '',
@@ -386,8 +430,120 @@ const modal = reactive({
 
 const modalTitle = computed(() => {
   if (modal.kind === 'library') return '重命名知识库'
+  if (modal.kind === 'doc') return '重命名文档'
   return modal.id ? '重命名文件夹' : '新建文件夹'
 })
+
+function openRenameFolder(folder: DocFolder) {
+  modal.kind = 'folder'
+  modal.id = folder.id
+  modal.name = folder.name
+  modal.parentId = ''
+  modal.open = true
+}
+
+function openRenameDoc(doc: DocItem) {
+  modal.kind = 'doc'
+  modal.id = doc.id
+  modal.name = doc.title || ''
+  modal.parentId = ''
+  modal.open = true
+}
+
+// ---------- 目录行操作：文件夹 / 文档 的 置顶、重命名、删除 ----------
+function onFolderMenu(e: { key?: string | number }, folder: DocFolder) {
+  const key = String(e?.key ?? '')
+  if (key === 'star') {
+    const next = !folder.starred
+    starDocFolder({ id: folder.id, starred: next })
+      .then((res) => {
+        if (res.success) folder.starred = next
+      })
+      .catch(() => {})
+  } else if (key === 'rename') openRenameFolder(folder)
+  else if (key === 'delete') deleteFolderRow(folder)
+}
+
+function deleteFolderRow(folder: DocFolder) {
+  Modal.confirm({
+    title: `删除文件夹「${folder.name}」`,
+    content: '文件夹内的文档和子文件夹会移到上一级，不会删除文档。',
+    okText: '删除',
+    okType: 'danger',
+    cancelText: '取消',
+    onOk: async () => {
+      try {
+        const res = await deleteDocFolder(folder.id)
+        if (!res.success) return
+        // 文档和子文件夹上移一级（上一级为空则到知识库根目录），与后端约定一致
+        docs.value.forEach((d) => {
+          if (d.folderId === folder.id) d.folderId = folder.parentId
+        })
+        folders.value.forEach((f) => {
+          if (f.parentId === folder.id) f.parentId = folder.parentId
+        })
+        folders.value = folders.value.filter((f) => f.id !== folder.id)
+      } catch {}
+    },
+  })
+}
+
+function onDocMenu(e: { key?: string | number }, doc: DocItem) {
+  const key = String(e?.key ?? '')
+  if (key === 'rename') openRenameDoc(doc)
+  else if (key === 'star') {
+    const next = !doc.starred
+    starDoc({ id: doc.id, starred: next })
+      .then((res) => {
+        if (res.success) doc.starred = next
+      })
+      .catch(() => {})
+  } else if (key === 'trash') trashDocRow(doc)
+  else if (key.startsWith('move:')) moveDocInLibrary(doc, key.slice(5))
+}
+
+/** 文件夹完整路径（同一知识库内，如「需求 / 2026 / Q1」），用于移动菜单展示 */
+function folderPathLabel(folder: DocFolder): string {
+  const parts = [folder.name]
+  let parent = folders.value.find((f) => f.id === folder.parentId)
+  for (let guard = 0; parent && guard < 20; guard++) {
+    parts.unshift(parent.name)
+    const next = parent.parentId
+    parent = folders.value.find((f) => f.id === next)
+  }
+  return parts.join(' / ')
+}
+
+/** 在当前知识库内移动文档：target 为 root（库根目录）或本库内的文件夹 id */
+async function moveDocInLibrary(doc: DocItem, target: string) {
+  const folder = target === 'root' ? undefined : libFolders.value.find((f) => f.id === target)
+  if (target !== 'root' && !folder) return
+  try {
+    const res = await moveDoc({ id: doc.id, libraryId: libraryId.value, folderId: folder?.id || null })
+    if (!res.success) return
+    doc.libraryId = libraryId.value
+    doc.folderId = folder?.id
+    doc.updatedAt = res.data?.updatedAt || doc.updatedAt
+    if (folder) expanded[folder.id] = true
+  } catch {}
+}
+
+function trashDocRow(doc: DocItem) {
+  Modal.confirm({
+    title: '移到回收站',
+    content: `确定将「${doc.title || '无标题文档'}」移到回收站？`,
+    okText: '移到回收站',
+    okType: 'danger',
+    cancelText: '取消',
+    onOk: async () => {
+      try {
+        const res = await trashDoc(doc.id)
+        if (!res.success) return
+        docs.value = docs.value.filter((d) => d.id !== doc.id)
+      } catch {}
+    },
+  })
+}
 
 function openNewFolder(parentId = '') {
   modal.kind = 'folder'
@@ -406,10 +562,30 @@ function openRenameLibrary() {
   modal.open = true
 }
 
+// ---------- 封面插画 ----------
+const coverPickerOpen = ref(false)
+
+function openCoverPicker() {
+  if (library.value) coverPickerOpen.value = true
+}
+
+/** 选择封面：key 为空表示恢复自动生成 */
+async function pickCover(key: string) {
+  if (!library.value) return
+  try {
+    const res = await updateDocLibrary({ id: library.value.id, cover: key })
+    if (!res.success) return
+    library.value.cover = key || undefined
+    coverPickerOpen.value = false
+  } catch {
+    message.error('更换封面失败')
+  }
+}
+
 async function submitModal() {
   const name = modal.name.trim()
   if (!name) {
-    message.warning(modal.kind === 'library' ? '请输入知识库名称' : '请输入文件夹名称')
+    message.warning(modal.kind === 'library' ? '请输入知识库名称' : modal.kind === 'doc' ? '请输入文档名称' : '请输入文件夹名称')
     return
   }
   try {
@@ -417,6 +593,11 @@ async function submitModal() {
       const res = await updateDocLibrary({ id: modal.id, name })
       if (!res.success) return
       if (library.value) library.value.name = name
+    } else if (modal.kind === 'doc') {
+      const res = await renameDoc({ id: modal.id, title: name })
+      if (!res.success) return
+      const d = docs.value.find((x) => x.id === modal.id)
+      if (d) d.title = name
     } else if (modal.id) {
       const res = await renameDocFolder({ id: modal.id, name })
       if (!res.success) return
@@ -494,6 +675,12 @@ async function onLibMenu({ key }: { key: string | number }) {
 </script>
 
 <style scoped>
+/* 数据加载前的占位：与页面同背景，避免闪白 */
+.lib-page-pending {
+  height: 100%;
+  background: #fff;
+}
+
 /* 整页：左侧知识库菜单 + 右侧主内容；占满文档布局的内容区 */
 .lib-page {
   display: flex;
@@ -504,160 +691,11 @@ async function onLibMenu({ key }: { key: string | number }) {
   font-family: var(--docs-font, inherit);
 }
 
-/* ---------- 左侧菜单 ---------- */
-.lib-side {
-  flex: 0 0 240px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  min-height: 0;
-  padding: 16px 12px;
-  box-sizing: border-box;
-  background: #f7f8fa;
-  border-right: 1px solid #ebedf0;
-  overflow: hidden;
-}
-.lib-side-head {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 4px 4px 8px;
-  min-width: 0;
-}
-.lib-side-cover {
-  position: relative;
-  flex: none;
-  width: 36px;
-  height: 36px;
-  border-radius: 8px;
-  overflow: hidden;
-  background: #fff;
-}
-.lib-side-title {
-  min-width: 0;
-}
-.lib-side-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 15px;
-  font-weight: 600;
-}
-.lib-side-sub {
-  font-size: 12px;
-  color: #8f959e;
-  cursor: pointer;
-}
-.lib-side-sub:hover {
-  color: #3370ff;
-}
 .lib-fill {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
-}
-.lib-side-new {
-  padding: 0 2px 4px;
-}
-.lib-new-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  width: 100%;
-  height: 34px;
-  font-size: 14px;
-  color: #1f2329;
-  background: #fff;
-  border: 1px solid #dee0e3;
-  border-radius: 17px;
-  cursor: pointer;
-}
-.lib-new-btn:hover {
-  border-color: #3370ff;
-  color: #3370ff;
-}
-.lib-nav-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  height: 36px;
-  padding: 0 10px;
-  font-size: 14px;
-  color: #1f2329;
-  background: transparent;
-  border: none;
-  border-radius: 8px;
-  cursor: pointer;
-  text-align: left;
-}
-.lib-nav-item:hover {
-  background: #eef0f3;
-}
-.lib-nav-item.active {
-  background: #eaecf0;
-}
-.lib-tree-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 10px 6px 4px;
-}
-.lib-tree-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 14px;
-  color: #1f2329;
-  background: transparent;
-  border: none;
-  cursor: pointer;
-}
-.lib-caret {
-  font-size: 10px;
-  color: #8f959e;
-  transition: transform 0.15s;
-}
-.lib-caret.closed {
-  transform: rotate(-90deg);
-}
-.lib-search-btn {
-  color: #8f959e;
-  cursor: pointer;
-}
-.lib-search-btn:hover {
-  color: #1f2329;
-}
-.lib-search-input {
-  margin: 0 2px;
-}
-.lib-tree {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-}
-.lib-tree-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  width: 100%;
-  min-height: 30px;
-  padding: 4px 8px;
-  font-size: 14px;
-  color: #1f2329;
-  background: transparent;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  text-align: left;
-}
-.lib-tree-row:hover {
-  background: #eef0f3;
 }
 .lib-row-caret {
   flex: none;
@@ -668,25 +706,14 @@ async function onLibMenu({ key }: { key: string | number }) {
 .lib-row-caret.open {
   transform: rotate(90deg);
 }
-.lib-row-name {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.lib-tree-empty {
-  padding: 12px 8px;
-  font-size: 13px;
-  color: #8f959e;
-}
-
 /* ---------- 右侧主内容 ---------- */
 .lib-main {
   flex: 1;
   min-width: 0;
   min-height: 0;
   overflow-y: auto;
-  padding: 40px 72px 48px;
+  /* 顶栏是固定定位，右侧内容需从顶栏下方开始，避免被盖住 */
+  padding: calc(var(--docs-header-h, 72px) + 24px) 56px 40px;
   box-sizing: border-box;
 }
 .lib-hero {
@@ -695,13 +722,49 @@ async function onLibMenu({ key }: { key: string | number }) {
   gap: 24px;
   max-width: 880px;
 }
+.lib-hero-cover-btn {
+  cursor: pointer;
+}
+.lib-hero-cover-btn:hover {
+  box-shadow: 0 0 0 3px rgba(51, 112, 255, 0.18);
+}
+.lib-cover-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+.lib-cover-option {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 6px;
+  font-size: 13px;
+  color: #1f2329;
+  background: #fff;
+  border: 2px solid transparent;
+  border-radius: 10px;
+  cursor: pointer;
+}
+.lib-cover-option:hover {
+  border-color: #c9d6f7;
+}
+.lib-cover-option.active {
+  border-color: #3370ff;
+}
+.lib-cover-preview {
+  position: relative;
+  display: block;
+  height: 96px;
+  overflow: hidden;
+  border-radius: 8px;
+}
 .lib-hero-cover {
   position: relative;
   flex: none;
-  width: 132px;
-  height: 132px;
-  border: 1px solid #ebedf0;
-  border-radius: 14px;
+  width: 160px;
+  height: 160px;
+  border: 1px solid #e5e6eb;
+  border-radius: 10px;
   overflow: hidden;
 }
 .lib-hero-info {
@@ -711,8 +774,8 @@ async function onLibMenu({ key }: { key: string | number }) {
 }
 .lib-title {
   margin: 0;
-  font-size: 26px;
-  font-weight: 600;
+  font-size: 24px;
+  font-weight: 500;
   line-height: 1.3;
   color: #1f2329;
   word-break: break-all;
@@ -825,6 +888,78 @@ async function onLibMenu({ key }: { key: string | number }) {
   color: #8f959e;
   font-variant-numeric: tabular-nums;
 }
+/* 动态（参考飞书知识库主页）：头像 + 「谁在哪个知识库创建 / 编辑了文档」+ 时间，下方是浅灰文档卡片 */
+.lib-feed {
+  list-style: none;
+  margin: 24px 0 0;
+  padding: 0;
+}
+.lib-feed-item {
+  padding: 0 0 20px;
+}
+.lib-feed-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  color: #1f2329;
+}
+.lib-feed-avatar {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  overflow: hidden;
+  border-radius: 6px;
+  background: #3370ff;
+  color: #fff;
+  font-size: 12px;
+}
+.lib-feed-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.lib-feed-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lib-feed-text b {
+  font-weight: 500;
+}
+.lib-feed-time {
+  flex: none;
+  font-size: 13px;
+  color: #8f959e;
+  font-variant-numeric: tabular-nums;
+}
+.lib-feed-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 10px 0 0 38px;
+  padding: 12px 14px;
+  background: #f7f8fa;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.lib-feed-card:hover {
+  background: #eef0f3;
+}
+.lib-feed-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  color: #1f2329;
+}
+
 .lib-empty {
   display: flex;
   flex-direction: column;
@@ -844,9 +979,6 @@ async function onLibMenu({ key }: { key: string | number }) {
 }
 
 @media (max-width: 860px) {
-  .lib-side {
-    flex-basis: 200px;
-  }
   .lib-main {
     padding: 24px 20px 32px;
   }

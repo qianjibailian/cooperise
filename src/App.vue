@@ -5,12 +5,19 @@
     <DesktopTabBar v-if="isDesktop && !route.meta.public" />
     <router-view />
 
+    <!-- 全局加载遮罩：文档路由切换 / 文档详情加载时显示（见 @/utils/global-loading） -->
+    <div v-if="globalLoading" class="global-loading" role="status" aria-live="polite" aria-label="加载中">
+      <a-spin size="large" />
+    </div>
+
     <!-- 全局弹窗与悬浮组件：各模块布局共用，不随模块切换重复挂载 -->
     <template v-if="!route.meta.public">
       <NewIssueFormModal v-model:open="newIssueModalOpen" @submitted="notifyIssueCreated" />
       <ReleaseNotice />
       <FloatingModuleNav />
     </template>
+    <!-- 文件上传进度小窗（右下角）：上传任务全局共享，切换页面不中断 -->
+    <UploadPanel v-if="!route.meta.public" />
   </a-config-provider>
   <!-- 客户端：登录页等没有顶栏的页面，顶部留一条可拖动窗口的区域 -->
   <div v-if="isDesktop && route.meta.public" class="desktop-drag-strip" />
@@ -37,6 +44,8 @@ import ReleaseNotice from '@/components/ReleaseNotice.vue'
 import { newIssueModalOpen } from '@/utils/new-issue-modal'
 import { notifyIssueCreated } from '@/utils/issue-events'
 import { DOC_UNTITLED, docsActiveDoc } from '@/utils/docs-layout'
+import { globalLoading } from '@/utils/global-loading'
+import UploadPanel from '@/components/docs/UploadPanel.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -61,8 +70,8 @@ const tabTitle = computed(() => {
   if (doc) return doc.title?.trim() || DOC_UNTITLED
   return (route.meta.title as string | undefined) || ''
 })
-/** 文档详情页（/docs/wiki/:docId，旧地址 /wiki/:docId）：标签标题只显示文档名，不带应用名后缀 */
-const isDocDetailRoute = computed(() => /^\/(docs\/wiki|wiki)\/[^/]+/.test(route.path))
+/** 文档详情页（/docs/wiki/:docId、知识库内 /docs/library/wiki/:docId，旧地址 /wiki/:docId）：标签标题只显示文档名，不带应用名后缀 */
+const isDocDetailRoute = computed(() => /^\/(docs\/wiki|docs\/library\/wiki|wiki)\/[^/]+/.test(route.path))
 watch(
   [tabTitle, isDocDetailRoute],
   ([title, detail]) => {
@@ -74,6 +83,17 @@ watch(
 </script>
 
 <style>
+/* 全局加载遮罩：铺满视口，盖住页面操作，居中显示加载图标 */
+.global-loading {
+  position: fixed;
+  inset: 0;
+  z-index: 3000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.6);
+}
+
 /* ===== Windows 客户端标题栏（参考 Apifox）=====
  * 原生标题栏已隐藏，应用顶栏兼作标题栏：空白处可拖动窗口，右侧给系统窗口按钮（最小化 / 最大化 / 关闭）留位。
  * Electron 的拖动区域不看层级，盖在顶栏上的弹窗 / 抽屉打开时需关闭拖动，否则这块区域点不动。 */

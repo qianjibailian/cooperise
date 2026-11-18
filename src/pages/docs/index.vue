@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { computed, h, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import type { Component } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Modal, message } from 'ant-design-vue'
@@ -62,17 +62,15 @@ import {
   TranslationOutlined,
   ShareAltOutlined,
   FileAddOutlined,
-  FileTextOutlined,
-  FileMarkdownOutlined,
+  FolderFilled,
   FileDoneOutlined,
-  Html5Outlined,
   ScheduleOutlined,
   SnippetsOutlined,
   PlusSquareOutlined,
   LockOutlined,
 } from '@ant-design/icons-vue'
 import { getLoginUsername, useAuth } from '@/utils/auth'
-import type { DocType, DocFolder, DocLibrary, DocItem, DocMeta, DocComment, MindNode, SheetData, MindmapData, FlowData } from '@/types/docs'
+import type { DocType, DocFolder, DocLibrary, DocItem, DocMeta, DocComment, MindNode, SheetData, MindmapData, FlowData, LibSideRow } from '@/types/docs'
 import DocEmojiPicker from '@/components/docs/DocEmojiPicker.vue'
 import DocCoverPicker from '@/components/docs/DocCoverPicker.vue'
 import { docCoverBackground } from '@/utils/doc-cover'
@@ -90,14 +88,20 @@ import { fuzzyQueryIssues, type FuzzyIssueItem } from '@/api/faiz'
 import DocMindmapEditor from '@/components/docs/DocMindmapEditor.vue'
 import DocFlowEditor from '@/components/docs/DocFlowEditor.vue'
 import DocTypeIcon from '@/components/docs/DocTypeIcon.vue'
+import LibrarySide from '@/components/docs/LibrarySide.vue'
 import DocsLibraryCover from '@/components/docs/DocsLibraryCover.vue'
 import AppLogo from '@/components/AppLogo.vue'
 import { isDesktop } from '@/utils/desktop'
-import { docsSideCollapsed, docsEditMode, docsSuggestMode, docsActiveDoc, docsSaveState, docsTitleRev, docsCreateRequest, DOC_UNTITLED, docTitleInputValue } from '@/utils/docs-layout'
+import { startGlobalLoading, stopGlobalLoading } from '@/utils/global-loading'
+import { enqueueUploads, uploadDoneSeq, type UploadContext } from '@/utils/upload-queue'
+import { docsSideCollapsed, docsEditMode,docsSuggestMode, docsActiveDoc, docsSaveState, docsTitleRev, docsCreateRequest, docsMoreRequest, docsMoveTargets, DOC_UNTITLED, docTitleInputValue } from '@/utils/docs-layout'
 import { openDocSharePanel } from '@/utils/doc-share'
 import {
   createDoc as createDocApi,
   createDocFolder,
+  uploadDocAttachment,
+  submitDocParse,
+  getDocParseStatus,
   createDocLibrary,
   deleteDocFolder,
   deleteDocLibrary,
@@ -111,6 +115,7 @@ import {
   listTrashDocs,
   moveDoc as moveDocApi,
   purgeDoc as purgeDocApi,
+  renameDoc as renameDocApi,
   renameDocFolder,
   restoreDoc as restoreDocApi,
   linkIssueDocs,
@@ -166,7 +171,12 @@ const activeFolderId = ref('')
 /** 文件夹展开状态 */
 const expanded = reactive<Record<string, boolean>>({})
 
-const activeDoc = computed(() => docs.value.find((d) => d.id === activeId.value) || null)
+/**
+ * 正文区显示的文档 id：切换文档时保持旧文档，直到新文档的详情返回才替换，避免先出现空白正文。
+ * 侧栏高亮、路由仍然跟随 activeId。
+ */
+const displayedId = ref('')
+const activeDoc = computed(() => docs.value.find((d) => d.id === displayedId.value) || null)
 // 同步当前文档给顶栏（分享 / 编辑按钮使用）
 watch(activeDoc, (d) => { docsActiveDoc.value = d }, { immediate: true })
 // 顶栏文件名改名：v-model 已同步到同一对象，这里只需触发刷新时间 + 防抖保存
@@ -335,6 +345,7 @@ function normalizeDoc(d: any): DocItem {
     createdAt: Number(d.createdAt) || Number(d.updatedAt) || Date.now(),
     libraryId: d.libraryId ? String(d.libraryId) : undefined,
     folderId: d.folderId ? String(d.folderId) : undefined,
+    position: d.position === 'library' || d.position === 'home' ? d.position : undefined,
     author: d.author ? String(d.author) : undefined,
     authorAvatar: d.authorAvatar ? String(d.authorAvatar) : d.avatarUrl ? String(d.avatarUrl) : undefined,
     data: (data && typeof data === 'object' ? data : undefined) as DocItem['data'],
@@ -360,6 +371,7 @@ function normalizeLibrary(l: any): DocLibrary {
     id: String(l.id),
     name: String(l.name || '未命名知识库'),
     desc: l.desc ? String(l.desc) : undefined,
+    cover: l.cover ? String(l.cover) : undefined,
     visibility: l.visibility === 'all' ? 'all' : 'members',
     createdAt: Number(l.createdAt) || Date.now(),
     starred: !!l.starred,
@@ -371,6 +383,89 @@ function normalizeLibrary(l: any): DocLibrary {
 const loading = ref(false)
 /** 按登录用户区分数据归属（后端从 token 解析身份，这里只用于切换账号时重新拉取） */
 const ownerKey = computed(() => getLoginUsername() || 'anonymous')
+
+/**
+ * 文档详情（GET /docs/{id}）：正文、位置、创建位置等都以详情为准，回写到列表缓存。
+ * 有未落盘的本地修改时保留本地的标题 / 正文 / 表格数据，其余字段仍以服务端为准。
+ */
+async function fetchDocDetail(id: string) {
+  startGlobalLoading()
+  try {
+    const res = await getDocDetail(id)
+    if (!res?.success || !res.data) throw new Error('文档不存在')
+    const fresh = normalizeDoc(res.data)
+    let local: DocItem | undefined = docs.value.find((d) => d.id === id)
+    if (!local) {
+      docs.value.unshift(fresh)
+      local = fresh
+    } else {
+      if (pendingDoc?.id === id) {
+        fresh.title = local.title
+        fresh.content = local.content
+        fresh.data = local.data
+      }
+      Object.assign(local, fresh)
+    }
+    // 只有仍是当前文档时才应用位置并结束加载；快速切换时过期的响应不生效
+    if (activeId.value === id) {
+      // 菜单由路由决定：/docs/library/wiki/:docId 显示所属知识库（所属库 ID 取详情的 libraryId），/docs/wiki/:docId 显示主页
+      const onLibraryRoute = route.name === 'LibraryWikiDoc'
+      const asLibrary = onLibraryRoute && isLibraryDoc(local)
+      applyDocPosition(local, asLibrary)
+      detailReadyId.value = id
+      displayedId.value = id
+      pageReady.value = true
+      // 知识库路由但详情不是知识库文档（或没有所属库）时，改回主页路由
+      if (onLibraryRoute && String(route.params.docId) === id && !asLibrary) {
+        void router.replace({ name: 'WikiDoc', params: { docId: id } })
+      }
+    }
+  } catch {
+    // 详情取不到（已删除 / 无权限）时，回到列表页；请求失败的提示由 request 拦截器统一展示
+    if (activeId.value === id) activeId.value = ''
+    // 失败也要结束占位，否则页面会一直停在加载中
+    pageReady.value = true
+  } finally {
+    stopGlobalLoading()
+  }
+}
+
+/** 详情接口返回后，才渲染文档页：该 id 的详情与位置都已确定 */
+const detailReadyId = ref('')
+/** 文档页是否已经渲染过一次：只有第一次打开时用占位，之后切换文档保持页面结构，不闪白 */
+const pageReady = ref(false)
+// 地址里带文档 id 时，从挂载开始就用占位，直到该文档的详情返回；
+// 否则列表加载期间会先闪出主页列表，再切换到知识库菜单（从知识库新建文档时最明显）
+const docPending = computed(() => !pageReady.value && !!routeDocId.value && detailReadyId.value !== routeDocId.value)
+
+/**
+ * 按已确定的位置设置左侧菜单：asLibrary 且有 libraryId → 所属知识库的目录树；否则 → 主页。
+ */
+function applyDocPosition(doc: DocItem, asLibrary: boolean) {
+  if (asLibrary && doc.libraryId) {
+    activeLibraryId.value = doc.libraryId
+    navMode.value = 'library'
+  } else {
+    activeLibraryId.value = ''
+    if (navMode.value === 'library') navMode.value = 'recent'
+  }
+}
+
+/** 是否知识库内的文档：position 为 library 且有 libraryId（旧数据无 position 时按 libraryId 判断） */
+function isLibraryDoc(doc: DocItem): boolean {
+  return (doc.position ?? (doc.libraryId ? 'library' : 'home')) === 'library' && !!doc.libraryId
+}
+
+/** 文档详情的路由：知识库内的文档为 /docs/library/wiki/:docId，主页文档为 /docs/wiki/:docId */
+function docRoute(doc: DocItem) {
+  return { name: isLibraryDoc(doc) ? 'LibraryWikiDoc' : 'WikiDoc', params: { docId: doc.id } }
+}
+
+// 当前文档变化（列表点开 / 地址变化 / 前进后退 / 刚加载页面）时，统一拉取该文档的详情
+watch(activeId, (id) => {
+  if (id) void fetchDocDetail(id)
+  else displayedId.value = ''
+})
 
 /** 拉取文件夹 / 文档 / 回收站列表 */
 async function loadDocs() {
@@ -391,18 +486,8 @@ async function loadDocs() {
     for (const f of folders.value) expanded[f.id] = expanded[f.id] ?? true
     // 打开的知识库已被删除 / 不存在时回到知识库列表
     if (activeLibraryId.value && !libraries.value.some((l) => l.id === activeLibraryId.value)) activeLibraryId.value = ''
-    // 从 URL 恢复当前文档；没有则停留在列表页
-    const target = routeDocId.value
-    // 新页面直接打开文档时，列表里可能还没有这篇（或列表只返回摘要）：按 id 拉一次详情
-    if (target && !docs.value.some((d) => d.id === target)) {
-      try {
-        const detailRes = await getDocDetail(target)
-        if (detailRes?.success && detailRes.data) docs.value.unshift(normalizeDoc(detailRes.data))
-      } catch {
-        // 详情加载失败时按列表结果处理
-      }
-    }
-    activeId.value = target && docs.value.some((d) => d.id === target) ? target : ''
+    // 从 URL 恢复当前文档；没有则停留在列表页。正文由 watch(activeId) 通过详情接口加载
+    activeId.value = routeDocId.value
     // 旧链接 /docs?doc=xxx → /docs/wiki/xxx
     if (activeId.value && !route.params.docId && route.query.doc) {
       router.replace({ name: 'WikiDoc', params: { docId: activeId.value } })
@@ -531,6 +616,25 @@ function onGlobalKeydown(e: KeyboardEvent) {
 onMounted(() => window.addEventListener('keydown', onGlobalKeydown))
 onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKeydown))
 
+/** 快捷入口：下拉菜单宽度与卡片宽度一致（随窗口宽度变化） */
+const quickCardsRef = ref<HTMLElement | null>(null)
+const quickCardWidth = ref(0)
+const quickMenuStyle = computed(() => (quickCardWidth.value ? { width: `${quickCardWidth.value}px` } : {}))
+let quickCardsObserver: ResizeObserver | undefined
+onMounted(() => {
+  const el = quickCardsRef.value
+  if (!el || typeof ResizeObserver === 'undefined') return
+  const measure = () => {
+    const card = el.querySelector<HTMLElement>('.docs-quick-card')
+    if (card) quickCardWidth.value = card.clientWidth
+  }
+  quickCardsObserver = new ResizeObserver(measure)
+  quickCardsObserver.observe(el)
+  measure()
+})
+onBeforeUnmount(() => quickCardsObserver?.disconnect())
+
+
 onBeforeUnmount(() => {
   clearTimeout(saveTimer)
   if (!saved.value) flushSave()
@@ -576,7 +680,16 @@ function createDoc(type: DocType = 'doc', folderId?: string) {
   const libraryId = folderId
     ? folders.value.find((f) => f.id === folderId)?.libraryId
     : activeLibraryId.value || undefined
-  createDocApi({ title: DOC_TYPE_TITLE[type], type, libraryId: libraryId || undefined, folderId: folderId || undefined, data })
+  // 先调用创建接口，拿到后端返回的 id 之后才跳转到文档页；等待期间显示全局加载
+  startGlobalLoading()
+  createDocApi({
+    title: DOC_TYPE_TITLE[type],
+    type,
+    libraryId: libraryId || undefined,
+    folderId: folderId || undefined,
+    position: libraryId ? 'library' : 'home',
+    data,
+  })
     .then((res) => {
       if (!res.success || !res.data) return
       const doc = normalizeDoc(res.data)
@@ -584,10 +697,11 @@ function createDoc(type: DocType = 'doc', folderId?: string) {
       docs.value.unshift(doc)
       if (folderId) expanded[folderId] = true
       // 后端生成文档 id（24 位 Base62），打开新的文档页面加载内容
-      router.push({ name: 'WikiDoc', params: { docId: doc.id } })
+      router.push(docRoute(doc))
       if (type === 'doc') nextTick(() => editorRef.value?.focus())
     })
     .catch(() => {})
+    .finally(() => stopGlobalLoading())
 }
 
 // ---- 各类型数据 / 展示 ----
@@ -629,6 +743,7 @@ function createDocWithContent(type: DocType, title: string, content: string) {
     content,
     libraryId: activeLibraryId.value || undefined,
     folderId: activeFolderId.value || undefined,
+    position: activeLibraryId.value ? 'library' : 'home',
     data: type === 'doc' ? localAuthorMeta() : undefined,
   })
     .then((res) => {
@@ -637,7 +752,7 @@ function createDocWithContent(type: DocType, title: string, content: string) {
       stampLocalAuthor(doc)
       docs.value.unshift(doc)
       // 打开新的文档页面（后端生成的文档 id）
-      router.push({ name: 'WikiDoc', params: { docId: doc.id } })
+      router.push(docRoute(doc))
       if (type === 'doc') {
         nextTick(() => {
           if (editorRef.value) {
@@ -653,36 +768,128 @@ function createDocWithContent(type: DocType, title: string, content: string) {
     .catch(() => {})
 }
 
-/** 上传本地文件：读取为文档 */
-const uploadInput = ref<HTMLInputElement | null>(null)
-const uploadAccept = ref('.md,.markdown')
+/** 上传：文件 / 文件夹真正上传到服务器（带进度，进度小窗在右下角，见 utils/upload-queue） */
+const uploadFileInput = ref<HTMLInputElement | null>(null)
+const uploadFolderInput = ref<HTMLInputElement | null>(null)
 
-function pickUploadFile(kind = 'md') {
-  uploadAccept.value = kind === 'html' ? '.html,.htm' : kind === 'txt' ? '.txt' : '.md,.markdown'
-  nextTick(() => uploadInput.value?.click())
+/** 上传目标：当前知识库（以及选中的文件夹）；个人文档没有文件夹 */
+function uploadTarget(): { libraryId?: string; folderId?: string } {
+  const libraryId = activeLibraryId.value || undefined
+  return { libraryId, folderId: libraryId ? activeFolderId.value || undefined : undefined }
 }
 
-function onUploadMenu(e: { key?: string | number }) {
-  pickUploadFile(String(e?.key ?? 'md'))
-}
+/** 文本类文件：上传后异步解析内容，追加到文档正文（与后端 DocFileParser 支持的格式一致） */
+const PARSABLE_EXTENSIONS = ['txt', 'md', 'markdown', 'html', 'htm']
+const PARSE_POLL_MS = 800
+const PARSE_POLL_MAX = 150
 
-function onFileSelected(e: Event) {
-  const input = e.target as HTMLInputElement
-  const file = input.files?.[0]
-  if (!file) return
-  const reader = new FileReader()
-  reader.onload = () => {
-    const text = String(reader.result || '')
-    const isHtml = /\.html?$/i.test(file.name) || file.type.includes('html')
-    const content = isHtml
-      ? text
-      : `<p>${escapeHtml(text).replace(/\r?\n/g, '</p><p>')}</p>`
-    createDocWithContent('doc', file.name.replace(/\.[^.]+$/, '') || '上传的文档', content)
-    message.success('文件已导入为文档')
+/** 轮询解析状态直到完成 / 失败 / 超时；返回最终状态 */
+async function waitForParse(docId: string): Promise<string> {
+  for (let i = 0; i < PARSE_POLL_MAX; i++) {
+    await new Promise((resolve) => setTimeout(resolve, PARSE_POLL_MS))
+    const res = await getDocParseStatus(docId)
+    const state = res.data?.state || 'none'
+    if (state === 'done' || state === 'failed' || state === 'none') return state
   }
-  reader.readAsText(file)
-  input.value = ''
+  return 'timeout'
 }
+
+/** 上传一个文件，创建一篇文档（正文先放附件链接），再异步解析文件内容追加进正文 */
+async function uploadFileAsDoc(file: File, target: { libraryId?: string; folderId?: string }, ctx: UploadContext): Promise<void> {
+  const res = await uploadDocAttachment(file, ctx.progress)
+  if (!res.success || !res.data) throw new Error('上传失败')
+  const url = res.data.url
+  const name = file.name
+  const title = name.replace(/\.[^.]+$/, '') || name
+  const content = `<p><a href="${escapeAttr(url)}" target="_blank" rel="noopener">${escapeHtml(name)}</a></p>`
+  const docRes = await createDocApi({
+    type: 'doc',
+    title,
+    content,
+    libraryId: target.libraryId,
+    folderId: target.folderId,
+    position: target.libraryId ? 'library' : 'home',
+  })
+  if (!docRes.success || !docRes.data) throw new Error('创建文档失败')
+
+  const ext = name.includes('.') ? name.split('.').pop()!.toLowerCase() : ''
+  if (!PARSABLE_EXTENSIONS.includes(ext)) return
+  ctx.progress(100)
+  ctx.stage('解析中…')
+  try {
+    const docId = String(docRes.data.id)
+    await submitDocParse(docId, url.split('/').pop() || '')
+    await waitForParse(docId)
+  } catch {
+    // 解析失败（或服务不可用）只影响正文，附件链接仍保留
+  } finally {
+    ctx.stage('')
+  }
+}
+
+function onUploadItem(key: string) {
+  uploadOpen.value = false
+  if (key === 'folder') uploadFolderInput.value?.click()
+  else uploadFileInput.value?.click()
+}
+
+function onUploadFilesPicked(e: Event) {
+  const input = e.target as HTMLInputElement
+  const files = Array.from(input.files || [])
+  input.value = ''
+  if (!files.length) return
+  const target = uploadTarget()
+  enqueueUploads(files.map((file) => ({ name: file.name, run: (ctx) => uploadFileAsDoc(file, target, ctx) })))
+}
+
+function onUploadFolderPicked(e: Event) {
+  const input = e.target as HTMLInputElement
+  const files = Array.from(input.files || [])
+  input.value = ''
+  if (!files.length) return
+  const target = uploadTarget()
+  if (!target.libraryId) {
+    message.info('请先进入一个知识库再上传文件夹')
+    return
+  }
+  const libraryId = target.libraryId
+  // 每个目录只创建一次：并发上传的文件共用同一个 Promise
+  const folderIds = new Map<string, Promise<string | undefined>>()
+  const ensureFolder = (dir: string): Promise<string | undefined> => {
+    if (!dir) return Promise.resolve(target.folderId)
+    let pending = folderIds.get(dir)
+    if (!pending) {
+      const cut = dir.lastIndexOf('/')
+      const parentDir = cut >= 0 ? dir.slice(0, cut) : ''
+      const name = dir.slice(cut + 1)
+      pending = ensureFolder(parentDir).then(async (parentId) => {
+        const res = await createDocFolder({ name, libraryId, parentId })
+        if (!res.success || !res.data) throw new Error('创建文件夹失败')
+        return String(res.data.id)
+      })
+      folderIds.set(dir, pending)
+    }
+    return pending
+  }
+  enqueueUploads(
+    files.map((file) => {
+      const rel = file.webkitRelativePath || file.name
+      const dir = rel.includes('/') ? rel.slice(0, rel.lastIndexOf('/')) : ''
+      return {
+        name: rel,
+        run: async (ctx) => {
+          const folderId = await ensureFolder(dir)
+          await uploadFileAsDoc(file, { libraryId, folderId }, ctx)
+        },
+      }
+    }),
+  )
+}
+
+// 一批上传结束后刷新文档 / 文件夹列表
+watch(uploadDoneSeq, () => {
+  void loadDocs()
+})
 
 /** 模板库 */
 const DOC_TEMPLATES: Record<string, { title: string; content: string }> = {
@@ -709,12 +916,12 @@ function onTemplateMenu(e: { key?: string | number }) {
 function selectDoc(doc: DocItem) {
   activeId.value = doc.id
   // 文档详情统一走 /docs/wiki/:docId（参考飞书）
-  router.replace({ name: 'WikiDoc', params: { docId: doc.id } })
+  router.replace(docRoute(doc))
 }
 
 /** 主内容区的文档：在新页面 / 页签中打开 */
 function openDocInNewPage(doc: DocItem) {
-  const href = router.resolve({ name: 'WikiDoc', params: { docId: doc.id } }).href
+  const href = router.resolve(docRoute(doc)).href
   if (isDesktop) {
     // 客户端：由 DesktopTabBar 按完整路径新开页签
     router.push(href)
@@ -737,7 +944,7 @@ function switchNav(mode: 'recent' | 'owned' | 'shared' | 'starred' | 'library' |
   activeLibraryId.value = ''
   activeFolderId.value = ''
   activeId.value = ''
-  const target = mode === 'library' ? 'DocsWiki' : 'DocsHome'
+  const target = mode === 'library' ? 'DocsWiki' : mode === 'trash' ? 'DocsTrash' : 'DocsHome'
   if (route.name !== target) router.push({ name: target })
 }
 
@@ -745,8 +952,11 @@ function switchNav(mode: 'recent' | 'owned' | 'shared' | 'starred' | 'library' |
 watch(
   () => route.name,
   (name) => {
-    if (name === 'DocsWiki') navMode.value = 'library'
-    else if (name === 'DocsHome' && navMode.value === 'library') navMode.value = 'recent'
+    // 回到主页 / 知识库列表时，清掉上一次打开的知识库，个人文档区不被占用
+    if (name === 'DocsWiki' || name === 'DocsHome') activeLibraryId.value = ''
+    if (name === 'DocsTrash') navMode.value = 'trash'
+    else if (name === 'DocsWiki') navMode.value = 'library'
+    else if (name === 'DocsHome' && (navMode.value === 'library' || navMode.value === 'trash')) navMode.value = 'recent'
   },
   { immediate: true },
 )
@@ -758,6 +968,157 @@ watch(
     const type = docsCreateRequest.value.type
     if (type === 'wiki') openCreateLibrary()
     else if (['doc', 'sheet', 'mindmap', 'flow'].includes(type)) createDoc(type as DocType, activeFolderId.value || undefined)
+  },
+)
+
+
+/** 富文本 HTML → Markdown（标题 / 加粗 / 斜体 / 删除线 / 行内代码 / 代码块 / 链接 / 图片 / 列表 / 引用 / 分隔线） */
+function htmlToMarkdown(html: string): string {
+  const root = new DOMParser().parseFromString(html, 'text/html').body
+  const listToMd = (el: HTMLElement, depth: number): string => {
+    const ordered = el.tagName.toLowerCase() === 'ol'
+    let index = 0
+    return Array.from(el.children)
+      .filter((c) => c.tagName.toLowerCase() === 'li')
+      .map((li) => {
+        index++
+        const marker = ordered ? `${index}.` : '-'
+        let text = ''
+        let nested = ''
+        Array.from(li.childNodes).forEach((c) => {
+          const t = c.nodeType === Node.ELEMENT_NODE ? (c as HTMLElement).tagName.toLowerCase() : ''
+          if (t === 'ul' || t === 'ol') nested += listToMd(c as HTMLElement, depth + 1)
+          else text += walk(c, depth + 1)
+        })
+        return `${'  '.repeat(depth)}${marker} ${text.trim()}\n${nested}`
+      })
+      .join('') + (depth === 0 ? '\n' : '')
+  }
+  const walk = (node: Node, depth: number): string => {
+    if (node.nodeType === Node.TEXT_NODE) return (node.textContent || '').replace(/\s+/g, ' ')
+    if (node.nodeType !== Node.ELEMENT_NODE) return ''
+    const el = node as HTMLElement
+    const tag = el.tagName.toLowerCase()
+    const kids = () => Array.from(el.childNodes).map((c) => walk(c, depth)).join('')
+    if (/^h[1-6]$/.test(tag)) return `${'#'.repeat(Number(tag[1]))} ${kids().trim()}\n\n`
+    switch (tag) {
+      case 'p':
+      case 'div':
+      case 'section':
+      case 'article':
+        return `${kids().trim()}\n\n`
+      case 'br':
+        return '\n'
+      case 'strong':
+      case 'b':
+        return `**${kids()}**`
+      case 'em':
+      case 'i':
+        return `*${kids()}*`
+      case 's':
+      case 'del':
+        return `~~${kids()}~~`
+      case 'code':
+        return `\`${kids()}\``
+      case 'pre':
+        return `\`\`\`\n${el.textContent || ''}\n\`\`\`\n\n`
+      case 'a':
+        return `[${kids()}](${el.getAttribute('href') || ''})`
+      case 'img':
+        return `![${el.getAttribute('alt') || ''}](${el.getAttribute('src') || ''})\n\n`
+      case 'hr':
+        return '---\n\n'
+      case 'blockquote':
+        return `${kids().trim().split('\n').map((l) => `> ${l}`).join('\n')}\n\n`
+      case 'ul':
+      case 'ol':
+        return listToMd(el, depth)
+      case 'script':
+      case 'style':
+        return ''
+      default:
+        return kids()
+    }
+  }
+  return Array.from(root.childNodes)
+    .map((c) => walk(c, 0))
+    .join('')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim() + '\n'
+}
+
+/** 下载当前文档：Word（.doc）/ PDF（打印窗口另存为 PDF）/ Markdown（.md） */
+function downloadDoc(doc: DocItem, format: 'word' | 'pdf' | 'md') {
+  const title = doc.title || DOC_UNTITLED
+  const content = doc.content || ''
+  if (format === 'pdf') {
+    const win = window.open('', '_blank')
+    if (!win) {
+      message.warning('浏览器拦截了打印窗口，请允许弹出窗口后重试')
+      return
+    }
+    win.document.title = title
+    win.document.head.innerHTML = `<meta charset="utf-8"><style>
+      body { font-family: -apple-system, 'PingFang SC', 'Microsoft YaHei', Arial, sans-serif; color: #1f2329; line-height: 1.7; max-width: 800px; margin: 32px auto; padding: 0 24px; }
+      img { max-width: 100%; }
+      pre { background: #f5f6f7; padding: 12px; border-radius: 6px; white-space: pre-wrap; }
+      blockquote { border-left: 3px solid #dee0e3; margin: 0; padding-left: 12px; color: #646a73; }
+      @page { margin: 16mm; }
+    </style>`
+    win.document.body.innerHTML = `<h1>${escapeHtml(title)}</h1>${content}`
+    win.focus()
+    setTimeout(() => win.print(), 300)
+    return
+  }
+  let body: string
+  let mime: string
+  let ext: string
+  if (format === 'word') {
+    body = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8"><title>${escapeHtml(title)}</title></head><body>${content}</body></html>`
+    mime = 'application/msword'
+    ext = 'doc'
+  } else {
+    body = `# ${title}\n\n${htmlToMarkdown(content)}`
+    mime = 'text/markdown;charset=utf-8'
+    ext = 'md'
+  }
+  const url = URL.createObjectURL(new Blob([body], { type: mime }))
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `${title}.${ext}`
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
+
+/** 「文档信息」弹窗：作者 / 创建时间 / 修改时间 */
+function showDocInfo(doc: DocItem) {
+  const fmt = (ts?: number) => (ts ? new Date(ts).toLocaleString('zh-CN', { hour12: false }) : '-')
+  Modal.info({
+    title: '文档信息',
+    okText: '知道了',
+    content: h('div', { style: 'line-height: 2' }, [
+      h('div', `作者：${doc.author || '-'}`),
+      h('div', `创建时间：${fmt(doc.createdAt)}`),
+      h('div', `修改时间：${fmt(doc.updatedAt)}`),
+    ]),
+  })
+}
+
+/** 顶栏「更多」菜单的动作，作用于当前打开的文档 */
+watch(
+  () => docsMoreRequest.value.seq,
+  () => {
+    const { action, target } = docsMoreRequest.value
+    const doc = activeDoc.value
+    if (!doc) return
+    if (action === 'move' && target) moveDoc(doc, target)
+    else if (action === 'star') toggleStar(doc)
+    else if (action === 'download') downloadDoc(doc, target === 'pdf' || target === 'md' ? target : 'word')
+    else if (action === 'print') window.print()
+    else if (action === 'info') showDocInfo(doc)
+    else if (action === 'trash') confirmDelete(doc)
   },
 )
 
@@ -779,8 +1140,7 @@ watch(docsEditMode, (edit, wasEdit) => {
 watch(
   () => [route.params.docId, route.query.doc],
   () => {
-    const code = routeDocId.value
-    activeId.value = code && docs.value.some((d) => d.id === code) ? code : ''
+    activeId.value = routeDocId.value
   },
 )
 
@@ -820,6 +1180,62 @@ function docsOfLibrary(lib: DocLibrary): number {
 
 /** 当前知识库 */
 const activeLibrary = computed(() => libraries.value.find((l) => l.id === activeLibraryId.value) || null)
+/** 知识库内的文档页：左侧换成知识库自己的菜单 */
+const showLibrarySide = computed(() => !!activeLibrary.value && !!activeId.value)
+
+/** 知识库菜单的「新建」：文档 / 文件夹（新建到当前知识库，选中了文件夹则建到该文件夹） */
+function onLibraryNewMenu(key: string) {
+  if (key === 'doc') createDoc('doc', activeFolderId.value || undefined)
+  else if (key === 'folder') openCreateFolder()
+}
+
+/** 知识库菜单的目录行：文件夹 + 文档（文件夹折叠时不列出其中的文档，搜索时平铺） */
+const librarySideRows = computed<LibSideRow[]>(() => {
+  const rows: LibSideRow[] = []
+  for (const g of groups.value) {
+    if (g.folder) {
+      const open = !!expanded[g.folder.id]
+      rows.push({ key: `f-${g.folder.id}`, kind: 'folder', depth: g.depth || 0, folder: g.folder, expanded: open })
+      if (!open && !g.flat) continue
+    }
+    const depth = (g.depth || 0) + (g.folder ? 1 : 0)
+    for (const d of g.docs) rows.push({ key: `d-${d.id}`, kind: 'doc', depth, doc: d })
+  }
+  return rows
+})
+
+/** 文档「移动到」的目标：移出知识库（个人文档）+ 各文件夹 */
+const librarySideMoveTargets = computed(() => [
+  { key: 'none', label: '个人文档（移出知识库）' },
+  ...folders.value.map((f) => ({ key: f.id, label: folderPathLabel(f) })),
+])
+/** 顶栏「更多」菜单可选的移动位置：与侧栏「移动到」一致 */
+watch(librarySideMoveTargets, (targets) => (docsMoveTargets.value = targets), { immediate: true })
+
+// ---- 文档重命名（知识库菜单） ----
+const docRenameOpen = ref(false)
+const docRenameForm = reactive({ id: '', title: '' })
+
+function openRenameDoc(doc: DocItem) {
+  docRenameForm.id = doc.id
+  docRenameForm.title = doc.title || ''
+  docRenameOpen.value = true
+}
+
+async function submitRenameDoc() {
+  const title = docRenameForm.title.trim()
+  if (!title) {
+    message.warning('请输入文档名称')
+    return
+  }
+  try {
+    const res = await renameDocApi({ id: docRenameForm.id, title })
+    if (!res.success) return
+    const d = docs.value.find((x) => x.id === docRenameForm.id)
+    if (d) d.title = title
+    docRenameOpen.value = false
+  } catch {}
+}
 /** 当前选中的知识库内文件夹 */
 const activeFolder = computed(() => folders.value.find((f) => f.id === activeFolderId.value) || null)
 
@@ -1013,8 +1429,9 @@ async function moveDoc(doc: DocItem, target: string) {
 
 function onDocMenu(e: { key?: string | number }, doc: DocItem) {
   const key = String(e?.key ?? '')
-  if (key === 'delete') confirmDelete(doc)
+  if (key === 'delete' || key === 'trash') confirmDelete(doc)
   else if (key === 'star') toggleStar(doc)
+  else if (key === 'rename') openRenameDoc(doc)
   else if (key.startsWith('move:')) moveDoc(doc, key.slice(5))
 }
 
@@ -1076,6 +1493,8 @@ async function submitLibraryInfo() {
   }
   if (libraryInfoSubmitting.value) return
   libraryInfoSubmitting.value = true
+  // 先调用创建接口，拿到后端返回的 id 之后才进入该知识库；等待期间显示全局加载
+  startGlobalLoading()
   try {
     const res = await createDocLibrary({
       name,
@@ -1090,6 +1509,7 @@ async function submitLibraryInfo() {
     openLibrary(lib)
   } finally {
     libraryInfoSubmitting.value = false
+    stopGlobalLoading()
   }
 }
 
@@ -1325,19 +1745,14 @@ function onAddItem(key: string) {
 const uploadOpen = ref(false)
 const templateOpen = ref(false)
 const UPLOAD_ITEMS = [
-  { key: 'md', label: 'Markdown (.md)', icon: FileMarkdownOutlined },
-  { key: 'txt', label: '文本 (.txt)', icon: FileTextOutlined },
-  { key: 'html', label: '网页 (.html)', icon: Html5Outlined },
+  { key: 'file', label: '文件', icon: UploadOutlined },
+  { key: 'folder', label: '文件夹', icon: FolderFilled },
 ]
 const TEMPLATE_ITEMS = [
   { key: 'meeting', label: '会议纪要', icon: ScheduleOutlined },
   { key: 'weekly', label: '周报', icon: FileDoneOutlined },
   { key: 'prd', label: '产品需求文档', icon: SnippetsOutlined },
 ]
-function onUploadItem(key: string) {
-  uploadOpen.value = false
-  onUploadMenu({ key })
-}
 function onTemplateItem(key: string) {
   templateOpen.value = false
   onTemplateMenu({ key })
@@ -5536,6 +5951,8 @@ const lineComposerRef = ref<HTMLElement | null>(null)
 const lineComposerInputRef = ref<HTMLTextAreaElement | null>(null)
 /** 点击评论卡片后短暂高亮的评论 id */
 const activeCommentId = ref('')
+/** 鼠标悬停的评论（悬停评论卡片 / 行上的评论标记时，高亮对应的正文） */
+const hoverCommentId = ref('')
 /** 正在回复的评论 id 与回复内容 */
 const activeReplyId = ref('')
 const replyDraft = ref('')
@@ -6040,9 +6457,10 @@ function folderNameOf(doc: DocItem | null): string {
 </script>
 
 <template>
+  <template v-if="!docPending">
   <div class="docs-page" :class="{ 'is-focus': focusMode, 'is-side-collapsed': docsSideCollapsed }">
     <!-- 左侧：文件夹 + 文档 -->
-    <aside class="docs-side">
+    <aside v-if="!showLibrarySide" class="docs-side">
       <header class="docs-side-head">
         <button
           type="button"
@@ -6071,7 +6489,7 @@ function folderNameOf(doc: DocItem | null): string {
       <nav class="docs-nav">
         <button type="button" class="docs-nav-item" :class="{ active: ['recent', 'owned', 'shared', 'starred'].includes(navMode) }" @click="switchNav('recent')">
           <HomeOutlined />
-          <span>{{ tr('主页', 'Home') }}</span>
+          <span>{{ tr('首页', 'Home') }}</span>
         </button>
         <div class="docs-nav-row">
           <button type="button" class="docs-nav-item" :class="{ active: navMode === 'library' && !activeLibraryId }" @click="switchNav('library')">
@@ -6127,27 +6545,19 @@ function folderNameOf(doc: DocItem | null): string {
               :title="l.name"
               @click="openLibrary(l)"
             >
-              <DocsLibraryCover class="docs-pinned-cover" :name="l.name" />
+              <DocsLibraryCover class="docs-pinned-cover" :name="l.name" :cover="l.cover" />
               <span class="docs-pinned-name">{{ l.name }}</span>
             </div>
           </div>
         </div>
 
-        <!-- 打开知识库时：返回知识库列表 + 库名；否则为个人文档 -->
-        <div
-          v-if="activeLibrary"
-          class="docs-library-head"
-          @click="switchNav('library')"
-        >
-          <LeftOutlined class="docs-library-back" />
-          <span class="docs-library-head-name">{{ activeLibrary.name }}</span>
-        </div>
-        <div v-else class="docs-group-title docs-group-title-main docs-collapsible" @click="myDocsCollapsed = !myDocsCollapsed">
+        <!-- 主页侧栏始终是「个人文档」：知识库由知识库菜单 / 知识库页展示，不占用这里 -->
+        <div class="docs-group-title docs-group-title-main docs-collapsible" @click="myDocsCollapsed = !myDocsCollapsed">
           <span>{{ tr('个人文档', 'My docs') }}</span>
           <span class="docs-group-caret" :class="{ open: !myDocsCollapsed }"><RightOutlined /></span>
         </div>
 
-        <template v-for="g in myDocsCollapsed && !activeLibrary ? [] : groups" :key="g.folder?.id || '__ungrouped__'">
+        <template v-for="g in myDocsCollapsed ? [] : groups" :key="g.folder?.id || '__ungrouped__'">
           <!-- 文件夹标题（知识库内的目录，可嵌套） -->
           <div
             v-if="g.folder"
@@ -6225,6 +6635,44 @@ function folderNameOf(doc: DocItem | null): string {
         <span v-if="trash.length" class="docs-trash-count">{{ trash.length }}</span>
       </button>
     </aside>
+
+    <!-- 知识库内的文档：左侧显示知识库菜单（与知识库页共用 LibrarySide） -->
+    <LibrarySide
+      v-else
+      :library-name="activeLibrary?.name || ''"
+      :library-cover="activeLibrary?.cover"
+      :keyword="keyword"
+      :rows="librarySideRows"
+      :move-targets="librarySideMoveTargets"
+      :active-doc-id="activeId"
+      show-trash
+      :trash-count="trash.length"
+      :empty-text="keyword ? '没有匹配的文档' : '暂无文档，点击「新建」开始'"
+      @update:keyword="keyword = $event"
+      @home="switchNav('recent')"
+      @library-home="activeLibrary && openLibrary(activeLibrary)"
+      @library="switchNav('library')"
+      @new="onLibraryNewMenu"
+      @toggle-folder="selectFolder"
+      @open-doc="selectDoc"
+      @folder-menu="(k, f) => onFolderMenu({ key: k }, f)"
+      @doc-menu="(k, d) => onDocMenu({ key: k }, d)"
+      @trash="switchNav('trash')"
+    />
+
+    <!-- 重命名文档（知识库菜单的「重命名」） -->
+    <a-modal
+      v-model:open="docRenameOpen"
+      title="重命名文档"
+      :width="360"
+      centered
+      destroy-on-close
+      ok-text="确定"
+      cancel-text="取消"
+      @ok="submitRenameDoc"
+    >
+      <a-input v-model:value="docRenameForm.title" :maxlength="60" placeholder="文档名称" @press-enter="submitRenameDoc" />
+    </a-modal>
 
     <!-- 右侧编辑区 -->
     <main class="docs-main">
@@ -6395,7 +6843,10 @@ function folderNameOf(doc: DocItem | null): string {
                     v-for="(r, i) in commentHighlights"
                     :key="`${r.id}-${i}`"
                     class="docs-comment-hl"
-                    :class="{ 'is-active': activeCommentId === r.id }"
+                    :class="{
+                      'is-active': activeCommentId === r.id,
+                      'is-visible': hoverCommentId === r.id || activeCommentId === r.id,
+                    }"
                     :style="{ top: `${r.top}px`, left: `${r.left}px`, width: `${r.width}px`, height: `${r.height}px` }"
                   />
                 </div>
@@ -6909,6 +7360,8 @@ function folderNameOf(doc: DocItem | null): string {
                 type="button"
                 class="docs-comment-marker"
                 :style="{ top: m.top + 'px' }"
+                @mouseenter="hoverCommentId = m.firstId"
+                @mouseleave="hoverCommentId = ''"
                 :title="`${m.count} 条评论`"
                 @click="expandToComment(m.firstId)"
               >{{ m.count }}</button>
@@ -6966,6 +7419,8 @@ function folderNameOf(doc: DocItem | null): string {
                   :data-cid="c.id"
                   :style="{ top: (commentCardTop[c.id] ?? 0) + 'px' }"
                   :class="{ 'is-resolved': c.resolved, 'is-active': activeCommentId === c.id }"
+                  @mouseenter="hoverCommentId = c.id"
+                  @mouseleave="hoverCommentId = ''"
                   @click="focusComment(c)"
                 >
                   <div class="docs-comment-card-head">
@@ -7131,11 +7586,6 @@ function folderNameOf(doc: DocItem | null): string {
                 <li v-if="!recentDocsOf(l.id).length" class="docs-lib-recent-empty">暂无文档</li>
               </ul>
             </div>
-            <!-- 新建知识库：放在列表底部 -->
-            <button type="button" class="docs-lib-card docs-lib-card-new" @click="openCreateLibrary()">
-              <PlusOutlined class="docs-lib-card-new-icon" />
-              <span>新建知识库</span>
-            </button>
           </div>
 
           <!-- 列表视图：一行一个知识库 -->
@@ -7165,11 +7615,6 @@ function folderNameOf(doc: DocItem | null): string {
                 </template>
               </a-dropdown>
             </div>
-            <!-- 新建知识库：放在列表底部 -->
-            <button type="button" class="docs-lib-row docs-lib-row-new" @click="openCreateLibrary()">
-              <PlusOutlined />
-              <span>新建知识库</span>
-            </button>
           </div>
 
           <div v-if="!libraries.length" class="docs-home-empty">还没有知识库，点击右上角「+」新建</div>
@@ -7193,12 +7638,12 @@ function folderNameOf(doc: DocItem | null): string {
           </template>
         </nav>
         <!-- 快捷入口（参考飞书首页）：第一行 新建文档 / 新建知识库 / 模板中心 / 百宝箱；第二行 AI 对话写文档 / 语雀 Board / 上传 -->
-        <div class="docs-quick-cards">
+        <div ref="quickCardsRef" class="docs-quick-cards">
           <a-dropdown
             v-model:open="addOpen"
             :trigger="['hover', 'click']"
             placement="bottomLeft"
-            overlay-class-name="docs-add-popover"
+            overlay-class-name="docs-add-popover docs-quick-popover" :overlay-style="quickMenuStyle"
           >
             <button type="button" class="docs-quick-card" style="order: 1" :class="{ 'is-open': addOpen }">
               <span class="docs-quick-icon is-new"><PlusOutlined /></span>
@@ -7242,7 +7687,7 @@ function folderNameOf(doc: DocItem | null): string {
             v-model:open="uploadOpen"
             :trigger="['hover', 'click']"
             placement="bottomLeft"
-            overlay-class-name="docs-add-popover"
+            overlay-class-name="docs-add-popover docs-quick-popover" :overlay-style="quickMenuStyle"
           >
             <button type="button" class="docs-quick-card" style="order: 7" :class="{ 'is-open': uploadOpen }">
               <span class="docs-quick-icon is-upload"><UploadOutlined /></span>
@@ -7271,7 +7716,7 @@ function folderNameOf(doc: DocItem | null): string {
             v-model:open="templateOpen"
             :trigger="['hover', 'click']"
             placement="bottomLeft"
-            overlay-class-name="docs-add-popover"
+            overlay-class-name="docs-add-popover docs-quick-popover" :overlay-style="quickMenuStyle"
           >
             <button type="button" class="docs-quick-card" style="order: 3" :class="{ 'is-open': templateOpen }">
               <span class="docs-quick-icon is-template"><AppstoreOutlined /></span>
@@ -7302,11 +7747,19 @@ function folderNameOf(doc: DocItem | null): string {
         </div>
 
         <input
-          ref="uploadInput"
+          ref="uploadFileInput"
           type="file"
+          multiple
           class="docs-upload-input"
-          :accept="uploadAccept"
-          @change="onFileSelected"
+          @change="onUploadFilesPicked"
+        />
+        <input
+          ref="uploadFolderInput"
+          type="file"
+          multiple
+          webkitdirectory
+          class="docs-upload-input"
+          @change="onUploadFolderPicked"
         />
 
         <h2 class="docs-home-section">文档</h2>
@@ -8055,9 +8508,37 @@ function folderNameOf(doc: DocItem | null): string {
       </div>
     </Teleport>
   </div>
+  </template>
+  <!-- 详情接口返回前不渲染文档页（加载遮罩由 App.vue 全局显示），避免先显示主页菜单再切换 -->
+  <div v-else class="docs-page-pending" aria-busy="true" />
 </template>
 
 <style scoped>
+/* 主页 ↔ 知识库列表切换：新列表挂载时淡入并轻微上浮（不闪白，也不需要等待旧页面离开） */
+@keyframes docs-list-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.docs-home-main {
+  animation: docs-list-enter 0.24s cubic-bezier(0.25, 0.1, 0.25, 1) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .docs-home-main {
+    animation: none;
+  }
+}
+.docs-page-pending {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+}
 .docs-page {
   /* 左侧菜单的顶部留白：目录折叠箭头据此与「主页 / 知识库」两行的中线对齐 */
   --docs-side-pt: 20px;
@@ -9613,6 +10094,13 @@ function folderNameOf(doc: DocItem | null): string {
 }
 .docs-comment-hl.is-active {
   background: rgba(255, 176, 0, 0.34);
+}
+/* 评论高亮默认隐藏：仅在悬停或点击对应评论时显示 */
+.docs-comment-hl {
+  opacity: 0;
+}
+.docs-comment-hl.is-visible {
+  opacity: 1;
 }
 /* 行右侧的评论入口：外层命中区延伸到正文边缘，避免鼠标经过空白时悬停状态丢失 */
 .docs-line-comment-hit {
@@ -11737,19 +12225,6 @@ function folderNameOf(doc: DocItem | null): string {
   border-radius: 4px;
   vertical-align: middle;
 }
-.docs-quick-icon.is-box {
-  background: linear-gradient(135deg, #14c0ff, #8b5cf6);
-  color: #ffffff;
-}
-.docs-quick-icon.is-ai {
-  background: linear-gradient(135deg, #3370ff, #60a8ff);
-  color: #ffffff;
-}
-.docs-quick-icon.is-board {
-  background: #111111;
-  color: #ffffff;
-}
-
 /* 主页：新建 / 上传 / 模板库 一行与左侧菜单搜索框顶部水平对齐 */
 .docs-home.docs-home-main {
   padding-top: 14px;
@@ -11774,31 +12249,17 @@ function folderNameOf(doc: DocItem | null): string {
   background: var(--docs-paper);
   border-color: var(--docs-border-strong);
 }
+/* 快捷入口图标：无底色、统一线性深灰（参考飞书首页，不使用彩色渐变） */
 .docs-quick-icon {
   flex: none;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 36px;
-  height: 36px;
-  font-size: 19px;
-  color: #fff;
-  border-radius: 9px;
-}
-.docs-quick-icon.is-new {
-  background: linear-gradient(135deg, var(--c-primary), var(--c-primary-hover));
-}
-.docs-quick-icon.is-upload {
-  background: linear-gradient(135deg, #ff7d00, #ffa940);
-  color: #ffffff;
-}
-.docs-quick-icon.is-template {
-  background: linear-gradient(135deg, #ff7d00 0%, #ff4d4f 35%, #8b5cf6 70%, #3370ff 100%);
-  color: #ffffff;
-}
-.docs-quick-icon.is-newlib {
-  background: linear-gradient(135deg, #3370ff, #34d399);
-  color: #ffffff;
+  width: 28px;
+  height: 28px;
+  font-size: 20px;
+  color: #8f959e;
+  background: transparent;
 }
 .docs-quick-text {
   flex: 1;
@@ -11828,6 +12289,10 @@ function folderNameOf(doc: DocItem | null): string {
 }
 
 /* 新建下拉面板（参考飞书「新建」） */
+/* 快捷入口的下拉：面板宽度跟随菜单（菜单宽度 = 卡片宽度） */
+.docs-quick-popover .docs-add-panel {
+  width: 100%;
+}
 .docs-add-panel {
   width: 300px;
   padding: 8px;
@@ -11887,6 +12352,16 @@ function folderNameOf(doc: DocItem | null): string {
 }
 .docs-add-icon.is-prd {
   background: linear-gradient(135deg, #8b5cf6, #b794f6);
+}
+/* 上传菜单（参考飞书）：文件 = 实心蓝底白箭头；文件夹 = 浅蓝文件夹图形 */
+.docs-add-icon.is-file {
+  background: #2f6bff;
+  color: #ffffff;
+}
+.docs-add-icon.is-folder {
+  background: transparent;
+  color: #7aa9ff;
+  font-size: 26px;
 }
 
 .docs-add-divider {

@@ -108,9 +108,14 @@ watch(tabs, (v) => {
 const activeKey = computed(() => keyOf(route))
 
 /** 页签标识：云文档按完整路径区分（每个文档一个页签），其余页面按 path 区分 */
+/** 文档详情路径：/docs/wiki/:docId，或知识库内的 /docs/library/wiki/:docId */
+function isDocDetailPath(path: string): boolean {
+  return path.startsWith('/docs/wiki/') || path.startsWith('/docs/library/wiki/')
+}
+
 function keyOf(r: RouteLocationNormalizedLoaded): string {
   // 文档详情（/docs/wiki/:docId）每篇一个页签；文档列表按完整路径区分导航状态
-  if (r.path.startsWith('/docs/wiki/')) return r.path
+  if (isDocDetailPath(r.path)) return r.path
   return r.path === '/docs' ? r.fullPath : r.path
 }
 
@@ -129,7 +134,7 @@ function docTitleOf(id: string): string {
 
 function titleOf(r: RouteLocationNormalizedLoaded): string {
   if (r.name === 'IssueDetail' && r.params.issueKey) return String(r.params.issueKey)
-  if (r.path.startsWith('/docs/wiki/') && r.params.docId) return docTitleOf(String(r.params.docId))
+  if (isDocDetailPath(r.path) && r.params.docId) return docTitleOf(String(r.params.docId))
   if (r.path === '/docs' && r.query.doc) return docTitleOf(String(r.query.doc))
   if (r.name === 'ViewEntry' && r.params.filterCode) {
     return findViewItem(String(r.params.filterCode))?.filterName || '视图'

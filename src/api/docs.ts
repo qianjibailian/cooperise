@@ -1,6 +1,6 @@
 import request from '@/utils/request'
 import type { Result } from '@/types/faiz'
-import type { DocItem, DocFolder, DocLibrary, DocType, SheetData, MindmapData, FlowData, DocMeta } from '@/types/docs'
+import type { DocItem, DocFolder, DocLibrary, DocType, DocPosition, SheetData, MindmapData, FlowData, DocMeta } from '@/types/docs'
 
 /**
  * ==================== 文档系统 API ====================
@@ -28,6 +28,8 @@ export interface DocCreatePayload {
   libraryId?: string
   /** 所属文件夹 id（知识库内），空表示知识库根目录 / 未分组 */
   folderId?: string
+  /** 创建位置：home = 主页创建，library = 知识库内创建；后端需持久化并随 DocItem 返回 */
+  position: DocPosition
   /** 富文本初始 HTML（上传 / 模板导入时传入） */
   content?: string
   /** 表格 / 思维导图 / 流程图初始数据 */
@@ -62,7 +64,7 @@ export function createDocLibrary(data: {
 }
 
 /** 重命名 / 修改简介（POST /docs/library/update） */
-export function updateDocLibrary(data: { id: string; name?: string; desc?: string }): Promise<Result<void>> {
+export function updateDocLibrary(data: { id: string; name?: string; desc?: string; cover?: string }): Promise<Result<void>> {
   return request.post(`/docs/library/update`, data)
 }
 
@@ -278,12 +280,28 @@ export function unlinkIssueDoc(data: { issueKey: string; docId: string }): Promi
 
 /**
  * 附件上传（POST /docs/upload，multipart/form-data）
- * 入参：file；返回可直接放进富文本的访问地址 url。
+ * 入参：file；onProgress 为上传进度（0-100）；返回可直接放进富文本的访问地址 url。
  */
-export function uploadDocAttachment(file: File): Promise<Result<{ url: string; name: string; size: number }>> {
+export function uploadDocAttachment(
+  file: File,
+  onProgress?: (percent: number) => void,
+): Promise<Result<{ url: string; name: string; size: number }>> {
   const form = new FormData()
   form.append('file', file)
   return request.post(`/docs/upload`, form, {
     headers: { 'Content-Type': 'multipart/form-data' },
+    onUploadProgress: (e) => {
+      if (onProgress && e.total) onProgress(Math.round((e.loaded * 100) / e.total))
+    },
   })
+}
+
+/** 提交文件解析（POST /docs/parse，异步）：解析已上传附件的文本，追加到文档正文 */
+export function submitDocParse(docId: string, fileName: string): Promise<Result<void>> {
+  return request.post(`/docs/parse`, { docId, fileName })
+}
+
+/** 文件解析状态（GET /docs/parse/{docId}）：none / pending / done / failed */
+export function getDocParseStatus(docId: string): Promise<Result<{ state: string; message?: string }>> {
+  return request.get(`/docs/parse/${docId}`)
 }
