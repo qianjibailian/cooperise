@@ -553,6 +553,117 @@ export function login(data: LoginParams) {
   return request.post(`/auth/login`, data)
 }
 
+/** 用户自助创建组织（POST /organization/self-create）：创建者自动加入该组织 */
+export function createSelfOrganization(data: { organizationName: string }) {
+  return request.post(`/organization/self-create`, data)
+}
+
+/** 发送注册邮箱验证码（POST /auth/register/send-code） */
+export function sendRegisterCode(data: { email: string }) {
+  return request.post(`/auth/register/send-code`, data)
+}
+
+/** 校验注册验证码，不作废（POST /auth/register/verify-code）：注册页「下一步」时调用 */
+export function verifyRegisterCode(data: { email: string; code: string }) {
+  return request.post(`/auth/register/verify-code`, data)
+}
+
+// ==================== 初始化配置 ====================
+
+/** 初始化步骤进度（space / issue_type / template / field / workflow / button） */
+export interface InitConfigStep {
+  key: string
+  name: string
+  /** PENDING / RUNNING / SUCCESS / FAILED */
+  status: string
+  done?: number
+  total?: number
+  message?: string
+}
+
+/** 初始化配置进度 */
+export interface InitConfigProgress {
+  /** NONE / RUNNING / SUCCESS / FAILED */
+  status: string
+  currentStep?: string
+  message?: string
+  spaceCode?: string
+  steps: InitConfigStep[]
+}
+
+/** 开始初始化（POST /init-config/start）：个人模式不传组织编码，企业传组织编码；已完成或执行中则返回当前进度 */
+export function startInitConfig(data?: { organizationCode?: string }): Promise<Result<InitConfigProgress>> {
+  return request.post(`/init-config/start`, data ?? {})
+}
+
+/** 查询初始化进度（GET /init-config/progress）：个人模式不传组织编码，企业传组织编码 */
+export function getInitConfigProgress(organizationCode?: string): Promise<Result<InitConfigProgress>> {
+  return request.get(`/init-config/progress`, { params: organizationCode ? { organizationCode } : undefined })
+}
+
+/** 管理后台：单个参考空间模板（个人空间模板 / 企业默认空间模板） */
+export interface InitConfigReference {
+  spaceCode?: string
+  spaceName?: string
+  /** 是否来自配置文件默认值 */
+  fromDefault?: boolean
+  issueTypeCount?: number
+  templateCount?: number
+  workflowCount?: number
+  buttonCount?: number
+}
+
+/** 管理后台：初始化配置（两个参考空间模板） */
+export interface InitConfigSettings {
+  personal?: InitConfigReference
+  enterprise?: InitConfigReference
+}
+
+/** 管理后台：查看参考空间配置（GET /admin/init-config/config） */
+export function getInitConfigSettings(): Promise<Result<InitConfigSettings>> {
+  return request.get(`/admin/init-config/config`)
+}
+
+/** 管理后台：同步任务（初始化任务记录） */
+export interface InitConfigTask {
+  id: number
+  memberId: string
+  userName?: string
+  /** PERSONAL（个人模式）或 ORG:组织编码（企业） */
+  targetKey: string
+  /** RUNNING / SUCCESS / FAILED */
+  status: string
+  currentStep?: string
+  errorMsg?: string
+  spaceCode?: string
+  createTime?: string
+  updateTime?: string
+  steps: InitConfigStep[]
+}
+
+/** 管理后台：同步任务列表（GET /admin/init-config/tasks），status 为空则不过滤 */
+export function getInitConfigTasks(params?: { status?: string; limit?: number }): Promise<Result<InitConfigTask[]>> {
+  return request.get(`/admin/init-config/tasks`, { params })
+}
+
+/** 管理后台：手动重试失败的同步任务（POST /admin/init-config/tasks/{id}/retry） */
+export function retryInitConfigTask(id: number): Promise<Result<InitConfigProgress>> {
+  return request.post(`/admin/init-config/tasks/${id}/retry`)
+}
+
+/** 管理后台：保存两个参考空间，传空串恢复默认（POST /admin/init-config/config） */
+export function saveInitConfigSettings(data: {
+  personalSpaceCode: string
+  enterpriseSpaceCode: string
+}): Promise<Result<InitConfigSettings>> {
+  return request.post(`/admin/init-config/config`, data)
+}
+
+/** 注册（POST /auth/register，需邮箱验证码） */
+export function registerAccount(data: { email: string; code: string; password: string; realName?: string }) {
+  return request.post(`/auth/register`, data)
+}
+
 /** 退出登录（POST /auth/logout） */
 export function logout() {
   return request.post(`/auth/logout`)
@@ -1075,6 +1186,10 @@ export interface SpaceQueryParams {
   organizationCode?: string
   /** 只查当前用户加入的空间 */
   onlyJoined?: boolean
+  /** 企业模式：只展示企业空间（与个人空间隔离） */
+  excludePersonal?: boolean
+  /** 个人模式：只展示个人空间（与企业空间隔离） */
+  personalOnly?: boolean
   page: number
   pageSize: number
 }

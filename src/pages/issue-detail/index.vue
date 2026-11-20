@@ -1,40 +1,8 @@
 <template>
-  <div class="issue-page">
+  <div class="issue-shell">
+    <WorkbenchRail />
+    <div class="issue-page">
     <!-- ========== 顶部统一 Header（icon + 单号 + 标题 + 操作） ========== -->
-    <header v-if="!loading && detailData" class="detail-header">
-      <div class="dh-icon" :style="issueTypeIconStyle" :title="issueTypeLabel || undefined">
-        <component :is="issueTypeIcon" />
-      </div>
-      <div class="dh-content">
-        <div class="dh-row">
-          <span class="dh-project">{{ projectLabel || '未命名项目' }}</span>
-          <span class="dh-divider">/</span>
-          <span class="dh-key">{{ issueKey }}</span>
-          <div class="dh-inline-actions">
-            <div class="dh-icon-btn" title="复制单号"><component :is="CopyOutlined" /></div>
-            <div class="dh-icon-btn" title="收藏"><component :is="StarOutlined" /></div>
-            <div class="dh-icon-btn" title="复制链接" @click="copyIssueLink"><component :is="LinkOutlined" /></div>
-            <div class="dh-icon-btn" title="打开链接" @click="openIssueInNew"><component :is="ExportOutlined" /></div>
-          </div>
-        </div>
-        <div v-if="editingSummary" class="dh-title-edit">
-          <a-input
-            ref="summaryInputRef"
-            v-model:value="summaryDraft"
-            class="dh-summary-input"
-            placeholder="请输入概要"
-            maxlength="200"
-            @pressEnter="saveSummary"
-            @blur="saveSummary"
-          />
-        </div>
-        <div v-else-if="!heroSummary" class="dh-title-empty" @click="startEditSummary">
-          <span class="dh-summary-label">概要</span>
-          <span class="dh-summary-empty-tip">未填写概要，点击填写</span>
-        </div>
-        <h1 v-else class="dh-title" @click="startEditSummary">{{ heroSummary }}</h1>
-      </div>
-    </header>
 
     <!-- Skeleton Loading -->
     <div v-if="loading" class="detail-skeleton">
@@ -129,17 +97,33 @@
 
     <!-- Content（从 header 下面开始滚动） -->
     <div v-else class="detail-body">
-      <!-- ========== 内联属性卡：基础信息（SUBJECT）组字段，按接口返回渲染，不写死 ========== -->
-      <section v-if="issueTypeField || statusField || priorityField || filteredSummaryGrid.length" class="attr-card">
-        <div class="attr-row-line">
-          <div v-if="issueTypeField" class="attr-item">
+      <!-- 事项详情合并为一张卡片：属性 + 各板块（不再分多块） -->
+      <div class="detail-card">
+    <header v-if="!loading && detailData" class="detail-header">
+      <div class="dh-icon" :style="issueTypeIconStyle" :title="issueTypeLabel || undefined">
+        <component :is="issueTypeIcon" />
+      </div>
+      <div class="dh-content">
+        <div class="dh-row">
+          <span class="dh-project">{{ projectLabel || '未命名项目' }}</span>
+          <span class="dh-divider">/</span>
+          <span class="dh-key">{{ issueKey }}</span>
+          <div class="dh-inline-actions">
+            <div class="dh-icon-btn" title="复制单号"><component :is="CopyOutlined" /></div>
+            <div class="dh-icon-btn" title="收藏"><component :is="StarOutlined" /></div>
+            <div class="dh-icon-btn" title="复制链接" @click="copyIssueLink"><component :is="LinkOutlined" /></div>
+            <div class="dh-icon-btn" title="打开链接" @click="openIssueInNew"><component :is="ExportOutlined" /></div>
+          </div>
+        </div>
+        <!-- 状态流转（Jira 式：标题右上角的「状态流转」下拉） -->
+        <div class="dh-flow">
+          <div v-if="issueTypeField" class="attr-item dh-right-first">
             <span class="attr-label">{{ issueTypeField.name || '问题类型' }}</span>
             <span class="attr-value-block">
               <span v-if="issueTypeLabel" class="attr-type-icon" :style="{ background: issueTypeColor || DEFAULT_TYPE_COLOR }"><component :is="issueTypeIcon" /></span>
               <span class="attr-value">{{ issueTypeLabel || '—' }}</span>
             </span>
           </div>
-
           <div v-if="statusField" class="attr-item">
             <span class="attr-label">{{ statusField.name || '状态' }}</span>
             <span class="attr-value-block">
@@ -165,8 +149,6 @@
               </span>
             </span>
           </div>
-
-          <!-- 基础信息（SUBJECT）组的其余字段：按接口返回顺序展示（如 Sprint / 版本），不写死 -->
           <div v-for="f in filteredSummaryGrid" :key="f.id" class="attr-item">
             <span class="attr-label" :title="f.name">{{ f.name }}</span>
             <span class="attr-value-block">
@@ -186,16 +168,30 @@
               </template>
             </span>
           </div>
-
-
+          <!-- 与事项详情抽屉一致：同一组件（默认 mode=all），普通操作 + 分隔线 + 状态流转按钮 -->
+          <IssueActionButtons :issue-key="issueKey" :active="true" @changed="refreshDetail" />
         </div>
-      </section>
+        <div v-if="editingSummary" class="dh-title-edit">
+          <a-input
+            ref="summaryInputRef"
+            v-model:value="summaryDraft"
+            class="dh-summary-input"
+            placeholder="请输入概要"
+            maxlength="200"
+            @pressEnter="saveSummary"
+            @blur="saveSummary"
+          />
+        </div>
+        <div v-else-if="!heroSummary" class="dh-title-empty" @click="startEditSummary">
+          <span class="dh-summary-label">概要</span>
+          <span class="dh-summary-empty-tip">未填写概要，点击填写</span>
+        </div>
+        <h1 v-else class="dh-title" @click="startEditSummary">{{ heroSummary }}</h1>
+      </div>
+    </header>
 
       <!-- ========== 操作按钮栏 ========== -->
       <section class="action-bar">
-        <div class="action-bar-left">
-          <IssueActionButtons :issue-key="issueKey" @changed="refreshDetail" />
-        </div>
         <div class="action-bar-right">
           <a-switch v-model:checked="onlyShowValued" size="small" />
           <span class="switch-label">仅展示有值字段</span>
@@ -246,8 +242,26 @@
                             </div>
                             <div class="kv-value">
                               <RichTextField v-if="isRichText(f)" :field="f" :issue-key="issueKey" @saved="onFieldSaved(f, $event)" />
-                              <UserAvatar v-else-if="isUserField(f)" :user="f.value" />
-                              <ValueWithBadge v-else :field="f" />
+                              <template v-else-if="editingFieldId === f.id">
+                                <FieldValueEditor
+                                  :field="f"
+                                  :issue-key="issueKey"
+                                  @saved="onFieldSaved(f, $event)"
+                                  @cancel="editingFieldId = null"
+                                />
+                              </template>
+                              <template v-else>
+                                <UserAvatar v-if="isUserField(f)" :user="f.value" />
+                                <ValueWithBadge v-else :field="f" />
+                                <span
+                                  v-if="canEditField(f)"
+                                  class="field-edit-icon"
+                                  title="编辑"
+                                  @click="editingFieldId = f.id"
+                                >
+                                  <component :is="EditOutlined" />
+                                </span>
+                              </template>
                             </div>
                           </div>
                         </template>
@@ -385,6 +399,57 @@
               </div>
             </a-collapse-panel>
           </a-collapse>
+
+          <!-- 补充信息（折叠板）：字段分组为「补充信息」的字段 -->
+          <a-collapse
+            v-model:activeKey="supplementCollapseKeys"
+            ghost
+            :bordered="false"
+            class="panel-collapse"
+          >
+            <a-collapse-panel key="supplement">
+              <template #header>
+                <div class="collapse-header-inner">
+                  <span class="pch-title">补充信息</span>
+                </div>
+              </template>
+              <div class="panel-card-body">
+                <div v-if="filteredSupplementFields.length > 0" class="kv-list">
+                  <template v-for="(f, i) in filteredSupplementFields" :key="f.id">
+                    <div class="kv-row" :class="{ 'kv-row-alt': i % 2 === 1 }">
+                      <div class="kv-label">
+                        <span class="kv-label-inner">{{ f.name }}</span>
+                      </div>
+                      <div class="kv-value">
+                        <RichTextField v-if="isRichText(f)" :field="f" :issue-key="issueKey" @saved="onFieldSaved(f, $event)" />
+                        <template v-else-if="editingFieldId === f.id">
+                          <FieldValueEditor
+                            :field="f"
+                            :issue-key="issueKey"
+                            @saved="onFieldSaved(f, $event)"
+                            @cancel="editingFieldId = null"
+                          />
+                        </template>
+                        <template v-else>
+                          {{ formatFieldValue(f) }}
+                          <span
+                            v-if="canEditField(f)"
+                            class="field-edit-icon"
+                            title="编辑"
+                            @click="editingFieldId = f.id"
+                          >
+                            <component :is="EditOutlined" />
+                          </span>
+                        </template>
+                      </div>
+                    </div>
+                  </template>
+                </div>
+                <MiniEmpty v-else text="暂无补充信息" />
+              </div>
+            </a-collapse-panel>
+          </a-collapse>
+
 
           <!-- ========== 暂时隐藏：研发活动（折叠板，位于描述下方）：需求文档 / 应用名称 / 代码分支 / 测试计划 / 缺陷管理 / 线上故障 ==========
           <a-collapse
@@ -713,56 +778,6 @@
             </a-collapse-panel>
           </a-collapse>
 
-          <!-- 补充信息（折叠板）：字段分组为「补充信息」的字段 -->
-          <a-collapse
-            v-model:activeKey="supplementCollapseKeys"
-            ghost
-            :bordered="false"
-            class="panel-collapse"
-          >
-            <a-collapse-panel key="supplement">
-              <template #header>
-                <div class="collapse-header-inner">
-                  <span class="pch-title">补充信息</span>
-                </div>
-              </template>
-              <div class="panel-card-body">
-                <div v-if="filteredSupplementFields.length > 0" class="kv-list">
-                  <template v-for="(f, i) in filteredSupplementFields" :key="f.id">
-                    <div class="kv-row" :class="{ 'kv-row-alt': i % 2 === 1 }">
-                      <div class="kv-label">
-                        <span class="kv-label-inner">{{ f.name }}</span>
-                      </div>
-                      <div class="kv-value">
-                        <RichTextField v-if="isRichText(f)" :field="f" :issue-key="issueKey" @saved="onFieldSaved(f, $event)" />
-                        <template v-else-if="editingFieldId === f.id">
-                          <FieldValueEditor
-                            :field="f"
-                            :issue-key="issueKey"
-                            @saved="onFieldSaved(f, $event)"
-                            @cancel="editingFieldId = null"
-                          />
-                        </template>
-                        <template v-else>
-                          {{ formatFieldValue(f) }}
-                          <span
-                            v-if="canEditField(f)"
-                            class="field-edit-icon"
-                            title="编辑"
-                            @click="editingFieldId = f.id"
-                          >
-                            <component :is="EditOutlined" />
-                          </span>
-                        </template>
-                      </div>
-                    </div>
-                  </template>
-                </div>
-                <MiniEmpty v-else text="暂无补充信息" />
-              </div>
-            </a-collapse-panel>
-          </a-collapse>
-
           <!-- 相关文档（折叠板）：从云文档选择关联的文档 -->
           <a-collapse
             v-model:activeKey="docCollapseKeys"
@@ -804,7 +819,9 @@
           </div><!-- end scroll-right -->
         </div>
       </main>
+      </div><!-- end detail-card -->
     </div>
+  </div>
   </div>
 </template>
 
@@ -822,7 +839,6 @@ import {
   ShareAltOutlined,
   FileUnknownOutlined,
   AppstoreOutlined,
-  ExclamationCircleOutlined,
   CopyOutlined,
   EditOutlined,
   CheckOutlined,
@@ -837,6 +853,7 @@ import type { DetailData, DetailField, DetailLayoutGroup, IssueChangeLog } from 
 import FieldValueEditor from '@/components/FieldValueEditor.vue'
 import RichTextField from '@/components/RichTextField.vue'
 import IssueActionButtons from '@/components/IssueActionButtons.vue'
+import WorkbenchRail from '@/components/WorkbenchRail.vue'
 import IssueParentChild from '@/components/IssueParentChild.vue'
 import IssueRelatedDocs from '@/components/IssueRelatedDocs.vue'
 import { sanitizeHtml } from '@/utils/sanitizeHtml'
@@ -853,24 +870,46 @@ const MiniEmpty = {
     text: { type: String, default: '暂无数据' },
   },
   setup(props: { text: string }) {
+    // 空状态（参考 Apple / Google）：居中、无边框，浅灰圆形图标 + 一行说明文字
     return () => h('div', {
       style: {
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
-        justifyContent: 'center',
-        gap: '6px',
-        padding: '32px 16px',
-        color: '#8c8c8c',
-        fontSize: '13px',
-        background: '#f5f7fa',
-        borderRadius: '4px',
-        minHeight: '80px',
+        gap: '8px',
+        padding: '20px 16px',
+        textAlign: 'center',
       },
     }, [
-      h(ExclamationCircleOutlined, { style: { fontSize: '20px', opacity: 0.5, color: '#1677ff' } }),
-      h('span', { style: { color: '#595959', fontWeight: 500 } }, props.text),
-      h('span', { style: { color: '#8c8c8c', fontSize: '12px' } }, '暂无数据'),
+      h('div', {
+        style: {
+          width: '40px',
+          height: '40px',
+          borderRadius: '50%',
+          background: '#f1f3f4',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+        },
+      }, [
+        h('svg', {
+          width: 20,
+          height: 20,
+          viewBox: '0 0 24 24',
+          fill: 'none',
+          stroke: '#9aa0a6',
+          'stroke-width': 1.6,
+          'stroke-linecap': 'round',
+          'stroke-linejoin': 'round',
+        }, [
+          h('path', { d: 'M3 13l3-8h12l3 8' }),
+          h('path', { d: 'M3 13v6h18v-6' }),
+          h('path', { d: 'M3 13h5l1 2h6l1-2h5' }),
+        ]),
+      ]),
+      h('span', {
+        style: { fontSize: '13px', fontWeight: 500, color: '#5f6368', lineHeight: '18px' },
+      }, props.text),
     ])
   },
 }
@@ -2309,6 +2348,220 @@ function formatRichText(v: unknown): string {
   overflow-y: auto;
   background: #ffffff;
 }
+/* 事项详情：所有板块合并为一张卡片（属性区 + 左右两列内容改为上下连续排列，板块之间用细线分隔） */
+.detail-card {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  margin: 16px 24px 24px;
+  background: #ffffff;
+  border: 1px solid #ebedf0;
+  border-radius: 12px;
+  overflow: hidden;
+}
+.detail-card > .attr-card {
+  flex-shrink: 0;
+  border-bottom: 1px solid #f0f1f3;
+}
+.detail-card .detail-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  background: #ffffff;
+}
+/* 卡片内的滚动区：白底、去掉底部留白，两栏撑满，折叠板块后不露出页面底色 */
+.detail-card .detail-scroll {
+  background: #ffffff !important;
+  padding: 0 !important;
+}
+/* 板块折叠后仍铺满卡片：内容区与左右两栏（含人员信息所在的右栏）撑满剩余高度 */
+.detail-card .detail-scroll {
+  flex: 1 1 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.detail-card .scroll-inner {
+  flex: 1 0 auto;
+  min-height: 100% !important;
+  align-items: stretch;
+}
+.detail-card .scroll-left,
+.detail-card .scroll-right {
+  align-self: stretch;
+  min-height: 100%;
+}
+.detail-card .scroll-inner {
+  display: flex;
+  align-items: stretch;
+  min-height: 0;
+}
+.detail-card .scroll-left,
+.detail-card .scroll-right {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+/* 两栏：左右各占一半（五五开），中间用竖线分隔 */
+.detail-card .scroll-left {
+  flex: 1;
+}
+.detail-card .scroll-right {
+  flex: 1;
+  border-left: 1px solid #f0f1f3;
+}
+/* 右侧详情栏（参考 Jira 侧栏）：浅灰底，板块标题小一号，字段紧凑 */
+.detail-card .scroll-right {
+  background: #fafbfc;
+}
+.detail-card .scroll-right .panel-collapse :deep(.ant-collapse-header) {
+  padding: 8px 14px !important;
+  font-size: 13px;
+}
+.detail-card .scroll-right .panel-collapse :deep(.ant-collapse-content-box) {
+  padding: 0 14px 10px !important;
+  font-size: 13px;
+}
+.detail-card .scroll-right .panel-collapse :deep(.pch-title) {
+  font-size: 13px;
+  font-weight: 600;
+  color: #42526e;
+}
+.detail-card .scroll-inner {
+  padding: 0 !important;
+}
+/* 整体紧凑：减小卡片外边距、属性区与板块的内边距 */
+.detail-card {
+  margin: 4px 4px 0 4px !important;
+  /* 字号整体缩小 10%（文字与间距一起等比缩小） */
+  zoom: 0.9;
+}
+/* 标题区并入合并卡片：去掉独立卡片的外边距与圆角，与下方属性区用细线分隔 */
+/* 标题区（参考 Jira）：更紧凑；状态流转按钮固定在右上角 */
+.detail-card > .detail-header {
+  position: relative;
+  margin: 0 !important;
+  border-radius: 0 !important;
+  padding: 12px 18px 4px !important;
+  gap: 12px !important;
+  border-bottom: none;
+}
+.detail-card > .detail-header .dh-flow {
+  position: absolute;
+  margin-top: 6px !important;
+  top: 12px;
+  right: 18px;
+}
+.detail-card > .detail-header .dh-icon {
+  width: 60px;
+  height: 60px;
+  min-width: 60px;
+  margin-top: 0;
+  border-radius: 14px;
+  font-size: 30px;
+  align-self: stretch;
+}
+/* 问题类型 / 状态 / 优先级 一行紧凑排列 */
+.detail-card > .attr-card .attr-row-line {
+  grid-template-columns: repeat(auto-fill, minmax(150px, max-content)) !important;
+  gap: 4px 28px !important;
+  align-items: center !important;
+}
+/* 标题区操作按钮（参考 Jira 顶部操作）：紧凑、不挤字 */
+.detail-card > .detail-header .dh-flow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+/* 问题类型：移到标题区右侧按钮一排，只显示图标 + 名称，不显示标签 */
+.detail-card > .detail-header .dh-flow {
+  width: 100%;
+  justify-content: flex-start;
+}
+.detail-card > .detail-header .dh-flow > .attr-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+}
+/* 问题类型 / 状态 / 优先级：与按钮统一居左 */
+.detail-card > .detail-header .dh-flow > .dh-right-first {
+  margin-left: 0 !important;
+}
+.detail-card > .detail-header .dh-flow > .attr-item > .attr-label {
+  display: inline-block;
+  font-size: 13px;
+  color: #5e6c84;
+  white-space: nowrap;
+}
+/* 标签与值水平排列（同一行，标签在左） */
+.detail-card > .detail-header .dh-flow > .attr-item {
+  flex-direction: row !important;
+  align-items: center !important;
+  gap: 8px;
+}
+/* 属性之间留出间距 */
+.detail-card > .detail-header .dh-flow {
+  column-gap: 48px;
+}
+/* 问题类型 / 按钮左移，与左侧模块折叠箭头左边缘对齐 */
+.detail-card > .detail-header .dh-flow {
+  margin-left: -75px;
+  width: calc(100% + 75px);
+}
+.detail-card > .detail-header .dh-flow > .attr-item > .attr-value-block {
+  display: inline-flex !important;
+  flex-direction: row !important;
+  align-items: center;
+  gap: 6px;
+}
+.detail-card > .detail-header .dh-flow .action-btn {
+  height: 28px;
+  padding: 0 10px;
+  font-size: 13px;
+  letter-spacing: 0;
+}
+/* 属性区（参考 Jira）：标签在左、值在右，单行紧凑 */
+.detail-card > .attr-card .attr-item {
+  flex-direction: row !important;
+  align-items: center !important;
+  gap: 8px !important;
+}
+.detail-card > .attr-card .attr-label {
+  white-space: nowrap;
+  color: #5e6c84;
+}
+.detail-card > .attr-card .attr-item {
+  min-height: 0 !important;
+  padding: 0 !important;
+  gap: 6px;
+}
+.detail-card > .attr-card .attr-label {
+  font-size: 12px;
+  color: #8c8c8c;
+}
+.detail-card > .attr-card .attr-tag {
+  margin: 0;
+  padding: 0 8px;
+  line-height: 20px;
+}
+.detail-card > .attr-card {
+  margin: 0 !important;
+  padding: 10px 18px 8px !important;
+}
+.detail-card .panel-collapse :deep(.ant-collapse-header) {
+  padding: 10px 14px !important;
+}
+.detail-card .panel-collapse :deep(.ant-collapse-content-box) {
+  padding: 0 14px 12px !important;
+}
+.detail-card .scroll-left .panel-collapse,
+.detail-card .scroll-right .panel-collapse {
+  margin: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
 .scroll-inner {
   display: flex;
   gap: 0;
@@ -2317,13 +2570,13 @@ function formatRichText(v: unknown): string {
   min-height: 100%;
 }
 .scroll-left {
-  flex: 3;
+  flex: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
 }
 .scroll-right {
-  flex: 2;
+  flex: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
@@ -2896,8 +3149,9 @@ function formatRichText(v: unknown): string {
 
 /* 操作栏：独立白卡，主操作突出 */
 .action-bar {
-  margin: 12px 16px 0;
-  padding: 10px 14px;
+  margin: 4px 4px 0;
+  padding: 0 14px;
+  min-height: 0;
   background: #ffffff !important;
   border-radius: 12px;
 }
@@ -2960,5 +3214,125 @@ function formatRichText(v: unknown): string {
 }
 .footer-spacer {
   height: 20px;
+}
+/* 页面撑满视口（减去顶栏）；明暗分区：页面底为浅灰，内容卡片为白色，右侧详情栏为稍深灰，突出主内容 */
+.issue-page {
+  height: calc(100dvh - var(--app-header-height, 56px));
+  height: calc(100vh - var(--app-header-height, 56px));
+  background: #F4F5F7;
+  border-radius: 0;
+}
+.issue-page .detail-body {
+  background: transparent;
+}
+.detail-card .detail-header {
+  background: #ffffff;
+}
+.detail-card .scroll-left {
+  background: #ffffff;
+}
+.detail-card .scroll-right {
+  background: #F4F5F7;
+}
+/* 参考 Jira 事项页：标题下方一排操作按钮（编辑 / 添加评论 / 分配 / 状态流转），详情为两列「标签 + 值」 */
+.detail-card > .detail-header .dh-content {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.detail-card > .detail-header .dh-row {
+  order: 0;
+}
+.detail-card > .detail-header .dh-title,
+.detail-card > .detail-header .dh-title-edit,
+.detail-card > .detail-header .dh-title-empty {
+  order: 1;
+}
+.detail-card > .detail-header .dh-flow {
+  order: 2;
+  position: static;
+  margin-top: 8px;
+  flex-wrap: wrap;
+  row-gap: 8px;
+}
+/* 操作按钮（编辑 / 复制 / 分配 / 状态流转）独占一行，放在属性行（需求 / 状态 / 优先级）下方 */
+.detail-card > .detail-header .dh-flow > .issue-action-buttons {
+  flex-basis: 100%;
+  width: 100%;
+}
+.detail-card > .attr-card .attr-row-line {
+  display: flex !important;
+  flex-wrap: nowrap !important;
+  align-items: center !important;
+  gap: 6px 36px !important;
+  line-height: 1.3;
+}
+.detail-card > .attr-card .attr-row-line > .attr-item {
+  flex: 0 0 auto !important;
+}
+.detail-card > .attr-card .attr-item {
+  justify-content: flex-start;
+}
+.detail-card > .attr-card .attr-label {
+  width: 96px;
+  flex: none;
+  font-size: 12px;
+  color: #5e6c84;
+}
+/* 板块标题（参考 Jira「详情 / 描述 / 人员 / 日期」）：深色粗体 */
+.detail-card .scroll-left .pch-title,
+.detail-card .scroll-right .pch-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #172b4d;
+}
+/* 「仅展示有值字段」开关靠右 */
+.issue-page .action-bar {
+  justify-content: flex-end !important;
+}
+.issue-page .action-bar-left {
+  display: none;
+}
+/* 事项详情外层：左侧一级菜单（工作台，72px）+ 页面，占满顶栏以下视口 */
+.issue-shell {
+  display: flex;
+  height: calc(100dvh - var(--app-header-height, 56px));
+  height: calc(100vh - var(--app-header-height, 56px));
+  background: #F4F5F7;
+}
+.issue-shell > .issue-page {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+}
+/* 右侧栏：最后一个板块撑满剩余高度，右栏不再露出底部灰底 */
+.detail-card .scroll-right {
+  flex-direction: column;
+}
+.detail-card .scroll-right > .panel-collapse-last {
+  flex: 1 0 auto;
+}
+
+/* ===== Jira 配色强化（仅事项详情页） ===== */
+/* 卡片：Jira 的边框灰线，去掉柔和阴影 */
+.issue-page .detail-card {
+  border: 1px solid #dfe1e6;
+  box-shadow: none;
+}
+/* 标题与正文文字：Jira 深蓝灰 #172B4D；标签文字 #5E6C84 */
+.issue-page .dh-title {
+  color: #172b4d;
+  font-weight: 600;
+}
+.issue-page .attr-label {
+  color: #5e6c84;
+}
+.issue-page .detail-card .pch-title {
+  color: #172b4d;
+  font-weight: 600;
+}
+/* 分割线：统一 Jira 边框色 */
+.issue-page .detail-card .panel-collapse :deep(.ant-collapse-item) {
+  border-bottom-color: #dfe1e6;
 }
 </style>

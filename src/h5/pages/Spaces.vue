@@ -1,8 +1,8 @@
 <template>
   <div class="h5-page">
     <header class="h5-large-title">
-      <h1>空间</h1>
-      <van-button type="primary" size="small" round icon="plus" @click="openCreate">新建空间</van-button>
+      <h1>{{ isEnterpriseWorkspace ? '空间管理' : '个人空间' }}</h1>
+      <van-button v-if="isEnterpriseWorkspace" type="primary" size="small" round icon="plus" @click="openCreate">新建空间</van-button>
     </header>
 
     <van-sticky>
@@ -83,6 +83,7 @@ import {
 } from '@/api/faiz'
 import { findOrgCode } from '@/utils/orgTree'
 import { spaceAvatarText, useSpaces } from '@/utils/space-store'
+import { isEnterpriseWorkspace } from '@/utils/workspace'
 import OrgPicker from '../components/OrgPicker.vue'
 import SpaceForm from '../components/SpaceForm.vue'
 import { formatRelative } from '../utils'
@@ -149,6 +150,8 @@ async function loadMore() {
       status: statusFilter.value === 'all' ? undefined : Number(statusFilter.value),
       organizationId: orgFilter.value,
       onlyJoined: true,
+      excludePersonal: isEnterpriseWorkspace.value,
+      personalOnly: !isEnterpriseWorkspace.value,
       page: next,
       pageSize: PAGE_SIZE,
     })
@@ -225,6 +228,8 @@ async function toggleStatus(s: SpaceItem, checked: boolean) {
 const formOpen = ref(false)
 const editing = ref<SpaceItem | null>(null)
 function openCreate() {
+  // 个人空间不支持新建空间
+  if (!isEnterpriseWorkspace.value) return
   editing.value = null
   formOpen.value = true
 }
@@ -235,9 +240,10 @@ const acting = ref<SpaceItem | null>(null)
 const actionList = computed(() => {
   const s = acting.value
   if (!s) return []
+  // 个人空间不支持删除空间
   return [
     { name: '编辑', key: 'edit' },
-    { name: '删除', key: 'delete', color: '#ee0a24' },
+    ...(isEnterpriseWorkspace.value ? [{ name: '删除', key: 'delete', color: '#ee0a24' }] : []),
   ]
 })
 function openActions(s: SpaceItem) {

@@ -64,34 +64,14 @@ const moduleTitle = computed(() => {
   border-bottom: none;
 }
 
-/* 顶栏左偏移必须与文档左侧菜单（pages/docs 内 .docs-side）的宽度一致，两处断点需同步修改 */
+/* 文档侧栏统一宽度（钉钉文档风格）：主页侧栏、知识库菜单、顶栏左偏移共用此变量，不随窗口宽度变化 */
 .docs-layout {
-  --docs-side-w: 240px;
-}
-@media (max-width: 1240px) {
-  .docs-layout {
-    --docs-side-w: 280px;
-  }
-}
-@media (max-width: 1060px) {
-  .docs-layout {
-    --docs-side-w: 240px;
-  }
-}
-@media (max-width: 860px) {
-  .docs-layout {
-    --docs-side-w: 200px;
-  }
-}
-@media (max-width: 720px) {
-  .docs-layout {
-    --docs-side-w: 160px;
-  }
+  --docs-side-w: 300px;
 }
 
-/* 知识库详情页的左侧菜单宽度固定为 240px（与 pages/docs/library.vue 的 .lib-side 一致） */
+/* 知识库详情页的左侧菜单宽度固定为 300px（与 pages/docs/library.vue 的 .lib-side 一致） */
 .docs-layout.is-library-page {
-  --docs-side-w: 240px;
+  --docs-side-w: 300px;
 }
 
 .docs-layout .app-header-flush {

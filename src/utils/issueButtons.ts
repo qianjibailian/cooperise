@@ -70,7 +70,6 @@ function confirmTransition(btn: IssueButtonItem, issueKey: string): Promise<bool
             operator: getLoginUsername() || localStorage.getItem('wf_current_user') || '',
           })
           if (res?.success) {
-            message.success(`已${btn.buttonName}`)
             resolve(true)
             return
           }

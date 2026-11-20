@@ -1,16 +1,12 @@
 /**
- * 主题色：界面保持浅色，只切换品牌主色（按钮 / 选中 / 链接 / 高亮）。
+ * 主题色：固定使用 Jira 蓝，不提供切换。界面保持浅色，品牌主色用于按钮 / 选中 / 链接 / 高亮。
  * - ant-design-vue 组件通过 App.vue 的 a-config-provider（antdTheme）生效
  * - 自定义样式统一使用 CSS 变量：--c-primary / --c-primary-hover / --c-primary-active /
  *   --c-primary-bg（浅底）/ --c-primary-bg-hover / --c-primary-border
  */
-import { computed, ref } from 'vue'
+import { computed } from 'vue'
 
-export interface ThemeOption {
-  key: string
-  name: string
-  /** 参考来源 */
-  source: string
+export interface ThemeColors {
   primary: string
   hover: string
   active: string
@@ -20,57 +16,18 @@ export interface ThemeOption {
   border: string
 }
 
-export const THEMES: ThemeOption[] = [
-  {
-    key: 'apple',
-    name: '苹果蓝',
-    source: 'Apple 系统蓝',
-    primary: '#0A84FF',
-    hover: '#3399FF',
-    active: '#0071E3',
-    bg: '#E8F1FF',
-    bgHover: '#DBE9FF',
-    border: '#A8CCFF',
-  },
-  {
-    key: 'tencent',
-    name: '腾讯蓝',
-    source: '腾讯 TDesign 品牌蓝',
-    primary: '#0052D9',
-    hover: '#366EF4',
-    active: '#003CAB',
-    bg: '#ECF2FE',
-    bgHover: '#D9E1FF',
-    border: '#B5C7FF',
-  },
-  {
-    key: 'alibaba',
-    name: '阿里橙',
-    source: '阿里巴巴品牌橙',
-    primary: '#FF6A00',
-    hover: '#FF8833',
-    active: '#E05A00',
-    bg: '#FFF1E6',
-    bgHover: '#FFE4CC',
-    border: '#FFC499',
-  },
-]
-
-const STORAGE_KEY = 'cooperise:theme'
-const DEFAULT_THEME = THEMES[0]
-
-function readSaved(): string {
-  try {
-    return localStorage.getItem(STORAGE_KEY) || ''
-  } catch {
-    return ''
-  }
+/** Atlassian Jira 品牌蓝（Jira Software 配色） */
+export const THEME: ThemeColors = {
+  primary: '#0052CC',
+  hover: '#0065FF',
+  active: '#0747A6',
+  bg: '#DEEBFF',
+  bgHover: '#B3D4FF',
+  border: '#B3D4FF',
 }
 
-const currentKey = ref<string>(THEMES.some((t) => t.key === readSaved()) ? readSaved() : DEFAULT_THEME.key)
-
 /** 把主题写成 CSS 变量（挂在 :root，弹层挂在 body 下也能取到） */
-function applyCssVars(t: ThemeOption) {
+function applyCssVars(t: ThemeColors) {
   const root = document.documentElement
   root.style.setProperty('--c-primary', t.primary)
   root.style.setProperty('--c-primary-hover', t.hover)
@@ -78,38 +35,28 @@ function applyCssVars(t: ThemeOption) {
   root.style.setProperty('--c-primary-bg', t.bg)
   root.style.setProperty('--c-primary-bg-hover', t.bgHover)
   root.style.setProperty('--c-primary-border', t.border)
-  root.dataset.theme = t.key
 }
-
-const currentTheme = computed<ThemeOption>(() => THEMES.find((t) => t.key === currentKey.value) ?? DEFAULT_THEME)
 
 /** ant-design-vue 主题 token */
 const antdTheme = computed(() => ({
   token: {
-    colorPrimary: currentTheme.value.primary,
-    colorLink: currentTheme.value.primary,
-    colorInfo: currentTheme.value.primary,
+    colorPrimary: THEME.primary,
+    colorLink: THEME.primary,
+    colorInfo: THEME.primary,
     borderRadius: 8,
   },
 }))
 
-function setTheme(key: string) {
-  const t = THEMES.find((x) => x.key === key)
-  if (!t) return
-  currentKey.value = t.key
-  applyCssVars(t)
-  try {
-    localStorage.setItem(STORAGE_KEY, t.key)
-  } catch {
-    // 本地存储不可用时仅本次生效
-  }
-}
-
-/** 启动时应用已保存的主题（在挂载前调用，避免闪烁） */
+/** 启动时应用主题（在挂载前调用，避免闪烁）；同时清掉旧版本保存的主题选择 */
 export function initTheme() {
-  applyCssVars(currentTheme.value)
+  try {
+    localStorage.removeItem('cooperise:theme')
+  } catch {
+    // 本地存储不可用时忽略
+  }
+  applyCssVars(THEME)
 }
 
 export function useTheme() {
-  return { themes: THEMES, currentTheme, antdTheme, setTheme }
+  return { antdTheme }
 }

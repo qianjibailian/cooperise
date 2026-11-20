@@ -8,7 +8,7 @@
     ok-text="拆分"
     cancel-text="取消"
     :confirm-loading="saving"
-    :ok-button-props="{ disabled: !validCount }"
+    :ok-button-props="{ disabled: !validCount || hasMissingAssignee }"
     @ok="handleSubmit"
   >
     <div class="split-hint">子任务沿用当前事项的空间与问题类型，父级工单为 {{ props.issueKey }}，状态从流程起点开始。</div>
@@ -28,7 +28,8 @@
           allow-clear
           :filter-option="false"
           :loading="searching"
-          placeholder="经办人（选填）"
+          placeholder="经办人（必填）"
+          :status="row.summary.trim() && !row.assignee ? 'error' : undefined"
           class="split-assignee"
           @search="onSearch"
           @focus="onAssigneeFocus"
@@ -55,7 +56,7 @@
 import { computed, nextTick, ref, watch } from 'vue'
 import { message } from 'ant-design-vue'
 import { DeleteOutlined, PlusOutlined } from '@ant-design/icons-vue'
-import { queryUsers, splitIssue } from '@/api/faiz'
+import { queryDetail, queryUsers, splitIssue } from '@/api/faiz'
 import type { UserItem } from '@/types/faiz'
 import { personAvatar, personInitial, personKey, personLabel } from '@/utils/person'
 
@@ -81,9 +82,45 @@ const MAX_ROWS = 50
 interface SplitRow { key: number; summary: string; assignee?: string }
 let rowSeq = 0
 const rows = ref<SplitRow[]>([])
+/** 当前事项（父任务）的概要：新增子任务时默认填入 */
+const parentSummary = ref('')
+
+/** 从详情的字段分组里找出 summary（概要）字段的值 */
+function findSummaryValue(node: unknown): string | null {
+  if (Array.isArray(node)) {
+    for (const item of node) {
+      const v = findSummaryValue(item)
+      if (v) return v
+    }
+    return null
+  }
+  if (node && typeof node === 'object') {
+    const obj = node as Record<string, unknown>
+    if (obj.id === 'summary' && typeof obj.value === 'string' && obj.value.trim()) return obj.value.trim()
+    for (const v of Object.values(obj)) {
+      const found = findSummaryValue(v)
+      if (found) return found
+    }
+  }
+  return null
+}
+
+async function loadParentSummary() {
+  try {
+    const res = await queryDetail({ key: props.issueKey })
+    const summary = res?.success ? findSummaryValue(res.data?.layoutGroup) : null
+    if (!summary) return
+    parentSummary.value = summary
+    // 尚未手动填写的行，回填父任务概要
+    rows.value.forEach((r) => { if (!r.summary.trim()) r.summary = summary })
+  } catch {
+    // 请求层已统一提示
+  }
+}
+
 function addRow() {
   if (rows.value.length >= MAX_ROWS) return
-  rows.value.push({ key: ++rowSeq, summary: '' })
+  rows.value.push({ key: ++rowSeq, summary: parentSummary.value })
 }
 function removeRow(idx: number) {
   rows.value.splice(idx, 1)
@@ -97,7 +134,9 @@ async function onRowEnter(idx: number) {
   inputs[inputs.length - 1]?.focus()
 }
 
-const validCount = computed(() => rows.value.filter(r => r.summary.trim()).length)
+/** 有概要的行才是要拆分的子任务；这些子任务都必须选经办人 */
+const validCount = computed(() => rows.value.filter(r => r.summary.trim() && r.assignee).length)
+const hasMissingAssignee = computed(() => rows.value.some(r => r.summary.trim() && !r.assignee))
 
 // ---- 经办人搜索（所有行共用一份候选） ----
 const users = ref<UserItem[]>([])
@@ -133,16 +172,22 @@ function onAssigneeFocus() {
 watch(() => props.open, (open) => {
   if (!open) return
   rows.value = []
+  parentSummary.value = ''
   addRow()
   users.value = []
   search('')
+  loadParentSummary()
 })
 
 const saving = ref(false)
 async function handleSubmit() {
+  if (hasMissingAssignee.value) {
+    message.warning('每个子任务都需选择经办人')
+    return
+  }
   const items = rows.value
     .filter(r => r.summary.trim())
-    .map(r => ({ summary: r.summary.trim(), ...(r.assignee ? { assigneeMemberId: r.assignee } : {}) }))
+    .map(r => ({ summary: r.summary.trim(), assigneeMemberId: r.assignee as string }))
   if (!items.length) return
   saving.value = true
   try {

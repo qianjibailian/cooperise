@@ -94,6 +94,7 @@ import AppLogo from '@/components/AppLogo.vue'
 import { isDesktop } from '@/utils/desktop'
 import { startGlobalLoading, stopGlobalLoading } from '@/utils/global-loading'
 import { enqueueUploads, uploadDoneSeq, type UploadContext } from '@/utils/upload-queue'
+import { batchDelete, type BatchItem } from '@/utils/doc-batch'
 import { docsSideCollapsed, docsEditMode,docsSuggestMode, docsActiveDoc, docsSaveState, docsTitleRev, docsCreateRequest, docsMoreRequest, docsMoveTargets, DOC_UNTITLED, docTitleInputValue } from '@/utils/docs-layout'
 import { openDocSharePanel } from '@/utils/doc-share'
 import {
@@ -943,6 +944,30 @@ function openDocInNewPage(doc: DocItem) {
   }
 }
 
+/** 目录多选后批量删除：文档移入回收站，文件夹删除后内容移到上一级 */
+function onBatchDelete(items: BatchItem[]) {
+  batchDelete(items, {
+    onDocRemoved: (id) => {
+      const doc = docs.value.find((d) => d.id === id)
+      if (doc) trash.value.unshift({ ...doc, deletedAt: Date.now() } as DocItem)
+      docs.value = docs.value.filter((d) => d.id !== id)
+      if (activeId.value === id) backToList()
+    },
+    onFolderRemoved: (id) => {
+      const folder = folders.value.find((f) => f.id === id)
+      if (!folder) return
+      docs.value.forEach((d) => {
+        if (d.folderId === id) d.folderId = folder.parentId
+      })
+      folders.value.forEach((f) => {
+        if (f.parentId === id) f.parentId = folder.parentId
+      })
+      folders.value = folders.value.filter((f) => f.id !== id)
+      if (activeFolderId.value === id) activeFolderId.value = ''
+    },
+  })
+}
+
 /** 返回文档列表：主页 / 知识库各自对应自己的路由 */
 function backToList() {
   activeId.value = ''
@@ -1389,9 +1414,9 @@ function selectFolder(folder: DocFolder) {
 
 function confirmDelete(doc: DocItem) {
   Modal.confirm({
-    title: '移到回收站',
-    content: `确定将「${doc.title || '无标题文档'}」移到回收站？`,
-    okText: '移到回收站',
+    title: '删除',
+    content: `确定删除「${doc.title || '无标题文档'}」？`,
+    okText: '删除',
     okType: 'danger',
     cancelText: '取消',
     onOk: async () => {
@@ -1712,10 +1737,8 @@ const addOpen = ref(false)
 const ADD_TYPE_ITEMS: { key: DocType; label: string }[] = [
   { key: 'doc', label: '文档' },
   { key: 'sheet', label: '表格' },
-]
-const ADD_APP_ITEMS: { key: DocType; label: string }[] = [
-  { key: 'mindmap', label: '思维导图' },
   { key: 'flow', label: '流程图' },
+  { key: 'mindmap', label: '思维导图' },
 ]
 /** 选择文件类型后进入模板选择弹窗 */
 const docTemplateOpen = ref(false)
@@ -1850,7 +1873,6 @@ function renderActiveDoc(doc: DocItem | null = activeDoc.value) {
       normalizeTodoOrder(editorRef.value)
       normalizeOrderedLists(editorRef.value)
       ensureCodeHeads(editorRef.value)
-      ensureColsToolbars(editorRef.value)
       refreshOutline()
       refreshEmptyState()
       applyHeadingFolds(editorRef.value)
@@ -6759,6 +6781,7 @@ function folderNameOf(doc: DocItem | null): string {
       @new="onLibraryNewMenu"
       @toggle-folder="selectFolder"
       @open-doc="selectDoc"
+      @batch-delete="onBatchDelete"
       @folder-menu="(k, f) => onFolderMenu({ key: k }, f)"
       @doc-menu="(k, d) => onDocMenu({ key: k }, d)"
       @trash="switchNav('trash')"
@@ -7771,18 +7794,6 @@ function folderNameOf(doc: DocItem | null): string {
                   <DocTypeIcon type="folder" size="md" />
                   <span>文件夹</span>
                 </button>
-                <div class="docs-add-divider" />
-                <div class="docs-add-section">文档应用</div>
-                <button
-                  v-for="it in ADD_APP_ITEMS"
-                  :key="it.key"
-                  type="button"
-                  class="docs-add-item"
-                  @click="onAddItem(it.key)"
-                >
-                  <DocTypeIcon :type="it.key" size="md" />
-                  <span>{{ it.label }}</span>
-                </button>
               </div>
             </template>
           </a-dropdown>
@@ -8660,7 +8671,7 @@ function folderNameOf(doc: DocItem | null): string {
 
 /* ---- 左侧：知识库 / 文件树 ---- */
 .docs-side {
-  flex: 0 0 240px;
+  flex: 0 0 300px;
   /* flex 子项默认 min-width:auto，会被内部最长的不换行标题撑宽；置 0 后宽度固定，长标题走省略号 */
   min-width: 0;
   height: 100%;
@@ -11746,6 +11757,10 @@ function folderNameOf(doc: DocItem | null): string {
 .docs-editor-wrap.is-edit .docs-editor :deep(.docs-col:hover) {
   background: color-mix(in srgb, var(--docs-side-bg) 88%, #000);
 }
+/* 分栏拖拽线的水平位置：默认 0，悬停时由脚本通过内联样式写入 */
+.docs-editor :deep(.docs-cols) {
+  --resize-x: 0px;
+}
 .docs-editor :deep(.docs-cols.is-resize-hover::after),
 .docs-editor :deep(.docs-cols.is-resizing::after) {
   content: '';
@@ -12269,12 +12284,12 @@ function folderNameOf(doc: DocItem | null): string {
 /* 中等宽度：侧栏与评论栏逐级收窄，保证正文列在 860–1240px 之间仍有足够宽度 */
 @media (max-width: 1240px) {
   .docs-side {
-    flex-basis: 280px;
+    flex-basis: 300px;
   }
 }
 @media (max-width: 1060px) {
   .docs-side {
-    flex-basis: 240px;
+    flex-basis: 300px;
   }
   .docs-page {
     --docs-comment-rail: 220px;
@@ -12977,7 +12992,7 @@ function folderNameOf(doc: DocItem | null): string {
 }
 
 .lib-tpl-preview {
-  flex: 0 0 300px;
+  flex: 0 0 280px;
   display: flex;
   flex-direction: column;
   padding: 20px 24px;

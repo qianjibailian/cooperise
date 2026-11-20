@@ -1,7 +1,11 @@
 <template>
   <div class="mgmt-page">
     <header class="mgmt-header">
-      <a-button type="primary" class="mgmt-create-btn" @click="openCreate">
+      <div class="mgmt-heading">
+        <h2 class="mgmt-title">{{ isEnterpriseWorkspace ? '空间管理' : '个人空间' }}</h2>
+        <p v-if="!isEnterpriseWorkspace" class="mgmt-hint">个人模式下不支持新建和删除空间</p>
+      </div>
+      <a-button v-if="isEnterpriseWorkspace" type="primary" class="mgmt-create-btn" @click="openCreate">
         <PlusOutlined /> 新建空间
       </a-button>
     </header>
@@ -85,6 +89,7 @@
             <a-switch
               size="small"
               :checked="record.status === 1"
+              :disabled="!record.organizationCode"
               :loading="togglingId === record.id"
               @change="(v: boolean) => toggleStatus(record as SpaceItem, v)"
             />
@@ -94,7 +99,7 @@
               <a-tooltip title="编辑">
                 <span class="row-action" @click="openEdit(record as SpaceItem)"><EditOutlined /></span>
               </a-tooltip>
-              <a-tooltip title="删除">
+              <a-tooltip v-if="isEnterpriseWorkspace" title="删除">
                 <span class="row-action danger" @click="confirmDelete(record as SpaceItem)"><DeleteOutlined /></span>
               </a-tooltip>
               <button type="button" class="enter-btn" @click="enterSpace(record as SpaceItem)">进入空间 <RightOutlined /></button>
@@ -129,12 +134,15 @@
         <a-form-item v-if="editingId" label="空间编码">
           <a-input :value="editingCode" disabled />
         </a-form-item>
-        <a-form-item label="所属组织" name="organizationId">
+        <!-- 个人空间不展示所属组织 -->
+        <a-form-item v-if="!editingPersonal" label="所属组织" name="organizationId">
           <OrgTreeSelect v-model="form.organizationId" :tree-data="orgTree" />
         </a-form-item>
+        <!-- 个人空间的负责人不允许编辑 -->
         <a-form-item label="负责人" name="ownerMemberId">
           <a-select
             v-model:value="form.ownerMemberId"
+            :disabled="editingPersonal"
             show-search
             allow-clear
             :filter-option="false"
@@ -167,7 +175,7 @@
           <a-textarea v-model:value="form.description" placeholder="空间用途说明（选填）" :maxlength="500" :auto-size="{ minRows: 2, maxRows: 4 }" show-count />
         </a-form-item>
         <a-form-item label="启用" name="status">
-          <a-switch v-model:checked="statusChecked" />
+          <a-switch v-model:checked="statusChecked" :disabled="editingPersonal" />
         </a-form-item>
       </a-form>
     </a-modal>
@@ -189,6 +197,7 @@ import type { UserItem } from '@/types/faiz'
 import OrgTreeSelect from '@/components/OrgTreeSelect.vue'
 import { findOrgCode, findOrgIdByCode } from '@/utils/orgTree'
 import { useSpaces } from '@/utils/space-store'
+import { isEnterpriseWorkspace } from '@/utils/workspace'
 
 /** 空间颜色候选（与问题类型一致，Apple 系统色） */
 const COLOR_OPTIONS = ['#0A84FF', '#5E5CE6', '#AF52DE', '#FF375F', '#FF3B30', '#FF9500', '#FFCC00', '#34C759', '#30B0C7', '#8E8E93']
@@ -200,17 +209,21 @@ const STATUS_FILTERS = [
   { label: '停用', value: '0' },
 ]
 
-const columns = [
+const ALL_COLUMNS = [
   { title: '空间', key: 'space', width: 220, fixed: 'left' as const },
   { title: '标识', key: 'spaceKey', width: 90 },
   { title: '编码', key: 'spaceCode', width: 130 },
-  { title: '所属组织', key: 'organization', width: 180 },
+  { title: '所属组织', key: 'organization', width: 180, enterpriseOnly: true },
   { title: '负责人', key: 'owner', width: 140 },
   { title: '描述', key: 'description', ellipsis: true },
   { title: '更新时间', key: 'updateTime', width: 160 },
   { title: '启用', key: 'status', width: 80 },
   { title: '操作', key: 'action', width: 190, fixed: 'right' as const },
 ]
+/** 个人空间列表不展示「所属组织」列 */
+const columns = computed(() =>
+  ALL_COLUMNS.filter((c) => !(c.enterpriseOnly && !isEnterpriseWorkspace.value)).map(({ enterpriseOnly, ...c }) => c),
+)
 
 /** 头像文字：取名称首字（英文取前两位大写） */
 function avatarText(name?: string) {
@@ -288,8 +301,10 @@ async function loadSpaces() {
       keyword: keyword.value.trim() || undefined,
       status: statusFilter.value === 'all' ? undefined : Number(statusFilter.value),
       organizationId: orgFilter.value,
-      // 只展示当前用户加入的空间
+      // 只展示当前用户加入的空间；企业与个人空间互相隔离
       onlyJoined: true,
+      excludePersonal: isEnterpriseWorkspace.value,
+      personalOnly: !isEnterpriseWorkspace.value,
       page: page.value,
       pageSize: pageSize.value,
     })
@@ -403,6 +418,8 @@ const editingId = ref<number | null>(null)
 const formRef = ref<FormInstance>()
 /** 编辑中空间的编码（只读展示） */
 const editingCode = ref('')
+/** 编辑中的是否为个人空间（未关联组织）：隐藏所属组织，负责人只读 */
+const editingPersonal = ref(false)
 /** 表单内组织用 ID 选择（组织树），提交时换算成组织编码 organizationCode */
 const emptyForm = () => ({
   spaceName: '',
@@ -426,7 +443,10 @@ const rules: Record<string, Rule[]> = {
 }
 
 function openCreate() {
+  // 个人空间不支持新建空间
+  if (!isEnterpriseWorkspace.value) return
   editingId.value = null
+  editingPersonal.value = false
   Object.assign(form, emptyForm())
   modalOpen.value = true
 }
@@ -434,6 +454,7 @@ function openCreate() {
 function openEdit(r: SpaceItem) {
   editingId.value = r.id
   editingCode.value = r.spaceCode
+  editingPersonal.value = !r.organizationCode
   if (r.ownerMemberId && r.ownerName && !userNameMap[r.ownerMemberId]) userNameMap[r.ownerMemberId] = r.ownerName
   Object.assign(form, {
     spaceName: r.spaceName ?? '',
@@ -490,6 +511,8 @@ function enterSpace(r: SpaceItem) {
 
 // ---- 删除 ----
 function confirmDelete(r: SpaceItem) {
+  // 个人空间不支持删除空间
+  if (!isEnterpriseWorkspace.value) return
   Modal.confirm({
     title: `删除空间「${r.spaceName}」？`,
     content: '删除后空间内的成员关系将被移除，且不可恢复。',
@@ -527,14 +550,37 @@ onMounted(() => {
 
 .mgmt-page {
   padding: 20px 24px 32px;
+  background: #fff;
+  /* 撑满内容区：宽度铺满（块级默认），高度至少占满顶栏以下的整个视口 */
+  box-sizing: border-box;
+  min-height: calc(100dvh - var(--app-header-height, 56px));
+  width: 100%;
 }
 
 .mgmt-header {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: space-between;
   gap: 16px;
   margin-bottom: 16px;
+}
+
+.mgmt-heading {
+  min-width: 0;
+}
+
+.mgmt-title {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.2px;
+  color: #1d1d1f;
+}
+
+.mgmt-hint {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: #86868b;
 }
 
 .mgmt-create-btn {
@@ -816,7 +862,8 @@ onMounted(() => {
     flex-wrap: wrap;
   }
 
-  .mgmt-search {
+  .mgmt-search,
+  .org-filter {
     flex: 1 1 100%;
     width: auto;
   }

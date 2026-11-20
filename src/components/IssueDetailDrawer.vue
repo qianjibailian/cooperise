@@ -904,7 +904,6 @@ import {
   CloseOutlined,
   FileUnknownOutlined,
   AppstoreOutlined,
-  ExclamationCircleOutlined,
   CopyOutlined,
   EditOutlined,
   CheckOutlined,
@@ -938,22 +937,46 @@ const MiniEmpty = {
     text: { type: String, default: '暂无数据' },
   },
   setup(props: { text: string }) {
+    // 空状态（参考 Apple / Google）：居中、无边框，浅灰圆形图标 + 一行说明文字
     return () => h('div', {
       style: {
         display: 'flex',
+        flexDirection: 'column',
         alignItems: 'center',
-        justifyContent: 'center',
         gap: '8px',
-        padding: '24px 16px',
-        color: '#8c8c8c',
-        fontSize: '12px',
-        background: 'linear-gradient(180deg, #fafbfc 0%, #fff 100%)',
-        borderRadius: '6px',
-        border: '1px dashed #e6e8eb',
+        padding: '20px 16px',
+        textAlign: 'center',
       },
     }, [
-      h(ExclamationCircleOutlined, { style: { fontSize: '14px', opacity: 0.6 } }),
-      h('span', props.text),
+      h('div', {
+        style: {
+          width: '40px',
+          height: '40px',
+          borderRadius: '50%',
+          background: '#f1f3f4',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+        },
+      }, [
+        h('svg', {
+          width: 20,
+          height: 20,
+          viewBox: '0 0 24 24',
+          fill: 'none',
+          stroke: '#9aa0a6',
+          'stroke-width': 1.6,
+          'stroke-linecap': 'round',
+          'stroke-linejoin': 'round',
+        }, [
+          h('path', { d: 'M3 13l3-8h12l3 8' }),
+          h('path', { d: 'M3 13v6h18v-6' }),
+          h('path', { d: 'M3 13h5l1 2h6l1-2h5' }),
+        ]),
+      ]),
+      h('span', {
+        style: { fontSize: '13px', fontWeight: 500, color: '#5f6368', lineHeight: '18px' },
+      }, props.text),
     ])
   },
 }

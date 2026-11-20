@@ -13,6 +13,8 @@ import MyBoard from '@/pages/my-board/index.vue'
 import Dashboard from '@/pages/dashboard/index.vue'
 import Users from '@/pages/users/index.vue'
 import Roles from '@/pages/roles/index.vue'
+import InitConfig from '@/pages/init-config/index.vue'
+import MenuManage from '@/pages/menus/index.vue'
 import Permissions from '@/pages/permissions/index.vue'
 import Departments from '@/pages/departments/index.vue'
 import Requirements from '@/pages/requirements/index.vue'
@@ -36,6 +38,11 @@ import IssueDetail from '@/pages/issue-detail/index.vue'
 import I18nPage from '@/pages/i18n/index.vue'
 import ReleaseList from '@/pages/release-list/index.vue'
 import Login from '@/pages/auth/Login.vue'
+import Register from '@/pages/auth/Register.vue'
+import RegisterPassword from '@/pages/auth/RegisterPassword.vue'
+import InitWorkspace from '@/pages/auth/InitWorkspace.vue'
+import InitProgress from '@/pages/auth/InitProgress.vue'
+import Legal from '@/pages/auth/Legal.vue'
 import { useViewStore } from '@/utils/view-store'
 import { useAuth } from '@/utils/auth'
 
@@ -81,8 +88,13 @@ const ViewEntry = defineComponent({
 
 const routes: RouteRecordRaw[] = [
   { path: '/login', component: Login, name: 'Login', meta: { title: '登录', public: true } },
-  // 注册功能已下线：旧链接统一回到登录页
-  { path: '/register', redirect: { name: 'Login' } },
+  { path: '/register', component: Register, name: 'Register', meta: { title: '注册', public: true } },
+  { path: '/register/password', component: RegisterPassword, name: 'RegisterPassword', meta: { title: '设置密码', public: true } },
+  // 注册成功后的初始化（需已登录，不设 public）
+  { path: '/init', component: InitWorkspace, name: 'InitWorkspace', meta: { title: '初始化' } },
+  { path: '/init/progress', component: InitProgress, name: 'InitProgress', meta: { title: '初始化空间' } },
+  { path: '/terms', component: Legal, name: 'Terms', meta: { title: '服务协议', public: true, doc: 'terms' } },
+  { path: '/privacy', component: Legal, name: 'Privacy', meta: { title: '隐私政策', public: true, doc: 'privacy' } },
 
   // ============ 工作台（独立布局：自己的顶栏 + 工作台侧栏） ============
   {
@@ -143,6 +155,8 @@ const routes: RouteRecordRaw[] = [
       { path: '', redirect: '/admin/users' },
       { path: 'users', component: Users, name: 'AdminUsers', meta: { title: '用户管理' } },
       { path: 'roles', component: Roles, name: 'AdminRoles', meta: { title: '角色管理' } },
+      { path: 'init-config', component: InitConfig, name: 'AdminInitConfig', meta: { title: '初始化配置' } },
+      { path: 'menus', component: MenuManage, name: 'AdminMenus', meta: { title: '菜单管理' } },
       { path: 'positions', component: Positions, name: 'AdminPositions', meta: { title: '岗位管理' } },
       { path: 'organization', component: Organization, name: 'Organization', meta: { title: '组织管理' } },
       { path: 'issue-type', component: IssueTypes, name: 'AdminIssueTypes', meta: { title: '问题类型' } },
@@ -150,6 +164,20 @@ const routes: RouteRecordRaw[] = [
       { path: 'i18n', component: I18nPage, name: 'AdminI18n', meta: { title: '国际化翻译' } },
       { path: 'template-list', component: TemplateList, name: 'TemplateList', meta: { title: '模板管理' } },
       { path: 'workflow', component: Workflow, name: 'Workflow', meta: { title: '工作流' } },
+    ],
+  },
+
+  // ============ 企业后台（与管理后台同一布局，菜单为：用户 / 岗位 / 授权 / 组织 / 菜单） ============
+  {
+    path: '/enterprise',
+    component: AdminLayout,
+    children: [
+      { path: '', redirect: '/enterprise/users' },
+      { path: 'users', component: Users, name: 'EnterpriseUsers', meta: { title: '用户管理' } },
+      { path: 'positions', component: Positions, name: 'EnterprisePositions', meta: { title: '岗位管理' } },
+      { path: 'permissions', component: Permissions, name: 'EnterprisePermissions', meta: { title: '授权管理' } },
+      { path: 'organization', component: Organization, name: 'EnterpriseOrganization', meta: { title: '组织管理' } },
+      { path: 'menus', component: MenuManage, name: 'EnterpriseMenus', meta: { title: '菜单' } },
     ],
   },
 

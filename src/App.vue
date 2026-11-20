@@ -206,14 +206,14 @@ html, body, #app {
   width: 100%;
 }
 
-/* 主题色变量默认值（苹果蓝），运行时由 @/utils/theme 覆盖 */
+/* 主题色变量默认值（Jira 蓝），运行时由 @/utils/theme 覆盖 */
 :root {
-  --c-primary: #0a84ff;
-  --c-primary-hover: #3399ff;
-  --c-primary-active: #0071e3;
-  --c-primary-bg: #e8f1ff;
-  --c-primary-bg-hover: #dbe9ff;
-  --c-primary-border: #a8ccff;
+  --c-primary: #0052cc;
+  --c-primary-hover: #0065ff;
+  --c-primary-active: #0747a6;
+  --c-primary-bg: #deebff;
+  --c-primary-bg-hover: #b3d4ff;
+  --c-primary-border: #b3d4ff;
 }
 
 /* 云文档设计 token（规范：参考苹果人机界面指南的数值体系）。

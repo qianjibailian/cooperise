@@ -35,6 +35,7 @@
         <span>目录</span>
         <DownOutlined class="lib-caret" :class="{ closed: !treeOpen }" />
       </button>
+      <CheckSquareOutlined class="lib-search-btn" title="多选" @click="toggleSelectMode" />
       <SearchOutlined class="lib-search-btn" title="搜索" @click="searchOpen = !searchOpen" />
     </div>
     <a-input
@@ -47,14 +48,24 @@
       @update:value="emit('update:keyword', String($event ?? ''))"
     />
 
+    <div v-if="selectMode" class="lib-batch">
+      <span class="lib-batch-count">已选 {{ selected.size }} 项</span>
+      <span class="lib-batch-actions">
+        <button type="button" class="lib-batch-btn" @click="selectAll">全选</button>
+        <button type="button" class="lib-batch-btn danger" :disabled="!selected.size" @click="deleteSelected">删除</button>
+        <button type="button" class="lib-batch-btn" @click="exitSelectMode">取消</button>
+      </span>
+    </div>
     <div v-if="treeOpen" class="lib-tree">
       <template v-for="r in rows" :key="r.key">
         <div
           v-if="r.kind === 'folder' && r.folder"
           class="lib-tree-row lib-tree-folder"
           :style="{ paddingLeft: `${8 + r.depth * 14}px` }"
-          @click="emit('toggle-folder', r.folder)"
+          :class="{ 'is-selected': selected.has(rowKey(r)) }"
+          @click="onRowClick(r, $event)"
         >
+          <span v-if="selectMode" class="lib-check" :class="{ on: selected.has(rowKey(r)) }"><CheckOutlined v-if="selected.has(rowKey(r))" /></span>
           <RightOutlined class="lib-row-caret" :class="{ open: r.expanded }" />
           <DocTypeIcon type="folder" size="sm" />
           <span class="lib-row-name">{{ r.folder.name }}</span>
@@ -74,11 +85,12 @@
           role="button"
           tabindex="0"
           class="lib-tree-row lib-tree-doc"
-          :class="{ active: r.doc.id === activeDocId }"
           :style="{ paddingLeft: `${8 + r.depth * 14 + 14}px` }"
-          @click="emit('open-doc', r.doc)"
+          :class="{ active: r.doc.id === activeDocId, 'is-selected': selected.has(rowKey(r)) }"
+          @click="onRowClick(r, $event)"
           @keydown.enter="emit('open-doc', r.doc)"
         >
+          <span v-if="selectMode" class="lib-check" :class="{ on: selected.has(rowKey(r)) }"><CheckOutlined v-if="selected.has(rowKey(r))" /></span>
           <DocTypeIcon :type="r.doc.type" size="sm" />
           <span class="lib-row-name">{{ r.doc.title || '无标题文档' }}</span>
           <a-dropdown trigger="click" placement="bottomRight">
@@ -90,7 +102,7 @@
                 <a-sub-menu v-if="moveTargets.length" key="move" title="移动到">
                   <a-menu-item v-for="t in moveTargets" :key="`move:${t.key}`">{{ t.label }}</a-menu-item>
                 </a-sub-menu>
-                <a-menu-item key="trash" danger>移到回收站</a-menu-item>
+                <a-menu-item key="trash" danger>删除</a-menu-item>
               </a-menu>
             </template>
           </a-dropdown>
@@ -127,13 +139,15 @@ import {
   PlusOutlined,
   RightOutlined,
   SearchOutlined,
+  CheckOutlined,
+  CheckSquareOutlined,
   UnorderedListOutlined,
 } from '@ant-design/icons-vue'
 import DocsLibraryCover from '@/components/docs/DocsLibraryCover.vue'
 import DocTypeIcon from '@/components/docs/DocTypeIcon.vue'
 import type { DocFolder, DocItem, LibSideRow } from '@/types/docs'
 
-withDefaults(
+const props = withDefaults(
   defineProps<{
     libraryName: string
     libraryCover?: string
@@ -175,9 +189,61 @@ const emit = defineEmits<{
   /** 文档菜单：rename / star / move:<目标> / trash */
   'doc-menu': [key: string, doc: DocItem]
   trash: []
+  /** 批量删除：文档移入回收站，文件夹删除（内容移到上一级） */
+  'batch-delete': [items: { kind: 'folder' | 'doc'; id: string }[]]
 }>()
 
 const treeOpen = ref(true)
+/** 多选：按住 Ctrl / Cmd 点击，或点目录标题右侧的「多选」进入多选模式 */
+const selectMode = ref(false)
+const selected = ref<Set<string>>(new Set())
+
+function rowKey(r: LibSideRow): string {
+  return r.kind === 'folder' && r.folder ? `f:${r.folder.id}` : `d:${r.doc?.id ?? ''}`
+}
+
+function toggleSelect(key: string) {
+  const next = new Set(selected.value)
+  if (next.has(key)) next.delete(key)
+  else next.add(key)
+  selected.value = next
+}
+
+function toggleSelectMode() {
+  if (selectMode.value) exitSelectMode()
+  else selectMode.value = true
+}
+
+function exitSelectMode() {
+  selectMode.value = false
+  selected.value = new Set()
+}
+
+function selectAll() {
+  selected.value = new Set(props.rows.map(rowKey))
+}
+
+function onRowClick(r: LibSideRow, e: MouseEvent) {
+  if (selectMode.value || e.ctrlKey || e.metaKey) {
+    selectMode.value = true
+    toggleSelect(rowKey(r))
+    return
+  }
+  if (r.kind === 'folder' && r.folder) emit('toggle-folder', r.folder)
+  else if (r.doc) emit('open-doc', r.doc)
+}
+
+function deleteSelected() {
+  const items: { kind: 'folder' | 'doc'; id: string }[] = []
+  for (const r of props.rows) {
+    if (!selected.value.has(rowKey(r))) continue
+    if (r.kind === 'folder' && r.folder) items.push({ kind: 'folder', id: r.folder.id })
+    else if (r.doc) items.push({ kind: 'doc', id: r.doc.id })
+  }
+  if (!items.length) return
+  emit('batch-delete', items)
+  exitSelectMode()
+}
 const searchOpen = ref(false)
 
 function onNew(e: { key?: string | number }) {
@@ -194,7 +260,7 @@ function onDocMenu(e: { key?: string | number }, doc: DocItem) {
 <style scoped>
 /* ---------- 左侧菜单 ---------- */
 .lib-side {
-  flex: 0 0 240px;
+  flex: 0 0 300px;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -420,14 +486,66 @@ function onDocMenu(e: { key?: string | number }, doc: DocItem) {
 .lib-menu-icon.is-folder {
   color: #e0a100;
 }
+/* 多选：复选框、选中行、批量操作条 */
+.lib-check {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  font-size: 10px;
+  color: #ffffff;
+  border: 1px solid #c4c9d2;
+  border-radius: 4px;
+  background: #ffffff;
+}
+.lib-check.on {
+  background: #3370ff;
+  border-color: #3370ff;
+}
+.lib-tree-row.is-selected {
+  background: #e6efff;
+}
+.lib-batch {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px;
+  font-size: 12px;
+  color: #646a73;
+  background: #ffffff;
+  border: 1px solid #dee0e3;
+  border-radius: 8px;
+}
+.lib-batch-actions {
+  display: inline-flex;
+  gap: 2px;
+}
+.lib-batch-btn {
+  height: 22px;
+  padding: 0 6px;
+  font-size: 12px;
+  color: #1f2329;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.lib-batch-btn:hover:not(:disabled) {
+  background: #eef0f3;
+}
+.lib-batch-btn:disabled {
+  color: #c4c9d2;
+  cursor: not-allowed;
+}
+.lib-batch-btn.danger {
+  color: #d70015;
+}
 .lib-tree-empty {
   padding: 12px 8px;
   font-size: 13px;
   color: #8f959e;
-}
-@media (max-width: 860px) {
-  .lib-side {
-    flex-basis: 200px;
-  }
 }
 </style>

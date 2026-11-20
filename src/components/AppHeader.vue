@@ -36,8 +36,6 @@
       </div>
     </div>
 
-    <!-- 公告横幅（上下滚动轮播，内容见 @/config/banner）；文档页不显示 -->
-    <HeaderBanner v-if="!isDocs" />
 
     <div class="header-right">
       <!-- 文档详情：分享 / 编辑（原详情页工具条按钮，移至顶栏） -->
@@ -118,7 +116,7 @@
               <a-menu-divider />
               <a-menu-item key="trash" danger>
                 <template #icon><DeleteOutlined /></template>
-                移到回收站
+                删除
               </a-menu-item>
             </a-menu>
           </template>
@@ -309,7 +307,7 @@
         <div v-if="userPopoverOpen" class="user-dropdown-popover user-dropdown-float">
           <div class="user-panel">
             <div class="user-panel-header">
-              <a-avatar :size="48" :src="avatarSrc" class="user-panel-avatar" :load-error="onAvatarError">
+              <a-avatar :size="36" :src="avatarSrc" class="user-panel-avatar" :load-error="onAvatarError">
                 {{ userInitials }}
               </a-avatar>
               <div class="user-panel-info">
@@ -321,25 +319,6 @@
                   <span v-for="t in userTags" :key="t.text" :class="['user-panel-tag', t.kind]">{{ t.text }}</span>
                 </div>
               </div>
-            </div>
-            <div class="user-divider" />
-
-            <!-- 主题色：界面保持浅色，切换品牌主色（按钮 / 选中 / 链接 / 高亮） -->
-            <div class="user-section-title">主题色</div>
-            <div class="theme-picker">
-              <button
-                v-for="t in themes"
-                :key="t.key"
-                type="button"
-                class="theme-swatch"
-                :class="{ active: currentTheme.key === t.key }"
-                :style="{ '--swatch': t.primary }"
-                :title="t.source"
-                @click.stop="setTheme(t.key)"
-              >
-                <span class="theme-swatch-dot"><CheckOutlined v-if="currentTheme.key === t.key" /></span>
-                <span class="theme-swatch-name">{{ t.name }}</span>
-              </button>
             </div>
             <div class="user-divider" />
 
@@ -355,17 +334,43 @@
 
             <div class="user-divider" />
 
-            <div class="user-section-title">组织</div>
-            <div class="user-org-card" @click="handleMenuSelect('switch')">
-              <div class="user-org-logo">{{ orgLogo }}</div>
-              <div class="user-org-name" :title="orgName">{{ orgName }}</div>
-              <div class="user-org-switch">切换 <RightOutlined /></div>
+            <div class="user-section-title">个人</div>
+            <div class="user-ws-item" :class="{ 'is-active': currentWs === 'personal' }" @click="switchWs('personal')">
+              <img v-if="user?.avatarUrl && !avatarFailed" class="user-ws-avatar user-ws-avatar--person" :src="user.avatarUrl" alt="" @error="avatarFailed = true" />
+              <div v-else class="user-ws-avatar user-ws-avatar--person">{{ personalInitial }}</div>
+              <div class="user-ws-name" :title="personalName">{{ personalName }}</div>
+              <CheckOutlined v-if="currentWs === 'personal'" class="user-ws-check" />
+            </div>
+
+            <div class="user-section-title">企业</div>
+            <template v-if="enterprises.length">
+              <div
+                v-for="org in enterprises"
+                :key="org.id"
+                class="user-ws-item"
+                :class="{ 'is-active': currentWs === org.id }"
+                @click="switchWs(org.id)"
+              >
+                <div class="user-ws-avatar user-ws-avatar--org">{{ orgInitial(org.organizationName) }}</div>
+                <div class="user-ws-name" :title="org.organizationName">{{ org.organizationName }}</div>
+                <CheckOutlined v-if="currentWs === org.id" class="user-ws-check" />
+              </div>
+            </template>
+            <div class="user-ws-item user-ws-action" @click="openOrgSetup">
+              <span class="user-ws-action-icon"><PlusOutlined /></span>
+              <span class="user-ws-name">新建企业</span>
             </div>
           </div>
         </div>
       </div>
     </div>
     <DesktopSettingsModal v-if="isDesktop" v-model:open="desktopSettingsOpen" />
+    <OrgSetupModal
+      v-model:open="orgSetupOpen"
+      :loading="orgSetupLoading"
+      @create="handleOrgCreate"
+      @join="handleOrgJoin"
+    />
   </header>
 </template>
 
@@ -403,8 +408,9 @@ import {
   NodeIndexOutlined,
   UploadOutlined,
 } from '@ant-design/icons-vue'
-import HeaderBanner from './HeaderBanner.vue'
 import AppLogo from './AppLogo.vue'
+import OrgSetupModal from './OrgSetupModal.vue'
+import { setCurrentWorkspace } from '@/utils/workspace'
 import { docsEditMode, docsSuggestMode, docsActiveDoc, docsSideCollapsed, docsSaveState, docsTitleRev, docTitleInputValue, requestDocCreate, requestDocMore, docsMoveTargets } from '@/utils/docs-layout'
 import { message } from 'ant-design-vue'
 import { TEAM_COLLAB_ITEMS, type TeamManageSpec } from '@/utils/team-collab'
@@ -414,10 +420,9 @@ import DocSharePanel from './DocSharePanel.vue'
 import DesktopSettingsModal from './DesktopSettingsModal.vue'
 import { isDesktop } from '@/utils/desktop'
 import { useAuth, setAuthUser } from '@/utils/auth'
-import { useTheme } from '@/utils/theme'
 import { useLocale } from '@/i18n'
 import { formatPersonLabel } from '@/utils/person'
-import { logout, getCurrentUser, fuzzyQueryIssues, type FuzzyIssueItem } from '@/api/faiz'
+import { logout, getCurrentUser, createSelfOrganization, startInitConfig, fuzzyQueryIssues, type FuzzyIssueItem } from '@/api/faiz'
 import { issueTypeIconOf } from '@/utils/issueTypeIcons'
 import { openNewIssueModal } from '@/utils/new-issue-modal'
 
@@ -615,7 +620,6 @@ function handleEnter() {
 // }
 /** 登录用户资料（登录接口 data.user / 个人中心同步），姓名缺失时回退占位文案 */
 const { realName, user } = useAuth()
-const { themes, currentTheme, setTheme } = useTheme()
 const { locale, setLocale } = useLocale()
 const username = computed(() => user.value?.realName || realName.value || '用户')
 /** 用户面板展示：realName（coAccount） */
@@ -772,9 +776,77 @@ const userTags = computed(() => {
   return tags
 })
 
-/** 所属组织：取部门路径的第一段（公司），缺失时回退默认 */
-const orgName = computed(() => (user.value?.deptInfo || '').split('/')[0].trim() || '喝科技')
-const orgLogo = computed(() => orgName.value.slice(0, 1).toUpperCase())
+/** 个人：当前登录用户 */
+const personalName = computed(() => user.value?.realName || user.value?.userEnName || user.value?.coAccount || user.value?.email || '')
+const personalInitial = computed(() => personalName.value.slice(0, 1).toUpperCase())
+
+/**
+ * 企业：登录返回的所属组织（排除注册时自动创建的个人组织）。
+ * 个人组织的过滤依赖组织名前缀，后端若返回专门的个人标记，改为按标记过滤。
+ */
+const enterprises = computed(() =>
+  (user.value?.organizations || []).filter(o => o.status !== 0 && !(o.organizationName || '').startsWith('个人组织')),
+)
+
+/** 当前工作空间：'personal' 或企业 id，记在本地，切换后保持 */
+const WS_KEY = 'faiz.currentWorkspace'
+function readWorkspace(): string | number {
+  try {
+    const v = localStorage.getItem(WS_KEY)
+    if (v === 'personal') return v
+    if (v) return Number(v)
+  } catch { /* 隐私模式等读取失败时回退默认 */ }
+  return 'personal'
+}
+const currentWs = ref<string | number>(readWorkspace())
+function switchWs(key: string | number) {
+  currentWs.value = key
+  setCurrentWorkspace(key)
+  setUserPopoverOpen(false)
+}
+function orgInitial(name?: string) {
+  return (name || '').trim().slice(0, 1).toUpperCase()
+}
+
+/** 创建 / 加入组织弹窗 */
+const orgSetupOpen = ref(false)
+const orgSetupLoading = ref(false)
+function openOrgSetup() {
+  setUserPopoverOpen(false)
+  orgSetupOpen.value = true
+}
+/** 创建组织：调用后端创建，刷新用户资料让「企业」列表包含新组织，并切换到该组织 */
+async function handleOrgCreate(name: string) {
+  if (orgSetupLoading.value) return
+  orgSetupLoading.value = true
+  try {
+    const res = await createSelfOrganization({ organizationName: name })
+    if (res?.success === false) return
+    const profile = await getCurrentUser()
+    if (profile?.success && profile.data) {
+      setAuthUser({ organizations: profile.data.organizations })
+    }
+    orgSetupOpen.value = false
+    // 创建组织后进入初始化页面，由用户确认后开始同步企业默认空间数据
+    const org = res?.data
+    if (org?.organizationCode) {
+      const started = await startInitConfig({ organizationCode: org.organizationCode })
+      if (!started?.success) return
+      router.push({
+        name: 'InitProgress',
+        query: { org: org.organizationCode, ws: org.id ? String(org.id) : 'personal' },
+      })
+    }
+  } catch {
+    // 错误提示由 request 拦截器统一处理
+  } finally {
+    orgSetupLoading.value = false
+  }
+}
+function handleOrgJoin(code: string) {
+  console.log('加入组织（待接口）', code)
+  message.info('加入组织功能即将上线')
+}
 
 /** 老登录态没有本地用户资料：进入页面时补查一次 */
 onMounted(async () => {
@@ -1767,15 +1839,15 @@ function onDocMoreMenu(e: { key?: string | number }) {
 }
 
 .user-panel {
-  width: 280px;
-  padding: 12px 0;
+  width: 260px;
+  padding: 6px 0;
 }
 
 .user-panel-header {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 8px 16px 4px;
+  gap: 10px;
+  padding: 4px 14px 2px;
 }
 
 .user-panel-avatar {
@@ -1818,49 +1890,6 @@ function onDocMoreMenu(e: { key?: string | number }) {
   text-overflow: ellipsis;
 }
 
-.theme-picker {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
-  padding: 4px 12px 10px;
-}
-.theme-swatch {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 4px;
-  border: 1px solid #e5e5ea;
-  border-radius: 10px;
-  background: #fff;
-  cursor: pointer;
-  transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
-}
-.theme-swatch:hover {
-  background: #fafafc;
-}
-.theme-swatch.active {
-  border-color: var(--swatch);
-  box-shadow: 0 0 0 3px transparent;
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--swatch) 18%, transparent);
-}
-.theme-swatch-dot {
-  width: 22px;
-  height: 22px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 50%;
-  font-size: 11px;
-  color: #fff;
-  background: var(--swatch);
-  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.06);
-}
-.theme-swatch-name {
-  font-size: 12px;
-  color: #3a3a3c;
-  white-space: nowrap;
-}
 .user-panel-tags {
   display: flex;
   flex-wrap: wrap;
@@ -1886,16 +1915,21 @@ function onDocMoreMenu(e: { key?: string | number }) {
 }
 
 .user-menu-list {
-  padding: 4px 16px;
+  display: flex;
+  flex-direction: column;
+  padding: 2px 16px;
 }
 
 .user-menu-text {
-  padding: 8px 0;
-  font-size: 14px;
+  padding: 5px 0;
+  font-size: 13px;
   color: #262626;
   cursor: pointer;
   transition: color 0.15s;
-  line-height: 1.5;
+  line-height: 20px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .user-menu-text:hover {
@@ -1905,14 +1939,178 @@ function onDocMoreMenu(e: { key?: string | number }) {
 .user-divider {
   height: 1px;
   background: #f0f0f0;
-  margin: 12px 16px;
+  margin: 6px 16px;
 }
 
 .user-section-title {
-  padding: 0 16px 8px;
-  font-size: 13px;
+  padding: 0 16px 2px;
+  font-size: 12px;
+  line-height: 18px;
   color: #8c8c8c;
   font-weight: 500;
+}
+
+/* 用户弹层内的工作空间列表：更紧凑 */
+.user-panel .user-ws-item {
+  padding: 4px 8px;
+  margin: 0 6px;
+}
+.user-panel .user-ws-avatar,
+.user-panel .user-ws-action-icon {
+  width: 24px;
+  height: 24px;
+  font-size: 11px;
+}
+.user-panel .user-ws-action-icon {
+  font-size: 12px;
+}
+.user-panel .user-ws-name {
+  font-size: 13px;
+  line-height: 20px;
+}
+.user-panel .user-ws-empty {
+  padding: 4px 14px;
+  font-size: 12px;
+}
+
+.user-ws-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.user-ws-item:hover {
+  background: #f5f5f5;
+}
+
+.user-ws-avatar {
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 600;
+  color: #fff;
+  object-fit: cover;
+}
+
+.user-ws-avatar--person {
+  border-radius: 50%;
+  background: linear-gradient(135deg, #a8c5ff 0%, #6e9bff 100%);
+}
+
+.user-ws-avatar--org {
+  border-radius: 8px;
+  background: linear-gradient(135deg, #0052d9 0%, #7f5cff 55%, #ff7a45 100%);
+}
+
+.user-ws-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 14px;
+  color: #262626;
+}
+
+.user-ws-check {
+  color: var(--c-primary, #0052d9);
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.user-ws-empty {
+  margin: 0 8px;
+  padding: 8px 10px;
+  font-size: 13px;
+  color: #bfbfbf;
+}
+
+.user-ws-action {
+  color: var(--c-primary, #0052d9);
+}
+
+.user-ws-action .user-ws-name {
+  color: inherit;
+}
+
+.user-ws-action-icon {
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+}
+
+.user-org-empty {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 16px 8px;
+  padding: 12px;
+  background: linear-gradient(135deg, #f0f6ff 0%, #f7fbff 100%);
+  border: 1px dashed #b7d4ff;
+  border-radius: 10px;
+}
+
+.user-org-empty-icon {
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  border-radius: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  color: #fff;
+  background: linear-gradient(135deg, #0052d9 0%, #60a8ff 100%);
+}
+
+.user-org-empty-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.user-org-empty-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #1f1f1f;
+}
+
+.user-org-empty-desc {
+  margin-top: 2px;
+  font-size: 12px;
+  color: #8c8c8c;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.user-org-empty-btn {
+  flex-shrink: 0;
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #fff;
+  background: var(--c-primary, #0052d9);
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.user-org-empty-btn:hover {
+  opacity: 0.88;
 }
 
 .user-org-card {

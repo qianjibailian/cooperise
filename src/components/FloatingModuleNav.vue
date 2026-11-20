@@ -47,7 +47,6 @@
 import { ref, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
-  AppstoreOutlined,
   FileTextOutlined,
   HomeOutlined,
   LeftOutlined,
@@ -57,9 +56,8 @@ import {
 
 /** 一级模块（原顶栏「菜单」里的四个入口） */
 const NAV_ITEMS = [
-  { key: 'workspace', label: '工作台', icon: HomeOutlined, path: '/workbench/board' },
+  { key: 'workspace', label: '项目管理', icon: HomeOutlined, path: '/workbench/board' },
   { key: 'docs', label: '云文档', icon: FileTextOutlined, path: '/docs' },
-  { key: 'space', label: '空间', icon: AppstoreOutlined, path: '/space' },
   { key: 'admin', label: '管理后台', icon: ToolOutlined, path: '/admin/users' },
 ]
 

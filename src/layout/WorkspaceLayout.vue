@@ -13,6 +13,7 @@
     <!-- 手机端：侧栏以抽屉形式从左侧滑出，点遮罩 / 换页自动收起 -->
     <div v-if="isMobile && mobileMenuOpen" class="mobile-mask" @click="closeMobileMenu" />
 
+    <WorkbenchRail class="wb-rail-fixed" />
     <a-layout-sider
       v-if="!panelCollapsed || isIOSApp"
       :width="siderWidth"
@@ -172,6 +173,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
+import WorkbenchRail from '@/components/WorkbenchRail.vue'
 import {
   CheckSquareOutlined,
   DashboardOutlined,
@@ -201,7 +203,7 @@ const router = useRouter()
 const route = useRoute()
 
 /** 侧栏宽度：macOS 红绿灯占左侧，把侧栏收窄让主内容区更靠左（整体比原宽度缩小 20%） */
-const siderWidth = Math.round((isMacDesktop ? 280 : 334) * 0.8)
+const siderWidth = Math.round((isMacDesktop ? 280 : 334) * 0.72)
 
 // 侧边栏「我的事项 (N)」：与我的事项列表总数一致；挂载时与新建事项后按我的事项的筛选条件刷新。
 // 该数字只显示在工作台侧栏，非工作台路由不请求（列表页在其它路由整页刷新时也不该带出这两个接口）
@@ -494,6 +496,18 @@ onBeforeUnmount(() => {
 /* 工作台侧栏：白底，与右侧内容区一致（设置 / 管理后台仍用灰底分层） */
 .sider.sider-workbench {
   background: #ffffff !important;
+  /* 一级菜单（72px）固定在最左，二级侧栏紧贴其右侧 */
+  left: 72px;
+}
+
+/* 一级菜单：固定在顶栏下方最左侧，全高 */
+.wb-rail-fixed {
+  position: fixed;
+  left: 0;
+  width: 72px;
+  top: var(--app-header-height, 56px);
+  bottom: 0;
+  z-index: 91;
 }
 
 .sider-inner {
@@ -972,18 +986,19 @@ onBeforeUnmount(() => {
 
 .main-layout {
   padding-top: var(--app-header-height, 56px);
-  margin-left: var(--sider-w, 334px);
+  /* 一级菜单 72px + 二级侧栏宽度 */
+  margin-left: calc(72px + var(--sider-w, 334px));
   min-height: 100vh;
   min-height: 100dvh;
   transition: margin-left 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .main-layout-collapsed {
-  margin-left: 0;
+  margin-left: 72px;
 }
 
 .main-layout-full {
-  margin-left: 0;
+  margin-left: 72px;
 }
 
 .content {

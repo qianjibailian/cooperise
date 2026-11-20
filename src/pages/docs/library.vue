@@ -16,6 +16,7 @@
       @new="onNewKey"
       @toggle-folder="(f) => toggleFolder(f.id)"
       @open-doc="(d) => openDoc(d.id)"
+      @batch-delete="onBatchDelete"
       @folder-menu="(k, f) => onFolderMenu({ key: k }, f)"
       @doc-menu="(k, d) => onDocMenu({ key: k }, d)"
     />
@@ -204,6 +205,7 @@ import { LIBRARY_COVERS } from '@/utils/library-cover'
 import DocTypeIcon from '@/components/docs/DocTypeIcon.vue'
 import DocSyncModal from '@/components/docs/DocSyncModal.vue'
 import LibrarySide from '@/components/docs/LibrarySide.vue'
+import { batchDelete, type BatchItem } from '@/utils/doc-batch'
 import { startGlobalLoading, stopGlobalLoading } from '@/utils/global-loading'
 import {
   createDoc,
@@ -537,9 +539,9 @@ async function moveDocInLibrary(doc: DocItem, target: string) {
 
 function trashDocRow(doc: DocItem) {
   Modal.confirm({
-    title: '移到回收站',
-    content: `确定将「${doc.title || '无标题文档'}」移到回收站？`,
-    okText: '移到回收站',
+    title: '删除',
+    content: `确定删除「${doc.title || '无标题文档'}」？`,
+    okText: '删除',
     okType: 'danger',
     cancelText: '取消',
     onOk: async () => {
@@ -651,6 +653,26 @@ async function saveDesc() {
 }
 
 // ---------- 更多菜单 ----------
+/** 目录多选后批量删除：文档移入回收站，文件夹删除后内容移到上一级 */
+function onBatchDelete(items: BatchItem[]) {
+  batchDelete(items, {
+    onDocRemoved: (id) => {
+      docs.value = docs.value.filter((d) => d.id !== id)
+    },
+    onFolderRemoved: (id) => {
+      const folder = folders.value.find((f) => f.id === id)
+      if (!folder) return
+      docs.value.forEach((d) => {
+        if (d.folderId === id) d.folderId = folder.parentId
+      })
+      folders.value.forEach((f) => {
+        if (f.parentId === id) f.parentId = folder.parentId
+      })
+      folders.value = folders.value.filter((f) => f.id !== id)
+    },
+  })
+}
+
 async function onLibMenu({ key }: { key: string | number }) {
   const lib = library.value
   if (!lib) return

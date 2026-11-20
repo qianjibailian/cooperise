@@ -5,7 +5,7 @@
     </template>
     <template v-else>
       <a-button
-        v-for="b in plainButtons"
+        v-for="b in shownPlain"
         :key="b.id"
         size="small"
         :danger="b.buttonStyle === 'danger'"
@@ -17,7 +17,7 @@
       </a-button>
       <div v-if="plainButtons.length && workflowButtons.length" class="action-divider" />
       <a-button
-        v-for="b in workflowButtons"
+        v-for="b in shownWorkflow"
         :key="b.id"
         size="small"
         :danger="b.buttonStyle === 'danger'"
@@ -27,6 +27,17 @@
       >
         {{ b.buttonName }}
       </a-button>
+      <a-dropdown v-if="props.mode === 'workflow' && workflowButtons.length" trigger="click" placement="bottomLeft">
+        <a-button size="small" class="action-btn action-flow">
+          状态流转
+          <DownOutlined />
+        </a-button>
+        <template #overlay>
+          <a-menu @click="onFlowMenu">
+            <a-menu-item v-for="b in workflowButtons" :key="String(b.id)">{{ b.buttonName }}</a-menu-item>
+          </a-menu>
+        </template>
+      </a-dropdown>
       <span v-if="!buttons.length && loaded" class="action-empty">暂无可用操作</span>
     </template>
 
@@ -41,6 +52,7 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import { DownOutlined } from '@ant-design/icons-vue'
 import { queryIssueButtonsForIssue, type IssueButtonItem } from '@/api/faiz'
 import { isWorkflowButton, runIssueButton } from '@/utils/issueButtons'
 import NewIssueFormModal from '@/components/NewIssueFormModal.vue'
@@ -51,11 +63,13 @@ import SplitIssueModal from '@/components/SplitIssueModal.vue'
  * 事项详情的操作按钮：按事项的问题类型 + 当前状态从 /issue-button/issue 拉取，
  * 动作执行后（流转 / 编辑保存）重新拉取按钮并通知父组件刷新详情
  */
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   issueKey: string
   /** 为 false 时不拉取（如抽屉未打开） */
   active?: boolean
-}>()
+  /** 显示范围：all 全部（默认）；plain 只显示普通操作；workflow 只显示流转按钮（收进「状态流转」下拉） */
+  mode?: 'all' | 'plain' | 'workflow'
+}>(), { active: true, mode: 'all' })
 
 const emit = defineEmits<{
   (e: 'changed'): void
@@ -68,6 +82,13 @@ const buttons = ref<IssueButtonItem[]>([])
 /** 普通按钮在左、流转 / 回退按钮在分隔线右侧 */
 const plainButtons = computed(() => buttons.value.filter(b => !isWorkflowButton(b)))
 const workflowButtons = computed(() => buttons.value.filter(b => isWorkflowButton(b)))
+const shownPlain = computed(() => (props.mode === 'workflow' ? [] : plainButtons.value))
+const shownWorkflow = computed(() => (props.mode === 'workflow' || props.mode === 'plain' ? [] : workflowButtons.value))
+/** 流转下拉：点击菜单项执行对应流转按钮 */
+function onFlowMenu({ key }: { key: string | number }) {
+  const b = buttons.value.find((x) => String(x.id) === String(key))
+  if (b) void handleClick(b)
+}
 
 let reqSeq = 0
 async function load() {

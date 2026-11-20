@@ -6,7 +6,7 @@
       <span class="auth-brand">Cooperise</span>
     </header>
 
-    <div class="auth-body" :class="{ 'no-header': logoAboveCard }">
+    <div class="auth-body" :class="{ 'no-header': logoAboveCard, 'no-visual': noVisual }">
       <!-- 左侧：标题 + 表单卡片 -->
       <section class="auth-left">
         <!-- 表单上方的品牌标识（登录页用） -->
@@ -25,7 +25,7 @@
         </div>
 
         <!-- 中英文切换：放在表单卡片下方，不随窗口宽度压到右侧插画上（客户端窗口较窄） -->
-        <div class="auth-lang" data-no-i18n>
+        <div v-if="!hideLang" class="auth-lang" data-no-i18n>
           <button type="button" :class="{ active: locale === 'zh' }" @click="setLocale('zh')">中文</button>
           <span class="auth-lang-sep">/</span>
           <button type="button" :class="{ active: locale === 'en' }" @click="setLocale('en')">English</button>
@@ -33,7 +33,7 @@
       </section>
 
       <!-- 右侧：看板墙插画 -->
-      <section class="auth-visual" aria-hidden="true">
+      <section v-if="!noVisual" class="auth-visual" aria-hidden="true">
         <span class="glow g1" />
         <span class="glow g2" />
 
@@ -79,7 +79,11 @@ import { useLocale } from '@/i18n'
 
 const { locale, setLocale } = useLocale()
 
-defineProps<{
+const props = defineProps<{
+  /** true：不渲染右侧插画，表单区域居中铺满 */
+  noVisual?: boolean
+  /** true：不渲染底部中英文切换 */
+  hideLang?: boolean
   /** 标题（不传则不渲染） */
   title?: string
   /** 标题末尾的强调词，渐变色显示 */
@@ -184,6 +188,7 @@ function pinLeaving(el: Element) {
 
 let timer: number | undefined
 onMounted(() => {
+  if (props.noVisual) return
   if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return
   timer = window.setInterval(tick, 2400)
 })
@@ -241,10 +246,15 @@ onBeforeUnmount(() => window.clearInterval(timer))
   padding: clamp(14px, 2vw, 24px) clamp(16px, 3vw, 40px);
 }
 
+/* 品牌字标：衬线展示体、混合大小写、字距收紧（颜色沿用原有文字色） */
 .auth-brand {
+  font-family: Georgia, "Times New Roman", "Songti SC", "SimSun", serif;
   font-size: clamp(17px, 1.4vw, 20px);
-  font-weight: 600;
-  letter-spacing: 0.2px;
+  font-weight: 700;
+  font-style: italic;
+  letter-spacing: -0.01em;
+  line-height: 1.1;
+  user-select: none;
 }
 
 /* 表单上方的品牌标识（logo + 名称），居中 */
@@ -258,8 +268,8 @@ onBeforeUnmount(() => window.clearInterval(timer))
 
 /* 表单上方的品牌名比左上角那版更大 */
 .auth-brand-lg {
-  font-size: clamp(24px, 2.2vw, 32px);
-  letter-spacing: 0.4px;
+  font-size: clamp(28px, 2.6vw, 36px);
+  letter-spacing: -0.01em;
 }
 
 .auth-body {
@@ -275,6 +285,11 @@ onBeforeUnmount(() => window.clearInterval(timer))
 /* 没有顶部 header 时，给右侧插画留出与底部一致的上边距 */
 .auth-body.no-header {
   padding-top: clamp(16px, 3.5vw, 56px);
+}
+
+/* 无插画：表单区域占满整个内容区，卡片居中 */
+.auth-body.no-visual {
+  max-width: 560px;
 }
 
 /* ========== 左侧 ========== */

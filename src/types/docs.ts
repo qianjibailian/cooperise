@@ -80,6 +80,8 @@ export interface MindNode {
   id: string
   text: string
   children: MindNode[]
+  /** 是否折叠子节点（画布思维导图：收起后不显示子节点） */
+  collapsed?: boolean
 }
 
 export interface MindmapData {

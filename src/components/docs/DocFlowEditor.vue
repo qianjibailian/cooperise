@@ -2,11 +2,13 @@
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 import LogicFlow from '@logicflow/core'
 import '@logicflow/core/dist/style/index.css'
-import { PlusOutlined, ExpandOutlined } from '@ant-design/icons-vue'
+import { ExpandOutlined, RedoOutlined, UndoOutlined, ZoomInOutlined, ZoomOutOutlined } from '@ant-design/icons-vue'
 
 /**
- * 流程图编辑器（LogicFlow）
- * 支持拖拽节点、从节点锚点拖出连线、选中后 Delete 删除；数据以 graphData 形式回传。
+ * 流程图（LogicFlow，样式参考飞书云文档）
+ * - 节点：矩形 / 椭圆 / 判断 / 文本，拖拽移动，双击编辑文字，从锚点拖出连线；
+ * - 撤销 / 重做（Ctrl+Z / Ctrl+Y 同样生效）、缩放、自适应画布；
+ * - 选中节点或连线后按 Delete 删除；数据以 graphData 形式回传。
  */
 const props = defineProps<{
   graph: any | null
@@ -17,28 +19,45 @@ const emit = defineEmits<{
 }>()
 
 const container = ref<HTMLElement | null>(null)
+const canUndo = ref(false)
+const canRedo = ref(false)
 let lf: LogicFlow | null = null
 let ready = false
 
-const NODE_PRESETS = [
+/** 节点预设：工具栏图标为小型 SVG，和飞书的线性图标风格一致 */
+const NODE_PRESETS: { type: string; label: string; x: number; y: number }[] = [
   { type: 'rect', label: '矩形', x: 260, y: 140 },
-  { type: 'circle', label: '圆形', x: 430, y: 140 },
+  { type: 'ellipse', label: '椭圆', x: 430, y: 140 },
   { type: 'diamond', label: '判断', x: 345, y: 260 },
+  { type: 'text', label: '文本', x: 260, y: 300 },
 ]
+
+const BLUE = '#3370ff'
 
 onMounted(() => {
   if (!container.value) return
   lf = new LogicFlow({
     container: container.value,
-    grid: true,
-    background: { backgroundColor: '#ffffff' },
+    grid: { size: 20, visible: true, type: 'dot', config: { color: '#d4d9e1', thickness: 1 } },
+    background: { backgroundColor: '#fbfbfd' },
     keyboard: { enabled: true },
+    isSilentMode: false,
+  })
+  lf.setTheme({
+    nodeText: { color: '#1f2329', fontSize: 14 },
+    rect: { fill: '#f5f8ff', stroke: BLUE, strokeWidth: 1.4, radius: 8 },
+    ellipse: { fill: '#f5f8ff', stroke: BLUE, strokeWidth: 1.4 },
+    diamond: { fill: '#fff8ec', stroke: '#ff8800', strokeWidth: 1.4 },
+    polyline: { stroke: '#8f959e', strokeWidth: 1.5, hoverStroke: BLUE, selectedStroke: BLUE },
+    edgeText: { color: '#646a73', fontSize: 12 },
   })
   lf.setDefaultEdgeType('polyline')
   if (props.graph && Array.isArray(props.graph.nodes) && props.graph.nodes.length) {
     lf.render(props.graph)
   }
   lf.on('history:change', () => {
+    canUndo.value = !!lf?.history.undoAble()
+    canRedo.value = !!lf?.history.redoAble()
     if (!lf || !ready) return
     emit('change', lf.getGraphData())
   })
@@ -67,25 +86,68 @@ function addNode(preset: { type: string; x: number; y: number; label: string }) 
   })
 }
 
+function undo() {
+  lf?.undo()
+}
+
+function redo() {
+  lf?.redo()
+}
+
+function zoomIn() {
+  lf?.zoom(true)
+}
+
+function zoomOut() {
+  lf?.zoom(false)
+}
+
+function resetZoom() {
+  lf?.resetZoom()
+}
+
 function fitView() {
-  lf?.fitView()
+  lf?.fitView(40, 40)
 }
 </script>
 
 <template>
   <div class="flow-editor">
-    <div class="flow-toolbar">
-      <button
-        v-for="p in NODE_PRESETS"
-        :key="p.type"
-        type="button"
-        class="flow-tool"
-        @click="addNode(p)"
-      >
-        <PlusOutlined /> {{ p.label }}
-      </button>
-      <button type="button" class="flow-tool" @click="fitView"><ExpandOutlined /> 自适应</button>
-      <span class="flow-hint">拖动节点调整位置 · 从节点锚点拖出连线 · 选中后按 Delete 删除</span>
+    <div class="flow-toolbar" role="toolbar" aria-label="流程图工具栏">
+      <div class="flow-group">
+        <button
+          v-for="p in NODE_PRESETS"
+          :key="p.type"
+          type="button"
+          class="flow-tool"
+          :title="`插入${p.label}`"
+          @click="addNode(p)"
+        >
+          <svg v-if="p.type === 'rect'" class="flow-ico" viewBox="0 0 20 20"><rect x="3" y="5" width="14" height="10" rx="2" /></svg>
+          <svg v-else-if="p.type === 'ellipse'" class="flow-ico" viewBox="0 0 20 20"><ellipse cx="10" cy="10" rx="7.5" ry="5" /></svg>
+          <svg v-else-if="p.type === 'diamond'" class="flow-ico" viewBox="0 0 20 20"><polygon points="10,3 17,10 10,17 3,10" /></svg>
+          <span v-else class="flow-ico flow-ico-text">T</span>
+          <span>{{ p.label }}</span>
+        </button>
+      </div>
+
+      <span class="flow-sep" />
+
+      <div class="flow-group">
+        <button type="button" class="flow-tool icon" title="撤销（Ctrl+Z）" :disabled="!canUndo" @click="undo"><UndoOutlined /></button>
+        <button type="button" class="flow-tool icon" title="重做（Ctrl+Y）" :disabled="!canRedo" @click="redo"><RedoOutlined /></button>
+      </div>
+
+      <span class="flow-sep" />
+
+      <div class="flow-group">
+        <button type="button" class="flow-tool icon" title="缩小" @click="zoomOut"><ZoomOutOutlined /></button>
+        <button type="button" class="flow-tool zoom" title="重置为 100%" @click="resetZoom">100%</button>
+        <button type="button" class="flow-tool icon" title="放大" @click="zoomIn"><ZoomInOutlined /></button>
+        <button type="button" class="flow-tool" title="适应画布" @click="fitView"><ExpandOutlined /><span>适应</span></button>
+      </div>
+
+      <span class="flow-hint">拖动节点调整位置 · 从锚点拖出连线 · 双击编辑文字 · 选中后按 Delete 删除</span>
     </div>
     <div ref="container" class="flow-canvas" />
   </div>
@@ -95,142 +157,92 @@ function fitView() {
 .flow-editor {
   display: flex;
   flex-direction: column;
-  gap: var(--docs-space-3);
+  gap: var(--docs-space-2);
   font-family: var(--docs-font);
 }
 .flow-toolbar {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: var(--docs-space-2);
+  gap: 6px;
+  padding: 4px;
+  background: var(--docs-canvas);
+  border: 1px solid var(--docs-border);
+  border-radius: var(--docs-radius-lg);
+  box-shadow: var(--docs-shadow-card);
 }
-/* 幽灵按钮：默认透明，悬停 --docs-hover */
+.flow-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+.flow-sep {
+  width: 1px;
+  height: 18px;
+  margin: 0 4px;
+  background: var(--docs-border-strong);
+}
 .flow-tool {
   display: inline-flex;
   align-items: center;
-  gap: var(--docs-space-1);
-  height: 28px;
-  padding: 0 var(--docs-space-2);
+  justify-content: center;
+  gap: 4px;
+  height: 30px;
+  min-width: 30px;
+  padding: 0 8px;
   font-family: inherit;
   font-size: var(--docs-fs-control);
-  line-height: var(--docs-lh-ui);
   color: var(--docs-text-2);
   background: transparent;
   border: none;
   border-radius: var(--docs-radius);
   cursor: pointer;
-  transition: background-color var(--docs-dur) var(--docs-ease), color var(--docs-dur) var(--docs-ease), box-shadow var(--docs-dur) var(--docs-ease);
+  transition: background-color var(--docs-dur) var(--docs-ease), color var(--docs-dur) var(--docs-ease);
 }
-.flow-tool:hover {
+.flow-tool:hover:not(:disabled) {
   color: var(--docs-text);
   background: var(--docs-hover);
 }
-.flow-tool:active {
-  box-shadow: var(--docs-shadow-control);
+.flow-tool:disabled {
+  color: var(--docs-text-3);
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+.flow-tool.zoom {
+  min-width: 52px;
+  font-variant-numeric: tabular-nums;
 }
 .flow-tool:focus-visible {
   outline: none;
   box-shadow: var(--docs-focus);
 }
-/* 分组分隔：「自适应」与节点工具之间的 1px 竖线（位于 gap 中线） */
-.flow-toolbar > .flow-tool:last-of-type {
-  position: relative;
+.flow-ico {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linejoin: round;
 }
-.flow-toolbar > .flow-tool:last-of-type::before {
-  content: '';
-  position: absolute;
-  left: calc(var(--docs-space-2) / -2);
-  top: 6px;
-  bottom: 6px;
-  width: 1px;
-  background: var(--docs-border);
+.flow-ico-text {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 16px;
+  text-align: center;
 }
 .flow-hint {
   margin-left: auto;
-  font-size: var(--docs-fs-caption);
+  padding-right: 6px;
+  font-size: var(--docs-fs-meta);
   color: var(--docs-text-3);
+  white-space: nowrap;
 }
-/* 画布：纸色底 + 1px 细线 + 大圆角 */
 .flow-canvas {
-  height: calc(100vh - 300px);
+  height: min(70vh, 680px);
   min-height: 420px;
-  overflow: hidden;
-  background: var(--docs-paper);
+  background: #fbfbfd;
   border: 1px solid var(--docs-border);
   border-radius: var(--docs-radius-lg);
-}
-
-/* LogicFlow 的内置样式是硬编码色，这里用 :deep 覆盖为 token；
-   画布背景与节点文字是库的内联 style，只能用 !important 覆盖。 */
-.flow-canvas :deep(.lf-graph) {
-  background: var(--docs-paper);
-}
-.flow-canvas :deep(.lf-background-area) {
-  background-color: var(--docs-paper) !important;
-}
-/* 点阵背景：点的颜色 --docs-border */
-.flow-canvas :deep(.lf-grid pattern > rect) {
-  fill: var(--docs-border);
-}
-/* 节点：画布底 + 1px 强描边 + 圆角 */
-.flow-canvas :deep(.lf-node > rect),
-.flow-canvas :deep(.lf-node > ellipse),
-.flow-canvas :deep(.lf-node polygon) {
-  fill: var(--docs-canvas);
-  stroke: var(--docs-border-strong);
-  stroke-width: 1px;
-}
-.flow-canvas :deep(.lf-node > rect) {
-  rx: var(--docs-radius);
-  ry: var(--docs-radius);
-}
-/* 选中节点：2px 主题色描边 */
-.flow-canvas :deep(.lf-node.lf-node-selected > rect),
-.flow-canvas :deep(.lf-node.lf-node-selected > ellipse),
-.flow-canvas :deep(.lf-node.lf-node-selected polygon) {
-  stroke: var(--c-primary);
-  stroke-width: 2px;
-}
-/* 节点文字：--docs-text 13px */
-.flow-canvas :deep(.lf-node text) {
-  fill: var(--docs-text);
-  font-size: var(--docs-fs-control);
-}
-.flow-canvas :deep(.lf-node-text-auto-wrap-content),
-.flow-canvas :deep(.lf-node-text-ellipsis-content) {
-  color: var(--docs-text) !important;
-  font-size: var(--docs-fs-control) !important;
-}
-/* 连线：--docs-text-3 */
-.flow-canvas :deep(.lf-edge polyline),
-.flow-canvas :deep(.lf-edge polygon),
-.flow-canvas :deep(.lf-edge path) {
-  stroke: var(--docs-text-3);
-}
-/* 锚点与选中轮廓 */
-.flow-canvas :deep(.lf-node-anchor) {
-  fill: var(--docs-canvas);
-  stroke: var(--c-primary);
-}
-.flow-canvas :deep(.lf-node-anchor-hover) {
-  fill: var(--c-primary-bg);
-  stroke: var(--c-primary-border);
-}
-.flow-canvas :deep(.lf-outline-node),
-.flow-canvas :deep(.lf-outline-edge) {
-  stroke: var(--docs-text-3);
-}
-/* 框选 */
-.flow-canvas :deep(.lf-multiple-select) {
-  border-color: var(--c-primary);
-  box-shadow: var(--docs-focus);
-}
-/* 节点文字就地编辑框 */
-.flow-canvas :deep(.lf-text-input) {
-  color: var(--docs-text);
-  background: var(--docs-canvas);
-  border-color: var(--c-primary);
-  border-radius: var(--docs-radius-sm);
-  font-family: var(--docs-font);
+  overflow: hidden;
 }
 </style>

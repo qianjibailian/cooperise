@@ -150,7 +150,7 @@
             <a-row :gutter="16">
               <a-col :span="8">
                 <a-form-item label="模板名称" required>
-                  <a-input v-model:value="editForm.templateName" placeholder="输入模板名称" size="large" />
+                  <a-input v-model:value="editForm.templateName" :placeholder="editForm.isDefault ? '默认模板' : '输入模板名称'" :disabled="editForm.isDefault" size="large" />
                 </a-form-item>
               </a-col>
               <a-col :span="8">
@@ -1491,6 +1491,11 @@ function removeTab(idx: number) {
 // 占位：Tab 名称通过 v-model 自动更新，@change / @blur 绑定只需要目标可调用
 const onTabNameBlur = (..._args: any[]) => {}
 const onTabSwitch = (..._args: any[]) => {}
+
+// 默认模板的名称固定为「默认模板」，不允许编辑
+watch(() => editForm.isDefault, (isDefault) => {
+  if (isDefault) editForm.templateName = '默认模板'
+})
 
 // ---- CRUD ----
 function handleCreate() {
