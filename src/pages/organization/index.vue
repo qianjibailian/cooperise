@@ -160,6 +160,10 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import { Modal, type FormInstance } from 'ant-design-vue'
+import { useEnterpriseScope } from '@/utils/enterprise-scope'
+
+/** 企业后台：当前企业为唯一根节点，只能在其下新增组织 */
+const { isEnterprise, rootOrganizationCode } = useEnterpriseScope()
 import type { Rule } from 'ant-design-vue/es/form'
 import type { AntTreeNodeDropEvent } from 'ant-design-vue/es/tree'
 import {
@@ -167,7 +171,7 @@ import {
   RightOutlined, ArrowsAltOutlined, ShrinkOutlined, HolderOutlined, ReloadOutlined,
 } from '@ant-design/icons-vue'
 import {
-  getOrganizationTree, createOrganization, updateOrganization, deleteOrganization,
+  getOrganizationTree, createOrganization, updateOrganization, deleteOrganization, enterpriseOrganizationTree, enterpriseCreateOrganization,
   type OrganizationNode, type OrganizationSaveParams,
 } from '@/api/faiz'
 
@@ -276,7 +280,7 @@ const filteredTree = computed<OrganizationNode[]>(() => {
 async function loadTree() {
   loading.value = true
   try {
-    const res = await getOrganizationTree()
+    const res = await (isEnterprise.value ? enterpriseOrganizationTree : getOrganizationTree)(rootOrganizationCode.value)
     if (res?.success) {
       treeData.value = res.data || []
       // 首次加载默认展开顶级组织
@@ -392,7 +396,7 @@ const saving = ref(false)
 const editingId = ref<number | null>(null)
 const formRef = ref<FormInstance>()
 // 事项标识已移到空间（问题单号前缀取空间标识），组织不再维护
-const form = reactive<Required<Omit<OrganizationSaveParams, 'id' | 'organizationCode' | 'issueKeyPrefix'>>>({
+const form = reactive<Required<Omit<OrganizationSaveParams, 'id' | 'organizationCode' | 'issueKeyPrefix' | 'rootOrganizationCode'>>>({
   parentId: ROOT_ID,
   organizationName: '',
   sort: 0,
@@ -492,7 +496,7 @@ async function handleSubmit() {
     }
     const res = editingId.value
       ? await updateOrganization({ ...payload, id: editingId.value })
-      : await createOrganization(payload)
+      : await (isEnterprise.value ? enterpriseCreateOrganization : createOrganization)({ ...payload, rootOrganizationCode: rootOrganizationCode.value })
     if (res?.success) {
       modalOpen.value = false
       // 新建子组织后展开其上级，便于看到新节点

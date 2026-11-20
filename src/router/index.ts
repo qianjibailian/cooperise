@@ -14,6 +14,7 @@ import Dashboard from '@/pages/dashboard/index.vue'
 import Users from '@/pages/users/index.vue'
 import Roles from '@/pages/roles/index.vue'
 import InitConfig from '@/pages/init-config/index.vue'
+import EnterpriseSettings from '@/pages/enterprise-settings/index.vue'
 import MenuManage from '@/pages/menus/index.vue'
 import Permissions from '@/pages/permissions/index.vue'
 import Departments from '@/pages/departments/index.vue'
@@ -176,6 +177,7 @@ const routes: RouteRecordRaw[] = [
       { path: 'users', component: Users, name: 'EnterpriseUsers', meta: { title: '用户管理' } },
       { path: 'positions', component: Positions, name: 'EnterprisePositions', meta: { title: '岗位管理' } },
       { path: 'permissions', component: Permissions, name: 'EnterprisePermissions', meta: { title: '授权管理' } },
+      { path: 'settings', component: EnterpriseSettings, name: 'EnterpriseSettings', meta: { title: '设置管理' } },
       { path: 'organization', component: Organization, name: 'EnterpriseOrganization', meta: { title: '组织管理' } },
       { path: 'menus', component: MenuManage, name: 'EnterpriseMenus', meta: { title: '菜单' } },
     ],

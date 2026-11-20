@@ -27,7 +27,7 @@ export interface AuthUser {
   positionId?: number
   positionName?: string | null
   /** 所属组织（登录接口 / 个人中心返回） */
-  organizations?: { id: number; organizationName?: string; pathName?: string; status?: number }[]
+  organizations?: { id: number; organizationCode?: string; organizationName?: string; pathName?: string; status?: number }[]
   organizationId?: number | string | null
   [key: string]: unknown
 }

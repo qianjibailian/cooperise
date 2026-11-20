@@ -271,6 +271,8 @@ export interface UserQueryPayload {
   spaceCode?: string
   /** 只查拥有该事项所属空间的用户（同时传 spaceCode 时以 spaceCode 为准） */
   issueKey?: string
+  /** 企业后台：只查当前企业及下级组织的用户 */
+  rootOrganizationCode?: string
   page: number
   pageSize: number
 }

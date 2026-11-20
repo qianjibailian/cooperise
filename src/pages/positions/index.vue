@@ -131,10 +131,14 @@ import { Modal, type FormInstance, type TablePaginationConfig } from 'ant-design
 import type { Rule } from 'ant-design-vue/es/form'
 import { PlusOutlined, SearchOutlined, ReloadOutlined, EditOutlined, DeleteOutlined, IdcardOutlined, ApartmentOutlined } from '@ant-design/icons-vue'
 import {
-  queryPositions, createPosition, updatePosition, deletePosition, getOrganizationTree,
+  queryPositions, createPosition, updatePosition, deletePosition, getOrganizationTree, enterpriseQueryPositions, enterpriseOrganizationTree,
   type PositionItem, type PositionSaveParams, type OrganizationNode,
 } from '@/api/faiz'
 import OrgTreeSelect from '@/components/OrgTreeSelect.vue'
+import { useEnterpriseScope } from '@/utils/enterprise-scope'
+
+/** 企业后台只展示当前企业的岗位 / 组织 */
+const { isEnterprise, rootOrganizationCode } = useEnterpriseScope()
 import { findOrgCode, findOrgIdByCode } from '@/utils/orgTree'
 
 const STATUS_FILTERS = [
@@ -166,7 +170,7 @@ const orgFilter = ref<number | undefined>()
 const orgTree = ref<OrganizationNode[]>([])
 async function loadOrgTree() {
   try {
-    const res = await getOrganizationTree()
+    const res = await (isEnterprise.value ? enterpriseOrganizationTree : getOrganizationTree)(rootOrganizationCode.value)
     if (res?.success) orgTree.value = res.data || []
   } catch {
     // 请求层已统一提示
@@ -187,12 +191,13 @@ const pagination = computed<TablePaginationConfig>(() => ({
 async function loadPositions() {
   loading.value = true
   try {
-    const res = await queryPositions({
+    const res = await (isEnterprise.value ? enterpriseQueryPositions : queryPositions)({
       keyword: keyword.value.trim() || undefined,
       status: statusFilter.value === 'all' ? undefined : Number(statusFilter.value),
       // 组织同时传 ID 与编码：后端按 ID 筛选（含下级组织）
       organizationId: orgFilter.value,
       organizationCode: findOrgCode(orgTree.value, orgFilter.value),
+      rootOrganizationCode: rootOrganizationCode.value,
       page: page.value,
       pageSize: pageSize.value,
     })

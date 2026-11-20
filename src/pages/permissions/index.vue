@@ -3,7 +3,6 @@
     <div class="page-header">
       <div>
         <h1 class="page-title">权限管理</h1>
-        <p class="page-subtitle">管理系统权限配置</p>
       </div>
       <div class="header-actions">
         <a-button type="primary" class="action-btn" @click="showModal = true">
@@ -357,7 +356,7 @@ function handleSubmit() {
 
 <style scoped>
 .permissions-page {
-  padding: 0;
+  padding: 20px 24px 32px;
 }
 
 .page-header {

@@ -422,7 +422,7 @@ import { isDesktop } from '@/utils/desktop'
 import { useAuth, setAuthUser } from '@/utils/auth'
 import { useLocale } from '@/i18n'
 import { formatPersonLabel } from '@/utils/person'
-import { logout, getCurrentUser, createSelfOrganization, startInitConfig, fuzzyQueryIssues, type FuzzyIssueItem } from '@/api/faiz'
+import { logout, getCurrentUser, createSelfOrganization, startInitConfig, checkInitWorkspace, fuzzyQueryIssues, type FuzzyIssueItem } from '@/api/faiz'
 import { issueTypeIconOf } from '@/utils/issueTypeIcons'
 import { openNewIssueModal } from '@/utils/new-issue-modal'
 
@@ -799,10 +799,35 @@ function readWorkspace(): string | number {
   return 'personal'
 }
 const currentWs = ref<string | number>(readWorkspace())
-function switchWs(key: string | number) {
-  currentWs.value = key
-  setCurrentWorkspace(key)
+/**
+ * 切换个人 / 企业工作空间：先校验（企业存在、用户是成员、目标空间已初始化）。
+ * 未初始化则开始同步并进入初始化进度页，完成后再进入目标空间。
+ */
+async function switchWs(key: string | number) {
   setUserPopoverOpen(false)
+  const isPersonal = key === 'personal'
+  const orgCode = isPersonal ? undefined : enterprises.value.find(o => String(o.id) === String(key))?.organizationCode
+  if (!isPersonal && !orgCode) {
+    message.error('企业信息缺失，请重新登录后再试')
+    return
+  }
+  try {
+    const res = await checkInitWorkspace(orgCode)
+    if (!res?.success || !res.data) return
+    if (res.data.needsInit) {
+      const started = await startInitConfig(orgCode ? { organizationCode: orgCode } : {})
+      if (!started?.success) return
+      router.push({
+        name: 'InitProgress',
+        query: orgCode ? { org: orgCode, ws: String(key) } : { ws: 'personal' },
+      })
+      return
+    }
+    currentWs.value = key
+    setCurrentWorkspace(key)
+  } catch {
+    // 错误提示由 request 拦截器统一处理
+  }
 }
 function orgInitial(name?: string) {
   return (name || '').trim().slice(0, 1).toUpperCase()

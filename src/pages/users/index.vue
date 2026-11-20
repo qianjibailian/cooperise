@@ -270,11 +270,16 @@ import {
 } from '@ant-design/icons-vue'
 import {
   queryUsers, createUser, updateUser, deleteUser, resetUserPassword, getOrganizationTree, queryRoles, queryPositions, getUserDetail,
+  enterpriseQueryUsers, enterpriseQueryPositions, enterpriseOrganizationTree,
   type UserSaveParams, type OrganizationNode,
 } from '@/api/faiz'
 import { useSpaces } from '@/utils/space-store'
 import type { UserItem } from '@/types/faiz'
 import OrgTreeSelect from '@/components/OrgTreeSelect.vue'
+import { useEnterpriseScope } from '@/utils/enterprise-scope'
+
+/** 企业后台只展示当前企业的用户 / 岗位 / 组织 */
+const { isEnterprise, rootOrganizationCode } = useEnterpriseScope()
 
 const ACTIVE_FILTERS = [
   { label: '全部', value: 'all' },
@@ -335,9 +340,10 @@ function initials(u: UserItem) {
 async function loadUsers() {
   loading.value = true
   try {
-    const res = await queryUsers({
+    const res = await (isEnterprise.value ? enterpriseQueryUsers : queryUsers)({
       keyword: keyword.value.trim(),
       isActive: activeFilter.value === 'all' ? undefined : Number(activeFilter.value),
+      rootOrganizationCode: rootOrganizationCode.value,
       page: page.value,
       pageSize: pageSize.value,
     })
@@ -384,9 +390,9 @@ const sortedPositionOptions = computed(() => {
 
 async function loadOptions() {
   const [orgRes, roleRes, posRes] = await Promise.allSettled([
-    getOrganizationTree(),
+    (isEnterprise.value ? enterpriseOrganizationTree : getOrganizationTree)(rootOrganizationCode.value),
     queryRoles({ page: 1, pageSize: 999, status: 1 }),
-    queryPositions({ page: 1, pageSize: 999, status: 1 }),
+    (isEnterprise.value ? enterpriseQueryPositions : queryPositions)({ page: 1, pageSize: 999, status: 1, rootOrganizationCode: rootOrganizationCode.value }),
   ])
   if (posRes.status === 'fulfilled' && posRes.value?.success) {
     positionOptions.value = (posRes.value.data?.list || []).map(p => ({
@@ -620,7 +626,7 @@ onMounted(loadUsers)
 }
 
 .mgmt-page {
-  padding: 80px 24px 32px;
+  padding: 20px 24px 32px;
 }
 
 .mgmt-header {
@@ -918,7 +924,7 @@ onMounted(loadUsers)
 
 @media (max-width: 768px) {
   .mgmt-page {
-    padding: 80px 16px 24px;
+    padding: 16px 16px 24px;
   }
 
   .mgmt-toolbar {

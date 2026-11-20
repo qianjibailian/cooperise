@@ -596,6 +596,11 @@ export function startInitConfig(data?: { organizationCode?: string }): Promise<R
   return request.post(`/init-config/start`, data ?? {})
 }
 
+/** 切换工作空间前校验（POST /init-config/check）：企业存在且用户为成员，返回 needsInit */
+export function checkInitWorkspace(organizationCode?: string): Promise<Result<{ organizationCode?: string; organizationName?: string; needsInit: boolean }>> {
+  return request.post(`/init-config/check`, { organizationCode: organizationCode ?? '' })
+}
+
 /** 查询初始化进度（GET /init-config/progress）：个人模式不传组织编码，企业传组织编码 */
 export function getInitConfigProgress(organizationCode?: string): Promise<Result<InitConfigProgress>> {
   return request.get(`/init-config/progress`, { params: organizationCode ? { organizationCode } : undefined })
@@ -803,6 +808,8 @@ export interface PositionQueryParams {
   /** 按组织筛选（含下级组织）：organizationId 优先 */
   organizationId?: number
   organizationCode?: string
+  /** 企业后台：只查当前企业及下级组织的岗位 */
+  rootOrganizationCode?: string
   page: number
   pageSize: number
 }
@@ -1270,6 +1277,8 @@ export interface OrganizationNode {
 /** 新增 / 修改组织请求体（修改时 id 必填） */
 export interface OrganizationSaveParams {
   id?: number
+  /** 企业后台：当前企业编码，新增组织只能在该企业范围内 */
+  rootOrganizationCode?: string
   /** 组织编码由后端生成，前端不再提交 */
   organizationCode?: string
   /** 事项标识：1~4 位大写字母 */
@@ -1282,8 +1291,58 @@ export interface OrganizationSaveParams {
 }
 
 /** 组织树（POST /organization/list） */
-export function getOrganizationTree(): Promise<Result<OrganizationNode[]>> {
-  return request.post(`/organization/list`)
+export function getOrganizationTree(rootOrganizationCode?: string): Promise<Result<OrganizationNode[]>> {
+  return request.post(`/organization/list`, rootOrganizationCode ? { rootOrganizationCode } : undefined)
+}
+
+// ==================== 企业后台（/enterprise，按企业维度过滤） ====================
+
+/** 企业用户列表（POST /enterprise/user/query）：rootOrganizationCode 为当前企业编码 */
+export function enterpriseQueryUsers(payload: UserQueryPayload): Promise<Result<UserListData>> {
+  return request.post(`/enterprise/user/query`, payload)
+}
+
+/** 企业岗位列表（POST /enterprise/position/list） */
+export function enterpriseQueryPositions(data: PositionQueryParams): Promise<Result<{ list: PositionItem[]; total: number }>> {
+  return request.post(`/enterprise/position/list`, data)
+}
+
+/** 企业组织树（POST /enterprise/organization/tree）：以企业为唯一根节点 */
+export function enterpriseOrganizationTree(rootOrganizationCode?: string): Promise<Result<OrganizationNode[]>> {
+  return request.post(`/enterprise/organization/tree`, { rootOrganizationCode })
+}
+
+/** 企业内新增组织（POST /enterprise/organization/create）：不允许新增根组织 */
+export function enterpriseCreateOrganization(data: OrganizationSaveParams): Promise<Result<OrganizationNode>> {
+  return request.post(`/enterprise/organization/create`, data)
+}
+
+/** 企业设置详情（POST /enterprise/settings/detail） */
+export interface EnterpriseSettings {
+  organizationCode: string
+  organizationName: string
+  ownerMemberId?: string
+  ownerName?: string
+  isOwner: boolean
+  memberCount: number
+}
+export function enterpriseSettingsDetail(rootOrganizationCode?: string): Promise<Result<EnterpriseSettings>> {
+  return request.post(`/enterprise/settings/detail`, { rootOrganizationCode })
+}
+
+/** 企业改名，仅管理员（POST /enterprise/settings/rename） */
+export function enterpriseRename(rootOrganizationCode: string, organizationName: string): Promise<Result<null>> {
+  return request.post(`/enterprise/settings/rename`, { rootOrganizationCode, organizationName })
+}
+
+/** 转交企业管理员，仅管理员（POST /enterprise/settings/transfer） */
+export function enterpriseTransferOwner(rootOrganizationCode: string, memberId: string): Promise<Result<null>> {
+  return request.post(`/enterprise/settings/transfer`, { rootOrganizationCode, memberId })
+}
+
+/** 退出企业（POST /enterprise/settings/leave），管理员需先转交 */
+export function enterpriseLeave(rootOrganizationCode: string): Promise<Result<null>> {
+  return request.post(`/enterprise/settings/leave`, { rootOrganizationCode })
 }
 
 /** 新增组织（POST /organization/create） */

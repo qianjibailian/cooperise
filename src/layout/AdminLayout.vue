@@ -2,24 +2,24 @@
   <!-- 管理后台独立布局：自己的顶栏 + 左侧管理菜单 -->
   <a-layout class="layout-container" :class="{ 'is-enterprise': isEnterprise }" :style="{ '--sider-w': `${SIDER_WIDTH}px` }">
     <AppHeader
-      :sidebar-collapsed="collapsed"
+      :sidebar-collapsed="sidebarCollapsed"
       :show-logo="true"
-      :left-width="collapsed ? 200 : SIDER_WIDTH"
-      module-title="管理后台"
-      @toggle-sidebar="toggle"
+      :left-width="sidebarCollapsed ? 200 : SIDER_WIDTH"
+      :module-title="isEnterprise ? '企业后台' : '管理后台'"
+      @toggle-sidebar="onToggleSidebar"
     />
 
     <!-- 企业后台：左侧一级菜单（工作台 / 空间 / 企业后台） -->
     <WorkbenchRail v-if="isEnterprise" class="wb-rail-fixed" />
 
     <ModuleSider
-      :collapsed="collapsed"
+      :collapsed="sidebarCollapsed"
       :mobile-open="mobileOpen"
       :is-mobile="isMobile"
       :width="SIDER_WIDTH"
       @close-mobile="closeMobile"
     >
-      <div class="side-panel" :class="{ 'side-panel-collapsed': collapsed }">
+      <div class="side-panel" :class="{ 'side-panel-collapsed': sidebarCollapsed }">
         <!-- 企业后台：用户 / 岗位 / 授权 / 组织 / 菜单 -->
         <a-menu
           v-if="isEnterprise"
@@ -37,17 +37,17 @@
             <component :is="IdcardOutlined" />
             <span>岗位管理</span>
           </a-menu-item>
-          <a-menu-item key="/enterprise/permissions">
-            <component :is="TeamOutlined" />
-            <span>授权管理</span>
-          </a-menu-item>
           <a-menu-item key="/enterprise/organization">
             <component :is="ApartmentOutlined" />
             <span>组织管理</span>
           </a-menu-item>
-          <a-menu-item key="/enterprise/menus">
-            <component :is="UnorderedListOutlined" />
-            <span>菜单</span>
+          <a-menu-item key="/enterprise/permissions">
+            <component :is="TeamOutlined" />
+            <span>授权管理</span>
+          </a-menu-item>
+          <a-menu-item key="/enterprise/settings">
+            <component :is="SettingOutlined" />
+            <span>设置管理</span>
           </a-menu-item>
         </a-menu>
         <!-- 管理后台：完整菜单 -->
@@ -95,7 +95,7 @@
       </div>
     </ModuleSider>
 
-    <a-layout class="main-layout" :class="{ 'main-layout-collapsed': collapsed }">
+    <a-layout class="main-layout" :class="{ 'main-layout-collapsed': sidebarCollapsed }">
       <a-layout-content class="content">
         <router-view />
       </a-layout-content>
@@ -128,7 +128,22 @@ const router = useRouter()
 const route = useRoute()
 /** /enterprise/* 为企业后台，使用独立的五项菜单 */
 const isEnterprise = computed(() => route.path.startsWith('/enterprise'))
+// 一次性复位：之前企业后台误把管理后台的侧栏记为收起，这里清掉旧记忆，之后正常记住用户的操作
+try {
+  if (!localStorage.getItem('cooperise_admin_sidebar_reset_v1')) {
+    localStorage.removeItem('cooperise_admin_sidebar_collapsed')
+    localStorage.setItem('cooperise_admin_sidebar_reset_v1', '1')
+  }
+} catch {
+  // 本地存储不可用时忽略
+}
 const { collapsed, isMobile, mobileOpen, toggle, closeMobile } = useModuleSider('cooperise_admin_sidebar_collapsed')
+/** 企业后台的二级菜单始终展开（不受管理后台的折叠记忆影响） */
+const sidebarCollapsed = computed(() => collapsed.value && !isEnterprise.value)
+/** 企业后台的侧边栏固定展开，顶部切换只作用于管理后台，避免两边的折叠记忆互相影响 */
+function onToggleSidebar() {
+  if (!isEnterprise.value) toggle()
+}
 
 function onMenuClick(info: { key: string }) {
   router.push(info.key)
