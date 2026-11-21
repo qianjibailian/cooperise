@@ -178,6 +178,7 @@ import {
 } from '@ant-design/icons-vue'
 import {
   getOrganizationTree, createOrganization, updateOrganization, deleteOrganization, enterpriseOrganizationTree, enterpriseCreateOrganization,
+  enterpriseUpdateOrganization, enterpriseDeleteOrganization,
   type OrganizationNode, type OrganizationSaveParams,
 } from '@/api/faiz'
 
@@ -385,7 +386,7 @@ async function handleDrop(info: AntTreeNodeDropEvent) {
     // 先提交被拖动节点（可能涉及换父级），再提交其余兄弟的排序
     changes.sort((a, b) => (a.id === dragId ? -1 : b.id === dragId ? 1 : 0))
     for (const c of changes) {
-      const res = await updateOrganization(c)
+      const res = await (isEnterprise.value ? enterpriseUpdateOrganization : updateOrganization)(c)
       if (!res?.success) throw new Error('update failed')
     }
   } catch {
@@ -520,7 +521,7 @@ async function handleSubmit() {
       payload.sort = siblings.reduce((max, n) => Math.max(max, n.sort ?? 0), 0) + 1
     }
     const res = editingId.value
-      ? await updateOrganization({ ...payload, id: editingId.value })
+      ? await (isEnterprise.value ? enterpriseUpdateOrganization : updateOrganization)({ ...payload, id: editingId.value })
       : await (isEnterprise.value ? enterpriseCreateOrganization : createOrganization)({ ...payload, rootOrganizationCode: rootOrganizationCode.value })
     if (res?.success) {
       modalOpen.value = false
@@ -548,7 +549,7 @@ function confirmDelete(node: OrganizationNode) {
     centered: true,
     async onOk() {
       try {
-        const res = await deleteOrganization(node.id)
+        const res = await (isEnterprise.value ? enterpriseDeleteOrganization : deleteOrganization)(node.id)
         if (res?.success) loadTree()
       } catch {
         // 请求层已统一提示

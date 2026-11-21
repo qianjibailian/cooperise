@@ -5,13 +5,13 @@
       <HomeOutlined />
       <span>工作台</span>
     </router-link>
-    <router-link to="/space" class="wb-rail-item" :class="{ 'is-active': isSpaceActive }" title="空间">
+    <router-link v-if="isMenuEnabled('menu:space')" to="/space" class="wb-rail-item" :class="{ 'is-active': isSpaceActive }" title="空间">
       <AppstoreOutlined />
       <span>空间</span>
     </router-link>
     <!-- 仅企业空间显示：个人空间没有企业后台 -->
     <router-link
-      v-if="isEnterpriseWorkspace"
+      v-if="isEnterpriseWorkspace && isMenuEnabled('menu:enterprise')"
       to="/enterprise/users"
       class="wb-rail-item"
       :class="{ 'is-active': isAdminActive }"
@@ -24,10 +24,13 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { ApartmentOutlined, AppstoreOutlined, HomeOutlined } from '@ant-design/icons-vue'
 import { isEnterpriseWorkspace } from '@/utils/workspace'
+import { isMenuEnabled, loadEnabledMenus } from '@/utils/enabled-menus'
+
+onMounted(loadEnabledMenus)
 
 const route = useRoute()
 /** 企业后台页面（/admin/*）高亮 */

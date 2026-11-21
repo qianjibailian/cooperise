@@ -7,29 +7,22 @@
         <template v-else>正在初始化空间…</template>
       </p>
 
-      <ul class="step-list">
-        <li v-for="step in progress.steps" :key="step.key" class="step" :class="step.status.toLowerCase()">
-          <span class="step-icon">
-            <LoadingOutlined v-if="step.status === 'RUNNING'" spin />
-            <CheckOutlined v-else-if="step.status === 'SUCCESS'" />
-            <CloseOutlined v-else-if="step.status === 'FAILED'" />
-            <span v-else class="step-dot" />
-          </span>
-          <span class="step-body">
-            <span class="step-head">
-              <span class="step-name">{{ step.name }}</span>
-              <span v-if="step.total" class="step-count">{{ step.done ?? 0 }} / {{ step.total }}</span>
-            </span>
-            <span v-if="step.total" class="step-bar">
-              <span
-                class="step-bar-fill"
-                :style="{ width: Math.round(((step.done ?? 0) / step.total) * 100) + '%' }"
-              />
-            </span>
-            <span v-if="step.status === 'FAILED' && step.message" class="step-error">{{ step.message }}</span>
-          </span>
-        </li>
-      </ul>
+      <div class="overall-progress">
+        <div
+          class="overall-bar"
+          role="progressbar"
+          :aria-valuenow="percent"
+          aria-valuemin="0"
+          aria-valuemax="100"
+        >
+          <span
+            class="overall-bar-fill"
+            :class="{ 'is-failed': progress.status === 'FAILED' }"
+            :style="{ width: percent + '%' }"
+          />
+        </div>
+        <span class="overall-percent">{{ percent }}%</span>
+      </div>
 
       <p v-if="progress.status === 'FAILED' && progress.message" class="progress-error">{{ progress.message }}</p>
 
@@ -46,9 +39,8 @@
 </template>
 
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { CheckOutlined, CloseOutlined, LoadingOutlined } from '@ant-design/icons-vue'
 import AuthLayout from './AuthLayout.vue'
 import {
   getInitConfigProgress,
@@ -72,6 +64,20 @@ const POLL_INTERVAL = 1000
 let pollTimer: ReturnType<typeof setInterval> | undefined
 
 const progress = ref<InitConfigProgress>({ status: 'RUNNING', steps: [] })
+
+/** 总体进度：按步骤平均折算（有 done/total 的步骤按比例，其余按状态），完成后为 100% */
+const percent = computed(() => {
+  const p = progress.value
+  if (p.status === 'SUCCESS') return 100
+  const steps = p.steps || []
+  if (!steps.length) return 0
+  const sum = steps.reduce((acc, step) => {
+    if (step.status === 'SUCCESS') return acc + 1
+    if (step.total && step.total > 0) return acc + Math.min(1, (step.done ?? 0) / step.total)
+    return acc
+  }, 0)
+  return Math.min(99, Math.round((sum / steps.length) * 100))
+})
 
 function stopPolling() {
   clearInterval(pollTimer)
@@ -156,104 +162,40 @@ onBeforeUnmount(stopPolling)
   text-align: center;
 }
 
-.step-list {
+.overall-progress {
   display: flex;
-  flex-direction: column;
-  gap: 10px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.step {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  padding: 12px 14px;
-  background: #fff;
-  border: 1px solid #e5e5ea;
-  border-radius: 12px;
-}
-
-.step-icon {
-  width: 22px;
-  height: 22px;
-  flex-shrink: 0;
-  display: inline-flex;
   align-items: center;
-  justify-content: center;
-  margin-top: 1px;
-  font-size: 12px;
-  border-radius: 50%;
+  gap: 14px;
 }
 
-.step-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: #c7c7cc;
-}
-
-.step.running .step-icon {
-  color: #0052cc;
-}
-
-.step.success .step-icon {
-  color: #fff;
-  background: #34c759;
-}
-
-.step.failed .step-icon {
-  color: #fff;
-  background: #ff3b30;
-}
-
-.step-body {
+.overall-bar {
   flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.step-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.step-name {
-  font-size: 14px;
-  color: #1d1d1f;
-}
-
-.step-count {
-  font-size: 12px;
-  color: #86868b;
-  font-variant-numeric: tabular-nums;
-}
-
-.step-bar {
-  display: block;
-  height: 4px;
+  height: 8px;
   overflow: hidden;
   background: #f0f0f3;
-  border-radius: 2px;
+  border-radius: 4px;
 }
 
-.step-bar-fill {
+.overall-bar-fill {
   display: block;
   height: 100%;
   background: #0052cc;
-  border-radius: 2px;
-  transition: width 0.3s ease;
+  border-radius: 4px;
+  transition: width 0.3s ease, background 0.2s ease;
 }
 
-.step-error {
-  font-size: 12px;
-  color: #ff3b30;
-  word-break: break-all;
+.overall-bar-fill.is-failed {
+  background: #ff3b30;
+}
+
+.overall-percent {
+  flex-shrink: 0;
+  min-width: 44px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #1d1d1f;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
 }
 
 .progress-error {

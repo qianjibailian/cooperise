@@ -1,139 +1,153 @@
 <template>
   <div class="mgmt-page">
     <header class="mgmt-header">
-      <h2 class="mgmt-title">菜单管理</h2>
-      <a-button type="primary" class="mgmt-create-btn" @click="openCreate">
-        <PlusOutlined /> 新增
-      </a-button>
+      <div>
+        <h2 class="mgmt-title">菜单管理</h2>
+        <p class="mgmt-subtitle">
+          维护管理后台全部菜单与按钮权限点：启停后对应的前端菜单 / 按钮与后端接口立即生效；
+          权限编码由代码约定，分配到角色请在「角色管理」中操作
+          <template v-if="isEnterprise">（企业后台仅查看）</template>
+        </p>
+      </div>
+      <a-tooltip title="刷新">
+        <button class="mgmt-icon-btn" :disabled="loading" @click="loadPermissions"><ReloadOutlined /></button>
+      </a-tooltip>
     </header>
 
     <section class="mgmt-card">
       <div class="mgmt-toolbar">
         <a-input
           v-model:value="keyword"
-          placeholder="搜索菜单名称 / 路径"
+          placeholder="搜索菜单 / 按钮名称或编码"
           allow-clear
           class="mgmt-search"
         >
           <template #prefix><SearchOutlined class="mgmt-search-icon" /></template>
         </a-input>
         <a-segmented v-model:value="statusFilter" :options="STATUS_FILTERS" />
-        <a-tooltip title="刷新">
-          <button class="mgmt-icon-btn" @click="resetFilters"><ReloadOutlined /></button>
-        </a-tooltip>
       </div>
 
+      <!-- 首次加载：骨架占位，数据回来后渲染表格 -->
+      <div v-if="!initialized" class="page-skeleton">
+        <a-skeleton active :paragraph="{ rows: 10 }" />
+      </div>
       <a-table
+        v-else
         :columns="columns"
-        :data-source="filteredMenus"
+        :data-source="treeData"
+        :loading="loading"
         row-key="id"
         :pagination="false"
         :scroll="{ x: 860 }"
         class="mgmt-table"
+        :expand-row-by-click="true"
       >
         <template #bodyCell="{ column, record }">
-          <template v-if="column.key === 'menu'">
-            <div class="menu-cell">
-              <span class="menu-avatar">
-                <component :is="ICON_MAP[record.icon] ?? AppstoreOutlined" />
+          <template v-if="column.key === 'name'">
+            <div class="perm-cell">
+              <span :class="['perm-badge', record.permType === 'menu' ? 'perm-badge-menu' : 'perm-badge-button']">
+                <component :is="record.permType === 'menu' ? AppstoreOutlined : ApiOutlined" />
               </span>
-              <span class="menu-name">{{ record.name }}</span>
+              <div class="perm-name-wrap">
+                <span class="perm-name">{{ record.permName }}</span>
+                <span class="perm-meta">
+                  <span class="code-chip">{{ record.permCode }}</span>
+                  <span v-if="record.permType === 'menu' && MENU_ROUTES[record.permCode]" class="perm-route">
+                    {{ MENU_ROUTES[record.permCode] }}
+                  </span>
+                </span>
+              </div>
             </div>
           </template>
-          <template v-else-if="column.key === 'path'">
-            <span class="code-chip">{{ record.path }}</span>
+          <template v-else-if="column.key === 'type'">
+            <a-tag :color="record.permType === 'menu' ? 'purple' : 'blue'" class="type-tag">
+              {{ record.permType === 'menu' ? (record.permCode.startsWith('menu:') ? '模块' : '菜单') : '按钮' }}
+            </a-tag>
+          </template>
+          <template v-else-if="column.key === 'apis'">
+            <div class="api-list">
+              <span v-for="api in API_MAP[record.permCode] || []" :key="api" class="api-chip">{{ api }}</span>
+              <span v-if="!(API_MAP[record.permCode] || []).length" class="text-muted">-</span>
+            </div>
           </template>
           <template v-else-if="column.key === 'sortOrder'">
-            <span class="text-muted">{{ record.sortOrder }}</span>
+            <span class="text-muted">{{ record.sort ?? 0 }}</span>
           </template>
           <template v-else-if="column.key === 'status'">
             <a-switch
+              v-if="!isEnterprise"
               size="small"
-              :checked="record.enabled"
-              @change="(v: boolean) => (record.enabled = v)"
+              :checked="record.status === 1"
+              :loading="togglingId === record.id"
+              @change="(v: boolean) => toggleStatus(record as PermissionItem, v)"
             />
+            <a-tag v-else :color="record.status === 1 ? 'green' : 'default'">
+              {{ record.status === 1 ? '启用' : '停用' }}
+            </a-tag>
           </template>
           <template v-else-if="column.key === 'action'">
-            <div class="row-actions">
-              <a-tooltip title="编辑">
-                <span class="row-action" @click="openEdit(record as MenuItem)"><EditOutlined /></span>
-              </a-tooltip>
-              <a-tooltip title="删除">
-                <span class="row-action danger" @click="confirmRemove(record as MenuItem)"><DeleteOutlined /></span>
+            <div v-if="!isEnterprise" class="row-actions">
+              <a-tooltip title="编辑（名称 / 排序 / 备注）">
+                <span class="row-action" @click.stop="openEdit(record as PermissionItem)"><EditOutlined /></span>
               </a-tooltip>
             </div>
+            <span v-else class="text-muted">-</span>
           </template>
         </template>
       </a-table>
     </section>
 
-    <!-- 新增 / 编辑（仅前端演示，数据保存在页面内存中，刷新后恢复初始数据，未接入后端） -->
+    <!-- 编辑权限点：名称 / 排序 / 备注（编码与类型由代码约定不可改） -->
     <a-modal
       v-model:open="modalOpen"
-      :title="editingId ? '编辑菜单' : '新增菜单'"
+      title="编辑权限点"
       :width="520"
       centered
       destroy-on-close
-      :ok-text="editingId ? '保存' : '创建'"
+      ok-text="保存"
       cancel-text="取消"
-      @ok="saveForm"
+      :confirm-loading="saving"
+      @ok="handleSubmit"
     >
-      <a-form layout="vertical" :model="form">
-        <a-form-item label="菜单名称" required>
-          <a-input v-model:value="form.name" placeholder="如 工作台" :maxlength="20" />
+      <a-form layout="vertical">
+        <a-form-item label="编码">
+          <a-input :value="editing?.permCode" disabled />
         </a-form-item>
-        <a-form-item label="路由路径" required>
-          <a-input v-model:value="form.path" placeholder="如 /workbench/board" :maxlength="100" />
-        </a-form-item>
-        <a-form-item label="图标">
-          <a-select v-model:value="form.icon" :options="ICON_OPTIONS" />
+        <a-form-item label="名称" required>
+          <a-input v-model:value="form.permName" :maxlength="32" placeholder="如 删除空间" />
         </a-form-item>
         <a-form-item label="排序">
-          <a-input-number v-model:value="form.sortOrder" :min="0" :max="999" style="width: 100%" />
+          <a-input-number v-model:value="form.sort" :min="0" :max="999" style="width: 100%" />
         </a-form-item>
-        <a-form-item label="状态">
-          <a-switch v-model:checked="form.enabled" checked-children="启用" un-checked-children="停用" />
+        <a-form-item label="备注">
+          <a-textarea v-model:value="form.remark" :rows="2" :maxlength="200" placeholder="选填" />
         </a-form-item>
+        <p class="edit-hint">
+          接口权限映射：
+          <template v-if="(API_MAP[editing?.permCode || ''] || []).length">{{ (API_MAP[editing?.permCode || ''] || []).join('、') }}</template>
+          <template v-else>无</template>
+        </p>
       </a-form>
     </a-modal>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref } from 'vue'
-import { message, Modal } from 'ant-design-vue'
+import { computed, onMounted, reactive, ref } from 'vue'
+import { message } from 'ant-design-vue'
 import {
+  ApiOutlined,
   AppstoreOutlined,
-  DeleteOutlined,
   EditOutlined,
-  FileTextOutlined,
-  HomeOutlined,
-  IdcardOutlined,
-  PlusOutlined,
   ReloadOutlined,
   SearchOutlined,
-  TeamOutlined,
-  ToolOutlined,
 } from '@ant-design/icons-vue'
+import { listMenuPermissions, updateMenuPermission, type PermissionItem } from '@/api/faiz'
+import { invalidateEnabledMenus, loadEnabledMenus } from '@/utils/enabled-menus'
+import { useEnterpriseScope } from '@/utils/enterprise-scope'
 
-interface MenuItem {
-  id: number
-  name: string
-  path: string
-  icon: string
-  sortOrder: number
-  enabled: boolean
-}
-
-const ICON_MAP: Record<string, unknown> = {
-  home: HomeOutlined,
-  file: FileTextOutlined,
-  appstore: AppstoreOutlined,
-  team: TeamOutlined,
-  idcard: IdcardOutlined,
-  tool: ToolOutlined,
-}
-const ICON_OPTIONS = Object.keys(ICON_MAP).map((k) => ({ label: k, value: k }))
+/** 企业后台（/enterprise/menus）共用本组件：无管理后台权限体系，仅查看 */
+const { isEnterprise } = useEnterpriseScope()
 
 const STATUS_FILTERS = [
   { label: '全部', value: 'all' },
@@ -142,107 +156,194 @@ const STATUS_FILTERS = [
 ]
 
 const columns = [
-  { title: '菜单', key: 'menu', width: 200, fixed: 'left' as const },
-  { title: '路由路径', key: 'path', ellipsis: true },
-  { title: '排序', key: 'sortOrder', width: 90 },
+  { title: '权限点', key: 'name', width: 260, fixed: 'left' as const },
+  { title: '类型', key: 'type', width: 80 },
+  { title: '接口权限', key: 'apis', ellipsis: true },
+  { title: '排序', key: 'sortOrder', width: 70 },
   { title: '启用', key: 'status', width: 80 },
-  { title: '操作', key: 'action', width: 100, fixed: 'right' as const },
+  { title: '操作', key: 'action', width: 70, fixed: 'right' as const },
 ]
 
-const menus = ref<MenuItem[]>([
-  { id: 1, name: '工作台', path: '/workbench/board', icon: 'home', sortOrder: 1, enabled: true },
-  { id: 2, name: '云文档', path: '/docs', icon: 'file', sortOrder: 2, enabled: true },
-  { id: 3, name: '空间', path: '/space', icon: 'appstore', sortOrder: 3, enabled: true },
-  { id: 4, name: '管理后台', path: '/admin/users', icon: 'tool', sortOrder: 4, enabled: true },
-])
-let seq = menus.value.length
+/** 菜单权限点对应页面路由（展示用；admin: 为管理后台页面，menu: 为主应用一级模块） */
+const MENU_ROUTES: Record<string, string> = {
+  'menu:workspace': '/workbench/board',
+  'menu:docs': '/docs',
+  'menu:space': '/space',
+  'menu:enterprise': '/enterprise/users',
+  'menu:admin': '/admin/users',
+  'admin:user': '/admin/users',
+  'admin:role': '/admin/roles',
+  'admin:position': '/admin/positions',
+  'admin:organization': '/admin/organization',
+  'admin:space': '/admin/space',
+  'admin:system-field': '/admin/system-field',
+  'admin:init-config': '/admin/init-config',
+  'admin:i18n': '/admin/i18n',
+  'admin:menu': '/admin/menus',
+}
 
-// ---- 搜索 / 筛选 ----
+/**
+ * 权限点 → 后端接口权限映射（展示用，与后端 @RequirePermission 注解保持同步）。
+ * 标注「共用登录」的接口同时被工作台 / 企业后台等业务场景使用，仅要求登录；
+ * 其余接口均已挂后端权限注解，无权限调用返回 403。
+ */
+const API_MAP: Record<string, string[]> = {
+  'admin:user': ['POST /user/query（共用登录）', 'POST /enterprise/user/query'],
+  'admin:user:create': ['POST /user/create', 'POST /enterprise/user/create'],
+  'admin:user:update': ['POST /user/update', 'POST /enterprise/user/update'],
+  'admin:user:delete': ['POST /user/delete', 'POST /enterprise/user/delete'],
+  'admin:user:reset-password': ['POST /user/reset-password', 'POST /enterprise/user/reset-password'],
+  'admin:role': ['POST /role/query（共用登录）'],
+  'admin:role:create': ['POST /role/create'],
+  'admin:role:update': ['POST /role/update'],
+  'admin:role:delete': ['POST /role/delete'],
+  'admin:role:assign-permission': ['POST /role/permission/save'],
+  'admin:position': ['POST /position/query（共用登录）', 'POST /enterprise/position/query'],
+  'admin:position:create': ['POST /position/create', 'POST /enterprise/position/create'],
+  'admin:position:update': ['POST /position/update', 'POST /enterprise/position/update'],
+  'admin:position:delete': ['POST /position/delete', 'POST /enterprise/position/delete'],
+  'admin:organization': ['POST /organization/list（共用登录）', 'POST /enterprise/organization/tree'],
+  'admin:organization:create': ['POST /organization/create', 'POST /enterprise/organization/create'],
+  'admin:organization:update': ['POST /organization/update', 'POST /enterprise/organization/update'],
+  'admin:organization:delete': ['POST /organization/delete', 'POST /enterprise/organization/delete'],
+  'admin:space': ['POST /admin/space/query', 'POST /admin/space/detail'],
+  'admin:space:create': ['POST /admin/space/create', 'POST /admin/space/copy'],
+  'admin:space:update': ['POST /admin/space/update'],
+  'admin:space:delete': ['POST /admin/space/delete'],
+  'admin:system-field': ['POST /systemField/query'],
+  'admin:system-field:create': ['POST /systemField'],
+  'admin:system-field:update': ['PUT /systemField/{id}'],
+  'admin:system-field:delete': ['DELETE /systemField/systemField/batch'],
+  'admin:init-config': ['/admin/init-config/**（全部接口）'],
+  'admin:i18n': ['POST /i18n/query（共用登录）'],
+  'admin:i18n:create': ['POST /i18n/create'],
+  'admin:i18n:update': ['POST /i18n/update'],
+  'admin:i18n:delete': ['POST /i18n/delete'],
+  'admin:i18n:import': ['POST /i18n/import'],
+  'admin:menu': ['POST /menu/list', 'POST /menu/update'],
+  // 主应用一级模块（全局开关）：入口显隐控制，接口均为业务共用登录接口，无独立权限点
+  'menu:workspace': ['模块入口开关（业务接口共用登录）'],
+  'menu:docs': ['模块入口开关（业务接口共用登录）'],
+  'menu:space': ['模块入口开关（业务接口共用登录）'],
+  'menu:enterprise': ['模块入口开关（业务接口共用登录）'],
+  'menu:admin': ['模块入口开关（业务接口共用登录）'],
+}
+
+// ---- 数据加载 ----
+const loading = ref(false)
+const initialized = ref(false)
+const perms = ref<PermissionItem[]>([])
+
+async function loadPermissions() {
+  loading.value = true
+  try {
+    const res = await listMenuPermissions()
+    if (res?.success) perms.value = res.data || []
+  } catch {
+    // 请求层已统一提示
+  } finally {
+    loading.value = false
+    initialized.value = true
+  }
+}
+
+/** 菜单 → 按钮树形数据（含搜索与状态筛选） */
+const treeData = computed(() => {
+  const kw = keyword.value.trim().toLowerCase()
+  const statusOk = (p: PermissionItem) =>
+    statusFilter.value === 'all' || String(p.status) === statusFilter.value
+  const match = (p: PermissionItem) =>
+    !kw || p.permName.toLowerCase().includes(kw) || p.permCode.toLowerCase().includes(kw)
+
+  const menus = perms.value.filter((p) => p.permType === 'menu')
+  const buttons = perms.value.filter((p) => p.permType === 'button')
+  return menus
+    .map((m) => {
+      const children = buttons.filter((b) => b.menuCode === m.permCode)
+      const hitSelf = match(m) && statusOk(m)
+      const hitChildren = children.some((b) => match(b) && statusOk(b))
+      if (!hitSelf && !hitChildren) return null
+      const filteredChildren = children.filter((b) => (hitSelf && !kw ? statusOk(b) : match(b) && statusOk(b)))
+      return filteredChildren.length ? { ...m, children: filteredChildren } : { ...m }
+    })
+    .filter(Boolean) as (PermissionItem & { children?: PermissionItem[] })[]
+})
+
 const keyword = ref('')
 const statusFilter = ref('all')
-const filteredMenus = computed(() => {
-  const kw = keyword.value.trim().toLowerCase()
-  return menus.value.filter((m) => {
-    if (statusFilter.value === '1' && !m.enabled) return false
-    if (statusFilter.value === '0' && m.enabled) return false
-    if (!kw) return true
-    return m.name.toLowerCase().includes(kw) || m.path.toLowerCase().includes(kw)
-  })
-})
-function resetFilters() {
-  keyword.value = ''
-  statusFilter.value = 'all'
+
+// ---- 启停 ----
+const togglingId = ref<number | null>(null)
+async function toggleStatus(p: PermissionItem, checked: boolean) {
+  togglingId.value = p.id
+  try {
+    const res = await updateMenuPermission(p.id, { status: checked ? 1 : 0 })
+    if (res?.success) {
+      p.status = checked ? 1 : 0
+      // 模块 / 菜单启停立即刷新全局导航缓存
+      invalidateEnabledMenus()
+      loadEnabledMenus()
+      message.success(checked ? `已启用「${p.permName}」` : `已停用「${p.permName}」，对应菜单 / 按钮 / 接口立即失效`)
+    }
+  } catch {
+    // 请求层已统一提示
+  } finally {
+    togglingId.value = null
+  }
 }
 
-// ---- 新增 / 编辑 ----
+// ---- 编辑 ----
 const modalOpen = ref(false)
-const editingId = ref<number | null>(null)
-const form = reactive({ name: '', path: '', icon: 'appstore', sortOrder: 0, enabled: true })
+const saving = ref(false)
+const editing = ref<PermissionItem | null>(null)
+const form = reactive({ permName: '', sort: 0, remark: '' })
 
-function resetForm() {
-  Object.assign(form, { name: '', path: '', icon: 'appstore', sortOrder: 0, enabled: true })
-}
-
-function openCreate() {
-  editingId.value = null
-  resetForm()
+function openEdit(p: PermissionItem) {
+  editing.value = p
+  Object.assign(form, { permName: p.permName, sort: p.sort ?? 0, remark: p.remark ?? '' })
   modalOpen.value = true
 }
 
-function openEdit(record: MenuItem) {
-  editingId.value = record.id
-  Object.assign(form, { name: record.name, path: record.path, icon: record.icon, sortOrder: record.sortOrder, enabled: record.enabled })
-  modalOpen.value = true
-}
-
-function saveForm() {
-  const name = form.name.trim()
-  const path = form.path.trim()
-  if (!name || !path) {
-    message.warning('请填写菜单名称和路由路径')
+async function handleSubmit() {
+  if (!editing.value) return
+  if (!form.permName.trim()) {
+    message.warning('请输入权限点名称')
     return
   }
-  if (!path.startsWith('/')) {
-    message.warning('路由路径需以 / 开头')
-    return
+  saving.value = true
+  try {
+    const res = await updateMenuPermission(editing.value.id, {
+      permName: form.permName.trim(),
+      sort: form.sort ?? 0,
+      remark: form.remark.trim() || undefined,
+    })
+    if (res?.success) {
+      modalOpen.value = false
+      loadPermissions()
+    }
+  } catch {
+    // 请求层已统一提示
+  } finally {
+    saving.value = false
   }
-  const payload = { name, path, icon: form.icon, sortOrder: form.sortOrder, enabled: form.enabled }
-  if (editingId.value === null) {
-    menus.value.push({ id: ++seq, ...payload })
-    message.success('已新增菜单')
-  } else {
-    const target = menus.value.find((m) => m.id === editingId.value)
-    if (target) Object.assign(target, payload)
-    message.success('已保存')
-  }
-  modalOpen.value = false
 }
 
-function confirmRemove(record: MenuItem) {
-  Modal.confirm({
-    title: `删除菜单「${record.name}」？`,
-    content: '删除后不可恢复（当前仅前端演示）。',
-    okText: '删除',
-    okType: 'danger',
-    cancelText: '取消',
-    onOk: () => {
-      menus.value = menus.value.filter((m) => m.id !== record.id)
-      message.success('已删除')
-    },
-  })
-}
+onMounted(loadPermissions)
 </script>
 
 <style scoped>
+.page-skeleton {
+  min-height: 360px;
+  padding: 12px 0;
+}
+
 .mgmt-page {
   padding: 20px 24px 32px;
-  box-sizing: border-box;
-  min-height: calc(100dvh - var(--app-header-height, 56px));
 }
 
 .mgmt-header {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
   margin-bottom: 16px;
@@ -256,12 +357,12 @@ function confirmRemove(record: MenuItem) {
   color: #1d1d1f;
 }
 
-.mgmt-create-btn {
-  height: 36px;
-  padding: 0 16px;
-  border-radius: 10px;
-  font-weight: 500;
-  box-shadow: 0 2px 8px color-mix(in srgb, var(--c-primary) 24%, transparent);
+.mgmt-subtitle {
+  margin: 6px 0 0;
+  max-width: 640px;
+  font-size: 12px;
+  line-height: 1.7;
+  color: #86868b;
 }
 
 .mgmt-card {
@@ -302,7 +403,6 @@ function confirmRemove(record: MenuItem) {
 }
 
 .mgmt-icon-btn {
-  margin-left: auto;
   width: 34px;
   height: 34px;
   display: inline-flex;
@@ -316,7 +416,7 @@ function confirmRemove(record: MenuItem) {
   transition: background 0.15s;
 }
 
-.mgmt-icon-btn:hover {
+.mgmt-icon-btn:hover:not(:disabled) {
   background: #f2f2f5;
 }
 
@@ -331,14 +431,14 @@ function confirmRemove(record: MenuItem) {
   font-size: 13px;
 }
 
-.menu-cell {
+.perm-cell {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 10px;
   min-width: 0;
 }
 
-.menu-avatar {
+.perm-badge {
   width: 28px;
   height: 28px;
   flex-shrink: 0;
@@ -347,15 +447,38 @@ function confirmRemove(record: MenuItem) {
   justify-content: center;
   border-radius: 8px;
   color: #fff;
+}
+
+.perm-badge-menu {
   background: #5e5ce6;
 }
 
-.menu-name {
+.perm-badge-button {
+  background: #0a84ff;
+}
+
+.perm-name-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.perm-name {
   font-weight: 500;
   color: #1d1d1f;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+}
+
+.perm-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.perm-route {
+  font-size: 12px;
+  color: #86868b;
 }
 
 .code-chip {
@@ -364,6 +487,25 @@ function confirmRemove(record: MenuItem) {
   font-size: 12px;
   color: #6e6e73;
   background: #f2f2f5;
+  border-radius: 6px;
+}
+
+.type-tag {
+  margin: 0;
+}
+
+.api-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+}
+
+.api-chip {
+  padding: 2px 8px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  color: #34c759;
+  background: rgba(52, 199, 89, 0.1);
   border-radius: 6px;
 }
 
@@ -393,13 +535,15 @@ function confirmRemove(record: MenuItem) {
   background: #e9e9ee;
 }
 
-.row-action.danger {
-  color: #ff453a;
-}
-
-.row-action.danger:hover {
-  color: #ff3b30;
-  background: rgba(255, 59, 48, 0.1);
+.edit-hint {
+  margin: 0;
+  padding: 10px 12px;
+  font-size: 12px;
+  line-height: 1.7;
+  color: #6e6e73;
+  background: #f5f5f7;
+  border-radius: 8px;
+  word-break: break-all;
 }
 
 @media (max-width: 768px) {

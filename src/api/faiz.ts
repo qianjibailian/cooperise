@@ -841,6 +841,11 @@ export function updateMenuPermission(
   return request.post(`/menu/update`, { id, ...data })
 }
 
+/** 启用中的菜单编码列表（POST /menu/enabled，登录即可；前端全局导航过滤用） */
+export function listEnabledMenus(): Promise<Result<string[]>> {
+  return request.post(`/menu/enabled`)
+}
+
 // ==================== 岗位管理 ====================
 
 export interface PositionItem {

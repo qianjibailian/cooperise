@@ -4,6 +4,8 @@
       <AuthField v-model="form.email" placeholder="电子邮箱" type="email" autocomplete="email" :error="errors.email" />
       <AuthField v-model="form.password" placeholder="密码" type="password" autocomplete="current-password" :error="errors.password" />
 
+      <button type="submit" class="auth-btn" :disabled="loading">{{ loading ? '登录中…' : '登录' }}</button>
+
       <div class="forgot-row">
         <!-- 勾选框跟随登录按钮的黑色，而不是品牌主题色 -->
         <a-config-provider :theme="{ token: { colorPrimary: '#1a1a1a' } }">
@@ -15,13 +17,6 @@
         <a class="forgot" @click="handleForgot">忘记密码？</a>
       </div>
 
-      <button type="submit" class="auth-btn" :disabled="loading">{{ loading ? '登录中…' : '登录' }}</button>
-      <div class="terms-row">
-        <a-config-provider :theme="{ token: { colorPrimary: '#1a1a1a' } }">
-          <a-checkbox v-model:checked="agreed" />
-        </a-config-provider>
-        <span>我已阅读并同意<a href="/terms" target="_blank" rel="noopener">《服务协议》</a>和<a href="/privacy" target="_blank" rel="noopener">《隐私政策》</a></span>
-      </div>
       <div class="register-row">
         还没有账号？<a class="register-link" @click="router.push('/register')">立即注册</a>
       </div>
@@ -50,8 +45,6 @@ const form = reactive({
 })
 const errors = reactive({ email: '', password: '' })
 const loading = ref(false)
-/** 已阅读并同意服务协议 / 隐私政策 */
-const agreed = ref(false)
 
 // ---------- 记住账号 / 密码 ----------
 const rememberAccount = ref(false)
@@ -87,10 +80,6 @@ function validate() {
 }
 
 async function handleSubmit() {
-  if (!agreed.value) {
-    message.warning('请先勾选同意《服务协议》和《隐私政策》')
-    return
-  }
   if (!validate()) return
   loading.value = true
   try {
@@ -144,7 +133,7 @@ function handleForgot() {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-top: 10px;
+  margin-top: 12px;
 }
 
 .remember {
@@ -166,22 +155,6 @@ function handleForgot() {
 
 .forgot:hover {
   color: #1a1a1a;
-}
-
-/* 服务协议勾选行：复选框 + 文案，文案里的协议名可点 */
-.terms-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-top: 14px;
-  font-size: 12px;
-  line-height: 1.6;
-  color: #6b6a65;
-}
-
-.terms-row a {
-  color: #1a1a1a;
-  cursor: pointer;
 }
 
 /* 底部注册入口：居中，与「忘记密码」同一套灰色，只把链接文字加深 */

@@ -133,6 +133,7 @@ import type { Rule } from 'ant-design-vue/es/form'
 import { PlusOutlined, SearchOutlined, ReloadOutlined, EditOutlined, DeleteOutlined, IdcardOutlined, ApartmentOutlined } from '@ant-design/icons-vue'
 import {
   queryPositions, createPosition, updatePosition, deletePosition, getOrganizationTree, enterpriseQueryPositions, enterpriseOrganizationTree,
+  enterpriseCreatePosition, enterpriseUpdatePosition, enterpriseDeletePosition,
   type PositionItem, type PositionSaveParams, type OrganizationNode,
 } from '@/api/faiz'
 import OrgTreeSelect from '@/components/OrgTreeSelect.vue'
@@ -235,7 +236,8 @@ const togglingId = ref<number | null>(null)
 async function toggleStatus(r: PositionItem, checked: boolean) {
   togglingId.value = r.id
   try {
-    const res = await updatePosition({
+    // 企业后台走企业专属端点；管理后台走共用接口（按钮权限校验）
+    const res = await (isEnterprise.value ? enterpriseUpdatePosition : updatePosition)({
       id: r.id,
       positionName: r.positionName,
       // 快捷启停也要原样带上组织，否则后端会把组织清空
@@ -312,9 +314,10 @@ async function handleSubmit() {
       description: form.description.trim() || undefined,
       sort: editingId.value ? form.sort : undefined,
     }
-    const res = editingId.value
-      ? await updatePosition({ ...payload, id: editingId.value })
-      : await createPosition(payload)
+    const save = isEnterprise.value
+      ? (editingId.value ? enterpriseUpdatePosition : enterpriseCreatePosition)
+      : (editingId.value ? updatePosition : createPosition)
+    const res = await save(editingId.value ? { ...payload, id: editingId.value } : payload)
     if (res?.success) {
       modalOpen.value = false
       if (!editingId.value) page.value = 1
@@ -338,7 +341,7 @@ function confirmDelete(r: PositionItem) {
     centered: true,
     async onOk() {
       try {
-        const res = await deletePosition(r.id)
+        const res = await (isEnterprise.value ? enterpriseDeletePosition : deletePosition)(r.id)
         if (res?.success) {
           if (positions.value.length === 1 && page.value > 1) page.value--
           loadPositions()

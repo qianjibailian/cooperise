@@ -272,6 +272,7 @@ import {
 import {
   queryUsers, createUser, updateUser, deleteUser, resetUserPassword, getOrganizationTree, queryRoles, queryPositions, getUserDetail,
   enterpriseQueryUsers, enterpriseQueryPositions, enterpriseOrganizationTree,
+  enterpriseCreateUser, enterpriseUpdateUser, enterpriseDeleteUser, enterpriseResetUserPassword,
   type UserSaveParams, type OrganizationNode,
 } from '@/api/faiz'
 import { useSpaces } from '@/utils/space-store'
@@ -555,9 +556,11 @@ async function handleSubmit() {
       // 始终明确提交勾选结果（空数组表示不分配空间）
       spaceCodes: [...form.spaceCodes],
     }
-    const res = editingId.value
-      ? await updateUser({ ...payload, id: editingId.value })
-      : await createUser(payload)
+    // 企业后台走企业专属端点（企业成员校验）；管理后台走共用接口（按钮权限校验）
+    const save = isEnterprise.value
+      ? (editingId.value ? enterpriseUpdateUser : enterpriseCreateUser)
+      : (editingId.value ? updateUser : createUser)
+    const res = await save(editingId.value ? { ...payload, id: editingId.value } : payload)
     if (res?.success) {
       modalOpen.value = false
       if (!editingId.value) page.value = 1
@@ -583,7 +586,7 @@ function confirmDelete(u: UserItem) {
     centered: true,
     async onOk() {
       try {
-        const res = await deleteUser(id)
+        const res = await (isEnterprise.value ? enterpriseDeleteUser : deleteUser)(id)
         if (res?.success) {
           // 删除当前页最后一条时回到上一页
           if (users.value.length === 1 && page.value > 1) page.value--
@@ -608,7 +611,7 @@ function confirmResetPassword(u: UserItem) {
     centered: true,
     async onOk() {
       try {
-        await resetUserPassword(id)
+        await (isEnterprise.value ? enterpriseResetUserPassword : resetUserPassword)(id)
       } catch {
         // 请求层已统一提示
       }

@@ -68,7 +68,7 @@
             <component :is="TeamOutlined" />
             <span>角色管理</span>
           </a-menu-item>
-          <a-menu-item key="/admin/menus">
+          <a-menu-item key="/admin/menus" v-permission="'admin:menu'">
             <component :is="UnorderedListOutlined" />
             <span>菜单管理</span>
           </a-menu-item>

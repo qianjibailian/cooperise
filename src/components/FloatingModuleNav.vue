@@ -10,7 +10,7 @@
     @mouseleave="onRailLeave"
   >
     <button
-      v-for="item in NAV_ITEMS"
+      v-for="item in visibleNavItems"
       :key="item.key"
       type="button"
       role="menuitem"
@@ -44,7 +44,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onBeforeUnmount } from 'vue'
+import { computed, ref, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   FileTextOutlined,
@@ -53,13 +53,19 @@ import {
   RightOutlined,
   ToolOutlined,
 } from '@ant-design/icons-vue'
+import { isMenuEnabled, loadEnabledMenus } from '@/utils/enabled-menus'
 
-/** 一级模块（原顶栏「菜单」里的四个入口） */
+/** 一级模块（原顶栏「菜单」里的四个入口）；menuCode 为全局菜单开关编码 */
 const NAV_ITEMS = [
-  { key: 'workspace', label: '项目管理', icon: HomeOutlined, path: '/workbench/board' },
-  { key: 'docs', label: '云文档', icon: FileTextOutlined, path: '/docs' },
-  { key: 'admin', label: '管理后台', icon: ToolOutlined, path: '/admin/users' },
+  { key: 'workspace', label: '项目管理', icon: HomeOutlined, path: '/workbench/board', menuCode: 'menu:workspace' },
+  { key: 'docs', label: '云文档', icon: FileTextOutlined, path: '/docs', menuCode: 'menu:docs' },
+  { key: 'admin', label: '管理后台', icon: ToolOutlined, path: '/admin/users', menuCode: 'menu:admin' },
 ]
+
+/** 菜单管理中停用的模块不显示入口 */
+const visibleNavItems = computed(() => NAV_ITEMS.filter((item) => isMenuEnabled(item.menuCode)))
+
+onMounted(loadEnabledMenus)
 
 const route = useRoute()
 const router = useRouter()

@@ -46,6 +46,7 @@ import InitProgress from '@/pages/auth/InitProgress.vue'
 import Legal from '@/pages/auth/Legal.vue'
 import { useViewStore } from '@/utils/view-store'
 import { useAuth, hasPermission } from '@/utils/auth'
+import { isMenuEnabled, loadEnabledMenus } from '@/utils/enabled-menus'
 
 /** viewType → 渲染组件 & 标题映射 */
 const VIEW_TYPE_PAGE: Record<string, { component: unknown; title: string }> = {
@@ -118,6 +119,7 @@ const routes: RouteRecordRaw[] = [
   {
     path: '/docs',
     component: DocsLayout,
+    meta: { menuCode: 'menu:docs' },
     children: [
       { path: '', redirect: '/docs/drive/home' },
       // 回收站：独立路由 /docs/trash
@@ -142,6 +144,7 @@ const routes: RouteRecordRaw[] = [
   {
     path: '/space',
     component: SpaceLayout,
+    meta: { menuCode: 'menu:space' },
     children: [
       { path: '', component: Space, name: 'Space', meta: { title: '空间' } },
       { path: ':spaceCode', component: SpaceHome, name: 'SpaceHome', meta: { title: '空间' } },
@@ -152,12 +155,13 @@ const routes: RouteRecordRaw[] = [
   {
     path: '/admin',
     component: AdminLayout,
+    meta: { menuCode: 'menu:admin' },
     children: [
       { path: '', redirect: '/admin/users' },
       { path: 'users', component: Users, name: 'AdminUsers', meta: { title: '用户管理', permission: 'admin:user' } },
       { path: 'roles', component: Roles, name: 'AdminRoles', meta: { title: '角色管理', permission: 'admin:role' } },
       { path: 'init-config', component: InitConfig, name: 'AdminInitConfig', meta: { title: '初始化配置', permission: 'admin:init-config' } },
-      { path: 'menus', component: MenuManage, name: 'AdminMenus', meta: { title: '菜单管理' } },
+      { path: 'menus', component: MenuManage, name: 'AdminMenus', meta: { title: '菜单管理', permission: 'admin:menu' } },
       { path: 'positions', component: Positions, name: 'AdminPositions', meta: { title: '岗位管理', permission: 'admin:position' } },
       { path: 'organization', component: Organization, name: 'Organization', meta: { title: '组织管理', permission: 'admin:organization' } },
       { path: 'space', component: Space, name: 'AdminSpace', meta: { title: '空间管理', permission: 'admin:space' }, props: { admin: true } },
@@ -173,6 +177,7 @@ const routes: RouteRecordRaw[] = [
   // ============ 企业后台（与管理后台同一布局，菜单为：用户 / 岗位 / 授权 / 组织 / 菜单） ============
   {
     path: '/enterprise',
+    meta: { menuCode: 'menu:enterprise' },
     component: AdminLayout,
     children: [
       { path: '', redirect: '/enterprise/users' },
@@ -243,6 +248,13 @@ export function setupRouter() {
     }
     if (!isLoggedIn.value) {
       return { name: 'Login', query: { redirect: to.fullPath } }
+    }
+    // 全局模块菜单开关：菜单管理中停用的模块（menu:xxx）直接访问会被拦截回工作台
+    // （缓存未就绪时放行，异步预热；入口显隐由 FloatingModuleNav / WorkbenchRail 过滤）
+    void loadEnabledMenus()
+    const menuCode = to.matched.map((r) => r.meta.menuCode).find(Boolean) as string | undefined
+    if (menuCode && !isMenuEnabled(menuCode)) {
+      return { path: '/workbench' }
     }
     // 管理后台菜单权限：路由 meta.permission 校验（超管恒过；旧会话无权限快照时放行，后端鉴权兜底）
     const perm = to.meta.permission as string | undefined
