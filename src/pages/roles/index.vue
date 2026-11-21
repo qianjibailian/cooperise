@@ -2,7 +2,7 @@
   <div class="mgmt-page">
     <header class="mgmt-header">
       <h2 class="mgmt-title">角色管理</h2>
-      <a-button type="primary" class="mgmt-create-btn" @click="openCreate">
+      <a-button v-permission="'admin:role:create'" type="primary" class="mgmt-create-btn" @click="openCreate">
         <PlusOutlined /> 新增
       </a-button>
     </header>
@@ -61,6 +61,7 @@
           </template>
           <template v-else-if="column.key === 'status'">
             <a-switch
+              v-permission="'admin:role:update'"
               size="small"
               :checked="record.status === 1"
               :loading="togglingId === record.id"
@@ -70,10 +71,10 @@
           <template v-else-if="column.key === 'action'">
             <div class="row-actions">
               <a-tooltip title="编辑">
-                <span class="row-action" @click="openEdit(record as RoleItem)"><EditOutlined /></span>
+                <span v-permission="'admin:role:update'" class="row-action" @click="openEdit(record as RoleItem)"><EditOutlined /></span>
               </a-tooltip>
               <a-tooltip title="删除">
-                <span class="row-action danger" @click="confirmDelete(record as RoleItem)"><DeleteOutlined /></span>
+                <span v-permission="'admin:role:delete'" class="row-action danger" @click="confirmDelete(record as RoleItem)"><DeleteOutlined /></span>
               </a-tooltip>
             </div>
           </template>
@@ -104,6 +105,24 @@
         <a-form-item label="状态" name="status">
           <a-switch v-model:checked="statusChecked" checked-children="启用" un-checked-children="停用" />
         </a-form-item>
+        <!-- 权限授权：按菜单分组，勾选任一按钮自动带上菜单权限（页面入口） -->
+        <a-form-item v-if="permGroups.length" label="权限">
+          <div class="perm-groups">
+            <div v-for="g in permGroups" :key="g.menuCode" class="perm-group">
+              <a-checkbox
+                :checked="g.menuChecked"
+                @change="(e: any) => toggleGroupMenu(g, e.target.checked)"
+              >{{ g.menuName }}</a-checkbox>
+              <a-checkbox-group
+                v-if="g.buttons.length"
+                v-model:value="g.checked"
+                :options="g.buttons"
+                class="perm-options"
+                @change="() => onGroupButtonsChange(g)"
+              />
+            </div>
+          </div>
+        </a-form-item>
       </a-form>
     </a-modal>
   </div>
@@ -114,7 +133,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { Modal, type FormInstance, type TablePaginationConfig } from 'ant-design-vue'
 import type { Rule } from 'ant-design-vue/es/form'
 import { PlusOutlined, SearchOutlined, ReloadOutlined, EditOutlined, DeleteOutlined, TeamOutlined } from '@ant-design/icons-vue'
-import { queryRoles, createRole, updateRole, deleteRole, type RoleItem, type RoleSaveParams } from '@/api/faiz'
+import { queryRoles, createRole, updateRole, deleteRole, listRolePermissions, saveRolePermissions, type RoleItem, type RoleSaveParams, type PermissionItem } from '@/api/faiz'
 
 const STATUS_FILTERS = [
   { label: '全部', value: 'all' },
@@ -231,6 +250,7 @@ const rules: Record<string, Rule[]> = {
 function openCreate() {
   editingId.value = null
   Object.assign(form, emptyForm())
+  applyPermCodes([])
   modalOpen.value = true
 }
 
@@ -242,6 +262,7 @@ function openEdit(r: RoleItem) {
     sort: r.sort ?? 0,
     status: r.status ?? 1,
   })
+  applyPermCodes(r.permissions || [])
   modalOpen.value = true
 }
 
@@ -263,6 +284,15 @@ async function handleSubmit() {
       ? await updateRole({ ...payload, id: editingId.value })
       : await createRole(payload)
     if (res?.success) {
+      // 保存权限点（新建用返回的角色 ID；失败不阻塞角色保存，可再次编辑补保存）
+      const roleId = editingId.value ?? res.data?.id
+      if (roleId != null) {
+        try {
+          await saveRolePermissions(roleId, collectPermCodes())
+        } catch {
+          // 请求层已统一提示
+        }
+      }
       modalOpen.value = false
       if (!editingId.value) page.value = 1
       loadRoles()
@@ -297,7 +327,71 @@ function confirmDelete(r: RoleItem) {
   })
 }
 
-onMounted(loadRoles)
+// ---- 权限点授权 ----
+interface PermGroup {
+  /** 菜单权限编码（页面入口） */
+  menuCode: string
+  menuName: string
+  /** 组内按钮权限选项 */
+  buttons: { label: string; value: string }[]
+  menuChecked: boolean
+  /** 已勾选按钮权限编码 */
+  checked: string[]
+}
+const permGroups = ref<PermGroup[]>([])
+
+async function loadPermissions() {
+  try {
+    const res = await listRolePermissions()
+    if (!res?.success) return
+    const perms: PermissionItem[] = res.data || []
+    const menus = perms.filter((p) => p.permType === 'menu')
+    const buttons = perms.filter((p) => p.permType === 'button')
+    permGroups.value = menus.map((m) => ({
+      menuCode: m.permCode,
+      menuName: m.permName,
+      buttons: buttons
+        .filter((b) => b.menuCode === m.permCode)
+        .map((b) => ({ label: b.permName, value: b.permCode })),
+      menuChecked: false,
+      checked: [],
+    }))
+  } catch {
+    // 请求层已统一提示
+  }
+}
+
+/** 按已分配权限编码回填勾选状态 */
+function applyPermCodes(codes: string[]) {
+  const set = new Set(codes)
+  permGroups.value.forEach((g) => {
+    g.menuChecked = set.has(g.menuCode)
+    g.checked = g.buttons.filter((b) => set.has(b.value)).map((b) => b.value)
+    // 有按钮权限但菜单权限缺失时补上菜单权限（保证页面可达）
+    if (g.checked.length && !g.menuChecked) g.menuChecked = true
+  })
+}
+
+/** 勾 / 取消菜单权限：取消时清空组内按钮 */
+function toggleGroupMenu(g: PermGroup, checked: boolean) {
+  g.menuChecked = checked
+  if (!checked) g.checked = []
+}
+
+/** 勾选任一按钮权限时自动带上菜单权限 */
+function onGroupButtonsChange(g: PermGroup) {
+  if (g.checked.length && !g.menuChecked) g.menuChecked = true
+}
+
+/** 收集全部已勾选权限编码（菜单 + 按钮） */
+function collectPermCodes(): string[] {
+  return permGroups.value.flatMap((g) => (g.menuChecked ? [g.menuCode, ...g.checked] : []))
+}
+
+onMounted(() => {
+  loadRoles()
+  loadPermissions()
+})
 </script>
 
 <style scoped>
@@ -479,6 +573,28 @@ onMounted(loadRoles)
 .row-action.danger:hover {
   color: #ff3b30;
   background: rgba(255, 59, 48, 0.1);
+}
+
+/* 权限授权分组 */
+.perm-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+}
+
+.perm-group {
+  padding: 10px 12px;
+  border: 1px solid #eef0f3;
+  border-radius: 10px;
+}
+
+.perm-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin-top: 8px;
+  padding-left: 24px;
 }
 
 @media (max-width: 768px) {

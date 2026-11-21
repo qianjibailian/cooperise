@@ -235,7 +235,7 @@ const BUILTIN_FIELDS: FilterFieldMeta[] = [
   { id: 'updated', name: '更新时间', type: 'DATE_PICKER' },
 ]
 
-/** 可筛选 / 排序的字段：/availableField/list（系统字段 + 自定义字段），只拉一次 */
+/** 可筛选 / 排序的字段：/availableField/query（系统字段 + 自定义字段），只拉一次 */
 let fieldsPromise: Promise<FilterFieldMeta[]> | null = null
 export function loadFilterFields(): Promise<FilterFieldMeta[]> {
   if (!fieldsPromise) {

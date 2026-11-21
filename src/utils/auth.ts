@@ -24,6 +24,8 @@ export interface AuthUser {
   isActive?: number
   roleIds?: number[]
   roleNames?: string[]
+  /** 权限点编码集合（登录快照，如 admin:space:delete；超管返回全部；旧会话无此字段） */
+  permissions?: string[]
   positionId?: number
   positionName?: string | null
   /** 所属组织（登录接口 / 个人中心返回） */
@@ -218,6 +220,26 @@ function clearAllCookies() {
     if (name) names.push(name)
   })
   names.forEach((name) => deleteCookie(name))
+}
+
+/** 超级管理员账号（与后端 AuditUserProvider.SUPER_ADMIN_CO_ACCOUNT 一致） */
+export const SUPER_ADMIN_CO_ACCOUNT = 'admin'
+
+/** 当前登录用户是否超级管理员（coAccount = admin） */
+export function isSuperAdmin(): boolean {
+  return userRef.value?.coAccount === SUPER_ADMIN_CO_ACCOUNT
+}
+
+/**
+ * 是否拥有任一权限（权限编码如 admin:space:delete）。超级管理员恒为 true。
+ * 登录快照缺 permissions 字段（升级前登录的旧会话）时放行——重新登录后按真实权限控制，
+ * 后端接口鉴权始终兜底，不会出现越权。
+ */
+export function hasPermission(...codes: string[]): boolean {
+  if (!codes.length || isSuperAdmin()) return true
+  const perms = userRef.value?.permissions
+  if (!Array.isArray(perms)) return true
+  return codes.some((c) => perms.includes(c))
 }
 
 /** 当前用户所属组织 ID：优先登录用户 organizations 中第一个启用的组织，兼容 organizationId 单值字段 */

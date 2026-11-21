@@ -2,7 +2,8 @@
   <div class="mgmt-page">
     <header class="mgmt-header">
       <h2 class="mgmt-title">岗位管理</h2>
-      <a-button type="primary" class="mgmt-create-btn" @click="openCreate">
+      <!-- 企业后台不受管理后台权限点控制；管理后台按权限显隐 -->
+      <a-button v-permission="isEnterprise ? [] : ['admin:position:create']" type="primary" class="mgmt-create-btn" @click="openCreate">
         <PlusOutlined /> 新增
       </a-button>
     </header>
@@ -83,10 +84,10 @@
           <template v-else-if="column.key === 'action'">
             <div class="row-actions">
               <a-tooltip title="编辑">
-                <span class="row-action" @click="openEdit(record as PositionItem)"><EditOutlined /></span>
+                <span v-permission="isEnterprise ? [] : ['admin:position:update']" class="row-action" @click="openEdit(record as PositionItem)"><EditOutlined /></span>
               </a-tooltip>
               <a-tooltip title="删除">
-                <span class="row-action danger" @click="confirmDelete(record as PositionItem)"><DeleteOutlined /></span>
+                <span v-permission="isEnterprise ? [] : ['admin:position:delete']" class="row-action danger" @click="confirmDelete(record as PositionItem)"><DeleteOutlined /></span>
               </a-tooltip>
             </div>
           </template>

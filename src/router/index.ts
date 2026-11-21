@@ -45,7 +45,7 @@ import InitWorkspace from '@/pages/auth/InitWorkspace.vue'
 import InitProgress from '@/pages/auth/InitProgress.vue'
 import Legal from '@/pages/auth/Legal.vue'
 import { useViewStore } from '@/utils/view-store'
-import { useAuth } from '@/utils/auth'
+import { useAuth, hasPermission } from '@/utils/auth'
 
 /** viewType → 渲染组件 & 标题映射 */
 const VIEW_TYPE_PAGE: Record<string, { component: unknown; title: string }> = {
@@ -154,15 +154,17 @@ const routes: RouteRecordRaw[] = [
     component: AdminLayout,
     children: [
       { path: '', redirect: '/admin/users' },
-      { path: 'users', component: Users, name: 'AdminUsers', meta: { title: '用户管理' } },
-      { path: 'roles', component: Roles, name: 'AdminRoles', meta: { title: '角色管理' } },
-      { path: 'init-config', component: InitConfig, name: 'AdminInitConfig', meta: { title: '初始化配置' } },
+      { path: 'users', component: Users, name: 'AdminUsers', meta: { title: '用户管理', permission: 'admin:user' } },
+      { path: 'roles', component: Roles, name: 'AdminRoles', meta: { title: '角色管理', permission: 'admin:role' } },
+      { path: 'init-config', component: InitConfig, name: 'AdminInitConfig', meta: { title: '初始化配置', permission: 'admin:init-config' } },
       { path: 'menus', component: MenuManage, name: 'AdminMenus', meta: { title: '菜单管理' } },
-      { path: 'positions', component: Positions, name: 'AdminPositions', meta: { title: '岗位管理' } },
-      { path: 'organization', component: Organization, name: 'Organization', meta: { title: '组织管理' } },
+      { path: 'positions', component: Positions, name: 'AdminPositions', meta: { title: '岗位管理', permission: 'admin:position' } },
+      { path: 'organization', component: Organization, name: 'Organization', meta: { title: '组织管理', permission: 'admin:organization' } },
+      { path: 'space', component: Space, name: 'AdminSpace', meta: { title: '空间管理', permission: 'admin:space' }, props: { admin: true } },
+      // 问题类型 / 模板 / 工作流暂无独立权限点，仅要求登录
       { path: 'issue-type', component: IssueTypes, name: 'AdminIssueTypes', meta: { title: '问题类型' } },
-      { path: 'system-field', component: SystemField, name: 'SystemField', meta: { title: '系统字段' } },
-      { path: 'i18n', component: I18nPage, name: 'AdminI18n', meta: { title: '国际化翻译' } },
+      { path: 'system-field', component: SystemField, name: 'SystemField', meta: { title: '系统字段', permission: 'admin:system-field' } },
+      { path: 'i18n', component: I18nPage, name: 'AdminI18n', meta: { title: '国际化翻译', permission: 'admin:i18n' } },
       { path: 'template-list', component: TemplateList, name: 'TemplateList', meta: { title: '模板管理' } },
       { path: 'workflow', component: Workflow, name: 'Workflow', meta: { title: '工作流' } },
     ],
@@ -241,6 +243,11 @@ export function setupRouter() {
     }
     if (!isLoggedIn.value) {
       return { name: 'Login', query: { redirect: to.fullPath } }
+    }
+    // 管理后台菜单权限：路由 meta.permission 校验（超管恒过；旧会话无权限快照时放行，后端鉴权兜底）
+    const perm = to.meta.permission as string | undefined
+    if (perm && !hasPermission(perm)) {
+      return { path: '/workbench' }
     }
     return true
   })

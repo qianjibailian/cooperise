@@ -1,6 +1,6 @@
 /**
  * 视图（日历 / 看板等）共用的事项字段解析、分组与草稿解析工具。
- * 字段 ID 一律为 /availableField/list 的 fieldId；/issue/query 只返回 showField 里的字段。
+ * 字段 ID 一律为 /availableField/query 的 fieldId；/issue/query 只返回 showField 里的字段。
  */
 import dayjs from 'dayjs'
 import {
@@ -116,7 +116,7 @@ export function tagColorOf(rec: IssueRecord, id: string): string {
 
 /**
  * 按勾选顺序生成每个字段一行（空值不占行）。
- * 字段名优先取 /issue/query 返回的 name，缺省时取 names（/availableField/list 的 fieldId → fieldName）
+ * 字段名优先取 /issue/query 返回的 name，缺省时取 names（/availableField/query 的 fieldId → fieldName）
  */
 export function buildFieldLines(
   rec: IssueRecord,

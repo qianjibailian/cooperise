@@ -4,40 +4,7 @@
       <div>
         <h1 class="page-title">权限管理</h1>
       </div>
-      <div class="header-actions">
-        <a-button type="primary" class="action-btn" @click="showModal = true">
-          <component :is="PlusOutlined" />
-          新增权限
-        </a-button>
-      </div>
     </div>
-
-    <a-row :gutter="[16, 16]" class="stats-cards">
-      <a-col :xs="12" :sm="6">
-        <div class="mini-stat">
-          <span class="mini-stat-label">权限总数</span>
-          <span class="mini-stat-value">128</span>
-        </div>
-      </a-col>
-      <a-col :xs="12" :sm="6">
-        <div class="mini-stat">
-          <span class="mini-stat-label">菜单权限</span>
-          <span class="mini-stat-value text-blue">42</span>
-        </div>
-      </a-col>
-      <a-col :xs="12" :sm="6">
-        <div class="mini-stat">
-          <span class="mini-stat-label">按钮权限</span>
-          <span class="mini-stat-value text-green">56</span>
-        </div>
-      </a-col>
-      <a-col :xs="12" :sm="6">
-        <div class="mini-stat">
-          <span class="mini-stat-label">接口权限</span>
-          <span class="mini-stat-value text-orange">30</span>
-        </div>
-      </a-col>
-    </a-row>
 
     <a-card class="table-card" :bordered="false">
       <div class="table-toolbar">
@@ -183,7 +150,6 @@
 <script setup lang="ts">
 import { ref, reactive, computed } from 'vue'
 import {
-  PlusOutlined,
   ReloadOutlined,
   SettingOutlined,
   DownOutlined,
@@ -392,43 +358,6 @@ function handleSubmit() {
   height: 40px;
   padding: 0 20px;
   font-weight: 500;
-}
-
-.stats-cards {
-  margin-bottom: 20px;
-}
-
-.mini-stat {
-  background: #fff;
-  border-radius: 12px;
-  padding: 20px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-}
-
-.mini-stat-label {
-  font-size: 13px;
-  color: #6b7280;
-}
-
-.mini-stat-value {
-  font-size: 24px;
-  font-weight: 700;
-  color: #1f2937;
-}
-
-.text-blue {
-  color: #374151;
-}
-
-.text-green {
-  color: #10b981;
-}
-
-.text-orange {
-  color: #f59e0b;
 }
 
 .table-card {

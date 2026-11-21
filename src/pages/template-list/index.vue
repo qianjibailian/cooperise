@@ -548,7 +548,7 @@ interface Template {
   id: string
   templateName: string
   description: string
-  /** 问题类型编码（如 TYPE10001），来自 /issue-type/list */
+  /** 问题类型编码（如 TYPE10001），来自 /issue-type/query */
   issueTypeCode: string
   issueTypeName?: string
   /** 所属组织编码 */

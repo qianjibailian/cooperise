@@ -3,9 +3,12 @@
     <!-- 页头 -->
     <header class="org-header">
       <h2 class="org-title">组织管理</h2>
-      <a-button type="primary" class="org-create-btn" @click="openCreate(null)">
-        <PlusOutlined /> 新增
-      </a-button>
+      <!-- 企业后台只能在本企业内新增组织（不支持新增企业，多租户边界）；管理后台新增的是公司（顶级组织） -->
+      <a-tooltip :title="createTip">
+        <a-button type="primary" class="org-create-btn" :disabled="createDisabled" @click="onCreateClick">
+          <PlusOutlined /> {{ isEnterprise ? '新增组织' : '新增' }}
+        </a-button>
+      </a-tooltip>
     </header>
 
     <!-- 统计 -->
@@ -49,7 +52,7 @@
           <div class="org-empty-icon"><component :is="keyword ? ApartmentOutlined : BankOutlined" /></div>
           <div class="org-empty-title">{{ keyword ? '没有匹配的组织' : '还没有公司' }}</div>
           <div class="org-empty-desc">{{ keyword ? '换个关键词试试' : '请先新增公司，再在公司下添加部门' }}</div>
-          <a-button v-if="!keyword" type="primary" @click="openCreate(null)"><PlusOutlined /> 新增公司</a-button>
+          <a-button v-if="!keyword && !isEnterprise" type="primary" @click="onCreateClick"><PlusOutlined /> 新增公司</a-button>
         </div>
         <!-- 捕获阶段拦截：只有按住六点手柄才能开始拖动 -->
         <div v-else class="org-tree-wrap" @mousedown.capture="onTreeMouseDown" @dragstart.capture="onTreeDragStart">
@@ -87,17 +90,20 @@
               <span v-if="node.status === 0" class="org-node-badge">已停用</span>
               <span v-if="node.children?.length" class="org-node-count">{{ node.children.length }} 个子组织</span>
               <span class="org-node-actions" @click.stop>
+                <!-- 企业后台不受管理后台权限点控制；管理后台按权限显隐 -->
                 <a-tooltip :title="canAddChild(node) ? (isCompanyNode(node) ? '新增部门' : '新增子组织') : `最多 ${MAX_LEVEL} 层（含公司）`">
                   <span
+                    v-permission="isEnterprise ? [] : ['admin:organization:create']"
                     :class="['org-action', { disabled: !canAddChild(node) }]"
                     @click="canAddChild(node) && openCreate(node)"
                   ><PlusOutlined /></span>
                 </a-tooltip>
                 <a-tooltip title="编辑">
-                  <span class="org-action" @click="openEdit(node)"><EditOutlined /></span>
+                  <span v-permission="isEnterprise ? [] : ['admin:organization:update']" class="org-action" @click="openEdit(node)"><EditOutlined /></span>
                 </a-tooltip>
                 <a-tooltip :title="node.children?.length ? '请先删除子组织' : '删除'">
                   <span
+                    v-permission="isEnterprise ? [] : ['admin:organization:delete']"
                     :class="['org-action', 'danger', { disabled: node.children?.length }]"
                     @click="!node.children?.length && confirmDelete(node)"
                   ><DeleteOutlined /></span>
@@ -450,7 +456,7 @@ const parentOptions = computed(() => {
 function openCreate(parent: OrganizationNode | null) {
   editingId.value = null
   editingCode.value = ''
-  isCompanyForm.value = !parent
+  isCompanyForm.value = !parent && !isEnterprise.value
   Object.assign(form, {
     parentId: parent?.id ?? ROOT_ID,
     organizationName: '',
@@ -459,6 +465,25 @@ function openCreate(parent: OrganizationNode | null) {
     remark: '',
   })
   modalOpen.value = true
+}
+
+/** 企业后台：企业为树中唯一根节点 */
+const companyRoot = computed(() => treeData.value[0] ?? null)
+/**
+ * 新增入口禁用：
+ * - 企业后台：企业树未加载完成前不能新增（新组织必须有上级）
+ * - 管理后台：系统只允许一家公司，已存在公司后不能再新增第二个（在公司节点上加组织）
+ */
+const createDisabled = computed(() =>
+  isEnterprise.value ? !companyRoot.value : treeData.value.length > 0)
+const createTip = computed(() => {
+  if (!createDisabled.value) return ''
+  return isEnterprise.value ? '企业信息加载中' : '系统仅允许一家公司，如需新增组织请在公司节点上操作'
+})
+
+/** 页头新增入口：企业后台默认挂到当前企业根下（可改选上级）；管理后台新增公司（顶级） */
+function onCreateClick() {
+  openCreate(isEnterprise.value ? companyRoot.value : null)
 }
 
 function openEdit(node: OrganizationNode) {

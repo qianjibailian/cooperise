@@ -2,10 +2,10 @@
   <div class="mgmt-page">
     <header class="mgmt-header">
       <div class="mgmt-heading">
-        <h2 class="mgmt-title">{{ isEnterpriseWorkspace ? '空间管理' : '个人空间' }}</h2>
-        <p v-if="!isEnterpriseWorkspace" class="mgmt-hint">个人模式下不支持新建和删除空间</p>
+        <h2 class="mgmt-title">{{ admin || isEnterpriseWorkspace ? '空间管理' : '个人空间' }}</h2>
+        <p v-if="!admin && !isEnterpriseWorkspace" class="mgmt-hint">个人模式下不支持新建和删除空间</p>
       </div>
-      <a-button v-if="isEnterpriseWorkspace" type="primary" class="mgmt-create-btn" @click="openCreate">
+      <a-button v-if="admin || isEnterpriseWorkspace" v-permission="admin ? ['admin:space:create'] : []" type="primary" class="mgmt-create-btn" @click="openCreate">
         <PlusOutlined /> 新建空间
       </a-button>
     </header>
@@ -87,6 +87,7 @@
           </template>
           <template v-else-if="column.key === 'status'">
             <a-switch
+              v-permission="admin ? ['admin:space:update'] : []"
               size="small"
               :checked="record.status === 1"
               :disabled="!record.organizationCode"
@@ -97,10 +98,13 @@
           <template v-else-if="column.key === 'action'">
             <div class="row-actions">
               <a-tooltip title="编辑">
-                <span class="row-action" @click="openEdit(record as SpaceItem)"><EditOutlined /></span>
+                <span v-permission="admin ? ['admin:space:update'] : []" class="row-action" @click="openEdit(record as SpaceItem)"><EditOutlined /></span>
               </a-tooltip>
-              <a-tooltip v-if="isEnterpriseWorkspace" title="删除">
-                <span class="row-action danger" @click="confirmDelete(record as SpaceItem)"><DeleteOutlined /></span>
+              <a-tooltip v-if="admin || isEnterpriseWorkspace" title="复制">
+                <span v-permission="admin ? ['admin:space:create'] : []" class="row-action" @click="openCopy(record as SpaceItem)"><CopyOutlined /></span>
+              </a-tooltip>
+              <a-tooltip v-if="admin || isEnterpriseWorkspace" title="删除">
+                <span v-permission="admin ? ['admin:space:delete'] : []" class="row-action danger" @click="confirmDelete(record as SpaceItem)"><DeleteOutlined /></span>
               </a-tooltip>
               <button type="button" class="enter-btn" @click="enterSpace(record as SpaceItem)">进入空间 <RightOutlined /></button>
             </div>
@@ -179,25 +183,69 @@
         </a-form-item>
       </a-form>
     </a-modal>
+
+    <!-- 复制空间：输入新名称，复制空间信息与全部配置内容 -->
+    <a-modal
+      v-model:open="copyOpen"
+      title="复制空间"
+      :width="480"
+      centered
+      destroy-on-close
+      ok-text="复制"
+      cancel-text="取消"
+      :confirm-loading="copying"
+      @ok="handleCopy"
+    >
+      <a-form layout="vertical">
+        <a-form-item label="新空间名称" required>
+          <a-input
+            v-model:value="copyName"
+            :maxlength="128"
+            placeholder="默认「原名-副本」"
+            @press-enter="handleCopy"
+          />
+        </a-form-item>
+        <p class="copy-hint">
+          将复制空间信息、问题类型（含状态流转）、模板（含表单字段）、流程定义（复制后为未启用，需重新部署）与操作按钮；
+          不复制事项、成员与视图。
+        </p>
+      </a-form>
+    </a-modal>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted } from 'vue'
 import { personLabel } from '@/utils/person'
-import { Modal, type FormInstance, type TablePaginationConfig } from 'ant-design-vue'
+import { Modal, message, type FormInstance, type TablePaginationConfig } from 'ant-design-vue'
 import type { Rule } from 'ant-design-vue/es/form'
 import { useRouter } from 'vue-router'
-import { PlusOutlined, SearchOutlined, ReloadOutlined, EditOutlined, DeleteOutlined, ApartmentOutlined, CheckOutlined, RightOutlined } from '@ant-design/icons-vue'
+import { PlusOutlined, SearchOutlined, ReloadOutlined, EditOutlined, DeleteOutlined, CopyOutlined, ApartmentOutlined, CheckOutlined, RightOutlined } from '@ant-design/icons-vue'
 import {
   querySpaces, createSpace, updateSpace, deleteSpace, getOrganizationTree, queryUsers,
-  type SpaceItem, type SpaceSaveParams, type OrganizationNode,
+  adminQuerySpaces, adminCreateSpace, adminUpdateSpace, adminDeleteSpace, adminCopySpace,
+  type SpaceItem, type SpaceQueryParams, type SpaceSaveParams, type OrganizationNode,
 } from '@/api/faiz'
 import type { UserItem } from '@/types/faiz'
 import OrgTreeSelect from '@/components/OrgTreeSelect.vue'
 import { findOrgCode, findOrgIdByCode } from '@/utils/orgTree'
 import { useSpaces } from '@/utils/space-store'
 import { isEnterpriseWorkspace } from '@/utils/workspace'
+
+/**
+ * 管理后台模式（props.admin）：/admin/space 复用本页。
+ * 差异：展示全部空间（不限「只看加入的」，含企业 + 个人空间），允许新建 / 删除；
+ * 工作台模式维持原有行为（只看加入的，企业与个人空间互相隔离）。
+ */
+const props = withDefaults(defineProps<{ admin?: boolean }>(), { admin: false })
+
+/** 管理后台模式走 /admin/space 全量专用接口，工作台模式走 /space 业务接口 */
+const spaceApi = {
+  query: (p: SpaceQueryParams) => (props.admin ? adminQuerySpaces(p) : querySpaces(p)),
+  create: (p: SpaceSaveParams) => (props.admin ? adminCreateSpace(p) : createSpace(p)),
+  update: (p: SpaceSaveParams) => (props.admin ? adminUpdateSpace(p) : updateSpace(p)),
+  remove: (id: number) => (props.admin ? adminDeleteSpace(id) : deleteSpace(id)),
+}
 
 /** 空间颜色候选（与问题类型一致，Apple 系统色） */
 const COLOR_OPTIONS = ['#0A84FF', '#5E5CE6', '#AF52DE', '#FF375F', '#FF3B30', '#FF9500', '#FFCC00', '#34C759', '#30B0C7', '#8E8E93']
@@ -218,7 +266,7 @@ const ALL_COLUMNS = [
   { title: '描述', key: 'description', ellipsis: true },
   { title: '更新时间', key: 'updateTime', width: 160 },
   { title: '启用', key: 'status', width: 80 },
-  { title: '操作', key: 'action', width: 190, fixed: 'right' as const },
+  { title: '操作', key: 'action', width: 220, fixed: 'right' as const },
 ]
 /** 个人空间列表不展示「所属组织」列 */
 const columns = computed(() =>
@@ -297,14 +345,14 @@ const pagination = computed<TablePaginationConfig>(() => ({
 async function loadSpaces() {
   loading.value = true
   try {
-    const res = await querySpaces({
+    const res = await spaceApi.query({
       keyword: keyword.value.trim() || undefined,
       status: statusFilter.value === 'all' ? undefined : Number(statusFilter.value),
       organizationId: orgFilter.value,
-      // 只展示当前用户加入的空间；企业与个人空间互相隔离
-      onlyJoined: true,
-      excludePersonal: isEnterpriseWorkspace.value,
-      personalOnly: !isEnterpriseWorkspace.value,
+      // 工作台只展示当前用户加入的空间（企业与个人互相隔离）；管理后台展示全量（隔离参数被服务端忽略）
+      onlyJoined: !props.admin,
+      excludePersonal: !props.admin && isEnterpriseWorkspace.value,
+      personalOnly: !props.admin && !isEnterpriseWorkspace.value,
       page: page.value,
       pageSize: pageSize.value,
     })
@@ -356,7 +404,7 @@ const togglingId = ref<number | null>(null)
 async function toggleStatus(r: SpaceItem, checked: boolean) {
   togglingId.value = r.id
   try {
-    const res = await updateSpace({ ...toSaveParams(r), status: checked ? 1 : 0 })
+    const res = await spaceApi.update({ ...toSaveParams(r), status: checked ? 1 : 0 })
     if (res?.success) {
       r.status = checked ? 1 : 0
       refreshSpaceCache()
@@ -488,8 +536,8 @@ async function handleSubmit() {
       status: form.status,
     }
     const res = editingId.value
-      ? await updateSpace({ ...payload, id: editingId.value })
-      : await createSpace(payload)
+      ? await spaceApi.update({ ...payload, id: editingId.value })
+      : await spaceApi.create(payload)
     if (res?.success) {
       modalOpen.value = false
       refreshSpaceCache()
@@ -509,6 +557,41 @@ function enterSpace(r: SpaceItem) {
   router.push({ name: 'SpaceHome', params: { spaceCode: r.spaceCode } })
 }
 
+// ---- 复制空间 ----
+const copyOpen = ref(false)
+const copying = ref(false)
+const copySource = ref<SpaceItem | null>(null)
+const copyName = ref('')
+
+function openCopy(r: SpaceItem) {
+  copySource.value = r
+  copyName.value = `${r.spaceName}-副本`
+  copyOpen.value = true
+}
+
+async function handleCopy() {
+  if (!copySource.value) return
+  const name = copyName.value.trim()
+  if (!name) {
+    message.warning('请输入新空间名称')
+    return
+  }
+  copying.value = true
+  try {
+    const res = await adminCopySpace(copySource.value.id, name)
+    if (res?.success) {
+      copyOpen.value = false
+      message.success('空间复制成功')
+      refreshSpaceCache()
+      loadSpaces()
+    }
+  } catch {
+    // 请求层已统一提示
+  } finally {
+    copying.value = false
+  }
+}
+
 // ---- 删除 ----
 function confirmDelete(r: SpaceItem) {
   // 个人空间不支持删除空间
@@ -522,7 +605,7 @@ function confirmDelete(r: SpaceItem) {
     centered: true,
     async onOk() {
       try {
-        const res = await deleteSpace(r.id)
+        const res = await spaceApi.remove(r.id)
         if (res?.success) {
           refreshSpaceCache()
           if (spaces.value.length === 1 && page.value > 1) page.value--
@@ -542,6 +625,17 @@ onMounted(() => {
 </script>
 
 <style scoped>
+/* 复制空间弹窗：复制范围说明 */
+.copy-hint {
+  margin: 0;
+  padding: 10px 12px;
+  font-size: 12px;
+  line-height: 1.7;
+  color: #6e6e73;
+  background: #f5f5f7;
+  border-radius: 8px;
+}
+
 /* 首次加载占位：保持表格区域高度稳定，数据回来后整块替换 */
 .page-skeleton {
   min-height: 360px;

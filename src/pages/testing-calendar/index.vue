@@ -412,7 +412,7 @@ const DEFAULT_START_FIELD_ID = 'createtime'
 /** 跨天展示的最大天数（开始到结束超过此天数时截断，避免异常数据铺满日历） */
 const MAX_SPAN_DAYS = 92
 /**
- * 日历自身需要、始终随查询请求的字段（均为 /availableField/list 的 fieldId；/issue/query 只返回 showField 里的字段）：
+ * 日历自身需要、始终随查询请求的字段（均为 /availableField/query 的 fieldId；/issue/query 只返回 showField 里的字段）：
  * 单号（跳详情）、状态（配色）；开始 / 结束日期字段见字段映射。是否展示仍取决于勾选
  */
 const REQUIRED_FIELD_IDS = ['issuekey', 'status']
@@ -559,7 +559,7 @@ const fieldLoading = ref(false)
 const fieldLoadingMore = ref(false)
 const fieldKeyword = ref('')
 const availableFields = ref<AvailableFieldItem[]>([])
-/** 字段分页：/availableField/list 按页拉取，滚动到底加载下一页 */
+/** 字段分页：/availableField/query 按页拉取，滚动到底加载下一页 */
 const FIELD_PAGE_SIZE = 30
 const fieldPage = ref(1)
 const fieldPageCount = ref(1)
@@ -743,7 +743,7 @@ const hiddenGroupKeys = ref<string[]>([])
 
 const groupFieldName = computed(() => fieldNames.value[groupFieldId.value] || groupFieldId.value)
 
-/** 可分组字段：/availableField/list 返回的全部字段 */
+/** 可分组字段：/availableField/query 返回的全部字段 */
 const groupFieldOptions = computed(() => availableFields.value)
 
 /** 勾选分组字段（单选）；点击已勾选的字段则取消分组 */
@@ -827,7 +827,7 @@ function buildQueryPayload(): IssueQueryPayload {
   const showFieldItemList = [...new Set([...REQUIRED_FIELD_IDS, ...mappingIds, ...shownFieldIds.value, ...groupIds])]
   return {
     globalFilter: buildGlobalFilter(filterConditions.value, filterLogic.value),
-    // 分组字段随查询传给后端：取 /availableField/list 的 fieldId（如 经办人 → systemfield_10004）；未分组时为空
+    // 分组字段随查询传给后端：取 /availableField/query 的 fieldId（如 经办人 → systemfield_10004）；未分组时为空
     group: {
       groupItemList: groupFieldId.value ? [{ field: { id: groupFieldId.value } }] : [],
       isFollowPreviousGroup: true,

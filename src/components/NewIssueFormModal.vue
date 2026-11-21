@@ -1476,7 +1476,7 @@ const addableFields = computed(() => {
 })
 
 let availableFieldsSeq = 0
-/** 拉取可用字段（/availableField/list，后端按关键词搜索）：每次展开都重新获取，保证与字段配置同步；过滤已废弃字段 */
+/** 拉取可用字段（/availableField/query，后端按关键词搜索）：每次展开都重新获取，保证与字段配置同步；过滤已废弃字段 */
 async function loadAvailableFields(keyword = '') {
   const seq = ++availableFieldsSeq
   availableFieldsLoading.value = true

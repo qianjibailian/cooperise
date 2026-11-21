@@ -8,6 +8,7 @@ import 'vxe-gantt/lib/style.css'
 import './tailwind.css'
 import App from './App.vue'
 import { setupRouter } from './router'
+import { vPermission } from './directives/permission'
 import { initTheme } from './utils/theme'
 // 中英文切换：dayjs 语言 + 运行时词典翻译（默认中文，记住上次选择）
 import { initLocale, loadRemoteDictionary, hasCachedDictionary, locale } from './i18n'
@@ -40,6 +41,7 @@ async function render(props?: { container?: HTMLElement }) {
 
   appInstance = createApp(App)
   appInstance.use(routerInstance)
+  appInstance.directive('permission', vPermission)
   appInstance.use(Antd)
   appInstance.use(VxeUI)
   appInstance.use(VxeGantt)

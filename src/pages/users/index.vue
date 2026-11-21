@@ -2,7 +2,8 @@
   <div class="mgmt-page">
     <header class="mgmt-header">
       <h2 class="mgmt-title">用户管理</h2>
-      <a-button type="primary" class="mgmt-create-btn" @click="openCreate">
+      <!-- 企业后台不受管理后台权限点控制；管理后台按权限显隐（后端接口权限兜底） -->
+      <a-button v-permission="isEnterprise ? [] : ['admin:user:create']" type="primary" class="mgmt-create-btn" @click="openCreate">
         <PlusOutlined /> 新增
       </a-button>
     </header>
@@ -85,13 +86,13 @@
           <template v-else-if="column.key === 'action'">
             <div class="row-actions">
               <a-tooltip title="编辑">
-                <span class="row-action" @click="openEdit(record as UserItem)"><EditOutlined /></span>
+                <span v-permission="isEnterprise ? [] : ['admin:user:update']" class="row-action" @click="openEdit(record as UserItem)"><EditOutlined /></span>
               </a-tooltip>
               <a-tooltip title="重置密码">
-                <span class="row-action" @click="confirmResetPassword(record as UserItem)"><KeyOutlined /></span>
+                <span v-permission="isEnterprise ? [] : ['admin:user:reset-password']" class="row-action" @click="confirmResetPassword(record as UserItem)"><KeyOutlined /></span>
               </a-tooltip>
               <a-tooltip title="删除">
-                <span class="row-action danger" @click="confirmDelete(record as UserItem)"><DeleteOutlined /></span>
+                <span v-permission="isEnterprise ? [] : ['admin:user:delete']" class="row-action danger" @click="confirmDelete(record as UserItem)"><DeleteOutlined /></span>
               </a-tooltip>
             </div>
           </template>

@@ -3,7 +3,7 @@
     <header class="mgmt-header">
       <h2 class="mgmt-title">国际化翻译</h2>
       <div class="header-actions">
-        <a-button type="primary" class="mgmt-create-btn" @click="openCreate">
+        <a-button v-permission="'admin:i18n:create'" type="primary" class="mgmt-create-btn" @click="openCreate">
           <PlusOutlined /> 新增
         </a-button>
       </div>
@@ -59,10 +59,10 @@
           <template v-else-if="column.key === 'action'">
             <div class="row-actions">
               <a-tooltip title="编辑">
-                <span class="row-action" @click="openEdit(record as I18nItem)"><EditOutlined /></span>
+                <span v-permission="'admin:i18n:update'" class="row-action" @click="openEdit(record as I18nItem)"><EditOutlined /></span>
               </a-tooltip>
               <a-tooltip title="删除">
-                <span class="row-action danger" @click="confirmDelete(record as I18nItem)"><DeleteOutlined /></span>
+                <span v-permission="'admin:i18n:delete'" class="row-action danger" @click="confirmDelete(record as I18nItem)"><DeleteOutlined /></span>
               </a-tooltip>
             </div>
           </template>

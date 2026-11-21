@@ -59,11 +59,12 @@
           class="sidebar-menu"
           @click="onMenuClick"
         >
-          <a-menu-item key="/admin/users">
+          <!-- 菜单权限：v-permission 无权限时移除菜单项（超管全可见；旧会话无权限快照时全可见） -->
+          <a-menu-item key="/admin/users" v-permission="'admin:user'">
             <component :is="UserOutlined" />
             <span>用户管理</span>
           </a-menu-item>
-          <a-menu-item key="/admin/roles">
+          <a-menu-item key="/admin/roles" v-permission="'admin:role'">
             <component :is="TeamOutlined" />
             <span>角色管理</span>
           </a-menu-item>
@@ -71,23 +72,27 @@
             <component :is="UnorderedListOutlined" />
             <span>菜单管理</span>
           </a-menu-item>
-          <a-menu-item key="/admin/positions">
+          <a-menu-item key="/admin/positions" v-permission="'admin:position'">
             <component :is="IdcardOutlined" />
             <span>岗位管理</span>
           </a-menu-item>
-          <a-menu-item key="/admin/organization">
+          <a-menu-item key="/admin/organization" v-permission="'admin:organization'">
             <component :is="ApartmentOutlined" />
             <span>组织管理</span>
           </a-menu-item>
-          <a-menu-item key="/admin/system-field">
+          <a-menu-item key="/admin/space" v-permission="'admin:space'">
+            <component :is="FolderOpenOutlined" />
+            <span>空间管理</span>
+          </a-menu-item>
+          <a-menu-item key="/admin/system-field" v-permission="'admin:system-field'">
             <component :is="AppstoreOutlined" />
             <span>系统字段</span>
           </a-menu-item>
-          <a-menu-item key="/admin/init-config">
+          <a-menu-item key="/admin/init-config" v-permission="'admin:init-config'">
             <component :is="SettingOutlined" />
             <span>初始化配置</span>
           </a-menu-item>
-          <a-menu-item key="/admin/i18n">
+          <a-menu-item key="/admin/i18n" v-permission="'admin:i18n'">
             <component :is="TranslationOutlined" />
             <span>国际化翻译</span>
           </a-menu-item>
@@ -109,6 +114,7 @@ import { useRoute, useRouter } from 'vue-router'
 import {
   ApartmentOutlined,
   AppstoreOutlined,
+  FolderOpenOutlined,
   IdcardOutlined,
   SettingOutlined,
   UnorderedListOutlined,

@@ -475,7 +475,7 @@ function handleFilterReset() {
   handleFilterSave()
 }
 
-// ---------- 字段列表（分组 / 展示字段共用，取 /availableField/list） ----------
+// ---------- 字段列表（分组 / 展示字段共用，取 /availableField/query） ----------
 const availableFields = ref<AvailableFieldItem[]>([])
 const fieldLoading = ref(false)
 

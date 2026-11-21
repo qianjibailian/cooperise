@@ -106,7 +106,7 @@ const emit = defineEmits<{
   (e: 'update:modelValue', value: SortItem[]): void
 }>()
 
-// ---------- 字段：与全局筛选一致，取 /availableField/list（自定义字段 + 系统字段） ----------
+// ---------- 字段：与全局筛选一致，取 /availableField/query（自定义字段 + 系统字段） ----------
 const fieldLoading = ref(false)
 const availableFields = ref<AvailableFieldItem[]>([])
 

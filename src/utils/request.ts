@@ -115,7 +115,6 @@ function toApiError(error: any): ApiError {
  */
 function handleUnauthorized(err: ApiError) {
   if (useAuth().isLoggedIn.value) {
-    notifier.warning('登录已失效，请重新登录')
     clearAuth()
   } else {
     showError(err.message)

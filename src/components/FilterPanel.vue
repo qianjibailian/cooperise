@@ -333,7 +333,7 @@ function fieldOptionsFor(c: FilterCondition): Option[] {
 async function loadAvailableFields() {
   fieldLoading.value = true
   try {
-    // 与日历「分组」「字段」同源：/availableField/list（自定义字段 + 系统字段），一次取全量
+    // 与日历「分组」「字段」同源：/availableField/query（自定义字段 + 系统字段），一次取全量
     const res = await queryWorkbenchFieldList({ page: 1, pageSize: 500, searchKey: '' })
     if (res?.success && res.data?.list) availableFields.value = res.data.list.filter((f) => !f.obsolete)
   } catch {
