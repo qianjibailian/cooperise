@@ -1,21 +1,24 @@
 <template>
   <div class="permissions-page">
-    <div class="page-header">
+    <header class="page-header">
       <div>
         <h1 class="page-title">权限管理</h1>
+        <p class="page-desc">菜单、按钮与接口权限点的统一视图，支持展开层级、搜索与启停</p>
       </div>
-    </div>
+    </header>
 
-    <a-card class="table-card" :bordered="false">
+    <section class="table-card">
       <div class="table-toolbar">
         <div class="toolbar-left">
-          <a-input-search
+          <a-input
             v-model:value="searchValue"
             placeholder="搜索权限名称"
             class="search-input"
             allow-clear
-          />
-          <a-select v-model:value="filterType" class="filter-select" placeholder="类型">
+          >
+            <template #prefix><SearchOutlined class="search-icon" /></template>
+          </a-input>
+          <a-select v-model:value="filterType" class="filter-select" placeholder="全部类型">
             <a-select-option value="">全部类型</a-select-option>
             <a-select-option value="1">菜单</a-select-option>
             <a-select-option value="2">按钮</a-select-option>
@@ -23,12 +26,11 @@
           </a-select>
         </div>
         <div class="toolbar-right">
-          <a-button class="icon-only-btn">
-            <component :is="ReloadOutlined" />
-          </a-button>
-          <a-button class="icon-only-btn">
-            <component :is="SettingOutlined" />
-          </a-button>
+          <a-tooltip title="刷新">
+            <button type="button" class="ghost-icon-btn">
+              <ReloadOutlined />
+            </button>
+          </a-tooltip>
         </div>
       </div>
 
@@ -41,45 +43,51 @@
       >
         <template #bodyCell="{ column, record }">
           <template v-if="column.key === 'title'">
-            <div class="title-cell" :style="{ paddingLeft: record.level * 24 + 'px' }">
-              <span v-if="record.hasChildren" class="expand-icon" @click="toggleExpand(record.key)">
-                <component :is="expandedKeys.includes(record.key) ? DownOutlined : RightOutlined" />
+            <div class="title-cell" :style="{ paddingLeft: record.level * 28 + 'px' }">
+              <span
+                v-if="record.hasChildren"
+                class="expand-icon"
+                :class="{ 'is-open': expandedKeys.includes(record.key) }"
+                @click="toggleExpand(record.key)"
+              >
+                <RightOutlined />
               </span>
               <span v-else class="expand-icon-placeholder"></span>
+              <span :class="['perm-badge', `perm-badge--t${record.type}`]">
+                <component :is="typeIconOf(record.type)" />
+              </span>
               <span class="perm-title">{{ record.title }}</span>
-              <a-tag :color="getTypeColor(record.type)" class="type-tag">
-                {{ getTypeName(record.type) }}
-              </a-tag>
+              <span :class="['type-chip', `type-chip--t${record.type}`]">{{ getTypeName(record.type) }}</span>
             </div>
           </template>
           <template v-else-if="column.key === 'status'">
-            <a-tag :color="record.status === 1 ? 'success' : 'default'" class="status-tag">
-              {{ record.status === 1 ? '启用' : '禁用' }}
-            </a-tag>
+            <span class="status-dot" :class="record.status === 1 ? 'is-on' : 'is-off'">
+              <i class="status-dot-circle" />{{ record.status === 1 ? '启用' : '禁用' }}
+            </span>
           </template>
           <template v-else-if="column.key === 'action'">
-            <a-space size="small">
-              <a-button type="link" size="small" @click="editPermission(record)">编辑</a-button>
-              <a-button
-                type="link"
-                size="small"
-                :danger="record.status === 1"
+            <div class="row-actions">
+              <a class="row-action" @click="editPermission(record)">编辑</a>
+              <a
+                class="row-action"
+                :class="{ 'is-danger': record.status === 1 }"
                 @click="toggleStatus(record)"
               >
                 {{ record.status === 1 ? '禁用' : '启用' }}
-              </a-button>
-            </a-space>
+              </a>
+            </div>
           </template>
         </template>
       </a-table>
-    </a-card>
+    </section>
 
     <a-modal
       v-model:open="showModal"
       :title="isEdit ? '编辑权限' : '新增权限'"
       :footer="null"
-      :width="880"
-      class="modal-landscape perm-modal"
+      :width="640"
+      centered
+      class="perm-modal"
     >
       <a-form :model="form" layout="vertical" class="perm-form">
         <a-row :gutter="16">
@@ -90,7 +98,7 @@
           </a-col>
           <a-col :span="12">
             <a-form-item label="权限编码">
-              <a-input v-model:value="form.code" placeholder="请输入权限编码" />
+              <a-input v-model:value="form.code" placeholder="如 admin:user:create" />
             </a-form-item>
           </a-col>
         </a-row>
@@ -126,7 +134,7 @@
         <a-row :gutter="16">
           <a-col :span="12">
             <a-form-item label="排序">
-              <a-input-number v-model:value="form.sortOrder" style="width: 100%" />
+              <a-input-number v-model:value="form.sortOrder" :min="0" placeholder="默认 0" style="width: 100%" />
             </a-form-item>
           </a-col>
           <a-col :span="12">
@@ -139,8 +147,8 @@
           </a-col>
         </a-row>
         <div class="form-footer">
-          <a-button @click="showModal = false">取消</a-button>
-          <a-button type="primary" @click="handleSubmit">确认</a-button>
+          <a-button class="cancel-btn" @click="showModal = false">取消</a-button>
+          <a-button type="primary" class="confirm-btn" @click="handleSubmit">确认</a-button>
         </div>
       </a-form>
     </a-modal>
@@ -151,9 +159,11 @@
 import { ref, reactive, computed } from 'vue'
 import {
   ReloadOutlined,
-  SettingOutlined,
-  DownOutlined,
+  SearchOutlined,
   RightOutlined,
+  AppstoreOutlined,
+  ApiOutlined,
+  CodeOutlined,
 } from '@ant-design/icons-vue'
 
 interface Permission {
@@ -175,10 +185,9 @@ const expandedKeys = ref<string[]>(['1'])
 
 const columns = [
   { title: '权限名称', dataIndex: 'title', key: 'title' },
-  { title: '类型', dataIndex: 'type', key: 'type', width: 100 },
-  { title: '状态', dataIndex: 'status', key: 'status', width: 100 },
-  { title: '排序', dataIndex: 'sortOrder', key: 'sortOrder', width: 80 },
-  { title: '操作', key: 'action', width: 180, fixed: 'right' },
+  { title: '状态', dataIndex: 'status', key: 'status', width: 110 },
+  { title: '排序', dataIndex: 'sortOrder', key: 'sortOrder', width: 90 },
+  { title: '操作', key: 'action', width: 140, fixed: 'right' as const },
 ]
 
 const permissionTree = ref<Permission[]>([
@@ -270,17 +279,15 @@ const form = reactive({
   parentId: 0,
   path: '',
   method: '',
-  sortOrder: 0,
+  /** 排序默认清空（不填提交时按 0 处理） */
+  sortOrder: null as number | null,
   status: 1,
 })
 
-function getTypeColor(type: number) {
-  const colors: Record<number, string> = {
-    1: 'blue',
-    2: 'green',
-    3: 'orange',
-  }
-  return colors[type] || 'default'
+/** 类型 → 图标（菜单 / 按钮 / 接口） */
+function typeIconOf(type: number) {
+  const icons: Record<number, unknown> = { 1: AppstoreOutlined, 2: ApiOutlined, 3: CodeOutlined }
+  return icons[type] || AppstoreOutlined
 }
 
 function getTypeName(type: number) {
@@ -305,7 +312,7 @@ function editPermission(record: Permission) {
   isEdit.value = true
   form.name = record.title
   form.type = record.type
-  form.sortOrder = record.sortOrder
+  form.sortOrder = record.sortOrder ?? null
   form.status = record.status
   showModal.value = true
 }
@@ -321,6 +328,7 @@ function handleSubmit() {
 </script>
 
 <style scoped>
+/* Teambition 风格：浅灰底、轻量卡片、彩色图标标识、圆点状态、紧凑行高 */
 .permissions-page {
   padding: 20px 24px 32px;
 }
@@ -329,60 +337,43 @@ function handleSubmit() {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  margin-bottom: 24px;
-  flex-wrap: wrap;
-  gap: 16px;
+  margin-bottom: 16px;
 }
 
 .page-title {
-  font-size: 24px;
-  font-weight: 700;
-  color: #1f2937;
-  margin: 0 0 4px 0;
-  letter-spacing: -0.5px;
-}
-
-.page-subtitle {
-  font-size: 14px;
-  color: #6b7280;
   margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+  color: #1f2329;
+  letter-spacing: -0.2px;
 }
 
-.header-actions {
-  display: flex;
-  gap: 12px;
-}
-
-.action-btn {
-  border-radius: 10px;
-  height: 40px;
-  padding: 0 20px;
-  font-weight: 500;
+.page-desc {
+  margin: 6px 0 0;
+  font-size: 13px;
+  color: #8f959e;
 }
 
 .table-card {
-  border-radius: 16px;
+  background: #fff;
+  border: 1px solid #e8eaed;
+  border-radius: 10px;
   overflow: hidden;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-}
-
-.table-card :deep(.ant-card-body) {
-  padding: 0;
 }
 
 .table-toolbar {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 20px 24px;
-  border-bottom: 1px solid #f3f4f6;
+  padding: 14px 20px;
+  border-bottom: 1px solid #f0f1f3;
   flex-wrap: wrap;
   gap: 12px;
 }
 
 .toolbar-left {
   display: flex;
-  gap: 12px;
+  gap: 10px;
   flex-wrap: wrap;
 }
 
@@ -391,124 +382,298 @@ function handleSubmit() {
   gap: 8px;
 }
 
+/* 浅灰底无边框搜索框（Teambition 工具栏样式） */
 .search-input {
-  width: 280px;
+  width: 260px;
 }
 
 .search-input :deep(.ant-input-affix-wrapper) {
-  border-radius: 10px;
+  height: 34px;
+  background: #f5f6f7;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.search-input :deep(.ant-input-affix-wrapper:hover),
+.search-input :deep(.ant-input-affix-wrapper-focused) {
+  background: #fff;
+  border-color: #d0d3d6;
+}
+
+.search-input :deep(.ant-input) {
+  background: transparent;
+}
+
+.search-icon {
+  color: #a9adb3;
 }
 
 .filter-select {
-  width: 140px;
+  width: 120px;
 }
 
 .filter-select :deep(.ant-select-selector) {
-  border-radius: 10px !important;
+  height: 34px;
+  background: #f5f6f7 !important;
+  border: 1px solid transparent !important;
+  border-radius: 8px !important;
 }
 
-.icon-only-btn {
-  width: 40px;
-  height: 40px;
-  border-radius: 10px;
-  display: flex;
+.filter-select :deep(.ant-select-selector .ant-select-selection-item) {
+  line-height: 32px;
+}
+
+.filter-select :deep(.ant-select-arrow) {
+  color: #8f959e;
+}
+
+/* 右侧幽灵图标按钮 */
+.ghost-icon-btn {
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
+  font-size: 15px;
+  color: #646a73;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.ghost-icon-btn:hover {
+  color: #1f2329;
+  background: #f0f1f3;
 }
 
 .permissions-table {
-  padding: 0 24px 24px;
+  padding: 0 20px 16px;
 }
 
 .permissions-table :deep(.ant-table-thead > tr > th) {
-  background: #f9fafb;
-  color: #6b7280;
-  font-weight: 600;
-  font-size: 13px;
-  border-bottom: 1px solid #e5e7eb;
+  background: transparent;
+  color: #8f959e;
+  font-weight: 500;
+  font-size: 12px;
+  border-bottom: 1px solid #f0f1f3;
+  padding: 10px 12px;
 }
 
 .permissions-table :deep(.ant-table-tbody > tr > td) {
-  border-bottom: 1px solid #f3f4f6;
-  padding: 16px 12px;
+  border-bottom: 1px solid #f5f6f7;
+  padding: 11px 12px;
+  font-size: 13px;
+}
+
+.permissions-table :deep(.ant-table-tbody > tr:last-child > td) {
+  border-bottom: none;
 }
 
 .permissions-table :deep(.ant-table-tbody > tr:hover > td) {
-  background: #f9fafb;
+  background: #f7f8fa;
 }
 
+/* 名称单元格：缩进 + 展开箭头 + 类型图标 */
 .title-cell {
   display: flex;
   align-items: center;
   gap: 8px;
+  min-width: 0;
 }
 
 .expand-icon {
-  cursor: pointer;
-  color: #6b7280;
-  font-size: 12px;
-  width: 16px;
-  height: 16px;
-  display: flex;
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.2s;
+  font-size: 11px;
+  color: #8f959e;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: transform 0.18s ease, color 0.15s, background 0.15s;
+}
+
+.expand-icon.is-open {
+  transform: rotate(90deg);
 }
 
 .expand-icon:hover {
-  color: #374151;
+  color: #1f2329;
+  background: #eceef0;
 }
 
 .expand-icon-placeholder {
-  width: 16px;
-  height: 16px;
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+
+/* 类型彩色圆角图标（Teambition 应用图标风格） */
+.perm-badge {
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  border-radius: 7px;
+}
+
+.perm-badge--t1 {
+  color: #5b6bf6;
+  background: #eef0ff;
+}
+
+.perm-badge--t2 {
+  color: #0a8fe0;
+  background: #e6f4fd;
+}
+
+.perm-badge--t3 {
+  color: #14a575;
+  background: #e6f7f0;
 }
 
 .perm-title {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 500;
-  color: #1f2937;
+  color: #1f2329;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.type-tag {
-  margin-left: 8px;
+/* 类型轻量小标签 */
+.type-chip {
+  flex-shrink: 0;
+  padding: 1px 8px;
+  font-size: 12px;
+  line-height: 18px;
+  border-radius: 4px;
 }
 
-.status-tag {
-  display: flex;
+.type-chip--t1 {
+  color: #5b6bf6;
+  background: #eef0ff;
+}
+
+.type-chip--t2 {
+  color: #0a8fe0;
+  background: #e6f4fd;
+}
+
+.type-chip--t3 {
+  color: #14a575;
+  background: #e6f7f0;
+}
+
+/* 状态：小圆点 + 文字（替代大色块 tag） */
+.status-dot {
+  display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
+  font-size: 13px;
+  color: #646a73;
 }
 
+.status-dot-circle {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
+.status-dot.is-on .status-dot-circle {
+  background: #14a575;
+}
+
+.status-dot.is-off .status-dot-circle {
+  background: #bbbfc4;
+}
+
+.status-dot.is-off {
+  color: #8f959e;
+}
+
+/* 行内操作：浅灰文字链接 */
+.row-actions {
+  display: inline-flex;
+  gap: 14px;
+}
+
+.row-action {
+  font-size: 13px;
+  color: #646a73;
+  cursor: pointer;
+  transition: color 0.15s;
+}
+
+.row-action:hover {
+  color: #3370ff;
+}
+
+.row-action.is-danger:hover {
+  color: #d83931;
+}
+
+/* 弹窗：轻圆角、紧凑表单 */
 .perm-modal :deep(.ant-modal-content) {
-  border-radius: 16px;
+  border-radius: 12px;
+  padding: 0;
 }
 
 .perm-modal :deep(.ant-modal-header) {
-  padding: 24px 24px 16px;
-  border-bottom: 1px solid #f3f4f6;
+  padding: 18px 24px;
+  border-bottom: 1px solid #f0f1f3;
+  margin-bottom: 0;
 }
 
 .perm-modal :deep(.ant-modal-title) {
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 600;
+  color: #1f2329;
 }
 
 .perm-modal :deep(.ant-modal-body) {
-  padding: 24px;
+  padding: 20px 24px 24px;
 }
 
 .perm-form :deep(.ant-form-item-label > label) {
+  font-size: 13px;
   font-weight: 500;
-  color: #374151;
+  color: #646a73;
 }
 
 .form-footer {
   display: flex;
   justify-content: flex-end;
-  gap: 12px;
-  margin-top: 24px;
-  padding-top: 24px;
-  border-top: 1px solid #f3f4f6;
+  gap: 10px;
+  margin-top: 8px;
+  padding-top: 16px;
+  border-top: 1px solid #f0f1f3;
+}
+
+.cancel-btn {
+  border-radius: 8px;
+}
+
+.confirm-btn {
+  border-radius: 8px;
+}
+
+@media (max-width: 768px) {
+  .permissions-page {
+    padding: 16px;
+  }
+
+  .search-input {
+    flex: 1 1 100%;
+    width: auto;
+  }
 }
 </style>

@@ -133,7 +133,16 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { Modal, type FormInstance, type TablePaginationConfig } from 'ant-design-vue'
 import type { Rule } from 'ant-design-vue/es/form'
 import { PlusOutlined, SearchOutlined, ReloadOutlined, EditOutlined, DeleteOutlined, TeamOutlined } from '@ant-design/icons-vue'
-import { queryRoles, createRole, updateRole, deleteRole, listRolePermissions, saveRolePermissions, type RoleItem, type RoleSaveParams, type PermissionItem } from '@/api/faiz'
+import {
+  queryRoles, createRole, updateRole, deleteRole, listRolePermissions, saveRolePermissions,
+  enterpriseQueryRoles, enterpriseCreateRole, enterpriseUpdateRole, enterpriseDeleteRole,
+  enterpriseListRolePermissions, enterpriseSaveRolePermissions,
+  type RoleItem, type RoleSaveParams, type PermissionItem,
+} from '@/api/faiz'
+import { useEnterpriseScope } from '@/utils/enterprise-scope'
+
+/** 企业后台走 /enterprise/role/** 端点（仅本企业角色），管理后台走 /role/** */
+const { isEnterprise } = useEnterpriseScope()
 
 const STATUS_FILTERS = [
   { label: '全部', value: 'all' },
@@ -172,12 +181,15 @@ const pagination = computed<TablePaginationConfig>(() => ({
 async function loadRoles() {
   loading.value = true
   try {
-    const res = await queryRoles({
+    const params = {
       keyword: keyword.value.trim() || undefined,
       status: statusFilter.value === 'all' ? undefined : Number(statusFilter.value),
       page: page.value,
       pageSize: pageSize.value,
-    })
+    }
+    const res = isEnterprise.value
+      ? await enterpriseQueryRoles(params)
+      : await queryRoles(params)
     if (res?.success) {
       roles.value = res.data?.list || []
       total.value = Number(res.data?.total || 0)
@@ -211,13 +223,14 @@ const togglingId = ref<number | null>(null)
 async function toggleStatus(r: RoleItem, checked: boolean) {
   togglingId.value = r.id
   try {
-    const res = await updateRole({
+    const payload = {
       id: r.id,
       roleName: r.roleName,
       description: r.description,
       sort: r.sort,
       status: checked ? 1 : 0,
-    })
+    }
+    const res = isEnterprise.value ? await enterpriseUpdateRole(payload) : await updateRole(payload)
     if (res?.success) r.status = checked ? 1 : 0
   } catch {
     // 请求层已统一提示
@@ -281,14 +294,18 @@ async function handleSubmit() {
       sort: editingId.value ? form.sort : undefined,
     }
     const res = editingId.value
-      ? await updateRole({ ...payload, id: editingId.value })
-      : await createRole(payload)
+      ? await (isEnterprise.value
+          ? enterpriseUpdateRole({ ...payload, id: editingId.value })
+          : updateRole({ ...payload, id: editingId.value }))
+      : await (isEnterprise.value ? enterpriseCreateRole(payload) : createRole(payload))
     if (res?.success) {
       // 保存权限点（新建用返回的角色 ID；失败不阻塞角色保存，可再次编辑补保存）
       const roleId = editingId.value ?? res.data?.id
       if (roleId != null) {
         try {
-          await saveRolePermissions(roleId, collectPermCodes())
+          await (isEnterprise.value
+            ? enterpriseSaveRolePermissions(roleId, collectPermCodes())
+            : saveRolePermissions(roleId, collectPermCodes()))
         } catch {
           // 请求层已统一提示
         }
@@ -315,7 +332,7 @@ function confirmDelete(r: RoleItem) {
     centered: true,
     async onOk() {
       try {
-        const res = await deleteRole(r.id)
+        const res = isEnterprise.value ? await enterpriseDeleteRole(r.id) : await deleteRole(r.id)
         if (res?.success) {
           if (roles.value.length === 1 && page.value > 1) page.value--
           loadRoles()
@@ -342,7 +359,7 @@ const permGroups = ref<PermGroup[]>([])
 
 async function loadPermissions() {
   try {
-    const res = await listRolePermissions()
+    const res = isEnterprise.value ? await enterpriseListRolePermissions() : await listRolePermissions()
     if (!res?.success) return
     const perms: PermissionItem[] = res.data || []
     const menus = perms.filter((p) => p.permType === 'menu')

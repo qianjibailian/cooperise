@@ -14,8 +14,13 @@ export function useEnterpriseScope() {
   const rootOrganizationCode = computed<string | undefined>(() => {
     if (!isEnterprise.value) return undefined
     const ws = currentWorkspace.value
-    const org = (user.value?.organizations || []).find((o) => String(o.id) === ws)
-    return org?.organizationCode
+    const orgs = user.value?.organizations || []
+    // 优先：当前工作空间对应的组织（从顶栏切换进入企业后台的正常路径）
+    const matched = orgs.find((o) => String(o.id) === ws)
+    if (matched) return matched.organizationCode
+    // 回退：直接进入 /enterprise/* 而工作空间未切到企业时，取所属企业根（orgLevel=1 或无上级）
+    const root = orgs.find((o) => o.orgLevel === 1 || o.parentId == null)
+    return root?.organizationCode
   })
   return { isEnterprise, rootOrganizationCode }
 }

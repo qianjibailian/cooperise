@@ -329,8 +329,24 @@
             <div class="user-divider" />
 
             <div class="user-menu-list">
-              <div class="user-menu-text" @click="setLocale(locale === 'en' ? 'zh' : 'en')">
-                {{ locale === 'en' ? '切换到中文' : 'Switch to English' }}
+              <div class="lang-switch">
+                <span class="lang-switch-label"><GlobalOutlined /> 语言</span>
+                <div class="lang-switch-seg" role="group" aria-label="语言切换">
+                  <button
+                    type="button"
+                    class="lang-switch-opt"
+                    :class="{ active: locale === 'zh' }"
+                    :aria-pressed="locale === 'zh'"
+                    @click.stop="setLocale('zh')"
+                  >中文</button>
+                  <button
+                    type="button"
+                    class="lang-switch-opt"
+                    :class="{ active: locale === 'en' }"
+                    :aria-pressed="locale === 'en'"
+                    @click.stop="setLocale('en')"
+                  >English</button>
+                </div>
               </div>
               <div class="user-menu-text" @click="handleMenuSelect('settings')">个人中心</div>
               <div class="user-menu-text" @click="handleMenuSelect('account')">账户设置</div>
@@ -414,6 +430,7 @@ import {
   ApartmentOutlined,
   NodeIndexOutlined,
   UploadOutlined,
+  GlobalOutlined,
 } from '@ant-design/icons-vue'
 import AppLogo from './AppLogo.vue'
 import OrgSetupModal from './OrgSetupModal.vue'
@@ -1453,9 +1470,6 @@ function onDocMoreMenu(e: { key?: string | number }) {
   padding: 0;
 }
 
-/* 中英文切换已移入用户下拉菜单 */
-
-
 .header-search {
   width: 220px;
   transition: width 0.3s ease;
@@ -1966,6 +1980,62 @@ function onDocMoreMenu(e: { key?: string | number }) {
 
 .user-menu-text:hover {
   color: var(--c-primary);
+}
+
+/* 语言切换：左侧标签 + 右侧分段控件，选中项为白色胶囊 */
+.lang-switch {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 0 8px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid #f5f5f7;
+}
+
+.lang-switch-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: #8a8a8f;
+  white-space: nowrap;
+}
+
+.lang-switch-label .anticon {
+  font-size: 14px;
+}
+
+.lang-switch-seg {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  background: #f2f2f5;
+  border-radius: 8px;
+}
+
+.lang-switch-opt {
+  padding: 3px 10px;
+  font-size: 12px;
+  line-height: 18px;
+  color: #8a8a8f;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 0.15s, background 0.15s, box-shadow 0.15s;
+}
+
+.lang-switch-opt:hover {
+  color: #1a1a1a;
+}
+
+.lang-switch-opt.active {
+  color: #1a1a1a;
+  font-weight: 600;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.1);
 }
 
 .user-divider {

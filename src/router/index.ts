@@ -17,6 +17,7 @@ import InitConfig from '@/pages/init-config/index.vue'
 import EnterpriseSettings from '@/pages/enterprise-settings/index.vue'
 import MenuManage from '@/pages/menus/index.vue'
 import Permissions from '@/pages/permissions/index.vue'
+import UserAuth from '@/pages/user-auth/index.vue'
 import Departments from '@/pages/departments/index.vue'
 import Requirements from '@/pages/requirements/index.vue'
 import Tasks from '@/pages/tasks/index.vue'
@@ -182,6 +183,8 @@ const routes: RouteRecordRaw[] = [
     children: [
       { path: '', redirect: '/enterprise/users' },
       { path: 'users', component: Users, name: 'EnterpriseUsers', meta: { title: '用户管理' } },
+      { path: 'users/:memberId/auth', component: UserAuth, name: 'EnterpriseUserAuth', meta: { title: '用户授权' } },
+      { path: 'roles', component: Roles, name: 'EnterpriseRoles', meta: { title: '角色管理' } },
       { path: 'positions', component: Positions, name: 'EnterprisePositions', meta: { title: '岗位管理' } },
       { path: 'permissions', component: Permissions, name: 'EnterprisePermissions', meta: { title: '授权管理' } },
       { path: 'settings', component: EnterpriseSettings, name: 'EnterpriseSettings', meta: { title: '设置管理' } },

@@ -117,7 +117,7 @@
           <a-input v-model:value="form.permName" :maxlength="32" placeholder="如 删除空间" />
         </a-form-item>
         <a-form-item label="排序">
-          <a-input-number v-model:value="form.sort" :min="0" :max="999" style="width: 100%" />
+          <a-input-number v-model:value="form.sort" :min="0" :max="999" placeholder="默认 0" style="width: 100%" />
         </a-form-item>
         <a-form-item label="备注">
           <a-textarea v-model:value="form.remark" :rows="2" :maxlength="200" placeholder="选填" />
@@ -227,6 +227,13 @@ const API_MAP: Record<string, string[]> = {
   'menu:space': ['模块入口开关（业务接口共用登录）'],
   'menu:enterprise': ['模块入口开关（业务接口共用登录）'],
   'menu:admin': ['模块入口开关（业务接口共用登录）'],
+  // 业务模块按钮权限（需求管控平台 / 云文档，用户授权页按模块勾选）
+  'workspace:issue:create': ['POST /issue/create'],
+  'workspace:issue:update': ['PUT /issue/{id}', 'PATCH /issue/{issueKey}'],
+  'workspace:issue:delete': ['DELETE /issue/{id}'],
+  'docs:doc:create': ['POST /docs/create', 'POST /docs/folder/create', 'POST /docs/library/create'],
+  'docs:doc:update': ['PUT /docs/{id}/content', 'POST /docs/rename', 'POST /docs/move', 'POST /docs/folder/rename', 'POST /docs/library/update'],
+  'docs:doc:delete': ['POST /docs/trash', 'POST /docs/delete', 'POST /docs/trash/empty', 'POST /docs/folder/delete', 'POST /docs/library/delete'],
 }
 
 // ---- 数据加载 ----
@@ -296,11 +303,12 @@ async function toggleStatus(p: PermissionItem, checked: boolean) {
 const modalOpen = ref(false)
 const saving = ref(false)
 const editing = ref<PermissionItem | null>(null)
-const form = reactive({ permName: '', sort: 0, remark: '' })
+/** 排序默认清空（不填提交时按 0 处理） */
+const form = reactive({ permName: '', sort: null as number | null, remark: '' })
 
 function openEdit(p: PermissionItem) {
   editing.value = p
-  Object.assign(form, { permName: p.permName, sort: p.sort ?? 0, remark: p.remark ?? '' })
+  Object.assign(form, { permName: p.permName, sort: p.sort ?? null, remark: p.remark ?? '' })
   modalOpen.value = true
 }
 
@@ -317,6 +325,7 @@ async function handleSubmit() {
       sort: form.sort ?? 0,
       remark: form.remark.trim() || undefined,
     })
+
     if (res?.success) {
       modalOpen.value = false
       loadPermissions()

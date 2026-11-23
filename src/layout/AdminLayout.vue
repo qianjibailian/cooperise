@@ -20,7 +20,7 @@
       @close-mobile="closeMobile"
     >
       <div class="side-panel" :class="{ 'side-panel-collapsed': sidebarCollapsed }">
-        <!-- 企业后台：用户 / 岗位 / 授权 / 组织 / 菜单 -->
+        <!-- 企业后台：用户 / 角色 / 岗位 / 组织 / 设置 -->
         <a-menu
           v-if="isEnterprise"
           theme="light"
@@ -33,6 +33,10 @@
             <component :is="UserOutlined" />
             <span>用户管理</span>
           </a-menu-item>
+          <a-menu-item key="/enterprise/roles">
+            <component :is="TeamOutlined" />
+            <span>角色管理</span>
+          </a-menu-item>
           <a-menu-item key="/enterprise/positions">
             <component :is="IdcardOutlined" />
             <span>岗位管理</span>
@@ -40,10 +44,6 @@
           <a-menu-item key="/enterprise/organization">
             <component :is="ApartmentOutlined" />
             <span>组织管理</span>
-          </a-menu-item>
-          <a-menu-item key="/enterprise/permissions">
-            <component :is="TeamOutlined" />
-            <span>授权管理</span>
           </a-menu-item>
           <a-menu-item key="/enterprise/settings">
             <component :is="SettingOutlined" />
