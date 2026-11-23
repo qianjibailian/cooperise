@@ -276,6 +276,8 @@ export interface PermissionItem {
   /** 所属菜单编码（按钮权限归属） */
   menuCode?: string | null
   sort?: number
+  /** 备注（菜单管理页可编辑） */
+  remark?: string | null
   status: number
 }
 
