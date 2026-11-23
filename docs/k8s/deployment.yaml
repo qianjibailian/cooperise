@@ -1,0 +1,62 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cooperise
+  namespace: qianjisan
+  labels:
+    app: cooperise
+spec:
+  replicas: 1
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels:
+      app: cooperise
+  template:
+    metadata:
+      labels:
+        app: cooperise
+    spec:
+      # ↓↓↓ 添加这一行 ↓↓↓
+      imagePullSecrets:
+        - name: aliyun-registry-secret
+      # ↑↑↑ 添加这一行 ↑↑↑
+      containers:
+        - name: cooperise
+          image: registry.cn-shanghai.aliyuncs.com/qianjisan/cooperise:2026-11-23-18-03-20  # ← 替换为你的实际镜像地址
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 80
+              name: http
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: faiz-config
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+          # 后端无 /health 接口，健康检查走 Spring Boot actuator（已在 JwtAuthInterceptor / WebMvcConfig 放行 /actuator/**）
+          # 启动探针：最多等 5 分钟（periodSeconds 5 × failureThreshold 60），期间不会因为启动慢被杀掉
+          startupProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 80
+            periodSeconds: 5
+            failureThreshold: 60
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 80
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: 80
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
