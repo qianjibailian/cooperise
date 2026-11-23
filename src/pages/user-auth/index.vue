@@ -80,7 +80,8 @@ import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
 import { LeftOutlined } from '@ant-design/icons-vue'
-import { listMenuPermissions, listUserDirectPermissions, saveUserDirectPermissions, type PermissionItem } from '@/api/faiz'
+import { listMenuPermissions, type PermissionItem } from '@/api/faiz'
+import { listUserDirectPermissions, saveUserDirectPermissions } from '@/api/enterprise'
 
 /**
  * 用户授权页（企业后台 · 用户管理行内「授权」进入）：
@@ -90,7 +91,6 @@ const route = useRoute()
 const router = useRouter()
 
 const memberId = typeof route.params.memberId === 'string' ? route.params.memberId : ''
-const displayName = typeof route.query.name === 'string' ? route.query.name : ''
 
 const initialized = ref(false)
 const saving = ref(false)

@@ -135,10 +135,12 @@ import type { Rule } from 'ant-design-vue/es/form'
 import { PlusOutlined, SearchOutlined, ReloadOutlined, EditOutlined, DeleteOutlined, TeamOutlined } from '@ant-design/icons-vue'
 import {
   queryRoles, createRole, updateRole, deleteRole, listRolePermissions, saveRolePermissions,
-  enterpriseQueryRoles, enterpriseCreateRole, enterpriseUpdateRole, enterpriseDeleteRole,
-  enterpriseListRolePermissions, enterpriseSaveRolePermissions,
   type RoleItem, type RoleSaveParams, type PermissionItem,
 } from '@/api/faiz'
+import {
+  enterpriseQueryRoles, enterpriseCreateRole, enterpriseUpdateRole, enterpriseDeleteRole,
+  enterpriseListRolePermissions, enterpriseSaveRolePermissions,
+} from '@/api/enterprise'
 import { useEnterpriseScope } from '@/utils/enterprise-scope'
 
 /** 企业后台走 /enterprise/role/** 端点（仅本企业角色），管理后台走 /role/** */

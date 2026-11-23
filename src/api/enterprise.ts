@@ -11,12 +11,14 @@ import type {
   UserSaveParams,
   RoleItem,
   RoleQueryParams,
+  RoleSaveParams,
   PositionItem,
   PositionQueryParams,
   PositionSaveParams,
   OrganizationNode,
   OrganizationSaveParams,
   EnterpriseSettings,
+  PermissionItem,
 } from './types'
 
 export function enterpriseCreateUser(data: UserSaveParams): Promise<Result<UserItem>> {
@@ -43,9 +45,46 @@ export function enterpriseGetUserDetail(id: number, rootOrganizationCode?: strin
   return request.post(`/enterprise/user/detail`, { id, rootOrganizationCode })
 }
 
-/** 企业用户编辑时的角色列表（只读，POST /enterprise/role/query） */
+/** 企业角色分页（POST /enterprise/role/query，仅当前企业角色） */
 export function enterpriseQueryRoles(data: RoleQueryParams): Promise<Result<{ list: RoleItem[]; total: number }>> {
   return request.post(`/enterprise/role/query`, data)
+}
+
+/** 企业内新建角色（POST /enterprise/role/create，归属当前企业） */
+export function enterpriseCreateRole(data: RoleSaveParams): Promise<Result<RoleItem>> {
+  return request.post(`/enterprise/role/create`, data)
+}
+
+/** 企业内修改角色（POST /enterprise/role/update，仅本企业角色） */
+export function enterpriseUpdateRole(data: RoleSaveParams): Promise<Result<RoleItem>> {
+  return request.post(`/enterprise/role/update`, data)
+}
+
+/** 企业内删除角色（POST /enterprise/role/delete，仅本企业角色） */
+export function enterpriseDeleteRole(id: number): Promise<Result<void>> {
+  return request.post(`/enterprise/role/delete`, { id })
+}
+
+/** 角色权限点目录（POST /enterprise/role/permission/list） */
+export function enterpriseListRolePermissions(): Promise<Result<PermissionItem[]>> {
+  return request.post(`/enterprise/role/permission/list`)
+}
+
+/** 保存企业角色权限（POST /enterprise/role/permission/save，全量替换） */
+export function enterpriseSaveRolePermissions(roleId: number, permCodes: string[]): Promise<Result<void>> {
+  return request.post(`/enterprise/role/permission/save`, { roleId, permCodes })
+}
+
+// ==================== 用户直接授权（用户管理「授权」） ====================
+
+/** 用户直接授权编码列表（POST /enterprise/user/permission/list；最终权限 = 角色权限 ∪ 直接授权） */
+export function listUserDirectPermissions(memberId: string): Promise<Result<string[]>> {
+  return request.post(`/enterprise/user/permission/list`, { memberId })
+}
+
+/** 保存用户直接授权（POST /enterprise/user/permission/save，全量替换） */
+export function saveUserDirectPermissions(memberId: string, permCodes: string[]): Promise<Result<void>> {
+  return request.post(`/enterprise/user/permission/save`, { memberId, permCodes })
 }
 
 export function enterpriseCreatePosition(data: PositionSaveParams): Promise<Result<PositionItem>> {
