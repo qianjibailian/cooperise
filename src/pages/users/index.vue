@@ -140,7 +140,7 @@
               <a-input v-model:value="form.email" placeholder="登录邮箱" :maxlength="128" />
             </a-form-item>
           </a-col>
-          <a-col :span="12">
+          <a-col v-if="!editingId" :span="12">
             <a-form-item label="企业微信 userid" name="wecomUserid">
               <a-input v-model:value="form.wecomUserid" placeholder="事项通知发到该成员，不填则收不到" :maxlength="64" />
             </a-form-item>
@@ -272,7 +272,7 @@ import {
 import {
   queryUsers, createUser, updateUser, deleteUser, resetUserPassword, getOrganizationTree, queryRoles, queryPositions, getUserDetail,
   enterpriseQueryUsers, enterpriseQueryPositions, enterpriseOrganizationTree,
-  enterpriseCreateUser, enterpriseUpdateUser, enterpriseDeleteUser, enterpriseResetUserPassword,
+  enterpriseCreateUser, enterpriseUpdateUser, enterpriseDeleteUser, enterpriseResetUserPassword, enterpriseGetUserDetail, enterpriseQueryRoles,
   type UserSaveParams, type OrganizationNode,
 } from '@/api/faiz'
 import { useSpaces } from '@/utils/space-store'
@@ -393,7 +393,7 @@ const sortedPositionOptions = computed(() => {
 async function loadOptions() {
   const [orgRes, roleRes, posRes] = await Promise.allSettled([
     (isEnterprise.value ? enterpriseOrganizationTree : getOrganizationTree)(rootOrganizationCode.value),
-    queryRoles({ page: 1, pageSize: 999, status: 1 }),
+    (isEnterprise.value ? enterpriseQueryRoles : queryRoles)({ page: 1, pageSize: 999, status: 1 }),
     (isEnterprise.value ? enterpriseQueryPositions : queryPositions)({ page: 1, pageSize: 999, status: 1, rootOrganizationCode: rootOrganizationCode.value }),
   ])
   if (posRes.status === 'fulfilled' && posRes.value?.success) {
@@ -526,7 +526,7 @@ async function openEdit(u: UserItem) {
   // 列表不返回空间：拉详情回填已拥有的空间
   spaceLoading.value = true
   try {
-    const [res] = await Promise.all([u.id != null ? getUserDetail(u.id) : null, ensureSpaces()])
+    const [res] = await Promise.all([u.id != null ? (isEnterprise.value ? enterpriseGetUserDetail(u.id, rootOrganizationCode.value) : getUserDetail(u.id)) : null, ensureSpaces()])
     if (res?.success && editingId.value === u.id) form.spaceCodes = (res.data?.spaces || []).map(s => s.spaceCode)
   } catch {
     // 请求层已统一提示
@@ -550,8 +550,8 @@ async function handleSubmit() {
       coAccount: undefined,
       email: form.email.trim(),
       userEnName: form.userEnName?.trim() || undefined,
-      // 编辑时空串表示清空，新增时不填则不传
-      wecomUserid: editingId.value ? (form.wecomUserid?.trim() ?? '') : form.wecomUserid?.trim() || undefined,
+      // 编辑时不提交（后端视为不修改），新增时不填则不传
+      wecomUserid: editingId.value ? undefined : form.wecomUserid?.trim() || undefined,
       deptId: form.deptId != null ? String(form.deptId) : undefined,
       // 始终明确提交勾选结果（空数组表示不分配空间）
       spaceCodes: [...form.spaceCodes],
@@ -560,7 +560,8 @@ async function handleSubmit() {
     const save = isEnterprise.value
       ? (editingId.value ? enterpriseUpdateUser : enterpriseCreateUser)
       : (editingId.value ? updateUser : createUser)
-    const res = await save(editingId.value ? { ...payload, id: editingId.value } : payload)
+    const body = { ...payload, rootOrganizationCode: isEnterprise.value ? rootOrganizationCode.value : undefined }
+    const res = await save(editingId.value ? { ...body, id: editingId.value } : body)
     if (res?.success) {
       modalOpen.value = false
       if (!editingId.value) page.value = 1
@@ -586,7 +587,7 @@ function confirmDelete(u: UserItem) {
     centered: true,
     async onOk() {
       try {
-        const res = await (isEnterprise.value ? enterpriseDeleteUser : deleteUser)(id)
+        const res = await (isEnterprise.value ? enterpriseDeleteUser(id, rootOrganizationCode.value) : deleteUser(id))
         if (res?.success) {
           // 删除当前页最后一条时回到上一页
           if (users.value.length === 1 && page.value > 1) page.value--
@@ -611,7 +612,7 @@ function confirmResetPassword(u: UserItem) {
     centered: true,
     async onOk() {
       try {
-        await (isEnterprise.value ? enterpriseResetUserPassword : resetUserPassword)(id)
+        await (isEnterprise.value ? enterpriseResetUserPassword(id, rootOrganizationCode.value) : resetUserPassword(id))
       } catch {
         // 请求层已统一提示
       }

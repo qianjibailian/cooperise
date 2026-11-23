@@ -17,14 +17,33 @@ const systemFieldApi = {
 </script>
 
 <template>
-  <AvailableField
-    :field-api="systemFieldApi"
-    :show-system-column="true"
-    :show-system-switch="true"
-    :show-filters="true"
-    :show-meta-columns="true"
-    :disable-field-num="false"
-    :custom-only="props.customOnly"
-    :space-code="props.spaceCode"
-  />
+  <div class="system-field-page">
+    <AvailableField
+      :field-api="systemFieldApi"
+      :show-system-column="true"
+      :show-system-switch="true"
+      :show-filters="true"
+      :show-meta-columns="true"
+      :disable-field-num="false"
+      :custom-only="props.customOnly"
+      :space-code="props.spaceCode"
+    />
+  </div>
 </template>
+
+<style scoped>
+/* 与岗位管理一致的页面留白：内容整体下移，左右 24px */
+.system-field-page {
+  padding: 20px 24px 32px;
+}
+
+.system-field-page :deep(.component-list-page) {
+  padding: 0;
+}
+
+@media (max-width: 768px) {
+  .system-field-page {
+    padding: 16px 16px 24px;
+  }
+}
+</style>

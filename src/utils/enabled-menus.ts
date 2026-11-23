@@ -6,12 +6,17 @@
  * 接口失败或尚未加载时默认放行（菜单全显示），避免网络问题导致导航空白。
  */
 import request from '@/utils/request'
+import { useAuth } from '@/utils/auth'
 
 let cache: string[] | null = null
 let loaded = false
 
 /** 拉取启用中的菜单编码（会话内只请求一次；可在菜单管理页启停后手动失效重拉） */
 export async function loadEnabledMenus(): Promise<string[]> {
+  // 未登录不请求（登录页等场景）
+  const { isLoggedIn, refresh } = useAuth()
+  refresh()
+  if (!isLoggedIn.value) return cache || []
   if (loaded) return cache || []
   try {
     const res = await request.post(`/menu/enabled`)

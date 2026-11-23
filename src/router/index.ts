@@ -240,7 +240,7 @@ export function setupRouter() {
   })
 
   // 未登录访问业务页 → 登录页（带回跳地址）；已登录访问登录页 → 首页
-  router.beforeEach((to) => {
+  router.beforeEach(async (to) => {
     const { isLoggedIn, refresh } = useAuth()
     refresh()
     if (to.meta.public) {
@@ -249,12 +249,13 @@ export function setupRouter() {
     if (!isLoggedIn.value) {
       return { name: 'Login', query: { redirect: to.fullPath } }
     }
-    // 全局模块菜单开关：菜单管理中停用的模块（menu:xxx）直接访问会被拦截回工作台
-    // （缓存未就绪时放行，异步预热；入口显隐由 FloatingModuleNav / WorkbenchRail 过滤）
-    void loadEnabledMenus()
+    // 全局模块菜单开关：只有访问带 menuCode 的模块路由时才拉取启用列表（登录页跳转、首页等不请求）
     const menuCode = to.matched.map((r) => r.meta.menuCode).find(Boolean) as string | undefined
-    if (menuCode && !isMenuEnabled(menuCode)) {
-      return { path: '/workbench' }
+    if (menuCode) {
+      await loadEnabledMenus()
+      if (!isMenuEnabled(menuCode)) {
+        return { path: '/workbench' }
+      }
     }
     // 管理后台菜单权限：路由 meta.permission 校验（超管恒过；旧会话无权限快照时放行，后端鉴权兜底）
     const perm = to.meta.permission as string | undefined

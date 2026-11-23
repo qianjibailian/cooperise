@@ -90,7 +90,7 @@
               v-permission="admin ? ['admin:space:update'] : []"
               size="small"
               :checked="record.status === 1"
-              :disabled="!record.organizationCode"
+              :disabled="!admin && !record.organizationCode"
               :loading="togglingId === record.id"
               @change="(v: boolean) => toggleStatus(record as SpaceItem, v)"
             />
@@ -268,9 +268,9 @@ const ALL_COLUMNS = [
   { title: '启用', key: 'status', width: 80 },
   { title: '操作', key: 'action', width: 220, fixed: 'right' as const },
 ]
-/** 个人空间列表不展示「所属组织」列 */
+/** 个人空间列表不展示「所属组织」列；管理后台列出全部空间，始终展示 */
 const columns = computed(() =>
-  ALL_COLUMNS.filter((c) => !(c.enterpriseOnly && !isEnterpriseWorkspace.value)).map(({ enterpriseOnly, ...c }) => c),
+  ALL_COLUMNS.filter((c) => !(c.enterpriseOnly && !(props.admin || isEnterpriseWorkspace.value))).map(({ enterpriseOnly, ...c }) => c),
 )
 
 /** 头像文字：取名称首字（英文取前两位大写） */
@@ -491,8 +491,8 @@ const rules: Record<string, Rule[]> = {
 }
 
 function openCreate() {
-  // 个人空间不支持新建空间
-  if (!isEnterpriseWorkspace.value) return
+  // 个人空间不支持新建空间（管理后台不受工作台模式限制）
+  if (!props.admin && !isEnterpriseWorkspace.value) return
   editingId.value = null
   editingPersonal.value = false
   Object.assign(form, emptyForm())
@@ -502,7 +502,7 @@ function openCreate() {
 function openEdit(r: SpaceItem) {
   editingId.value = r.id
   editingCode.value = r.spaceCode
-  editingPersonal.value = !r.organizationCode
+  editingPersonal.value = !props.admin && !r.organizationCode
   if (r.ownerMemberId && r.ownerName && !userNameMap[r.ownerMemberId]) userNameMap[r.ownerMemberId] = r.ownerName
   Object.assign(form, {
     spaceName: r.spaceName ?? '',
@@ -594,8 +594,8 @@ async function handleCopy() {
 
 // ---- 删除 ----
 function confirmDelete(r: SpaceItem) {
-  // 个人空间不支持删除空间
-  if (!isEnterpriseWorkspace.value) return
+  // 个人空间不支持删除空间（管理后台不受工作台模式限制）
+  if (!props.admin && !isEnterpriseWorkspace.value) return
   Modal.confirm({
     title: `删除空间「${r.spaceName}」？`,
     content: '删除后空间内的成员关系将被移除，且不可恢复。',

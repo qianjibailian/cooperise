@@ -4,9 +4,17 @@
       <h2 class="mgmt-title">初始化配置</h2>
     </header>
 
-    <section class="mgmt-card">
+    <a-tabs v-model:activeKey="activeTab" class="init-tabs">
+      <a-tab-pane key="PERSONAL" tab="个人配置" />
+      <a-tab-pane key="ENTERPRISE" tab="企业配置" />
+      <a-tab-pane key="TASKS" tab="同步任务" />
+    </a-tabs>
+
+    <section v-if="activeTab === 'PERSONAL'" class="mgmt-card">
+      <div class="module-title">个人空间模板</div>
+      <p class="module-desc">新用户选择个人模式时，从这个空间复制数据到个人空间</p>
       <a-form layout="vertical" class="config-form">
-        <a-form-item label="个人空间模板" extra="新用户选择个人模式时，从这个空间复制数据到个人空间">
+        <a-form-item label="模板空间">
           <a-select
             v-model:value="personalSelected"
             show-search
@@ -21,7 +29,17 @@
             <span v-else-if="config.personal?.spaceName">当前：{{ config.personal.spaceName }}</span>
           </div>
         </a-form-item>
-        <a-form-item label="企业默认空间模板" extra="新用户创建企业时，从这个空间复制数据到企业默认空间">
+        <div class="actions">
+          <a-button type="primary" :loading="saving" @click="save">保存</a-button>
+        </div>
+      </a-form>
+    </section>
+
+    <section v-else-if="activeTab === 'ENTERPRISE'" class="mgmt-card">
+      <div class="module-title">企业默认空间模板</div>
+      <p class="module-desc">新用户创建企业时，从这个空间复制数据到企业默认空间</p>
+      <a-form layout="vertical" class="config-form">
+        <a-form-item label="模板空间">
           <a-select
             v-model:value="enterpriseSelected"
             show-search
@@ -42,7 +60,7 @@
       </a-form>
     </section>
 
-    <section class="mgmt-card task-card">
+    <section v-else class="mgmt-card task-card">
       <div class="task-header">
         <div>
           <h3 class="task-title">同步任务</h3>
@@ -61,7 +79,7 @@
         :pagination="false"
         row-key="id"
         size="small"
-        :scroll="{ x: 980 }"
+        :scroll="{ x: 1000 }"
         :expand-row-by-click="true"
         :expanded-row-keys="expandedKeys"
         @expand="onExpand"
@@ -144,7 +162,10 @@ const personalSelected = ref<string | undefined>()
 const enterpriseSelected = ref<string | undefined>()
 const spaceOptions = ref<{ value: string; label: string }[]>([])
 
-// ---- 同步任务 ----
+// ---- 模块切换：个人 / 企业 ----
+const activeTab = ref<'PERSONAL' | 'ENTERPRISE' | 'TASKS'>('PERSONAL')
+
+// ---- 同步任务（第三个页签，列出所有目标）----
 const STATUS_FILTERS = [
   { label: '全部', value: 'all' },
   { label: '进行中', value: 'RUNNING' },
@@ -234,10 +255,18 @@ function formatTime(v?: string) {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`
 }
 
-/** 有进行中的任务时每 3 秒刷新一次 */
-watch(hasRunning, (running) => {
+/** 仅在「同步任务」页签内、有进行中的任务时每 3 秒刷新一次 */
+function syncPolling() {
   clearInterval(pollTimer)
-  pollTimer = running ? setInterval(loadTasks, 3000) : undefined
+  pollTimer = activeTab.value === 'TASKS' && hasRunning.value ? setInterval(loadTasks, 3000) : undefined
+}
+watch(hasRunning, syncPolling)
+
+/** 切换页签：进入任务页签时加载任务并启停轮询，离开时停止轮询 */
+watch(activeTab, (tab) => {
+  expandedKeys.value = []
+  if (tab === 'TASKS') loadTasks()
+  syncPolling()
 })
 
 async function loadSpaces() {
@@ -296,7 +325,6 @@ function filterSpace(input: string, option?: { label?: string }) {
 onMounted(() => {
   loadSpaces()
   loadConfig()
-  loadTasks()
 })
 
 onBeforeUnmount(() => clearInterval(pollTimer))
@@ -318,6 +346,25 @@ onBeforeUnmount(() => clearInterval(pollTimer))
   font-weight: 600;
   letter-spacing: -0.2px;
   color: #1d1d1f;
+}
+
+.init-tabs {
+  max-width: 1100px;
+  margin-bottom: 8px;
+}
+
+.module-title {
+  margin: 0 0 4px;
+  font-size: 16px;
+  font-weight: 600;
+  color: #1d1d1f;
+}
+
+.module-desc {
+  margin: 0 0 16px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: #6e6e73;
 }
 
 .mgmt-card {
@@ -438,40 +485,6 @@ onBeforeUnmount(() => clearInterval(pollTimer))
   color: #1d1d1f;
 }
 
-.intro {
-  margin: 0 0 16px;
-  font-size: 13px;
-  line-height: 1.6;
-  color: #6e6e73;
-}
-
-.stat-row {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
-  margin-bottom: 20px;
-}
-
-.stat {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 12px;
-  background: #f5f5f7;
-  border-radius: 12px;
-}
-
-.stat-num {
-  font-size: 20px;
-  font-weight: 600;
-  color: #1d1d1f;
-}
-
-.stat-label {
-  font-size: 12px;
-  color: #86868b;
-}
-
 .actions {
   display: flex;
   align-items: center;
@@ -487,10 +500,6 @@ onBeforeUnmount(() => clearInterval(pollTimer))
 @media (max-width: 768px) {
   .mgmt-page {
     padding: 16px;
-  }
-
-  .stat-row {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 </style>

@@ -42,33 +42,33 @@ import type {
 
 /** 模板列表（分页查询 POST /template/query） */
 export function queryTemplates(data?: TemplateQueryRequest): Promise<Result<TemplatePageData>> {
-  return request.post(`/template/query`, data)
+  return request.post(`/admin/template/query`, data)
 }
 
 /** 模板详情 */
 export function getTemplate(id: number): Promise<Result<Template>> {
-  return request.get(`/template/${id}`)
+  return request.get(`/admin/template/${id}`)
 }
 
 /** 创建模板 */
 export function createTemplate(data: Record<string, unknown>): Promise<Result<Template>> {
-  return request.post(`/template`, data)
+  return request.post(`/admin/template`, data)
 }
 
 /** 更新模板 */
 export function updateTemplate(id: number, data: Record<string, unknown>): Promise<Result<Template>> {
-  return request.put(`/template/${id}`, data)
+  return request.put(`/admin/template/${id}`, data)
 }
 
 /** 删除模板 */
 export function deleteTemplate(id: number): Promise<Result<void>> {
-  return request.delete(`/template/${id}`)
+  return request.delete(`/admin/template/${id}`)
 }
 
 
 /** 复制模板 */
 export function copyTemplate(id: number): Promise<Result<Template>> {
-  return request.post(`/template/${id}/copy`)
+  return request.post(`/admin/template/${id}/copy`)
 }
 
 /** 模板预览（表单模式，GET /template/{id}/preview/form） */
@@ -304,7 +304,7 @@ export function deleteViewGroup(data: { groupCode: string }): Promise<Result<unk
 
 /** 用户分页搜索（POST /user/query） */
 export function queryUsers(payload: UserQueryPayload): Promise<Result<UserListData>> {
-  return request.post(`/user/query`, payload)
+  return request.post(`/admin/user/query`, payload)
 }
 
 // ==================== Custom Field Option API ====================
@@ -332,7 +332,7 @@ export function queryAllSystemFields(): Promise<{ success: boolean; message?: st
 export function queryAvailableFieldList(
   params?: AvailableFieldQuery,
 ): Promise<AvailableFieldResult> {
-  return request.post(`/availableField/query`, params)
+  return request.post(`/admin/availableField/query`, params)
 }
 
 /** 工作台用的可用字段列表：可见范围由后端按用户所属空间控制 */
@@ -373,7 +373,7 @@ export function batchDeleteAvailableFields(ids: Array<number | string>): Promise
 export function querySystemFields(
   params?: SystemFieldQuery,
 ): Promise<Result<SystemFieldPageData>> {
-  return request.post(`/systemField/query`, params)
+  return request.post(`/admin/systemField/query`, params)
 }
 
 /** 查询系统字段详情（GET /systemField/{id}） */
@@ -401,14 +401,14 @@ export function updateSystemField(
 
 /** 批量删除系统字段（DELETE /systemField/systemField/batch，逻辑删除） */
 export function batchDeleteSystemFields(ids: Array<number | string>): Promise<Result<void>> {
-  return request.delete(`/systemField/systemField/batch`, { data: ids })
+  return request.delete(`/admin/systemField/systemField/batch`, { data: ids })
 }
 
 // ==================== Workflow API（工作流）====================
 
 /** 部署流程定义：新增/更新（POST /workflow/definition/deploy） */
 export function deployWorkflowDefinition(data: Partial<WorkflowDefinition>): Promise<Result<WorkflowDefinition>> {
-  return request.post(`/workflow/definition/deploy`, data)
+  return request.post(`/admin/workflow/definition/deploy`, data)
 }
 
 /** 流程基本信息保存参数（新增不传 id；不含流程节点，与部署无关） */
@@ -419,27 +419,27 @@ export type WorkflowDefinitionSaveParams = Pick<WorkflowDefinition, 'id' | 'proc
 
 /** 保存流程基本信息：新增/编辑（POST /workflow/definition/save），只保存流程信息，不部署、不修改节点 */
 export function saveWorkflowDefinition(data: WorkflowDefinitionSaveParams): Promise<Result<WorkflowDefinition>> {
-  return request.post(`/workflow/definition/save`, data)
+  return request.post(`/admin/workflow/definition/save`, data)
 }
 
 /** 删除流程定义（POST /workflow/definition/{id}/delete），仅停用状态可删除 */
 export function deleteWorkflowDefinition(id: number): Promise<Result<void>> {
-  return request.post(`/workflow/definition/${id}/delete`)
+  return request.post(`/admin/workflow/definition/${id}/delete`)
 }
 
 /** 流程定义列表（GET /workflow/definition/list） */
 export function listWorkflowDefinitions(): Promise<Result<WorkflowDefinition[]>> {
-  return request.get(`/workflow/definition/list`)
+  return request.get(`/admin/workflow/definition/list`)
 }
 
 /** 流程定义详情（GET /workflow/definition/{id}） */
 export function getWorkflowDefinition(id: number): Promise<Result<WorkflowDefinition>> {
-  return request.get(`/workflow/definition/${id}`)
+  return request.get(`/admin/workflow/definition/${id}`)
 }
 
 /** 启用/停用流程定义（POST /workflow/definition/{id}/status?status=1） */
 export function updateWorkflowDefinitionStatus(id: number, status: number): Promise<Result<void>> {
-  return request.post(`/workflow/definition/${id}/status`, null, { params: { status } })
+  return request.post(`/admin/workflow/definition/${id}/status`, null, { params: { status } })
 }
 
 /** 下一节点精简信息（GET /workflow/next-nodes → nextNodes） */
@@ -646,8 +646,8 @@ export interface InitConfigTask {
   steps: InitConfigStep[]
 }
 
-/** 管理后台：同步任务列表（GET /admin/init-config/tasks），status 为空则不过滤 */
-export function getInitConfigTasks(params?: { status?: string; limit?: number }): Promise<Result<InitConfigTask[]>> {
+/** 管理后台：同步任务列表（GET /admin/init-config/tasks），status 为空则不过滤；target：PERSONAL / ENTERPRISE，为空则不过滤 */
+export function getInitConfigTasks(params?: { status?: string; target?: string; limit?: number }): Promise<Result<InitConfigTask[]>> {
   return request.get(`/admin/init-config/tasks`, { params })
 }
 
@@ -679,6 +679,8 @@ export function logout() {
 /** 新增 / 修改用户请求体（修改时 id 必填） */
 export interface UserSaveParams {
   id?: number
+  /** 企业后台：当前企业编码（企业端点校验用户属于该企业） */
+  rootOrganizationCode?: string
   /** 姓名 */
   realName: string
   /** 工号：新增时由后端自动生成，前端不提交 */
@@ -701,27 +703,27 @@ export interface UserSaveParams {
 
 /** 用户详情（POST /user/detail），含角色、拥有的空间 */
 export function getUserDetail(id: number): Promise<Result<UserItem>> {
-  return request.post(`/user/detail`, { id })
+  return request.post(`/admin/user/detail`, { id })
 }
 
 /** 新增用户（POST /user/create） */
 export function createUser(data: UserSaveParams): Promise<Result<UserItem>> {
-  return request.post(`/user/create`, data)
+  return request.post(`/admin/user/create`, data)
 }
 
 /** 修改用户（POST /user/update） */
 export function updateUser(data: UserSaveParams): Promise<Result<UserItem>> {
-  return request.post(`/user/update`, data)
+  return request.post(`/admin/user/update`, data)
 }
 
 /** 删除用户（POST /user/delete） */
 export function deleteUser(id: number): Promise<Result<void>> {
-  return request.post(`/user/delete`, { id })
+  return request.post(`/admin/user/delete`, { id })
 }
 
 /** 重置用户密码为默认密码 123456（POST /user/reset-password） */
 export function resetUserPassword(id: number): Promise<Result<void>> {
-  return request.post(`/user/reset-password`, { id })
+  return request.post(`/admin/user/reset-password`, { id })
 }
 
 // ---- 企业侧用户写操作（企业成员校验；管理后台走上方 /user/**，需管理后台按钮权限） ----
@@ -737,13 +739,23 @@ export function enterpriseUpdateUser(data: UserSaveParams): Promise<Result<UserI
 }
 
 /** 企业内删除用户（POST /enterprise/user/delete） */
-export function enterpriseDeleteUser(id: number): Promise<Result<void>> {
-  return request.post(`/enterprise/user/delete`, { id })
+export function enterpriseDeleteUser(id: number, rootOrganizationCode?: string): Promise<Result<void>> {
+  return request.post(`/enterprise/user/delete`, { id, rootOrganizationCode })
 }
 
 /** 企业内重置用户密码（POST /enterprise/user/reset-password） */
-export function enterpriseResetUserPassword(id: number): Promise<Result<void>> {
-  return request.post(`/enterprise/user/reset-password`, { id })
+export function enterpriseResetUserPassword(id: number, rootOrganizationCode?: string): Promise<Result<void>> {
+  return request.post(`/enterprise/user/reset-password`, { id, rootOrganizationCode })
+}
+
+/** 企业内用户详情，仅该企业成员（POST /enterprise/user/detail） */
+export function enterpriseGetUserDetail(id: number, rootOrganizationCode?: string): Promise<Result<UserItem>> {
+  return request.post(`/enterprise/user/detail`, { id, rootOrganizationCode })
+}
+
+/** 企业用户编辑时的角色列表（只读，POST /enterprise/role/query） */
+export function enterpriseQueryRoles(data: RoleQueryParams): Promise<Result<{ list: RoleItem[]; total: number }>> {
+  return request.post(`/enterprise/role/query`, data)
 }
 
 // ==================== 角色管理 ====================
@@ -798,39 +810,39 @@ export interface PermissionItem {
 
 /** 角色分页列表（POST /role/query） */
 export function queryRoles(data: RoleQueryParams): Promise<Result<{ list: RoleItem[]; total: number }>> {
-  return request.post(`/role/query`, data)
+  return request.post(`/admin/role/query`, data)
 }
 
 /** 新增角色（POST /role/create） */
 export function createRole(data: RoleSaveParams): Promise<Result<RoleItem>> {
-  return request.post(`/role/create`, data)
+  return request.post(`/admin/role/create`, data)
 }
 
 /** 修改角色（POST /role/update） */
 export function updateRole(data: RoleSaveParams): Promise<Result<RoleItem>> {
-  return request.post(`/role/update`, data)
+  return request.post(`/admin/role/update`, data)
 }
 
 /** 删除角色（POST /role/delete） */
 export function deleteRole(id: number): Promise<Result<void>> {
-  return request.post(`/role/delete`, { id })
+  return request.post(`/admin/role/delete`, { id })
 }
 
 /** 全部权限点（POST /role/permission/list，角色授权界面展示） */
 export function listRolePermissions(): Promise<Result<PermissionItem[]>> {
-  return request.post(`/role/permission/list`)
+  return request.post(`/admin/role/permission/list`)
 }
 
 /** 保存角色权限（POST /role/permission/save，全量替换） */
 export function saveRolePermissions(roleId: number, permCodes: string[]): Promise<Result<void>> {
-  return request.post(`/role/permission/save`, { roleId, permCodes })
+  return request.post(`/admin/role/permission/save`, { roleId, permCodes })
 }
 
 // ==================== 菜单管理（管理后台，维护全部菜单/按钮权限点） ====================
 
 /** 全部权限点含停用（POST /menu/list，菜单→按钮树形展示） */
 export function listMenuPermissions(): Promise<Result<PermissionItem[]>> {
-  return request.post(`/menu/list`)
+  return request.post(`/admin/menu/list`)
 }
 
 /** 更新权限点（POST /menu/update：名称/排序/启停/备注；停用后菜单、按钮与接口立即失效） */
@@ -838,7 +850,7 @@ export function updateMenuPermission(
   id: number,
   data: { permName?: string; sort?: number; status?: number; remark?: string },
 ): Promise<Result<void>> {
-  return request.post(`/menu/update`, { id, ...data })
+  return request.post(`/admin/menu/update`, { id, ...data })
 }
 
 /** 启用中的菜单编码列表（POST /menu/enabled，登录即可；前端全局导航过滤用） */
@@ -897,22 +909,22 @@ export interface PositionSaveParams {
 
 /** 岗位分页列表（POST /position/query） */
 export function queryPositions(data: PositionQueryParams): Promise<Result<{ list: PositionItem[]; total: number }>> {
-  return request.post(`/position/query`, data)
+  return request.post(`/admin/position/query`, data)
 }
 
 /** 新增岗位（POST /position/create） */
 export function createPosition(data: PositionSaveParams): Promise<Result<PositionItem>> {
-  return request.post(`/position/create`, data)
+  return request.post(`/admin/position/create`, data)
 }
 
 /** 修改岗位（POST /position/update） */
 export function updatePosition(data: PositionSaveParams): Promise<Result<PositionItem>> {
-  return request.post(`/position/update`, data)
+  return request.post(`/admin/position/update`, data)
 }
 
 /** 删除岗位（POST /position/delete） */
 export function deletePosition(id: number): Promise<Result<void>> {
-  return request.post(`/position/delete`, { id })
+  return request.post(`/admin/position/delete`, { id })
 }
 
 // ---- 企业侧岗位写操作（企业成员校验；管理后台走上方 /position/**，需管理后台按钮权限） ----
@@ -963,22 +975,22 @@ export interface I18nSaveParams {
 
 /** 翻译分页列表（POST /i18n/query） */
 export function queryI18n(data: I18nQueryParams): Promise<Result<{ list: I18nItem[]; total: number }>> {
-  return request.post(`/i18n/query`, data)
+  return request.post(`/admin/i18n/query`, data)
 }
 
 /** 新增翻译（POST /i18n/create） */
 export function createI18n(data: I18nSaveParams): Promise<Result<I18nItem>> {
-  return request.post(`/i18n/create`, data)
+  return request.post(`/admin/i18n/create`, data)
 }
 
 /** 修改翻译（POST /i18n/update） */
 export function updateI18n(data: I18nSaveParams): Promise<Result<I18nItem>> {
-  return request.post(`/i18n/update`, data)
+  return request.post(`/admin/i18n/update`, data)
 }
 
 /** 删除翻译（POST /i18n/delete） */
 export function deleteI18n(id: number): Promise<Result<void>> {
-  return request.post(`/i18n/delete`, { id })
+  return request.post(`/admin/i18n/delete`, { id })
 }
 
 // ==================== 问题类型 ====================
@@ -1055,32 +1067,32 @@ export interface IssueTypeSaveParams {
 
 /** 问题类型分页列表（POST /issue-type/query） */
 export function queryIssueTypes(data: IssueTypeQueryParams): Promise<Result<{ list: IssueTypeItem[]; total: number }>> {
-  return request.post(`/issue-type/query`, data)
+  return request.post(`/admin/issue-type/query`, data)
 }
 
 /** 新增问题类型（POST /issue-type/create） */
 export function createIssueType(data: IssueTypeSaveParams): Promise<Result<IssueTypeItem>> {
-  return request.post(`/issue-type/create`, data)
+  return request.post(`/admin/issue-type/create`, data)
 }
 
 /** 修改问题类型（POST /issue-type/update） */
 export function updateIssueType(data: IssueTypeSaveParams): Promise<Result<IssueTypeItem>> {
-  return request.post(`/issue-type/update`, data)
+  return request.post(`/admin/issue-type/update`, data)
 }
 
 /** 问题类型下的状态列表（GET /issue-type/status/list?issueTypeCode=xxx），按 sort 升序 */
 export function queryIssueTypeStatuses(issueTypeCode: string): Promise<Result<IssueTypeStatus[]>> {
-  return request.get(`/issue-type/status/list`, { params: { issueTypeCode } })
+  return request.get(`/admin/issue-type/status/list`, { params: { issueTypeCode } })
 }
 
 /** 保存问题类型下的状态（POST /issue-type/status/save）：整体提交，后端按 id 增改、缺失即删除 */
 export function saveIssueTypeStatuses(data: { issueTypeCode: string; statuses: IssueTypeStatus[] }): Promise<Result<IssueTypeStatus[]>> {
-  return request.post(`/issue-type/status/save`, data)
+  return request.post(`/admin/issue-type/status/save`, data)
 }
 
 /** 删除问题类型（POST /issue-type/delete） */
 export function deleteIssueType(id: number): Promise<Result<void>> {
-  return request.post(`/issue-type/delete`, { id })
+  return request.post(`/admin/issue-type/delete`, { id })
 }
 
 // ==================== 事项按钮 ====================
@@ -1410,7 +1422,7 @@ export interface OrganizationSaveParams {
 
 /** 组织树（POST /organization/list） */
 export function getOrganizationTree(rootOrganizationCode?: string): Promise<Result<OrganizationNode[]>> {
-  return request.post(`/organization/list`, rootOrganizationCode ? { rootOrganizationCode } : undefined)
+  return request.post(`/admin/organization/list`, rootOrganizationCode ? { rootOrganizationCode } : undefined)
 }
 
 // ==================== 企业后台（/enterprise，按企业维度过滤） ====================
@@ -1475,17 +1487,17 @@ export function enterpriseLeave(rootOrganizationCode: string): Promise<Result<nu
 
 /** 新增组织（POST /organization/create） */
 export function createOrganization(data: OrganizationSaveParams): Promise<Result<OrganizationNode>> {
-  return request.post(`/organization/create`, data)
+  return request.post(`/admin/organization/create`, data)
 }
 
 /** 修改组织（POST /organization/update） */
 export function updateOrganization(data: OrganizationSaveParams): Promise<Result<OrganizationNode>> {
-  return request.post(`/organization/update`, data)
+  return request.post(`/admin/organization/update`, data)
 }
 
 /** 删除组织（POST /organization/delete，存在子组织时后端拒绝） */
 export function deleteOrganization(id: number): Promise<Result<void>> {
-  return request.post(`/organization/delete`, { id })
+  return request.post(`/admin/organization/delete`, { id })
 }
 
 // ==================== 个人中心 / 账户设置 ====================
