@@ -947,12 +947,11 @@ async function handleLogout() {
   try {
     await logout()
   } catch (e) {
+    // 接口失败（401/网络异常等）也必须清本地登录态，否则退出按钮表现为无响应
     console.warn('[Logout] 接口调用失败，继续执行登出流程:', e)
-    return
   }
-
-  // 接口成功后清除 cookie
   auth.logout()
+  router.replace({ name: 'Login' })
 }
 /** 「更多」菜单：动作交给文档页执行（移动 / 收藏 / 下载 / 打印 / 文档信息 / 回收站） */
 function onDocMoreMenu(e: { key?: string | number }) {
