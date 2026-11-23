@@ -2,8 +2,10 @@
   <div class="auth-field" :class="{ 'has-error': !!error }">
     <div class="field-box">
       <input
+        :id="inputId"
         :value="modelValue"
         :type="inputType"
+        :disabled="disabled"
         :autocomplete="autocomplete"
         :placeholder="placeholder"
         :aria-label="placeholder"
@@ -34,6 +36,10 @@ const props = withDefaults(defineProps<{
   type?: string
   autocomplete?: string
   error?: string
+  /** 可选：供外部 <label for> 关联 */
+  inputId?: string
+  /** 可选：禁用输入（置灰不可编辑） */
+  disabled?: boolean
 }>(), {
   type: 'text',
   autocomplete: 'off',
@@ -104,5 +110,11 @@ input:focus {
 
 .has-error input {
   border-color: #e0786f;
+}
+
+input:disabled {
+  background: #f7f7f6;
+  color: #a0a09b;
+  cursor: not-allowed;
 }
 </style>

@@ -7,32 +7,7 @@
     </header>
 
     <div class="auth-body" :class="{ 'no-header': logoAboveCard, 'no-visual': noVisual }">
-      <!-- 左侧：标题 + 表单卡片 -->
-      <section class="auth-left">
-        <!-- 表单上方的品牌标识（登录页用） -->
-        <div v-if="logoAboveCard" class="auth-logo-card">
-          <AuthLogo :size="56" />
-          <span class="auth-brand auth-brand-lg">Cooperise</span>
-        </div>
-
-        <h1 v-if="title || highlight" class="auth-title">
-          {{ title }}<span v-if="highlight" class="auth-highlight">{{ highlight }}</span>
-        </h1>
-        <p v-if="subtitle" class="auth-subtitle">{{ subtitle }}</p>
-
-        <div class="auth-card">
-          <slot />
-        </div>
-
-        <!-- 中英文切换：放在表单卡片下方，不随窗口宽度压到右侧插画上（客户端窗口较窄） -->
-        <div v-if="!hideLang" class="auth-lang" data-no-i18n>
-          <button type="button" :class="{ active: locale === 'zh' }" @click="setLocale('zh')">中文</button>
-          <span class="auth-lang-sep">/</span>
-          <button type="button" :class="{ active: locale === 'en' }" @click="setLocale('en')">English</button>
-        </div>
-      </section>
-
-      <!-- 右侧：看板墙插画 -->
+      <!-- 左侧：看板墙插画 -->
       <section v-if="!noVisual" class="auth-visual" aria-hidden="true">
         <span class="glow g1" />
         <span class="glow g2" />
@@ -66,6 +41,31 @@
           <div class="sticky s1">上线前<br />回归测试</div>
           <div class="sticky s2">需求评审<br />周三 10:00</div>
           <div class="sticky s3">Sprint 19<br />冲刺目标</div>
+        </div>
+      </section>
+
+      <!-- 右侧：标题 + 表单卡片 -->
+      <section class="auth-left">
+        <!-- 表单上方的品牌标识（登录页用） -->
+        <div v-if="logoAboveCard" class="auth-logo-card">
+          <AuthLogo :size="56" />
+          <span class="auth-brand auth-brand-lg">Cooperise</span>
+        </div>
+
+        <h1 v-if="title || highlight" class="auth-title">
+          {{ title }}<span v-if="highlight" class="auth-highlight">{{ highlight }}</span>
+        </h1>
+        <p v-if="subtitle" class="auth-subtitle">{{ subtitle }}</p>
+
+        <div class="auth-card">
+          <slot />
+        </div>
+
+        <!-- 中英文切换：放在表单卡片下方，不随窗口宽度压到插画上（客户端窗口较窄） -->
+        <div v-if="!hideLang" class="auth-lang" data-no-i18n>
+          <button type="button" :class="{ active: locale === 'zh' }" @click="setLocale('zh')">中文</button>
+          <span class="auth-lang-sep">/</span>
+          <button type="button" :class="{ active: locale === 'en' }" @click="setLocale('en')">English</button>
         </div>
       </section>
     </div>
@@ -339,7 +339,7 @@ onBeforeUnmount(() => window.clearInterval(timer))
 }
 
 
-/* ========== 右侧插画 ========== */
+/* ========== 左侧插画 ========== */
 .auth-visual {
   position: relative;
   flex: 1 1 0;
