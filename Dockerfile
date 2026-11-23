@@ -13,6 +13,9 @@ RUN pnpm install --frozen-lockfile --registry=https://registry.npmmirror.com
 
 COPY . .
 
+ARG VITE_API_DOMAIN
+ENV VITE_API_DOMAIN=$VITE_API_DOMAIN
+
 RUN pnpm run build
 
 FROM swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/nginx:alpine
