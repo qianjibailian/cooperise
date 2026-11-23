@@ -170,6 +170,12 @@
             <button type="button" class="docs-create-item" @click="pickDocCreate('flow')">
               <NodeIndexOutlined class="docs-create-ico" style="color: #ff8800" /><span>流程图</span>
             </button>
+            <button type="button" class="docs-create-item" @click="pickDocCreate('vote')">
+              <CheckSquareOutlined class="docs-create-ico" style="color: #7b61ff" /><span>投票</span>
+            </button>
+            <button type="button" class="docs-create-item" @click="pickDocCreate('form')">
+              <FormOutlined class="docs-create-ico" style="color: #ff5c7a" /><span>表单</span>
+            </button>
             <div class="docs-create-sep" />
             <div class="docs-create-group">团队协作</div>
             <button
@@ -398,6 +404,7 @@ import {
   EditOutlined,
   EyeOutlined,
   FormOutlined,
+  CheckSquareOutlined,
   FileTextOutlined,
   TableOutlined,
   PieChartOutlined,
@@ -673,7 +680,7 @@ const DOC_MODE_META: Record<string, { label: string; icon: unknown }> = {
 const docModeLabel = computed(() => DOC_MODE_META[docModeKey.value].label)
 const docModeIcon = computed(() => DOC_MODE_META[docModeKey.value].icon)
 /** 顶栏"+"新建菜单：已接入的类型交给文档页新建，其余暂未开放 */
-const DOC_CREATE_SUPPORTED = ['doc', 'sheet', 'mindmap', 'flow', 'wiki']
+const DOC_CREATE_SUPPORTED = ['doc', 'sheet', 'mindmap', 'flow', 'vote', 'form', 'wiki']
 function onDocCreateMenu({ key }: { key: string | number }) {
   const k = String(key)
   if (DOC_CREATE_SUPPORTED.includes(k)) requestDocCreate(k)

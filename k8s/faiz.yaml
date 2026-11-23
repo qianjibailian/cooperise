@@ -1,0 +1,260 @@
+# =====================================================================
+# 需求管控平台（faiz）Kubernetes 部署清单
+#   前端：cooperise（nginx 静态站点，端口 80）
+#   后端：faiz-api（Spring Boot，端口 8080）
+#   入口：两个域名，前端直接请求后端 API 域名（不经过 nginx 代理）：<FRONT_HOST> → 前端，<API_HOST> → 后端
+#
+# 部署前：
+#   1. 替换镜像地址 <REGISTRY> 与 TAG
+#   2. 替换 Secret 中的占位值（禁止把真实密码提交到仓库）
+#   3. 替换 Ingress 的 host 与 TLS 证书 Secret 名称；前端镜像构建时必须传入 --build-arg VITE_API_DOMAIN=https://<API_HOST>
+# 注意：后端的注册验证码保存在进程内存中（RegisterCodeService），多副本时验证码不共享，
+#       因此后端 replicas 固定为 1，直到验证码改为 Redis / 数据库存储。
+# =====================================================================
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: faiz
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: faiz-backend-config
+  namespace: faiz
+data:
+  SPRING_PROFILES_ACTIVE: "prod"
+  JAVA_OPTS: "-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0 -XX:InitialRAMPercentage=50.0"
+  FAIZ_CORS_ALLOWED_ORIGINS: "https://<FRONT_HOST>"
+  DB_URL: "jdbc:mysql://<DB_HOST>:3306/faiz?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=true&allowPublicKeyRetrieval=true"
+  DB_USERNAME: "faiz"
+  DB_POOL_MAX_SIZE: "20"
+  DB_POOL_MIN_IDLE: "10"
+  MAIL_HOST: "smtp.163.com"
+  MAIL_PORT: "465"
+  MAIL_USERNAME: "<MAIL_USERNAME>"
+  MAIL_SSL_ENABLE: "true"
+  MAIL_STARTTLS_ENABLE: "false"
+  DOCS_UPLOAD_DIR: "/data/docs-upload"
+  DOCS_UPLOAD_MAX_FILE_SIZE: "200MB"
+  DOCS_UPLOAD_MAX_REQUEST_SIZE: "210MB"
+  WECOM_ENABLED: "false"
+  INIT_CONFIG_PERSONAL_REFERENCE_SPACE_CODE: ""
+  INIT_CONFIG_ENTERPRISE_REFERENCE_SPACE_CODE: ""
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: faiz-backend-secret
+  namespace: faiz
+type: Opaque
+stringData:
+  DB_PASSWORD: "<DB_PASSWORD>"
+  MAIL_PASSWORD: "<MAIL_PASSWORD>"
+  AI_API_KEY: "<AI_API_KEY>"
+  AI_BASE_URL: "https://api.deepseek.com"
+  DOCS_SYNC_SECRET_KEY: "<DOCS_SYNC_SECRET_KEY>"
+  WECOM_CORP_ID: "<WECOM_CORP_ID>"
+  WECOM_CORP_SECRET: "<WECOM_CORP_SECRET>"
+  WECOM_AGENT_ID: "<WECOM_AGENT_ID>"
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: faiz-docs-upload
+  namespace: faiz
+spec:
+  accessModes: ["ReadWriteOnce"]
+  storageClassName: <STORAGE_CLASS>
+  resources:
+    requests:
+      storage: 20Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: faiz-backend
+  namespace: faiz
+  labels:
+    app: faiz-backend
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: faiz-backend
+  template:
+    metadata:
+      labels:
+        app: faiz-backend
+    spec:
+      containers:
+        - name: faiz-backend
+          image: <REGISTRY>/faiz-backend:<TAG>
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: faiz-backend-config
+            - secretRef:
+                name: faiz-backend-secret
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "1Gi"
+            limits:
+              cpu: "2"
+              memory: "2Gi"
+          readinessProbe:
+            httpGet:
+              path: /actuator/health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /actuator/health
+              port: http
+            initialDelaySeconds: 60
+            periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 3
+          volumeMounts:
+            - name: docs-upload
+              mountPath: /data/docs-upload
+      volumes:
+        - name: docs-upload
+          persistentVolumeClaim:
+            claimName: faiz-docs-upload
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: faiz-backend
+  namespace: faiz
+spec:
+  selector:
+    app: faiz-backend
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: faiz-frontend
+  namespace: faiz
+  labels:
+    app: faiz-frontend
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: faiz-frontend
+  template:
+    metadata:
+      labels:
+        app: faiz-frontend
+    spec:
+      containers:
+        - name: faiz-frontend
+          image: <REGISTRY>/faiz-frontend:<TAG>
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 80
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "500m"
+              memory: "256Mi"
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 30
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: faiz-frontend
+  namespace: faiz
+spec:
+  selector:
+    app: faiz-frontend
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+---
+---
+# 前端域名：静态页面
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: faiz-frontend
+  namespace: faiz
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - <FRONT_HOST>
+      secretName: faiz-frontend-tls
+  rules:
+    - host: <FRONT_HOST>
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: faiz-frontend
+                port:
+                  number: 80
+---
+# API 域名：后端接口直接暴露（前端构建时已把接口地址指向该域名，无需路径改写）
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: faiz-backend
+  namespace: faiz
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: "210m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "120"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "120"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - <API_HOST>
+      secretName: faiz-api-tls
+  rules:
+    - host: <API_HOST>
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: faiz-backend
+                port:
+                  number: 8080

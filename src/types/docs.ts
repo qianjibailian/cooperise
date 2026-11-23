@@ -1,5 +1,5 @@
 /** 文档类型：富文本文档 / 表格 / 思维导图 / 流程图 */
-export type DocType = 'doc' | 'sheet' | 'mindmap' | 'flow'
+export type DocType = 'doc' | 'sheet' | 'mindmap' | 'flow' | 'vote' | 'form'
 
 /**
  * 知识库：顶层实体，拥有自己的封面 / 描述 / 可见范围，内部可以有文件夹和文档。
@@ -147,7 +147,7 @@ export interface DocItem {
   /** 富文本文档的 HTML 内容 */
   content: string
   /** 表格 / 思维导图 / 流程图的数据；富文本文档存图标 / 封面（DocMeta） */
-  data?: SheetData | MindmapData | FlowData | DocMeta
+  data?: SheetData | MindmapData | FlowData | DocMeta | VoteData | FormData
   updatedAt: number
   /** 创建时间 */
   createdAt?: number
@@ -181,4 +181,55 @@ export interface LibSideRow {
   /** 文件夹是否展开（仅 folder 行） */
   expanded?: boolean
   doc?: DocItem
+}
+
+/** 投票：选项与规则（存放在文档 data 中） */
+export interface VoteOption {
+  id: string
+  text: string
+}
+export interface VoteData {
+  description?: string
+  options: VoteOption[]
+  /** 允许多选 */
+  multiple: boolean
+  /** 匿名（统计不展示填写人） */
+  anonymous: boolean
+}
+
+/** 表单题型：单选 / 多选 / 评分（1-5）/ 数字 / 文本 */
+export type FormQuestionType = 'single' | 'multi' | 'rating' | 'number' | 'text'
+export interface FormQuestion {
+  id: string
+  title: string
+  type: FormQuestionType
+  required: boolean
+  /** 单选 / 多选的选项 */
+  options?: VoteOption[]
+}
+export interface FormData {
+  description?: string
+  questions: FormQuestion[]
+}
+
+/** 投票 / 表单的统计结果 */
+export interface VoteStatOption {
+  id: string
+  text: string
+  count: number
+}
+export interface FormStatQuestion {
+  id: string
+  title: string
+  type: FormQuestionType
+  answered: number
+  options?: VoteStatOption[]
+  average?: number | null
+  values?: unknown[]
+}
+export interface DocStats {
+  type: 'vote' | 'form'
+  total: number
+  options?: VoteStatOption[]
+  questions?: FormStatQuestion[]
 }

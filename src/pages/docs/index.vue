@@ -70,7 +70,7 @@ import {
   LockOutlined,
 } from '@ant-design/icons-vue'
 import { getLoginUsername, useAuth } from '@/utils/auth'
-import type { DocType, DocFolder, DocLibrary, DocItem, DocMeta, DocComment, MindNode, SheetData, MindmapData, FlowData, LibSideRow } from '@/types/docs'
+import type { DocType, DocFolder, DocLibrary, DocItem, DocMeta, DocComment, MindNode, SheetData, MindmapData, FlowData, VoteData, FormData, LibSideRow } from '@/types/docs'
 import DocEmojiPicker from '@/components/docs/DocEmojiPicker.vue'
 import DocCoverPicker from '@/components/docs/DocCoverPicker.vue'
 import { docCoverBackground } from '@/utils/doc-cover'
@@ -87,6 +87,8 @@ import { tr } from '@/i18n'
 import { fuzzyQueryIssues, type FuzzyIssueItem } from '@/api/faiz'
 import DocMindmapEditor from '@/components/docs/DocMindmapEditor.vue'
 import DocFlowEditor from '@/components/docs/DocFlowEditor.vue'
+import DocVoteEditor from '@/components/docs/DocVoteEditor.vue'
+import DocFormEditor from '@/components/docs/DocFormEditor.vue'
 import DocTypeIcon from '@/components/docs/DocTypeIcon.vue'
 import LibrarySide from '@/components/docs/LibrarySide.vue'
 import DocsLibraryCover from '@/components/docs/DocsLibraryCover.vue'
@@ -300,6 +302,8 @@ const DOC_TYPE_TITLE: Record<DocType, string> = {
   sheet: '无标题表格',
   mindmap: '无标题思维导图',
   flow: '无标题流程图',
+  vote: '无标题投票',
+  form: '无标题表单',
 }
 
 function genDocId(prefix: string): string {
@@ -308,6 +312,14 @@ function genDocId(prefix: string): string {
 
 function defaultSheet(): SheetData {
   return defaultSheetData()
+}
+
+function defaultVote(): VoteData {
+  return { description: '', multiple: false, anonymous: false, options: [{ id: genDocId('opt'), text: '选项 1' }, { id: genDocId('opt'), text: '选项 2' }] }
+}
+
+function defaultForm(): FormData {
+  return { description: '', questions: [] }
 }
 
 function defaultMindmap(): MindmapData {
@@ -323,11 +335,15 @@ function ensureDocData(doc: DocItem) {
     doc.data = defaultMindmap()
   } else if (doc.type === 'flow' && !doc.data) {
     doc.data = { graph: null }
+  } else if (doc.type === 'vote' && !doc.data) {
+    doc.data = defaultVote()
+  } else if (doc.type === 'form' && !doc.data) {
+    doc.data = defaultForm()
   }
 }
 
 function normalizeDoc(d: any): DocItem {
-  const type: DocType = ['doc', 'sheet', 'mindmap', 'flow'].includes(d.type) ? d.type : 'doc'
+  const type: DocType = ['doc', 'sheet', 'mindmap', 'flow', 'vote', 'form'].includes(d.type) ? d.type : 'doc'
   // 后端可能把表格 / 脑图 / 流程图 data 存成 JSON 字符串，这里统一反序列化
   let data: unknown = d.data
   if (typeof data === 'string' && data) {
@@ -672,10 +688,12 @@ function stampLocalAuthor(doc: DocItem) {
 }
 
 function createDoc(type: DocType = 'doc', folderId?: string) {
-  const data: SheetData | MindmapData | FlowData | DocMeta | undefined =
+  const data: SheetData | MindmapData | FlowData | DocMeta | VoteData | FormData | undefined =
     type === 'sheet' ? defaultSheet()
       : type === 'mindmap' ? defaultMindmap()
         : type === 'flow' ? { graph: null }
+          : type === 'vote' ? defaultVote()
+          : type === 'form' ? defaultForm()
           : localAuthorMeta()
   // 归属推断：显式文件夹 → 正打开的知识库 → 当前文档所在知识库（参考飞书：在知识库文档里新建，新文档同库）
   const folder = folderId ? folders.value.find((f) => f.id === folderId) : undefined
@@ -1031,7 +1049,7 @@ watch(
   () => {
     const type = docsCreateRequest.value.type
     if (type === 'wiki') openCreateLibrary()
-    else if (['doc', 'sheet', 'mindmap', 'flow'].includes(type)) createDoc(type as DocType, activeFolderId.value || undefined)
+    else if (['doc', 'sheet', 'mindmap', 'flow', 'vote', 'form'].includes(type)) createDoc(type as DocType, activeFolderId.value || undefined)
   },
 )
 
@@ -1727,7 +1745,7 @@ function onFolderMenu(e: { key?: string | number }, folder: DocFolder) {
 function onAddMenu(e: { key?: string | number }) {
   const key = String(e?.key ?? '')
   if (key === 'folder') openCreateFolder()
-  else if (['doc', 'sheet', 'mindmap', 'flow'].includes(key)) {
+  else if (['doc', 'sheet', 'mindmap', 'flow', 'vote', 'form'].includes(key)) {
     createDoc(key as DocType, activeFolderId.value || undefined)
   }
 }
@@ -1739,6 +1757,8 @@ const ADD_TYPE_ITEMS: { key: DocType; label: string }[] = [
   { key: 'sheet', label: '表格' },
   { key: 'flow', label: '流程图' },
   { key: 'mindmap', label: '思维导图' },
+  { key: 'vote', label: '投票' },
+  { key: 'form', label: '表单' },
 ]
 /** 选择文件类型后进入模板选择弹窗 */
 const docTemplateOpen = ref(false)
@@ -1798,7 +1818,7 @@ function createBlankDocFromTemplate() {
 
 function onAddItem(key: string) {
   addOpen.value = false
-  if (['doc', 'sheet', 'mindmap', 'flow'].includes(key)) {
+  if (['doc', 'sheet', 'mindmap', 'flow', 'vote', 'form'].includes(key)) {
     openDocTemplate(key as DocType)
     return
   }
@@ -7334,6 +7354,20 @@ function folderNameOf(doc: DocItem | null): string {
                 v-else-if="activeDoc.type === 'mindmap'"
                 :key="`mind-${activeDoc.id}`"
                 :root="mindRoot(activeDoc)"
+                @change="onDocChanged(activeDoc)"
+              />
+              <DocVoteEditor
+                v-else-if="activeDoc.type === 'vote'"
+                :key="`vote-${activeDoc.id}`"
+                :doc-id="activeDoc.id"
+                :data="activeDoc.data as VoteData"
+                @change="onDocChanged(activeDoc)"
+              />
+              <DocFormEditor
+                v-else-if="activeDoc.type === 'form'"
+                :key="`form-${activeDoc.id}`"
+                :doc-id="activeDoc.id"
+                :data="activeDoc.data as FormData"
                 @change="onDocChanged(activeDoc)"
               />
               <DocFlowEditor

@@ -1,6 +1,6 @@
 import request from '@/utils/request'
 import type { Result } from '@/types/faiz'
-import type { DocItem, DocFolder, DocLibrary, DocType, DocPosition, SheetData, MindmapData, FlowData, DocMeta } from '@/types/docs'
+import type { DocItem, DocFolder, DocLibrary, DocType, DocPosition, SheetData, MindmapData, FlowData, DocMeta, VoteData, FormData } from '@/types/docs'
 
 /**
  * ==================== 文档系统 API ====================
@@ -33,7 +33,7 @@ export interface DocCreatePayload {
   /** 富文本初始 HTML（上传 / 模板导入时传入） */
   content?: string
   /** 表格 / 思维导图 / 流程图初始数据 */
-  data?: SheetData | MindmapData | FlowData | DocMeta
+  data?: SheetData | MindmapData | FlowData | DocMeta | VoteData | FormData
 }
 
 /** 文档内容保存入参：整篇覆盖式保存（编辑器 400ms 防抖自动保存） */
@@ -41,7 +41,7 @@ export interface DocSavePayload {
   title?: string
   content?: string
   /** 表格 / 思维导图 / 流程图数据；富文本文档为图标 / 封面（DocMeta） */
-  data?: SheetData | MindmapData | FlowData | DocMeta
+  data?: SheetData | MindmapData | FlowData | DocMeta | VoteData | FormData
 }
 
 /** 回收站文档：文档 + 删除时间 */
@@ -398,4 +398,21 @@ export interface DocSyncProgress {
 
 export function getDocSyncProgress(libraryId: string): Promise<Result<DocSyncProgress>> {
   return request.get(`/docs/sync/${libraryId}/progress`)
+}
+
+// ==================== 投票 / 表单：答题与统计 ====================
+
+/** 我的答题（GET /docs/{id}/response/me） */
+export function getMyDocResponse(docId: string): Promise<Result<{ answer: Record<string, unknown> | null }>> {
+  return request.get(`/docs/${docId}/response/me`)
+}
+
+/** 提交答题（POST /docs/response/submit，重复提交覆盖） */
+export function submitDocResponse(docId: string, answer: Record<string, unknown>): Promise<Result<null>> {
+  return request.post(`/docs/response/submit`, { docId, answer })
+}
+
+/** 统计结果（GET /docs/{id}/stats） */
+export function getDocStats(docId: string): Promise<Result<import('@/types/docs').DocStats>> {
+  return request.get(`/docs/${docId}/stats`)
 }
