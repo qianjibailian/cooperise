@@ -1,0 +1,9 @@
+node_modules
+dist
+release
+out
+k8s
+.git
+.gitignore
+*.log
+.env.local
