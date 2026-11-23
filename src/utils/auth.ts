@@ -185,12 +185,15 @@ function setCookie(name: string, value: string, days = 7) {
   document.cookie = name + '=' + encodeURIComponent(value) + '; expires=' + expires.toUTCString() + '; path=/'
 }
 
-/** 当前 hostname 及各级父域（含前导点），覆盖 .qianjisan.com 等场景 */
+/** 空串 + 当前 hostname 及各级父域（含前导点），覆盖 .qianjisan.com 等场景 */
 function getAllDomains(): string[] {
   const hosts = new Set<string>()
+  // 空串 = 不带 domain 属性：登录 cookie 以 host-only（无 domain）写入，
+  // 删除必须同样不带 domain 才能匹配到（带 domain 只能删 domain cookie）
+  hosts.add('')
   const host = window.location.hostname
   if (!host || host === 'localhost' || /^(\d+\.){3}\d+$/.test(host)) {
-    return hosts.size ? [...hosts] : ['']
+    return [...hosts]
   }
   const parts = host.split('.')
   // 无点前缀的 hostname
