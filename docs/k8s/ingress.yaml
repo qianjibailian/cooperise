@@ -4,17 +4,27 @@ metadata:
   name: cooperise-ingress
   namespace: qianjisan
   annotations:
-    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    # 不要设置 rewrite-target：配合 path / 会把 /h5/、/assets/ 等所有请求都改写成 /，导致 H5 与静态资源 404
 spec:
   ingressClassName: nginx
   rules:
-    - host: cooperise.qianjisan.com          # ← 替换为你的域名
+    - host: cooperise.qianjisan.com
       http:
         paths:
+          # H5 优先匹配（最长前缀）
+          - path: /h5
+            pathType: Prefix
+            backend:
+              service:
+                name: cooperise-h5
+                port:
+                  number: 80
+          # PC 兜底
           - path: /
             pathType: Prefix
             backend:
               service:
-                name: faiz
+                name: cooperise
                 port:
                   number: 80

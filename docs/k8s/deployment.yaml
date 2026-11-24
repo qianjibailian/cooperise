@@ -38,24 +38,24 @@ spec:
             limits:
               cpu: "500m"
               memory: "512Mi"
-          # 后端无 /health 接口，健康检查走 Spring Boot actuator（已在 JwtAuthInterceptor / WebMvcConfig 放行 /actuator/**）
-          # 启动探针：最多等 5 分钟（periodSeconds 5 × failureThreshold 60），期间不会因为启动慢被杀掉
+          # 本镜像是 nginx 静态站点（无 Spring Boot actuator），探针走 /：SPA 兜底返回 200
+          # 注意：/actuator/... 在 nginx 上会 404，探针一直失败会导致 Pod 永远不 Ready 并被反复重启
           startupProbe:
             httpGet:
-              path: /actuator/health/liveness
+              path: /
               port: 80
             periodSeconds: 5
             failureThreshold: 60
           livenessProbe:
             httpGet:
-              path: /actuator/health/liveness
+              path: /
               port: 80
             periodSeconds: 10
             timeoutSeconds: 5
             failureThreshold: 3
           readinessProbe:
             httpGet:
-              path: /actuator/health/readiness
+              path: /
               port: 80
             periodSeconds: 5
             timeoutSeconds: 3
