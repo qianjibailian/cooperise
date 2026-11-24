@@ -261,3 +261,11 @@ npm run electron:dev     # 桌面客户端（复用 8083 的开发服务）
 - 前端：`docker/web/Dockerfile` 构建后由 nginx 托管 `dist/`；`/h5/` 下的前端路由回退到 `h5.html`（见 `nginx.conf`）
 - 后端：`faiz` 为 Spring Boot 服务；数据库变更脚本在 `faiz/docs/sql/`（国际化相关：`faiz_i18n_20261105.sql` 建表、`faiz_i18n_data_20261105.sql` 初始译文、`faiz_i18n_h5_20261106.sql` H5 补充译文）
 - Electron 下载镜像通过环境变量 `ELECTRON_MIRROR`、`ELECTRON_BUILDER_BINARIES_MIRROR` 配置（Dockerfile 已设置）
+
+---
+
+## 联系我
+
+欢迎交流与反馈，扫码添加微信（源小源）：
+
+<img src="docs/images/wechat-qr.jpg" alt="微信二维码 - 源小源" width="220" />
