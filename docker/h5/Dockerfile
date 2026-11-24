@@ -25,7 +25,7 @@ RUN pnpm exec vue-tsc -b && pnpm exec vite build --mode h5
 FROM swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/nginx:alpine
 
 # H5 产物放在 /usr/share/nginx/html/h5/，与 ingress 的 /h5 路径保持一致，无需路径改写
-COPY nginx.conf /etc/nginx/nginx.conf
+COPY docker/h5/nginx.conf /etc/nginx/nginx.conf
 COPY --from=build /app/dist/h5 /usr/share/nginx/html/h5
 
 EXPOSE 80
