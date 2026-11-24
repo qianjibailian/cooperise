@@ -9,6 +9,9 @@ import TabLayout from './layout/TabLayout.vue'
  */
 const routes: RouteRecordRaw[] = [
   { path: '/login', name: 'H5Login', component: () => import('./pages/Login.vue'), meta: { title: '登录', public: true } },
+  { path: '/register', name: 'H5Register', component: () => import('./pages/Register.vue'), meta: { title: '注册', public: true } },
+  // 注册后的初始化（个人 / 企业）：需要已登录，与网页版 /init 一致
+  { path: '/init', name: 'H5Init', component: () => import('./pages/Init.vue'), meta: { title: '初始化' } },
   {
     path: '/',
     component: TabLayout,

@@ -37,7 +37,19 @@
       <div class="lg-submit">
         <van-button type="primary" block round native-type="submit" :loading="loading" loading-text="登录中">登录</van-button>
       </div>
+
+      <div class="lg-links">
+        <button type="button" class="lg-link" @click="forgotPassword">忘记密码？</button>
+        <button type="button" class="lg-link lg-link--strong" @click="router.push('/register')">注册账号</button>
+      </div>
     </van-form>
+
+    <p class="lg-terms">
+      登录即表示同意
+      <a href="/terms" target="_blank" rel="noopener">《服务协议》</a>
+      和
+      <a href="/privacy" target="_blank" rel="noopener">《隐私政策》</a>
+    </p>
 
     <div class="lg-lang" data-no-i18n>
       <span :class="{ active: locale === 'zh' }" @click="setLocale('zh')">中文</span>
@@ -50,7 +62,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { showFailToast } from 'vant'
+import { showFailToast, showToast } from 'vant'
 import { login } from '@/api/faiz'
 import { useAuth, setLoginInfo } from '@/utils/auth'
 import { loadRememberedLogin, saveRememberedLogin } from '@/utils/remember-login'
@@ -77,6 +89,11 @@ onMounted(async () => {
     // 读取失败不影响登录
   }
 })
+
+/** 与网页版一致：找回密码由管理员重置 */
+function forgotPassword() {
+  showToast('请联系管理员重置密码')
+}
 
 async function handleLogin() {
   loading.value = true
@@ -152,6 +169,38 @@ async function handleLogin() {
 .lg-submit :deep(.van-button) {
   height: 48px;
   font-size: 16px;
+}
+
+.lg-links {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin: 16px 24px 0;
+}
+
+.lg-link {
+  padding: 4px 2px;
+  border: 0;
+  background: none;
+  font-size: 14px;
+  color: var(--h5-text-3);
+}
+
+.lg-link--strong {
+  color: var(--h5-text);
+  font-weight: 600;
+}
+
+.lg-terms {
+  margin: 20px 32px 0;
+  font-size: 12px;
+  line-height: 1.6;
+  text-align: center;
+  color: var(--h5-text-3);
+}
+
+.lg-terms a {
+  color: var(--h5-text);
 }
 
 .lg-lang {
